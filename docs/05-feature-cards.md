@@ -33,13 +33,19 @@
 
 ### M1.0 Monorepo 骨架与最严 CI
 
-- AC1 `pnpm i && pnpm ci` 在干净克隆上全绿；`pnpm ci` 含 04 文档 §4.5 全部步骤。
-- AC2 `packages/core`、`packages/cli` 各有可编译的最小入口（`export const version: string`），`dist` 构建通过，`publint`/`attw` 通过。
-- AC3 ESLint 规则生效可证：故意提交一个 `any` 与一个跨包深层导入，`pnpm lint` 必须报错（用临时文件验证后删除，报告留证据）。
-- AC4 `tsconfig` 含 04 文档 §4.2 全部标志；`tsc -b` 在空项目上 0 错误。
-- AC5 `dependency-cruiser` 有环/反向依赖规则并在故意违规时报错。
-- AC6 `commitlint` 强制 conventional commits；`knip --strict` 0 未使用项。
-- AC7 覆盖率阈值与 Stryker 阈值已配置并在低于阈值时 CI 失败（附人为调低阈值的反证）。
+> **执行记录（2026-11-12，commit `f1eba42`，`G4: PASS`）**：按 `.workflow/cards/M1.0.md`（含 R1/R2 修订）执行，与本表原稿的偏差如下，均已在卡片与审计报告中留痕：
+> - 本卡**不引入构建步骤**：无 `dist`、无 `publint`/`attw`、无 `packages/cli`（CLI 按 M1.8 落地）。原 AC2 作废，理由：M1 的测试与类型检查直接跑源码，产物只会给门禁添噪声。
+> - 聚合门禁脚本命名为 `verify` 而非 `ci`（`pnpm ci` 是 pnpm 内建 clean-install，会遮蔽同名脚本造成假绿）。
+> - commitlint 未纳入本卡（历史会在 M1.0–M1.9 之间被返工提交污染，收益低于成本），提交信息规范改为人工约定 + 门禁记录表。
+> - Stryker 在 M1.0 仅接入配置，真正卡阈值从 M1.1 起（本卡无可变异代码）。
+
+- AC1 `pnpm i --frozen-lockfile && pnpm verify` 在干净克隆上全绿（六步：format / lint / typecheck / test:coverage / depcruise / knip）。
+- AC2 ✅ 已按上表偏差执行：`@hreader/core` 有可编译入口与真实 `HrError`；无 dist 构建。
+- AC3 ESLint 规则生效可证：`any` / `as` / 41 行函数 / 复杂度 11 / `eslint-disable` / `@ts-ignore` 全部被拦（测试用 ESLint 9 `lintText` 内存探针，非临时文件）。
+- AC4 `tsconfig` 含 04 文档 §4.2 标志；`tsc --noEmit` 覆盖 `src` **与** `tests`（测试里写类型错误必须红）。
+- AC5 dependency-cruiser 边界规则生效，含 `tests` 扫描与"src 不得反向依赖 tests"；`node_modules` 由 `doNotFollow` 控制而非 `exclude`。
+- AC6 `knip --strict` 0 未使用项；commitlint 缓期（见上）。
+- AC7 覆盖率 `perFile: 100%` 已配置；Stryker 阈值卡在 M1.1 首卡（本卡无变异源）。
 
 ### M1.1 HTML 解析 / 序列化 / `data-hr-id` 注入
 
