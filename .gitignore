@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.stryker-tmp/
+*.log
+.DS_Store
+.hreader/history/
+.reports-tmp/
