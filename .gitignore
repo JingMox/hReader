@@ -6,3 +6,5 @@ coverage/
 .DS_Store
 .hreader/history/
 .reports-tmp/
+*.tsbuildinfo
+.eslintcache

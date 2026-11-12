@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+pnpm-lock.yaml
+.stryker-tmp
+
+# docs/** 与 .workflow/** 由协调者维护，不在编写员写权限内，
+# 无法保证其格式；Prettier 只对可写范围负责。
+docs
+.workflow

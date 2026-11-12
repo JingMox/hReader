@@ -1,0 +1,20 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["packages/*/src/index.ts"],
+  "project": ["packages/*/src/**/*.ts", "packages/*/tests/**/*.ts"],
+  "ignore": ["docs/**", "skills/**"],
+  "vitest": {
+    "config": ["vitest.config.ts"]
+  },
+  "eslint": {
+    "config": ["eslint.config.mjs"]
+  },
+  "prettier": {
+    "config": [".prettierrc.json"]
+  },
+  "workspaces": {
+    "packages/protocol": {
+      "ignoreDependencies": ["@hreader/core"]
+    }
+  }
+}

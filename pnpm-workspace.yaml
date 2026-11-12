@@ -1,0 +1,6 @@
+packages:
+  - "packages/*"
+
+# esbuild 的 install 脚本负责落地平台二进制；vitest 依赖它，禁止静默跳过。
+allowBuilds:
+  esbuild: true
