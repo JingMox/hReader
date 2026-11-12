@@ -1,6 +1,7 @@
 // 这层管：给 `<article>` 内的块级元素分配稳定 `data-hr-id`；不解析、不序列化、不改入参。
 
 import {
+  ARTICLE_TAG,
   BLOCK_TAGS,
   COMPONENT_ATTRIBUTE,
   type Diagnostic,
@@ -34,6 +35,10 @@ const attributeValue = (attrs: readonly HtmlAttribute[], name: string): string |
 const isBlockElement = (node: HtmlElementNode): boolean =>
   BLOCK_TAGS.has(node.tag) ||
   (node.tag === "div" && attributeValue(node.attrs, COMPONENT_ATTRIBUTE) !== undefined);
+
+/** 注入目标：最外层 `<article>` 自身，以及 article 内的块级元素（嵌套 article 不另注入）。 */
+const isInjectionTarget = (node: HtmlElementNode, insideArticle: boolean): boolean =>
+  node.tag === ARTICLE_TAG ? !insideArticle : insideArticle && isBlockElement(node);
 
 /** 最多收集 64 个字符即停，避免整棵子树拼接；只按这个前缀算 ID，不看子树第 65 个字符之后。 */
 const textSample = (node: HtmlNode): string =>
@@ -189,10 +194,9 @@ const enterElement = (
   state: WalkState,
 ): void => {
   const digest = mixHex(`${node.tag}#${String(task.siblingIndex)}`, task.parentDigest);
-  const id =
-    task.insideArticle && isBlockElement(node)
-      ? assignId(node, task.siblingIndex, digest, state)
-      : undefined;
+  const id = isInjectionTarget(node, task.insideArticle)
+    ? assignId(node, task.siblingIndex, digest, state)
+    : undefined;
   const children: HtmlNode[] = [];
   task.sink.push({ kind: "element", tag: node.tag, attrs: withHrId(node.attrs, id), children });
   state.stack.push({ kind: "exit", parentDigest: task.parentDigest });

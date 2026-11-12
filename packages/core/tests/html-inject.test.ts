@@ -37,27 +37,45 @@ describe("injectNodeIds · 注入范围", () => {
     const injected = inject("<main><p>o</p></main><article><h2>a</h2><p>b</p></article>");
     const outside = requireElement(injected.parsed.root, "main").children[0];
 
-    expect(injected.injected).toHaveLength(2);
+    // M1.2 v2：最外层 <article> 自身也进注入清单（模型根需要 data-hr-id）。
+    expect(injected.injected).toHaveLength(3);
     if (outside?.kind !== "element") {
       throw new Error("expected an element below <main>");
     }
     const article = requireElement(injected.parsed.root, "article");
     expect(attributeValue(outside, HR_ID)).toBeUndefined();
+    expect(attributeValue(article, HR_ID)).toMatch(ID_SHAPE);
     expect(attributeValue(requireElement(article, "p"), HR_ID)).toMatch(ID_SHAPE);
     expect(attributeValue(requireElement(article, "h2"), HR_ID)).toMatch(ID_SHAPE);
   });
+});
 
-  it("should not inject the article element itself", () => {
+describe("injectNodeIds · 注入范围 · 续", () => {
+  it("should inject the article element itself since M1.2 v2", () => {
     const injected = inject("<article><p>a</p></article>");
 
-    expect(injected.injected).toHaveLength(1);
-    expect(attributeValue(requireElement(injected.parsed.root, "article"), HR_ID)).toBeUndefined();
+    // v2 裁定 1 反转了 M1.1 的旧断言：模型根必须带 data-hr-id，所以 article 自身是注入目标。
+    expect(injected.injected).toHaveLength(2);
+    expect(attributeValue(requireElement(injected.parsed.root, "article"), HR_ID)).toMatch(
+      ID_SHAPE,
+    );
   });
 
   it("should keep article scope across nested articles", () => {
     const injected = inject("<article><article><p>a</p></article></article>");
+    // requireElement 从自身开始找，会返回外层 article 自己；这里按文档序取两个 article 再分。
+    const articles = collectElements(injected.parsed.root).filter(
+      (element) => element.tag === "article",
+    );
+    const [outer, inner] = articles;
+    if (outer === undefined || inner === undefined) {
+      throw new Error("expected an outer and an inner <article>");
+    }
 
-    expect(injected.injected).toHaveLength(1);
+    // 只有最外层 article 自身 + 内层 p 被注入；内层 article 因 insideArticle 为真而不注入。
+    expect(injected.injected).toHaveLength(2);
+    expect(attributeValue(outer, HR_ID)).toMatch(ID_SHAPE);
+    expect(attributeValue(inner, HR_ID)).toBeUndefined();
   });
 });
 
@@ -70,12 +88,13 @@ describe("injectNodeIds · div 与词表", () => {
     const withIds = collectElements(injected.parsed.root).filter(
       (element) => attributeValue(element, HR_ID) !== undefined,
     );
-    const [tagged] = withIds;
-    expect(injected.injected).toHaveLength(1);
-    expect(withIds).toHaveLength(1);
-    expect(tagged === undefined ? undefined : attributeValue(tagged, "data-hr-component")).toBe(
-      "kpi-bento",
+    // article 自身也带 id，因此再按 component 属性把那个 div 挑出来（文档序里它在 article 之后）。
+    const tagged = withIds.find(
+      (element) => attributeValue(element, "data-hr-component") === "kpi-bento",
     );
+    expect(injected.injected).toHaveLength(2);
+    expect(withIds).toHaveLength(2);
+    expect(tagged?.tag).toBe("div");
   });
 
   it("should give distinct ids to distinct elements in the same document", () => {
@@ -83,8 +102,8 @@ describe("injectNodeIds · div 与词表", () => {
       "<article><h2>t</h2><p>a</p><p>a</p><section><p>a</p></section></article>",
     );
 
-    expect(injected.injected).toHaveLength(5);
-    expect(new Set(injected.injected).size).toBe(5);
+    expect(injected.injected).toHaveLength(6);
+    expect(new Set(injected.injected).size).toBe(6);
   });
 });
 
@@ -93,7 +112,7 @@ describe("injectNodeIds · 块级词表", () => {
     const html =
       "<article><nav>n</nav><h5>t</h5><h6>t</h6><span>s</span><div>d</div><article><p>a</p></article></article>";
 
-    expect(inject(html).injected).toHaveLength(1);
+    expect(inject(html).injected).toHaveLength(2);
   });
 });
 
@@ -119,7 +138,7 @@ describe("injectNodeIds · 真实文档", () => {
     ];
     const html = `<article>${tags.map((tag) => `<${tag}>x</${tag}>`).join("")}</article>`;
 
-    expect(inject(html).injected).toHaveLength(tags.length);
+    expect(inject(html).injected).toHaveLength(tags.length + 1);
   });
 });
 
@@ -135,7 +154,7 @@ describe("injectNodeIds · docs/02 骨架", () => {
     ].join("");
     const injected = inject(html);
 
-    expect(injected.injected).toHaveLength(4);
+    expect(injected.injected).toHaveLength(5);
     expect(idOf(injected, "section")).toBe("sec-problem");
     expect(attributeValue(requireElement(injected.parsed.root, "script"), HR_ID)).toBeUndefined();
     expect(codesOf(injected.parsed)).toEqual([]);
@@ -147,7 +166,11 @@ describe("injectNodeIds · 既有 ID", () => {
     const injected = inject('<article><p data-hr-id="custom-1">a</p></article>');
 
     expect(idOf(injected, "p")).toBe("custom-1");
-    expect(injected.injected).toEqual([]);
+    // 既有 id 不进 injected；article 自身没有 id，于是只有它一条。
+    expect(injected.injected).toHaveLength(1);
+    expect(attributeValue(requireElement(injected.parsed.root, "article"), HR_ID)).toBe(
+      injected.injected[0],
+    );
     expect(codesOf(injected.parsed)).toEqual([]);
   });
 

@@ -40,3 +40,6 @@ export const textSampleOf = (node: HtmlNode, limit: number): string => {
 
 export const textContentOf = (node: HtmlNode): string =>
   textSampleOf(node, Number.POSITIVE_INFINITY);
+
+/** 空白归一：连续空白（含换行/制表/全角空格/NBSP）压成单空格，首尾 trim。 */
+export const normalizeWhitespace = (text: string): string => text.replace(/\s+/gu, " ").trim();

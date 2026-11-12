@@ -15,7 +15,10 @@ export const COMPONENT_WHITELIST: readonly string[] = [
   "diagram-stage",
 ];
 
-/** 注入范围：`<article>` 内的块级元素；`div` 只在带 `data-hr-component` 时算块级。 */
+/** 文档容器标签：模型根、注入目标的锚点（M1.2 v2 起 `<article>` 自身也注入）。 */
+export const ARTICLE_TAG = "article";
+
+/** 注入范围：最外层 `<article>` 自身 + `<article>` 内的块级元素；`div` 只在带 `data-hr-component` 时算块级。 */
 export const BLOCK_TAGS: ReadonlySet<string> = new Set([
   "section",
   "header",
@@ -118,7 +121,11 @@ export type DiagnosticCode =
   | "invalid_component"
   | "invalid_hr_id"
   | "script_in_meta"
-  | "empty_document";
+  | "empty_document"
+  | "duplicate_id"
+  | "missing_article"
+  | "multiple_article"
+  | "heading_level_jump";
 
 export type DiagnosticSeverity = "error" | "warning";
 
@@ -134,6 +141,10 @@ export const DIAGNOSTIC_SEVERITY: Readonly<Record<DiagnosticCode, DiagnosticSeve
   invalid_hr_id: "warning",
   script_in_meta: "warning",
   empty_document: "warning",
+  duplicate_id: "error",
+  missing_article: "error",
+  multiple_article: "error",
+  heading_level_jump: "warning",
 };
 
 export interface Diagnostic {

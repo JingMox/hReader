@@ -6,6 +6,7 @@ export type HrErrorCode =
   | "no_article"
   | "node_not_found"
   | "invalid_selector"
+  | "invalid_document"
   | "node_not_allowed"
   | "locked";
 
