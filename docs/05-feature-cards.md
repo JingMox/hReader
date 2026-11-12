@@ -21,7 +21,7 @@
 | M1.4 | `hr_read_node` 节点读取 | M1.2 | `packages/core/src/ops/readNode*` | 按 ID/CSS 选择器读取子树 + 关联批注 |
 | M1.5 | `hr_patch_node` 增量 Patch + 原子写 + undo | M1.1–1.4 | `packages/core/src/ops/patchNode*`, `packages/core/src/io/**` | 5 种 action、ID 自动注入、备份可回滚 |
 | M1.6 | 双维风格引擎（`style.yaml` + tone 编译 + 禁用词 Lint） | M1.0 | `packages/core/src/style/**` | 解析校验、prompt 编译、Lint 报告 |
-| M1.7 | `Atelier Editorial` 主题包 + `hr_apply_style` 0-Token 换肤 | M1.1, M1.6 | `styles/atelier-editorial/**`, `packages/core/src/style/apply*` | 双模 CSS 变量、6 大组件、替换 `<style id="hr-theme">` |
+| M1.7 | `Atelier Editorial` 主题包 + `hr_apply_style` 0-Token 换肤 | M1.1, M1.6 | `styles/atelier-editorial/**`, `packages/core/src/style/apply*` | 双模 CSS 变量、7 个组件选择器、替换 `<style id="hr-theme">` |
 | M1.8 | CLI `hr`（outline/read/patch/style） | M1.3–1.7 | `packages/cli/**` | 严格退出码、`--json` 输出、错误文案 |
 | M1.9 | Universal Skill（`skills/hreader`） | M1.8 | `skills/hreader/**` | SKILL.md + `scripts/hr.mjs` + 两份 references |
 
@@ -54,7 +54,7 @@
 - AC3 容错：无 doctype、未闭合标签、嵌套错误、`<script id="hr-meta">` 含 `</script>` 文本时，解析不抛未捕获异常，返回带 `code` 的诊断。
 - AC4 序列化保留属性顺序与空白策略一致；往返（parse→serialize→parse）后 outline 结果稳定（属性级不变）。
 - AC5 1MB 文档 parse+inject ≤ 300ms（本机基线记录在报告里）。
-- AC6 `data-hr-component` 只接受 6 个白名单值，非法值产生诊断而非静默丢弃。
+- AC6 `data-hr-component` 只接受 7 个白名单值（6 类，callout 分 insight/warning），非法值产生诊断而非静默丢弃。
 
 ### M1.2 文档模型与不变量
 
@@ -102,7 +102,7 @@
 
 - AC1 `theme.css` 定义 `--hr-bg/--hr-fg/--hr-accent/--hr-muted/--hr-border/--hr-code-bg` 等令牌，日/夜双模通过 `@media (prefers-color-scheme)` + `[data-hr-mode]` 覆盖。
 - AC2 正文 68ch 视宽、右侧 280px 边栏布局；无横向滚动（320px 宽度下）。
-- AC3 6 大组件样式齐全：`kpi-bento`、`callout-insight`、`callout-warning`、`split-compare`、`deep-dive`、`step-timeline`、`diagram-stage`（7 个选择器，含 warning/insight 分裂）。
+- AC3 7 个组件选择器样式齐全：`kpi-bento`、`callout-insight`、`callout-warning`、`split-compare`、`deep-dive`、`step-timeline`、`diagram-stage`（7 个选择器，含 warning/insight 分裂）。
 - AC4 `hr_apply_style(visualId)` 只替换 `<style id="hr-theme">` 内容，正文 DOM 与 `hr-meta` 字节不变（0 Token 换肤可证）。
 - AC5 注入的 CSS 不破坏"普通浏览器直接打开"：无外部字体/图片请求，离线可读。
 - AC6 打印样式：`@media print` 隐藏交互控件、保留目录书签锚点。
@@ -118,7 +118,7 @@
 
 ### M1.9 Universal Skill
 
-- AC1 `skills/hreader/SKILL.md`：触发条件、五原语工作流、6 大组件 HTML 速查、禁用词提醒；≤ 200 行。
+- AC1 `skills/hreader/SKILL.md`：触发条件、五原语工作流、7 个组件选择器 HTML 速查、禁用词提醒；≤ 200 行。
 - AC2 `scripts/hr.mjs` 零依赖封装，`node scripts/hr.mjs outline <file>` 可跑通（不依赖全局安装）。
 - AC3 `references/components-spec.md` 给出每个组件的完整可用片段，复制即用。
 - AC4 `references/style-authoring.md` 给出"访谈式"生成自定义 `style.yaml` 的流程。

@@ -89,7 +89,7 @@ flowchart TB
         <p data-hr-id="p-problem-1">假设网络发生分区...</p>
       </section>
 
-      <section data-hr-id="sec-comparison" data-hr-component="bento-grid">
+      <section data-hr-id="sec-comparison" data-hr-component="kpi-bento">
         <!-- 语义化网格卡片或内联 SVG / Mermaid -->
       </section>
     </article>
@@ -138,7 +138,7 @@ flowchart LR
 * **内置视觉设计**：
   * **纸感与暗夜双模**：日间采用温暖羊皮纸白（`#FAF8F5`）与深炭墨黑，夜间自动切换为深曜石蓝灰（`#121316`），拒绝刺眼纯白与纯黑。
   * **黄金阅读人体工学**：正文区严格锁定 `68ch` 最佳阅读视宽，右侧预留 `280px` 边栏用于展示浮动目录与页边批注（Sidenotes）。
-  * **6 大内置零配置语义组件**（Agent 只需写 `data-hr-component="xxx"`）：
+  * **7 个内置零配置语义组件（6 类，callout 含 insight/warning 两型）**（Agent 只需写 `data-hr-component="xxx"`）：
     1. `kpi-bento`：多维核心指标卡片网格
     2. `callout-insight / warning`：高辨识度洞察与警示框
     3. `split-compare`：左右双栏优劣/方案对比视图
