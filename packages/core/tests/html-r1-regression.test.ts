@@ -54,29 +54,49 @@ describe("hash · 代理对不再共享同一段哈希", () => {
   });
 });
 
-describe("inject · 深嵌套耗时近似线性", () => {
-  const nested = (depth: number): string =>
-    ARTICLE(`${"<div>".repeat(depth)}x${"</div>".repeat(depth)}`);
-  const timeOnce = (depth: number): number => {
-    const html = nested(depth);
+const nestedDocument = (depth: number): string =>
+  ARTICLE(`${"<div>".repeat(depth)}x${"</div>".repeat(depth)}`);
+const PERF_ITERATIONS = 16;
+const PERF_WINDOWS = 5;
+
+/**
+ * 一个"窗口"= 连做 16 次 `injectNodeIds(parseHtml(...))` 取平均；再取 5 个窗口里的最小值。
+ * 两层统计缺一不可：窗口内平均把单次 1~3ms 读数的 GC 抖动摊平；窗口间取 min 把"进程被剥夺 CPU"
+ * 的那几段（单向抬高的干扰）剔掉。实测（全量并发跑 10 轮，见 report §G3.1）：
+ *   16 次 × 5 窗口 → 翻倍比 2.00~2.25（±6%）；同一实现改用 8 次 × 5 窗口 → 1.98~4.74（±≥60%）。
+ */
+const injectionCostMs = (depth: number): number => {
+  const html = nestedDocument(depth);
+  const averageOfWindow = (): number => {
     const started = performance.now();
-    injectNodeIds(parseHtml(html));
-    return performance.now() - started;
+    for (let index = 0; index < PERF_ITERATIONS; index += 1) {
+      injectNodeIds(parseHtml(html));
+    }
+    return (performance.now() - started) / PERF_ITERATIONS;
   };
-  const best = (depth: number): number =>
-    Math.min(timeOnce(depth), timeOnce(depth), timeOnce(depth));
+  averageOfWindow();
+  const windows = Array.from({ length: PERF_WINDOWS }, () => averageOfWindow());
+  return Math.min(...windows);
+};
 
-  it("should scale linearly between 500 and 4000 nesting levels", () => {
-    // 深度调大 8 倍：线性 ≈8×，任何 O(n²) 的"逐层重扫"会到 ≈64×。
-    const shallow = Math.max(best(500), 1);
-    const deep = best(4000);
+// 线性度判据的形态与实测依据（模块级：注释也算函数行数，放进 describe 会撞 max-lines-per-function）。
+// 判据 = 深度放大 4 倍时的单次注入耗时比：线性 ≈4.0，O(n²) ≈16.0；阈值 6.0 落在两者之间。
+// 为什么用 4 倍而不是翻倍：t(4000) 本身很稳（实测 3.75~4.41ms，±8%），而 t(1000)≈1ms 会被干扰
+// 单向抬高（实测 0.91~1.93ms），比值因此只会**偏低**；4 倍跨度让"偏低"仍安全通过（实测 1.95~4.21 < 6），
+// 而真退化成 O(n²) 时 t(4000) 会涨到 ≈16ms，比值 ≥8 必红。
+// 不用 t(4000)/t(500)：分母 0.3~1.5ms，与分子不在同一时间窗，实测比值 2.7~7.3 乱跳，曾 16.35/16 假红。
+describe("inject · 深嵌套耗时近似线性", () => {
+  it("should grow linearly (not quadratically) with nesting depth", () => {
+    const shallow = injectionCostMs(1000);
+    const deep = injectionCostMs(4000);
+    const growth = deep / shallow;
 
-    expect(deep / shallow).toBeLessThan(16);
-    expect(deep).toBeLessThan(2000);
-  });
+    expect(growth, `t(4000)/t(1000) = ${growth.toFixed(2)}`).toBeLessThan(6);
+    expect(deep).toBeLessThan(200);
+  }, 120_000);
 
   it("should inject an id into every nested <div> regardless of depth", () => {
-    const injected = injectNodeIds(parseHtml(nested(4000)));
+    const injected = injectNodeIds(parseHtml(nestedDocument(4000)));
     let cursor = findElement(injected.parsed.root, "article");
     let levels = 0;
     while (cursor !== undefined && levels < 4000) {

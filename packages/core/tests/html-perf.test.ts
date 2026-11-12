@@ -85,7 +85,8 @@ describe("性能 · 10k 深嵌套", () => {
       const injected = injectNodeIds(parseHtml(html));
       const printed = serializeHtml(injected.parsed);
 
-      expect(injected.injected).toHaveLength(depth - 1);
+      // M1.2 v2：最外层 article 自身也是注入目标，所以是 depth 条（article + 9999 层 section）。
+      expect(injected.injected).toHaveLength(depth);
       expect(printed.length).toBeGreaterThan(html.length);
     },
     TIMEOUT_MS,

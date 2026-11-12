@@ -77,7 +77,8 @@ describe("injectNodeIds · 手搓树", () => {
 
     const injected = injectNodeIds({ root, diagnostics: [] });
 
-    expect(injected.injected).toHaveLength(1);
+    // M1.2 v2：article 自身 + 其中的 p；文本/注释/doctype 不是注入目标。
+    expect(injected.injected).toHaveLength(2);
     expect(childrenOf(injected.parsed.root).map((node) => node.kind)).toEqual([
       "doctype",
       "comment",
@@ -115,7 +116,7 @@ describe("injectNodeIds · 权重规则", () => {
 
     expect(collectElements(articleOf(stripped))).toHaveLength(9);
     expect(collectElements(articleOf(noisy))).toHaveLength(9);
-    expect(idsOf(stripped)).toHaveLength(5);
+    expect(idsOf(stripped)).toHaveLength(6);
     expect(new Set(idsOf(noisy))).toEqual(new Set(idsOf(stripped)));
   });
 });

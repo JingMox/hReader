@@ -9,14 +9,24 @@ import { HrError } from "../../core/src/index";
 //   2. 额外键只允许"规格表里没有"的，且报错信息是"多出了谁" —— 内部符号漏出仍然红。
 // M1.0 的 `toEqual(["HrError"])` 是快照式断言：它每张卡都会因合法扩面变红，而红的原因和
 // "实现漏了一个函数"长得一模一样。双表把两种失败区分开，判据仍来自规格（REQUIRED 列表）。
-const REQUIRED_RUNTIME_EXPORTS = ["HrError", "injectNodeIds", "parseHtml", "serializeHtml"];
+const REQUIRED_RUNTIME_EXPORTS = [
+  "HrError",
+  "injectNodeIds",
+  "parseHtml",
+  "serializeHtml",
+  // M1.2 追加（docs/02 §5.2 + 卡片 M1.2 契约 1/2）：派生模型与不变量校验。
+  "toDocumentModel",
+  "validateDocument",
+];
 
 describe("package public surfaces", () => {
-  it("should expose the four runtime exports the spec declares", () => {
+  it("should expose the six runtime exports the spec declares", () => {
     expect(typeof coreEntry.HrError).toBe("function");
     expect(typeof coreEntry.parseHtml).toBe("function");
     expect(typeof coreEntry.serializeHtml).toBe("function");
     expect(typeof coreEntry.injectNodeIds).toBe("function");
+    expect(typeof coreEntry.toDocumentModel).toBe("function");
+    expect(typeof coreEntry.validateDocument).toBe("function");
   });
 
   it("should not leak internal symbols onto the public surface", () => {

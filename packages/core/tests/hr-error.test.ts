@@ -11,6 +11,7 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   no_article: true,
   node_not_found: true,
   invalid_selector: true,
+  invalid_document: true,
   node_not_allowed: true,
   locked: true,
 };
