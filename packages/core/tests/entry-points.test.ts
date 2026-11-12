@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import * as coreEntry from "../../core/src/index";
 import { HrError } from "../../core/src/index";
+import type { ReadNodeResult } from "../../core/src/index";
 
 // M1.1 起 `@hreader/core` 的公开面由 docs/02 §5.2 与卡片定义，M1.1 追加 3 个 HTML 函数。
 // 断言策略（为什么这不是放水）：
@@ -19,10 +20,12 @@ const REQUIRED_RUNTIME_EXPORTS = [
   "validateDocument",
   // M1.3 追加（docs/02 §5.2 + 卡片 M1.3 契约 1）：outline 门面。
   "buildOutline",
+  // M1.4 追加（卡片 M1.4 契约 1）：节点读取。
+  "readNode",
 ];
 
 describe("package public surfaces", () => {
-  it("should expose the seven runtime exports the spec declares", () => {
+  it("should expose the eight runtime exports the spec declares", () => {
     expect(typeof coreEntry.HrError).toBe("function");
     expect(typeof coreEntry.parseHtml).toBe("function");
     expect(typeof coreEntry.serializeHtml).toBe("function");
@@ -30,6 +33,7 @@ describe("package public surfaces", () => {
     expect(typeof coreEntry.toDocumentModel).toBe("function");
     expect(typeof coreEntry.validateDocument).toBe("function");
     expect(typeof coreEntry.buildOutline).toBe("function");
+    expect(typeof coreEntry.readNode).toBe("function");
   });
 
   it("should not leak internal symbols onto the public surface", () => {
@@ -37,6 +41,26 @@ describe("package public surfaces", () => {
       (name) => !REQUIRED_RUNTIME_EXPORTS.includes(name),
     );
     expect(unexpected).toEqual([]);
+  });
+});
+
+describe("result shapes and class identity", () => {
+  it("should expose the ReadNodeResult shape with exactly four keys", () => {
+    const keys: Record<keyof ReadNodeResult, true> = {
+      html: true,
+      annotations: true,
+      truncated: true,
+      diagnostics: true,
+    };
+    const result: ReadNodeResult = {
+      html: "",
+      annotations: [],
+      truncated: false,
+      diagnostics: [],
+    };
+
+    expect(Object.keys(keys).sort()).toEqual(["annotations", "diagnostics", "html", "truncated"]);
+    expect(Object.keys(result).sort()).toEqual(Object.keys(keys).sort());
   });
 
   it("should keep HrError identity across two independent entry specifiers", async () => {

@@ -27,9 +27,9 @@ describe("validateDocument · duplicate_id", () => {
       "duplicate_id",
     ]);
     expect(diagnostics.map((diagnostic) => diagnostic.path)).toEqual([
-      "html[0]>body[0]>article[0]>p[0]",
-      "html[0]>body[0]>article[0]>p[1]",
-      "html[0]>body[0]>article[0]>p[2]",
+      "html[0]>body[1]>article[0]>p[0]",
+      "html[0]>body[1]>article[0]>p[1]",
+      "html[0]>body[1]>article[0]>p[2]",
     ]);
     expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
       'data-hr-id="dup" 重复出现（共 3 处）',
@@ -74,7 +74,8 @@ describe("validateDocument · heading_level_jump", () => {
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["heading_level_jump"]);
     expect(diagnostics[0]?.severity).toBe("warning");
     expect(diagnostics[0]?.message).toBe("标题层级从 h2 跳到 h4（跳级 >1）");
-    expect(diagnostics[0]?.path).toBe("html[0]>body[0]>article[0]>h4[0]");
+    // 序号是本节点在父节点 children 里的下标（v2 #12）：h2 占 0，所以 h4 是 `h4[1]`。
+    expect(diagnostics[0]?.path).toBe("html[0]>body[1]>article[0]>h4[1]");
   });
 
   it("should warn when an h1 is followed by an h3", () => {
@@ -114,8 +115,8 @@ describe("validateDocument · article 数量", () => {
       "multiple_article",
     ]);
     expect(diagnostics.map((diagnostic) => diagnostic.path)).toEqual([
-      "html[0]>body[0]>article[1]",
-      "html[0]>body[0]>article[2]",
+      "html[0]>body[1]>article[1]",
+      "html[0]>body[1]>article[2]",
     ]);
     expect(diagnostics[0]?.message).toBe("文档里有 3 个 <article>（应为 1 个）");
   });
@@ -173,7 +174,7 @@ describe("validateDocument · 与 M1.1 诊断合并 · 续", () => {
 
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["invalid_hr_id"]);
     expect(diagnostics[0]?.message).toBe('data-hr-id="Bad Id" 不合法（应为非空 [a-z0-9-]）');
-    expect(diagnostics[0]?.path).toBe("html[0]>body[0]>article[0]");
+    expect(diagnostics[0]?.path).toBe("html[0]>body[1]>article[0]");
   });
 
   it("should flag an empty data-hr-id on any element", () => {
@@ -183,7 +184,7 @@ describe("validateDocument · 与 M1.1 诊断合并 · 续", () => {
 
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["invalid_hr_id"]);
     expect(diagnostics[0]?.message).toBe('data-hr-id="" 不合法（应为非空 [a-z0-9-]）');
-    expect(diagnostics[0]?.path).toBe("html[0]>body[0]>article[0]>p[0]");
+    expect(diagnostics[0]?.path).toBe("html[0]>body[1]>article[0]>p[0]");
   });
 
   it("should report an article without data-hr-id instead of throwing", () => {
@@ -214,7 +215,7 @@ describe("validateDocument · path 与 injectNodeIds 同构", () => {
       (diagnostic) => diagnostic.code === "invalid_hr_id",
     );
 
-    expect(fromInject?.path).toBe("html[0]>body[0]>article[0]>div[0]>p[0]");
+    expect(fromInject?.path).toBe("html[0]>body[1]>article[0]>div[0]>p[0]");
     expect(fromValidate?.path).toBe(fromInject?.path);
     expect(fromInject?.path).not.toMatch(/^>/u);
   });
@@ -230,6 +231,6 @@ describe("validateDocument · 合并键的 path 缺省", () => {
 
     expect([...byCode.keys()].sort()).toEqual(["invalid_hr_id", "missing_article"]);
     expect(byCode.get("missing_article")?.path).toBeUndefined();
-    expect(byCode.get("invalid_hr_id")?.path).toBe("html[0]>body[0]>div[0]");
+    expect(byCode.get("invalid_hr_id")?.path).toBe("html[0]>body[1]>div[0]");
   });
 });

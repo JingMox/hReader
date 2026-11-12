@@ -180,7 +180,7 @@ describe("injectNodeIds · 既有 ID", () => {
     const [diagnostic] = injected.parsed.diagnostics;
     expect(diagnostic?.code).toBe("invalid_hr_id");
     expect(diagnostic?.message).toContain('data-hr-id="Bad Id"');
-    expect(diagnostic?.path).toBe("html[0]>body[0]>article[0]>p[0]");
+    expect(diagnostic?.path).toBe("html[0]>body[1]>article[0]>p[0]");
     expect(idOf(injected, "p")).toMatch(ID_SHAPE);
     expect(idAttributes(injected, "p")).toHaveLength(1);
   });

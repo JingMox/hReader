@@ -129,7 +129,10 @@ export type DiagnosticCode =
   | "outline_node_without_id"
   | "outline_truncated"
   | "annotation_target_missing"
-  | "invalid_meta";
+  | "invalid_meta"
+  | "ambiguous_selector"
+  | "stripped_shell"
+  | "truncated_output";
 
 export type DiagnosticSeverity = "error" | "warning";
 
@@ -153,6 +156,9 @@ export const DIAGNOSTIC_SEVERITY: Readonly<Record<DiagnosticCode, DiagnosticSeve
   outline_truncated: "warning",
   annotation_target_missing: "warning",
   invalid_meta: "warning",
+  ambiguous_selector: "warning",
+  stripped_shell: "warning",
+  truncated_output: "warning",
 };
 
 export interface Diagnostic {

@@ -8,6 +8,8 @@ export type HrErrorCode =
   | "invalid_selector"
   | "invalid_document"
   | "node_not_allowed"
+  | "invalid_max_bytes"
+  | "invalid_input"
   | "locked";
 
 /**

@@ -13,6 +13,8 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   invalid_selector: true,
   invalid_document: true,
   node_not_allowed: true,
+  invalid_max_bytes: true,
+  invalid_input: true,
   locked: true,
 };
 
