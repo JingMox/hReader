@@ -10,5 +10,8 @@
   "devDependencies": {
     "eslint": "9.39.1",
     "vitest": "3.2.4"
+  },
+  "dependencies": {
+    "parse5": "8.1.1"
   }
 }

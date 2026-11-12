@@ -3,20 +3,30 @@ import { describe, expect, it } from "vitest";
 import * as coreEntry from "../../core/src/index";
 import { HrError } from "../../core/src/index";
 
-// R1 §3 删掉了 protocol/renderer-html/chrome-extension/app 的占位 `src/index.ts`：
-// 仓库当前唯一真实入口是 `@hreader/core`，本文件只守这一个入口。
-// 不要在这里 import 其它 @hreader/* 包（depcruise `core-is-a-foundation` 会判错）。
-describe("package public surfaces", () => {
-  it("should expose exactly HrError from @hreader/core", () => {
-    // 类型导出（HrErrorCode）不下沉到运行期；多一个键就是公开面被无意扩大。
-    expect(Object.keys(coreEntry).sort()).toEqual(["HrError"]);
-    expect(coreEntry.HrError).toBe(HrError);
-  });
-});
+// M1.1 起 `@hreader/core` 的公开面由 docs/02 §5.2 与卡片定义，M1.1 追加 3 个 HTML 函数。
+// 断言策略（为什么这不是放水）：
+//   1. 规格成员逐条点名 —— 少一个就红，报错直接指到缺的名字；
+//   2. 额外键只允许"规格表里没有"的，且报错信息是"多出了谁" —— 内部符号漏出仍然红。
+// M1.0 的 `toEqual(["HrError"])` 是快照式断言：它每张卡都会因合法扩面变红，而红的原因和
+// "实现漏了一个函数"长得一模一样。双表把两种失败区分开，判据仍来自规格（REQUIRED 列表）。
+const REQUIRED_RUNTIME_EXPORTS = ["HrError", "injectNodeIds", "parseHtml", "serializeHtml"];
 
-describe("cross-package instanceof", () => {
-  it("should recognise an error across two independent entry specifiers", async () => {
-    // 第二个 specifier 走不同的解析路径：若包入口被复制成两份类，instanceof 会假。
+describe("package public surfaces", () => {
+  it("should expose the four runtime exports the spec declares", () => {
+    expect(typeof coreEntry.HrError).toBe("function");
+    expect(typeof coreEntry.parseHtml).toBe("function");
+    expect(typeof coreEntry.serializeHtml).toBe("function");
+    expect(typeof coreEntry.injectNodeIds).toBe("function");
+  });
+
+  it("should not leak internal symbols onto the public surface", () => {
+    const unexpected = Object.keys(coreEntry).filter(
+      (name) => !REQUIRED_RUNTIME_EXPORTS.includes(name),
+    );
+    expect(unexpected).toEqual([]);
+  });
+
+  it("should keep HrError identity across two independent entry specifiers", async () => {
     const secondEntry: typeof coreEntry = await import("../../core/src/./index");
     const error = new secondEntry.HrError("locked", "from second entry");
 
