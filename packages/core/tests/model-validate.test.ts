@@ -219,3 +219,17 @@ describe("validateDocument · path 与 injectNodeIds 同构", () => {
     expect(fromInject?.path).not.toMatch(/^>/u);
   });
 });
+
+// 合并键是 `code|path|message`，而 `multiple_article` / `missing_article` 没有 path ——
+// 所以同一批诊断里必然同时出现"有 path"与"无 path"两种键。这条用例专门喂这两类，
+// 让 `validate.ts` 合并时 `diagnostic.path ?? ""` 的两条路径都真的被执行。
+describe("validateDocument · 合并键的 path 缺省", () => {
+  it("should merge a path-less diagnostic together with a path-bearing one", () => {
+    const diagnostics = validateDocument(parseHtml('<div data-hr-id="Bad Id">x</div>'));
+    const byCode = new Map(diagnostics.map((diagnostic) => [diagnostic.code, diagnostic]));
+
+    expect([...byCode.keys()].sort()).toEqual(["invalid_hr_id", "missing_article"]);
+    expect(byCode.get("missing_article")?.path).toBeUndefined();
+    expect(byCode.get("invalid_hr_id")?.path).toBe("html[0]>body[0]>div[0]");
+  });
+});

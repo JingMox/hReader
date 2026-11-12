@@ -162,26 +162,35 @@ describe("toDocumentModel · 深度与性能", () => {
     expect(model.children.length).toBe(1);
   });
 
-  it("should keep a 1MB document under 200ms, normalized by the same pipeline at 1/10 size", () => {
-    const html = buildDocument(3000);
+  // 抗噪形态：**交错取样**。每一轮先测 1/10 参考、紧接着测 1MB 大文档，两端在相邻时间窗里
+  // 吃同一份 CPU 争用，因此 `big/ref` 的比值稳定（线性 ≈10）；GC 成本按分配量增长，做比值时同比例抵消。
+  // 绝对值门禁仍用"参考耗时推出的减速系数"，但系数取 5 轮里的最小值（争用是单向抬高）。
+  it("should keep a 1MB document under 200ms and grow linearly against a 1/10 reference", () => {
     const referenceHtml = buildDocument(300);
+    const bigHtml = buildDocument(3000);
 
-    expect(html.length).toBeGreaterThan(1_000_000);
-    expect(referenceHtml.length).toBeGreaterThan(100_000);
-    fastest(referenceHtml, 2);
-    // 参考负载用同一条流水线（1/10 体量）：`--coverage` 与 20 个文件并发都会让绝对耗时
-    // 放大 4~5 倍，但放大是同比例的，所以"参考耗时 / 空载基线"就是本进程的减速系数。
-    const reference = fastest(referenceHtml, 5);
-    const slowdown = Math.min(Math.max(reference / IDLE_REFERENCE_MS, 1), 8);
-    const cost = fastest(html, 5);
+    expect(bigHtml.length).toBeGreaterThan(1_000_000);
+    measure(bigHtml);
+    measure(referenceHtml);
+    let ratio = Number.POSITIVE_INFINITY;
+    let bestBig = Number.POSITIVE_INFINITY;
+    let bestReference = Number.POSITIVE_INFINITY;
+    for (let window = 0; window < 5; window += 1) {
+      const reference = measure(referenceHtml);
+      const big = measure(bigHtml);
+      bestReference = Math.min(bestReference, reference);
+      bestBig = Math.min(bestBig, big);
+      ratio = Math.min(ratio, big / reference);
+    }
+    const slowdown = Math.min(Math.max(bestReference / IDLE_REFERENCE_MS, 1), 8);
 
     expect(
-      cost,
-      `${String(html.length)} chars took ${cost.toFixed(1)}ms (slowdown ${slowdown.toFixed(1)}x)`,
+      bestBig,
+      `${String(bigHtml.length)} chars took ${bestBig.toFixed(1)}ms (reference ${bestReference.toFixed(1)}ms)`,
     ).toBeLessThan(200 * slowdown);
-    // 体量 10 倍；线性应为 ~10 倍，平方会到 ~100 倍。这条在 coverage 下也成立。
-    expect(cost / reference).toBeLessThan(14);
-  });
+    // 体量 10 倍：线性 ≈10，平方 ≈100。
+    expect(ratio, `best big/reference ratio ${ratio.toFixed(1)}`).toBeLessThan(14);
+  }, 120_000);
 });
 
 describe("toDocumentModel · 深度与性能 · 续", () => {

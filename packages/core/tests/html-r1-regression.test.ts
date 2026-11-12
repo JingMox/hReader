@@ -60,23 +60,41 @@ const PERF_ITERATIONS = 16;
 const PERF_WINDOWS = 5;
 
 /**
- * 一个"窗口"= 连做 16 次 `injectNodeIds(parseHtml(...))` 取平均；再取 5 个窗口里的最小值。
- * 两层统计缺一不可：窗口内平均把单次 1~3ms 读数的 GC 抖动摊平；窗口间取 min 把"进程被剥夺 CPU"
- * 的那几段（单向抬高的干扰）剔掉。实测（全量并发跑 10 轮，见 report §G3.1）：
- *   16 次 × 5 窗口 → 翻倍比 2.00~2.25（±6%）；同一实现改用 8 次 × 5 窗口 → 1.98~4.74（±≥60%）。
+ * 一个"窗口"= 连做 16 次 `injectNodeIds(parseHtml(...))` 取平均；窗口内平均把单次 1~3ms 的 GC 抖动摊平。
+ * 关键在**交错**：浅/深两档在相邻窗口里各测一次再相除，CPU 争用同时抬高分子分母，比值因此抗噪。
+ * 取 5 个窗口里最小的那个比值（争用是单向抬高，最小值最接近真实比）。
  */
-const injectionCostMs = (depth: number): number => {
+const injectionWindowMs = (depth: number): number => {
   const html = nestedDocument(depth);
-  const averageOfWindow = (): number => {
-    const started = performance.now();
-    for (let index = 0; index < PERF_ITERATIONS; index += 1) {
-      injectNodeIds(parseHtml(html));
-    }
-    return (performance.now() - started) / PERF_ITERATIONS;
-  };
-  averageOfWindow();
-  const windows = Array.from({ length: PERF_WINDOWS }, () => averageOfWindow());
-  return Math.min(...windows);
+  const started = performance.now();
+  for (let index = 0; index < PERF_ITERATIONS; index += 1) {
+    injectNodeIds(parseHtml(html));
+  }
+  return (performance.now() - started) / PERF_ITERATIONS;
+};
+
+/** 交错测 5 对 (浅, 深)，返回最小的单对比值与两档各自的最小耗时。 */
+const growthPair = (
+  shallowDepth: number,
+  deepDepth: number,
+): {
+  readonly growth: number;
+  readonly shallow: number;
+  readonly deep: number;
+} => {
+  injectionWindowMs(shallowDepth);
+  injectionWindowMs(deepDepth);
+  let growth = Number.POSITIVE_INFINITY;
+  let shallow = Number.POSITIVE_INFINITY;
+  let deep = Number.POSITIVE_INFINITY;
+  for (let window = 0; window < PERF_WINDOWS; window += 1) {
+    const shallowCost = injectionWindowMs(shallowDepth);
+    const deepCost = injectionWindowMs(deepDepth);
+    shallow = Math.min(shallow, shallowCost);
+    deep = Math.min(deep, deepCost);
+    growth = Math.min(growth, deepCost / shallowCost);
+  }
+  return { growth, shallow, deep };
 };
 
 // 线性度判据的形态与实测依据（模块级：注释也算函数行数，放进 describe 会撞 max-lines-per-function）。
@@ -84,12 +102,11 @@ const injectionCostMs = (depth: number): number => {
 // 为什么用 4 倍而不是翻倍：t(4000) 本身很稳（实测 3.75~4.41ms，±8%），而 t(1000)≈1ms 会被干扰
 // 单向抬高（实测 0.91~1.93ms），比值因此只会**偏低**；4 倍跨度让"偏低"仍安全通过（实测 1.95~4.21 < 6），
 // 而真退化成 O(n²) 时 t(4000) 会涨到 ≈16ms，比值 ≥8 必红。
+// 交错窗口（见 injectionWindowMs）：同一次争用同时抬高分子分母，min-of-5 再剔掉尖峰。
 // 不用 t(4000)/t(500)：分母 0.3~1.5ms，与分子不在同一时间窗，实测比值 2.7~7.3 乱跳，曾 16.35/16 假红。
 describe("inject · 深嵌套耗时近似线性", () => {
   it("should grow linearly (not quadratically) with nesting depth", () => {
-    const shallow = injectionCostMs(1000);
-    const deep = injectionCostMs(4000);
-    const growth = deep / shallow;
+    const { growth, deep } = growthPair(1000, 4000);
 
     expect(growth, `t(4000)/t(1000) = ${growth.toFixed(2)}`).toBeLessThan(6);
     expect(deep).toBeLessThan(200);

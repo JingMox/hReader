@@ -1,0 +1,98 @@
+// 这层管：M1.3 的公开面边界 —— 该有的在、不该溜出来的没有。
+// 为什么"包含 + 禁止项"不是放水：
+//   1. 必需项逐条点名（少一个即红，报错直指缺的名字）；
+//   2. 禁止项是一张**闭名清单**（`FORBIDDEN`），覆盖了 M1.3 新增的每一个内部符号与常量，
+//      再加一条前缀闸（`budget`/`derive`/`OUTLINE_`/`annotations`/`word`）兜住改名后的变体；
+//   3. 门面文件自身用 `Object.keys` 全等断言，多导出任何一个内部函数都会红。
+
+import { describe, expect, it } from "vitest";
+
+import * as coreEntry from "../../core/src/index";
+import * as metaEntry from "../../core/src/meta/index";
+import * as opsEntry from "../../core/src/ops/index";
+
+/** M1.3 之前必须已经在的核心公开面（见 `entry-points.test.ts` 的 REQUIRED 表）。 */
+const PRIOR_RUNTIME_EXPORTS = [
+  "HrError",
+  "buildOutline",
+  "injectNodeIds",
+  "parseHtml",
+  "serializeHtml",
+  "toDocumentModel",
+  "validateDocument",
+] as const;
+
+/** M1.3 引入的内部符号：任何一个出现在公开面都算"漏出"。 */
+const FORBIDDEN_LEAKS: readonly string[] = [
+  "OUTLINE_ANNOTATION_LIMIT",
+  "OUTLINE_BUDGET_BYTES",
+  "PENDING_ANNOTATION_STATUS",
+  "annotationsOf",
+  "budgetOutline",
+  "deriveOutline",
+  "findMetaScript",
+  "firstArticleOf",
+  "isRecord",
+  "levelOf",
+  "parseMeta",
+  "readMeta",
+  "sectionLevelOf",
+  "stringFieldOf",
+  "truncateOutline",
+  "wordCountOf",
+];
+
+/** 改名/拆分后的变体：前缀闸，避免"改成 `budget` 就逃掉闭名清单"。 */
+const FORBIDDEN_PREFIXES: readonly string[] = [
+  "OUTLINE_",
+  "annotations",
+  "budget",
+  "derive",
+  "word",
+];
+
+/** `allowed` 是"该门面自己规格里就该有"的几个名字（否则闭名清单会把合法导出误判为漏出）。 */
+const leaked = (
+  surface: Readonly<Record<string, unknown>>,
+  allowed: readonly string[] = [],
+): string[] =>
+  Object.keys(surface).filter(
+    (name) =>
+      !allowed.includes(name) &&
+      (FORBIDDEN_LEAKS.includes(name) ||
+        FORBIDDEN_PREFIXES.some((prefix) => name.startsWith(prefix))),
+  );
+
+describe("core public surface · M1.3 boundary", () => {
+  it("should keep every prior runtime export and add buildOutline", () => {
+    for (const name of PRIOR_RUNTIME_EXPORTS) {
+      expect(Object.keys(coreEntry), `missing ${name}`).toContain(name);
+    }
+    expect(typeof coreEntry.buildOutline).toBe("function");
+  });
+
+  it("should not leak any internal outline/meta symbol", () => {
+    expect(leaked(coreEntry)).toEqual([]);
+  });
+});
+
+describe("ops facade", () => {
+  it("should expose exactly buildOutline at runtime", () => {
+    expect(Object.keys(opsEntry).sort()).toEqual(["buildOutline"]);
+  });
+
+  it("should not leak outline internals", () => {
+    expect(leaked(opsEntry)).toEqual([]);
+  });
+});
+
+describe("meta facade", () => {
+  it("should expose the reader and the status constant", () => {
+    expect(Object.keys(metaEntry).sort()).toEqual(["PENDING_ANNOTATION_STATUS", "readMeta"]);
+    expect(metaEntry.PENDING_ANNOTATION_STATUS).toBe("pending_ai");
+  });
+
+  it("should not leak meta internals", () => {
+    expect(leaked(metaEntry, ["PENDING_ANNOTATION_STATUS", "readMeta"])).toEqual([]);
+  });
+});
