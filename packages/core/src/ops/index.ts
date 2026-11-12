@@ -2,3 +2,5 @@
 
 export { buildOutline } from "./outline";
 export type { Outline, OutlineNode, PendingAnnotation } from "./outline";
+export { readNode } from "./readNode";
+export type { ReadNodeResult } from "./readNode";

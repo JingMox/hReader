@@ -13,6 +13,7 @@ import {
   type ParsedHtml,
 } from "./constants";
 import { HASH_SEED, mixHex, stableHex8 } from "./hash";
+import { joinPath, pathSegment } from "./path";
 import { drainStack } from "./stack";
 import { textSampleOf } from "./text";
 
@@ -112,7 +113,7 @@ const seedOf = (node: HtmlElementNode, siblingIndex: number, digest: number): st
 
 const assignId = (
   node: HtmlElementNode,
-  siblingIndex: number,
+  entry: { readonly siblingIndex: number; readonly childIndex: number },
   digest: number,
   state: WalkState,
 ): string => {
@@ -121,7 +122,7 @@ const assignId = (
   if (existing !== undefined && HR_ID_PATTERN.test(existing)) {
     return existing;
   }
-  const id = uniqueId(`hr-${stableHex8(seedOf(node, siblingIndex, digest))}`, context.used);
+  const id = uniqueId(`hr-${stableHex8(seedOf(node, entry.siblingIndex, digest))}`, context.used);
   context.used.add(id);
   context.injected.push(id);
   if (existing !== undefined) {
@@ -130,21 +131,28 @@ const assignId = (
       severity: "warning",
       message: `data-hr-id="${existing}" 不合法（空/含空白/非 [a-z0-9-]），已改写为 ${id}`,
       // 路径串只在真要发诊断时拼：正常文档一个诊断都没有，不该为它付遍历成本。
-      path: [...state.path, `${node.tag}[${String(siblingIndex)}]`].join(">"),
+      path: joinPath(state.path.join(">"), pathSegment(node.tag, entry.childIndex)),
     });
   }
   return id;
 };
 
-const siblingIndexes = (children: readonly HtmlNode[]): readonly number[] => {
+interface ChildSlot {
+  /** 同标签兄弟序号：只喂 ID 种子，换写法会让既有 `data-hr-id` 全部变。 */
+  readonly siblingIndex: number;
+  /** 父 `children` 里的原始下标：只喂诊断路径，与解析层同一口径。 */
+  readonly childIndex: number;
+}
+
+const childSlots = (children: readonly HtmlNode[]): readonly ChildSlot[] => {
   const seen = new Map<string, number>();
-  return children.map((child) => {
+  return children.map((child, childIndex) => {
     if (child.kind !== "element") {
-      return -1;
+      return { siblingIndex: -1, childIndex };
     }
     const index = seen.get(child.tag) ?? 0;
     seen.set(child.tag, index + 1);
-    return index;
+    return { siblingIndex: index, childIndex };
   });
 };
 
@@ -155,6 +163,8 @@ type Task =
       readonly sink: Sink;
       readonly insideArticle: boolean;
       readonly siblingIndex: number;
+      /** 父 `children` 里的原始下标，诊断路径用。 */
+      readonly childIndex: number;
       /** 父节点的路径摘要；进入节点时再续算自己的。 */
       readonly parentDigest: number;
     }
@@ -171,17 +181,18 @@ const openChildren = (
   sink: HtmlNode[],
   insideArticle: boolean,
 ): void => {
-  const indexes = siblingIndexes(children);
+  const slots = childSlots(children);
   for (let index = children.length - 1; index >= 0; index -= 1) {
     const child = children[index];
-    const childIndex = indexes[index];
-    if (child !== undefined && childIndex !== undefined) {
+    const slot = slots[index];
+    if (child !== undefined && slot !== undefined) {
       state.stack.push({
         kind: "enter",
         node: child,
         sink,
         insideArticle,
-        siblingIndex: childIndex,
+        siblingIndex: slot.siblingIndex,
+        childIndex: slot.childIndex,
         parentDigest: state.digest,
       });
     }
@@ -195,12 +206,12 @@ const enterElement = (
 ): void => {
   const digest = mixHex(`${node.tag}#${String(task.siblingIndex)}`, task.parentDigest);
   const id = isInjectionTarget(node, task.insideArticle)
-    ? assignId(node, task.siblingIndex, digest, state)
+    ? assignId(node, task, digest, state)
     : undefined;
   const children: HtmlNode[] = [];
   task.sink.push({ kind: "element", tag: node.tag, attrs: withHrId(node.attrs, id), children });
   state.stack.push({ kind: "exit", parentDigest: task.parentDigest });
-  state.path.push(`${node.tag}[${String(task.siblingIndex)}]`);
+  state.path.push(pathSegment(node.tag, task.childIndex));
   state.digest = digest;
   openChildren(node.children, state, children, task.insideArticle || node.tag === "article");
 };
@@ -238,6 +249,7 @@ export const injectNodeIds = (parsed: ParsedHtml): InjectedNodeIds => {
     sink,
     insideArticle: false,
     siblingIndex: -1,
+    childIndex: -1,
     parentDigest: HASH_SEED,
   });
   for (const task of drainStack(state.stack)) {

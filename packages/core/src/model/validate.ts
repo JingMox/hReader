@@ -10,6 +10,7 @@ import {
   type HtmlNode,
   type ParsedHtml,
 } from "../html/constants";
+import { joinPath, pathSegment } from "../html/path";
 import { drainStack } from "../html/stack";
 import { attributeOf } from "./attrs";
 import { ARTICLE_TAG, HEADING_LEVELS } from "./constants";
@@ -41,14 +42,16 @@ interface OrderedDiagnostic {
   readonly diagnostic: Diagnostic;
 }
 
-type Task =
-  | { readonly kind: "enter"; readonly node: HtmlNode; readonly path: PathNode }
-  | { readonly kind: "exit" };
+interface Task {
+  readonly kind: "enter";
+  readonly node: HtmlNode;
+  readonly path: PathNode;
+  /** 父 `children` 里的原始下标：与解析层诊断的 `path` 同一口径。 */
+  readonly childIndex: number;
+}
 
 interface State {
   readonly tasks: Task[];
-  /** 每层父节点的"同标签序号"计数，出栈即丢，深度只占栈长度。 */
-  readonly frames: Map<string, number>[];
   readonly occurrences: Occurrence[];
   readonly articles: ArticleHit[];
   readonly ownDiagnostics: OrderedDiagnostic[];
@@ -60,13 +63,13 @@ const pathToString = (node: PathNode): string => {
   const segments: string[] = [];
   let current: PathNode | undefined = node;
   while (current !== undefined) {
-    // 根占位段是空串：跳过它，输出才能与 inject.ts 的 `html[0]>body[0]>…` 逐字同构。
+    // 根占位段是空串：跳过它，输出才与解析层的 `html[0]>body[1]>…` 逐字同构。
     if (current.segment !== "") {
       segments.push(current.segment);
     }
     current = current.parent;
   }
-  return segments.reverse().join(">");
+  return segments.reverse().reduce((parent, segment) => joinPath(parent, segment), "");
 };
 
 const childNodesOf = (node: HtmlNode): readonly HtmlNode[] =>
@@ -89,7 +92,7 @@ const pushChildren = (node: HtmlNode, path: PathNode, state: State): void => {
   for (let index = children.length - 1; index >= 0; index -= 1) {
     const child = children[index];
     if (child !== undefined) {
-      state.tasks.push({ kind: "enter", node: child, path });
+      state.tasks.push({ kind: "enter", node: child, path, childIndex: index });
     }
   }
 };
@@ -124,11 +127,13 @@ const checkHeading = (node: HtmlElementNode, path: string, state: State): void =
   state.lastHeading = level;
 };
 
-const enterElement = (node: HtmlElementNode, path: PathNode, state: State): void => {
-  const parentFrame = state.frames.at(-1);
-  const index = parentFrame?.get(node.tag) ?? 0;
-  parentFrame?.set(node.tag, index + 1);
-  const current: PathNode = { segment: `${node.tag}[${String(index)}]`, parent: path };
+const enterElement = (
+  node: HtmlElementNode,
+  path: PathNode,
+  childIndex: number,
+  state: State,
+): void => {
+  const current: PathNode = { segment: pathSegment(node.tag, childIndex), parent: path };
   const pathText = pathToString(current);
   state.step += 1;
   if (node.tag === ARTICLE_TAG) {
@@ -136,17 +141,15 @@ const enterElement = (node: HtmlElementNode, path: PathNode, state: State): void
   }
   checkId(node, pathText, state);
   checkHeading(node, pathText, state);
-  state.frames.push(new Map());
-  state.tasks.push({ kind: "exit" });
   pushChildren(node, current, state);
 };
 
-const enterNode = (node: HtmlNode, path: PathNode, state: State): void => {
-  if (node.kind === "element") {
-    enterElement(node, path, state);
+const enterNode = (task: Task, state: State): void => {
+  if (task.node.kind === "element") {
+    enterElement(task.node, task.path, task.childIndex, state);
     return;
   }
-  pushChildren(node, path, state);
+  pushChildren(task.node, task.path, state);
 };
 
 /** 重复 ID 逐条报告：先按 id 归组，再对出现 ≥2 次的组按文档序输出每一处的位置。 */
@@ -220,8 +223,14 @@ const dedupe = (diagnostics: readonly Diagnostic[]): readonly Diagnostic[] => {
 /** 与 M1.1 的诊断合并：同一 code 空间，按 `code|path|message` 去重，保留首次出现的位置。 */
 export const validateDocument = (parsed: ParsedHtml): readonly Diagnostic[] => {
   const state: State = {
-    tasks: [{ kind: "enter", node: parsed.root, path: { segment: "", parent: undefined } }],
-    frames: [new Map<string, number>()],
+    tasks: [
+      {
+        kind: "enter",
+        node: parsed.root,
+        path: { segment: "", parent: undefined },
+        childIndex: -1,
+      },
+    ],
     occurrences: [],
     articles: [],
     ownDiagnostics: [],
@@ -229,11 +238,7 @@ export const validateDocument = (parsed: ParsedHtml): readonly Diagnostic[] => {
     step: 0,
   };
   for (const task of drainStack(state.tasks)) {
-    if (task.kind === "exit") {
-      state.frames.pop();
-      continue;
-    }
-    enterNode(task.node, task.path, state);
+    enterNode(task, state);
   }
   // 只对本模块自己的诊断做段内稳定排序；跨段顺序固定为"M1.1 诊断在前、本模块在后"。
   const derived = [

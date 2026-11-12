@@ -17,15 +17,34 @@ const PRIOR_RUNTIME_EXPORTS = [
   "buildOutline",
   "injectNodeIds",
   "parseHtml",
+  "readNode",
   "serializeHtml",
   "toDocumentModel",
   "validateDocument",
 ] as const;
 
-/** M1.3 引入的内部符号：任何一个出现在公开面都算"漏出"。 */
+/** M1.3/M1.4 引入的内部符号：任何一个出现在公开面都算"漏出"。 */
 const FORBIDDEN_LEAKS: readonly string[] = [
+  "BLOCKED_CONTENT_TAGS",
+  "DEFAULT_MAX_BYTES",
+  "MAX_BYTES_LIMIT",
+  "META_ANCHOR_ID",
   "OUTLINE_ANNOTATION_LIMIT",
   "OUTLINE_BUDGET_BYTES",
+  "SHELL_TAGS",
+  "THEME_ANCHOR_ID",
+  "ambiguousSelector",
+  "annotationsFor",
+  "attributeOf",
+  "fitSubtree",
+  "identifierOf",
+  "isForbiddenTarget",
+  "parseSelector",
+  "resolveSelector",
+  "stripShell",
+  "strippedShell",
+  "truncatedOutput",
+  "withinSubtree",
   "PENDING_ANNOTATION_STATUS",
   "annotationsOf",
   "budgetOutline",
@@ -65,6 +84,7 @@ const leaked = (
 
 describe("core public surface · M1.3 boundary", () => {
   it("should keep every prior runtime export and add buildOutline", () => {
+    // M1.4 的 readNode 由 `PRIOR_RUNTIME_EXPORTS` 覆盖（同一张表覆盖到最新一版公开面）。
     for (const name of PRIOR_RUNTIME_EXPORTS) {
       expect(Object.keys(coreEntry), `missing ${name}`).toContain(name);
     }
@@ -78,7 +98,7 @@ describe("core public surface · M1.3 boundary", () => {
 
 describe("ops facade", () => {
   it("should expose exactly buildOutline at runtime", () => {
-    expect(Object.keys(opsEntry).sort()).toEqual(["buildOutline"]);
+    expect(Object.keys(opsEntry).sort()).toEqual(["buildOutline", "readNode"]);
   });
 
   it("should not leak outline internals", () => {
