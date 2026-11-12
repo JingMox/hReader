@@ -17,16 +17,19 @@ const REQUIRED_RUNTIME_EXPORTS = [
   // M1.2 追加（docs/02 §5.2 + 卡片 M1.2 契约 1/2）：派生模型与不变量校验。
   "toDocumentModel",
   "validateDocument",
+  // M1.3 追加（docs/02 §5.2 + 卡片 M1.3 契约 1）：outline 门面。
+  "buildOutline",
 ];
 
 describe("package public surfaces", () => {
-  it("should expose the six runtime exports the spec declares", () => {
+  it("should expose the seven runtime exports the spec declares", () => {
     expect(typeof coreEntry.HrError).toBe("function");
     expect(typeof coreEntry.parseHtml).toBe("function");
     expect(typeof coreEntry.serializeHtml).toBe("function");
     expect(typeof coreEntry.injectNodeIds).toBe("function");
     expect(typeof coreEntry.toDocumentModel).toBe("function");
     expect(typeof coreEntry.validateDocument).toBe("function");
+    expect(typeof coreEntry.buildOutline).toBe("function");
   });
 
   it("should not leak internal symbols onto the public surface", () => {

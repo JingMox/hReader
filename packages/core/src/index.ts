@@ -5,6 +5,8 @@ export type { HrErrorCode } from "./hr-error";
 export { injectNodeIds, parseHtml, serializeHtml } from "./html";
 export { toDocumentModel, validateDocument } from "./model";
 export type { DocumentModel } from "./model";
+export { buildOutline } from "./ops";
+export type { Outline, OutlineNode, PendingAnnotation } from "./ops";
 // 其余结构类型（attrs/各叶子节点）收在 src/html/index.ts：消费方经 `HtmlNode` 联合自取，
 // 入口重复导出只会让"极小导出面"名存实亡。
 export type {

@@ -125,7 +125,11 @@ export type DiagnosticCode =
   | "duplicate_id"
   | "missing_article"
   | "multiple_article"
-  | "heading_level_jump";
+  | "heading_level_jump"
+  | "outline_node_without_id"
+  | "outline_truncated"
+  | "annotation_target_missing"
+  | "invalid_meta";
 
 export type DiagnosticSeverity = "error" | "warning";
 
@@ -145,6 +149,10 @@ export const DIAGNOSTIC_SEVERITY: Readonly<Record<DiagnosticCode, DiagnosticSeve
   missing_article: "error",
   multiple_article: "error",
   heading_level_jump: "warning",
+  outline_node_without_id: "warning",
+  outline_truncated: "warning",
+  annotation_target_missing: "warning",
+  invalid_meta: "warning",
 };
 
 export interface Diagnostic {
