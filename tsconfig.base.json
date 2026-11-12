@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "types": [],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": false,
+
+    "paths": {
+      "@hreader/core": ["./packages/core/src/index.ts"],
+      "@hreader/protocol": ["./packages/protocol/src/index.ts"],
+      "@hreader/renderer-html": ["./packages/renderer-html/src/index.ts"],
+      "@hreader/chrome-extension": ["./packages/chrome-extension/src/index.ts"],
+      "@hreader/app": ["./packages/app/src/index.ts"]
+    }
+  }
+}
