@@ -100,3 +100,4 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
 - Symptom: 5 min of no output mid-run; exit 143. Root cause: a spawned CLI child reading stdin that was never closed → parent waits on child, child waits on stdin.
 - Coordinator verified it was NOT the deep-nesting command: `outline` on 4000-deep AND 40000-deep `<div>` returns EXIT=0 in well under a second.
 - New standing rule (`.workflow/WORKFLOW.md` §11.x): every test spawn needs `stdio: ["ignore","pipe","pipe"]` + a hard timeout; a hang counts as a failure. Test suites must not be able to hang.
+- Correction: the rule above was first announced to the tester as "手册 §11" while `§11` in `execution-workbook.md` is the progress table; the real home is **§5 测试纪律**, where it now lives. Lesson: cite section numbers by reading the file, not from memory (same failure class as the wrong `resumeFrom` id earlier today).
