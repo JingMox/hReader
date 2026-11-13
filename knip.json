@@ -13,8 +13,17 @@
     "config": [".prettierrc.json"]
   },
   "workspaces": {
+    "packages/core": {
+      "entry": ["fixtures/*.mjs", "tests/**/*.ts"]
+    },
     "packages/protocol": {
       "ignoreDependencies": ["@hreader/core"]
     }
+  },
+  "ignoreIssues": {
+    "packages/core/src/io/atomic.ts": ["exports"],
+    "packages/core/src/io/history.ts": ["exports"],
+    "packages/core/src/io/lock.ts": ["exports"],
+    "packages/core/src/ops/patchNode/attrs.ts": ["exports"]
   }
 }

@@ -331,3 +331,12 @@ flowchart LR
   - [ ] **M4.1 AI 语言风格萃取器 (`hr style extract`)**：用户只需丢入 3~5 篇自己喜欢的历史文章或博客，Agent 自动分析其句式节奏、常用转折词、叙事结构与高频词汇，一键生成专属的 `style.yaml`。
   - [ ] **M4.2 Tauri v2 跨平台桌面应用 (`@hreader/desktop`)**：打包 macOS / Windows / Linux 原生安装包，支持系统级全局快捷键呼出与 `.html` 文件关联打开。
   - [ ] **M4.3 出版级导出工具链**：优化 `@media print` 样式，支持一键导出带目录书签的精美 PDF 与社交媒体高清长图。
+
+### 已知非目标：片段校验里"不拦"的两类输入（v3 裁定，2026-11-13）
+
+`hr_patch_node` 的片段拒绝名单只覆盖**可执行面**。下面两类在评审中被提出，但**明确不拦**，理由是它们不具备执行能力，拦了反而误杀正常正文：
+
+* `<xmp>…</xmp>` / `<plaintext>` 等 raw-text 容器：内容按 HTML 规范**不再解析**，里面的 `<img onerror>` 只是字面文本，不会生成可执行节点。
+* `style="…url(javascript:…)"`：现代引擎不执行 CSS 里的 `javascript:` 协议（`url()` 只用于取图），且 `style` 是合法排版输入。
+
+与之相对，**元素级 URL 属性**（`href`/`src`/`xlink:href`）与**SVG 动画子元素对这些属性的改写**（`<set attributeName="href" to="javascript:…">`，v3#16）一律拒绝——它们的执行路径是真实存在的，也是历史上最常见的绕过面。
