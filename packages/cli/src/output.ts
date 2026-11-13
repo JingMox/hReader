@@ -3,13 +3,22 @@
 
 import type {
   ApplyStyleResult,
+  HrErrorCode,
   LintHit,
   LintReport,
   Outline,
   OutlineNode,
   PatchResult,
+  PendingAnnotation,
   ReadNodeResult,
 } from "@hreader/core";
+
+/** `Diagnostic` 不在 core 的公开面（`src/index.ts` 没有导出）；这里用结构类型，不强求 core 扩大导出。 */
+interface DiagnosticShape {
+  readonly code: string;
+  readonly severity: string;
+  readonly message: string;
+}
 
 const quote = (value: string): string => JSON.stringify(value);
 
@@ -17,10 +26,27 @@ const bool = (value: boolean): string => (value ? "true" : "false");
 
 export const jsonOk = (data: string): string => `{"ok":true,"data":${data}}\n`;
 
-export const jsonError = (code: string, message: string): string =>
+export const jsonError = (code: HrErrorCode, message: string): string =>
   `{"ok":false,"code":${quote(code)},"message":${quote(message)}}\n`;
 
-export const dataOutline = (outline: Outline): string => JSON.stringify(outline);
+const nodeJson = (node: OutlineNode): string =>
+  `{"id":${quote(node.id)},"tag":${quote(node.tag)},"level":${String(node.level)},` +
+  `"text":${quote(node.text)},"wordCount":${String(node.wordCount)},` +
+  `"children":[${node.children.map(nodeJson).join(",")}]}`;
+
+const annotationJson = (annotation: PendingAnnotation): string =>
+  `{"id":${quote(annotation.id)},"targetId":${quote(annotation.targetId)},` +
+  `"comment":${quote(annotation.comment)}}`;
+
+const diagnosticJson = (diagnostic: DiagnosticShape): string =>
+  `{"code":${quote(diagnostic.code)},"severity":${quote(diagnostic.severity)},` +
+  `"message":${quote(diagnostic.message)}}`;
+
+export const dataOutline = (outline: Outline): string =>
+  `{"nodes":[${outline.nodes.map(nodeJson).join(",")}],` +
+  `"pendingAnnotations":[${outline.pendingAnnotations.map(annotationJson).join(",")}],` +
+  `"wordCount":${String(outline.wordCount)},` +
+  `"diagnostics":[${outline.diagnostics.map(diagnosticJson).join(",")}]}`;
 
 export const dataRead = (result: ReadNodeResult, ids: readonly string[]): string =>
   `{"html":${quote(result.html)},"ids":${JSON.stringify(ids)}}`;

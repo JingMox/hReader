@@ -1,6 +1,14 @@
 // 这层管：`hr read`（读文件 → 注入 ID → 读节点 → HTML/JSON）；不做参数校验。
+// 第二位置参数先按选择器解析；`invalid_selector` / `node_not_found` 时把原串当 node id 再试一次（R1-P1-1）。
 
-import { injectNodeIds, parseHtml, readNode } from "@hreader/core";
+import {
+  type ParsedHtml,
+  HrError,
+  injectNodeIds,
+  type ReadNodeResult,
+  parseHtml,
+  readNode,
+} from "@hreader/core";
 
 import { readTextFile } from "../input";
 import { dataRead, humanRead, jsonOk } from "../output";
@@ -12,11 +20,59 @@ export interface ReadInput {
   readonly json: boolean;
 }
 
+const ATTRIBUTE_ID = /data-hr-id="([^"]+)"/gu;
+
+/** `ids` 只列返回 `html` 里真实出现的 id：全文档注入表里其它节点的 id 对调用方是无效引用。 */
+const idsOf = (html: string): readonly string[] =>
+  [...html.matchAll(ATTRIBUTE_ID)].map((match) => String(match[1]));
+
+const idSelectorOf = (target: string): string => `[data-hr-id="${target}"]`;
+
+const isRetriable = (error: unknown): error is HrError =>
+  error instanceof HrError &&
+  (error.code === "invalid_selector" || error.code === "node_not_found");
+const readOnce = (
+  parsed: ParsedHtml,
+  target: string,
+  maxBytes: number | undefined,
+): ReadNodeResult =>
+  maxBytes === undefined ? readNode(parsed, target) : readNode(parsed, target, maxBytes);
+
+const BREAKS_ATTRIBUTE_QUOTING = /["\\\n\r]/u;
+
+/** 按字面形态判码：只有 `"`/`\`/换行会让 `[data-hr-id="…"]` 本身非法；不看第二次失败的类型——那会让码依赖运行时实现。 */
+const codeOf = (target: string): "invalid_selector" | "node_not_found" =>
+  BREAKS_ATTRIBUTE_QUOTING.test(target) ? "invalid_selector" : "node_not_found";
+
+/** 两种解释都失败：报文同时列出两条路径；`first`/`retry` 只用于拼报文。
+ * `retry` 直接 `String()`——非 `Error` 的抛出物也照样出现在报文里，不吞信息。 */
+const bothFailed = (target: string, first: HrError, retry: unknown): never => {
+  throw new HrError(
+    codeOf(target),
+    `读取目标 ${JSON.stringify(target)} 失败：按选择器 → ${first.message}；按 node id → ${String(retry)}`,
+  );
+};
+
+const readTarget = (
+  parsed: ParsedHtml,
+  target: string,
+  maxBytes: number | undefined,
+): ReadNodeResult => {
+  try {
+    return readOnce(parsed, target, maxBytes);
+  } catch (error: unknown) {
+    if (!isRetriable(error)) throw error;
+    const first = error;
+    try {
+      return readOnce(parsed, idSelectorOf(target), maxBytes);
+    } catch (retry: unknown) {
+      return bothFailed(target, first, retry);
+    }
+  }
+};
+
 export const readCommand = async (input: ReadInput): Promise<string> => {
   const injected = injectNodeIds(parseHtml(await readTextFile(input.path)));
-  const result =
-    input.maxBytes === undefined
-      ? readNode(injected.parsed, input.target)
-      : readNode(injected.parsed, input.target, input.maxBytes);
-  return input.json ? jsonOk(dataRead(result, injected.injected)) : humanRead(result);
+  const result = readTarget(injected.parsed, input.target, input.maxBytes);
+  return input.json ? jsonOk(dataRead(result, idsOf(result.html))) : humanRead(result);
 };

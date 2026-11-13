@@ -101,3 +101,19 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
 - Coordinator verified it was NOT the deep-nesting command: `outline` on 4000-deep AND 40000-deep `<div>` returns EXIT=0 in well under a second.
 - New standing rule (`.workflow/WORKFLOW.md` §11.x): every test spawn needs `stdio: ["ignore","pipe","pipe"]` + a hard timeout; a hang counts as a failure. Test suites must not be able to hang.
 - Correction: the rule above was first announced to the tester as "手册 §11" while `§11` in `execution-workbook.md` is the progress table; the real home is **§5 测试纪律**, where it now lives. Lesson: cite section numbers by reading the file, not from memory (same failure class as the wrong `resumeFrom` id earlier today).
+
+## M1.8 · 合并卡（CLI `hr` + Universal Skill 壳）→ `G4: PASS`
+
+- **G1**（编写员）：`packages/cli/**` 12→13 文件（含抽取的 `resolve-hook.ts`）、`skills/hreader/**` 4 文件；门禁配置纳入新扫描面（cli 测试、`skills/**`、`allowImportingTsExtensions` 附注释）。
+- **G2**（审计员）：FAIL 0×P0 / 2×P1 / 12×P2 →
+  - P1-1 `hr read` 拒收裸 node id（`outline`/`patch` 打印的 id 喂不回去，两条被文档化的回路全断）；
+  - P1-2 `--workspace` 不做 realpath（macOS `/private` 前缀 → 符号链接 workspace 全误判越界）；
+  - P2 里最值得记的是**`--workspace` 不存在时报 `path_outside_workspace`**（误导性错误码）。
+- **G3**（测试员）：`packages/cli/tests` **177 例**，全仓 1102→**1109**；变异 6/6 全杀；自己又抓出 `--workspace` 误导报文。
+  - 这轮它给 `cli/src` 的 6 处覆盖率缺口做了正确分类（**分支不可达，不是测试漏**），逐条给了原因——这是本仓库第一次由测试员自己完成"死代码 vs 测试漏"的判别。
+  - G3 首跑被看门狗杀掉：spawn 了读 stdin 的子进程却没关 stdin。已写进工作簿 §5「子进程卫生」。
+- **R1–R5**（编写员）：裸 id 按 `①选择器→②裸 id→③两者都报` 顺序解析；realpath 两边取真（目标不存在时对父目录 realpath）；6 处死臂我逐条裁定（抽函数 / 删字段 / 删兜底 / 纯函数判码）；`knip` 5 条配置 hint 清零。
+- **两个流程教训**（记在这里，因为都是"协调者失误"）：
+  1. 我两次把任务发起给了**错误角色的会话**（`resumeFrom` 填错 id）；两次都在零写入时取消。规则：`resumeFrom` 必须对照 `state.md` 角色行核对，不许凭记忆。
+  2. 我在派单里写了不存在的路径（`src/style/css.ts:36`）；编写员自己查出来后按意图正确修改，并在报告里写"我改的比你指的位置更对，因为有两份检查同时在跑"。**角色不该盲从协调者的行号**，我据此把"照抄协调者的行号当圣旨"写成了反面规则。
+- **收口**：`pnpm verify` EXIT=0 / 84 文件 **1109 例** / 四维 100% / `knip` 零 hint。

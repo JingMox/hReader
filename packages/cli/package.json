@@ -7,10 +7,8 @@
   "bin": {
     "hr": "./src/main.ts"
   },
-  "dependencies": {
-    "@hreader/core": "workspace:*"
-  },
   "devDependencies": {
+    "@hreader/core": "workspace:*",
     "vitest": "3.2.4"
   }
 }

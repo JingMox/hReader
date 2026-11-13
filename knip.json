@@ -1,8 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["packages/*/src/index.ts"],
-  "project": ["packages/*/src/**/*.ts", "packages/*/tests/**/*.ts"],
-  "ignore": ["docs/**", "skills/**"],
+  "ignore": ["docs/**"],
   "vitest": {
     "config": ["vitest.config.ts"]
   },
@@ -17,11 +15,10 @@
       "entry": ["fixtures/*.mjs", "tests/**/*.ts"]
     },
     "packages/protocol": {
-      "ignoreDependencies": ["@hreader/core"]
+      "entry": ["tests/**/*.ts"]
     },
     "packages/cli": {
       "entry": [
-        "src/main.ts",
         "src/args.ts",
         "src/tokens.ts",
         "src/input.ts",
@@ -29,9 +26,13 @@
         "src/run.ts",
         "src/usage.ts",
         "src/exit-codes.ts",
-        "src/commands/*.ts"
-      ],
-      "ignoreDependencies": ["@hreader/core"]
+        "src/commands/*.ts",
+        "fixtures/*.mjs",
+        "tests/**/*.ts"
+      ]
+    },
+    ".": {
+      "entry": ["skills/hreader/scripts/hr.mjs"]
     }
   },
   "ignoreIssues": {

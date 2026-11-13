@@ -32,4 +32,5 @@ const EXIT_CODES = {
   invalid_utf8: EXIT_IO,
 } satisfies Record<HrErrorCode, number>;
 
+/** `satisfies` 已保证表内穷尽：CLI 与 core 同仓同版本，不存在"新 core 配旧 CLI"的运行时分支。 */
 export const exitCodeOf = (code: HrErrorCode): number => EXIT_CODES[code];

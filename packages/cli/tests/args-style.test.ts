@@ -1,0 +1,41 @@
+// 这层管：`parseArgs` 的 style 子命令（模式互斥与位置参数）；不跑子进程、不碰 fs。
+
+import { describe, it } from "vitest";
+
+import { expectFailure, parse } from "./args-helpers";
+
+import { expect } from "vitest";
+
+describe("parseArgs · style", () => {
+  it.each([
+    ["--visual", "atelier-editorial", { kind: "visual", id: "atelier-editorial" }],
+    ["--tone", "atelier-editorial", { kind: "tone", id: "atelier-editorial" }],
+    ["--lint", undefined, { kind: "lint" }],
+  ] as const)("should parse %s mode", (flag, value, mode) => {
+    const argv = value === undefined ? ["style", "a.html", flag] : ["style", "a.html", flag, value];
+    expect(parse(argv)).toMatchObject({ ok: true, intent: { kind: "style", mode } });
+  });
+
+  it.each([
+    [["style"], "style 缺少 <file>"],
+    [["style", "a"], "style 需要 --visual <id> / --tone <id> / --lint 之一"],
+    [["style", "a", "b", "--lint"], "style 只接受 1 个位置参数，多出 1 个"],
+    [["style", "a", "--lint", "--json", "--json", "b"], "style 只接受 1 个位置参数，多出 1 个"],
+    [["style", "a", "--html", "x"], "--html"],
+  ])("should reject %j", (argv, message) => {
+    expectFailure(argv, message, "style");
+  });
+
+  it("should reject mode flags that are combined", () => {
+    expectFailure(
+      ["style", "a", "--lint", "--visual", "x"],
+      "--visual / --tone / --lint 必须且只能给一个",
+      "style",
+    );
+    expectFailure(
+      ["style", "a", "--visual", "x", "--tone", "y", "--json"],
+      "--visual / --tone / --lint 必须且只能给一个",
+      "style",
+    );
+  });
+});
