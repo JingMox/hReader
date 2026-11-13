@@ -1,16 +1,16 @@
 # WORKFLOW STATE
 
 - 当前里程碑: M1
-- 当前卡片: M1.6（合并卡：风格引擎 + 主题 + apply_style）G1 进行中｜M1.5 已提交 `f9d00bb`
-- 写者并发: 最多 1 个（当前: 编写员写 `src/style/**` + `styles/**`；测试员待命）
+- 当前卡片: M1.6（合并卡）**G4 PASS，待提交**｜下一次派卡：M1.8+M1.9 合并卡
+- 写者并发: 最多 1 个（当前: 无人写入；M1.6 已冻结）
 - 上下文阈值: 软 60% 主动压缩；硬 150K tokens 且任务已完成 → 交接重生；单会话 ≥ 3 张卡强制重生
 
 ## 会话登记（正式，续接用这些 runId）
 | 角色 | runId | 启动时间 | 上下文占用 | 已完成卡数 | 状态 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 编写员 (worker) | del_mwehsgp6_w02e | 2026-11-13 | 0% | 2 | **第 3 代**（交接卡 `.workflow/handoffs/worker-3.md`）；M1.6 G1 |
-| 审计员 (reviewer) | del_mweh5ihm_7jpb | 2026-11-13 | ~25% | 6 | M1.5 G2-R3 PASS；撞出 `<svg><template>` 裸崩 |
-| 测试员 (worker/test-scope) | del_mwehk1ds_3m3x | 2026-11-13 | ~30% | 6 | M1.5 G3.4 交付：52 文件 721 例 |
+| 编写员 (worker) | del_mwels1wd_zrrb* | 2026-11-13 | ~35% | 2 | **第 3 代**（交接卡 `.workflow/handoffs/worker-3.md`）；M1.6 G1+R1+R2 |
+| 审计员 (reviewer) | del_mwel4rkk_v1k9* | 2026-11-13 | ~45% | 6 | M1.6 G2 FAIL(1×P0) → G2-R PASS(6/6 CLOSED) |
+| 测试员 (worker/test-scope) | del_mwels1wd_zrrb | 2026-11-13 | ~40% | 6 | M1.6 G3.1–G3.4：69 文件 924 例；7/7 变异体 |
 
 ### 冒烟验证会话（仅作能力自证记录，不再续接）
 | 角色 | runId | 结论 |
@@ -28,7 +28,7 @@
 | M1.3 | ✅ G1/R1 | ✅ PASS | ✅ 393 例 | ✅ PASS | commit `bf34c87`；诊断聚合限流 1024B；5/5 变异体 |
 | M1.4 | ✅ | ✅ PASS(R2) | ✅ 511 例 | ✅ PASS | commit `8916c63`；空壳截断(P0)、path 双口径、meta 白名单误判、死臂 |
 | M1.5 | ✅ R1–R6 | ✅ PASS(R3) | ✅ 721 例 | ✅ PASS | commit `f9d00bb`；TOCTOU/字节保真/`values` 列表/`<svg><template>` 裸崩 |
-| M1.6+M1.7 | 🔁 G1 | - | - | - | **合并卡**（`.workflow/cards/M1.6.md`），10 条预设裁定；`yaml@^2` |
+| M1.6+M1.7 | ✅ G1/R1/R2 | ✅ PASS(G2-R) | ✅ 924 例 | ✅ PASS | commit `pending`；1×P0 doctype 被挤、CSS 转义绕过、单锚点、load/apply 分叉 |
 | ~~M1.7~~ | 合并入 M1.6 | - | - | - | 同文件族，省一套门禁 |
 | M1.8+M1.9 | - | - | - | - | 计划合并（CLI + Skill 壳） |
 | M1.9 | - | - | - | - | todo |

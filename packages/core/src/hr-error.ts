@@ -16,7 +16,11 @@ export type HrErrorCode =
   | "path_outside_workspace"
   | "not_a_file"
   | "io_failure"
-  | "undo_unavailable";
+  | "undo_unavailable"
+  | "invalid_style"
+  | "unknown_style"
+  | "invalid_theme"
+  | "style_io_failure";
 
 /**
  * 唯一对外错误类型。跨包用 `instanceof HrError` 判定，按 `code` 分支；
