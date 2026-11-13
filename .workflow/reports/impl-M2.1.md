@@ -722,3 +722,94 @@ $ knip                                                          → （无输出
 
 - `Unused exports` 段**为空**（整份 knip 报告为空，无 hint）。
 - 记一笔（非本轮引入）：覆盖率表里三处 `contracts.ts` 显示 `0 | 0 | 0 | 0`——类型-only 文件无可执行语句，`perFile 100` 门禁对其不生效，`EXIT=0` 已实证，此处仅留痕。
+
+## R9
+
+**改动面（2 文件，`src/**` 之外零改动）**
+
+| 位置 | 内容 |
+|---|---|
+| `packages/core/src/server/queue.ts`（新建，29 行） | `docQueueKey(repo, docId) = resolve(repo) + "\0" + docId`；`withDocQueue(key, work)` 用 `Map<string, Promise<void>>` 存链尾、失败也放行（`then(settled, settled)`）、`finally` 里“仍是自己的链尾才删” |
+| `packages/core/src/server/runtime.ts:132-151` | 抽出 `writeReplyOf(context, route, body)`（原 `dispatchWrite` 的三支）；`dispatchWrite` 变为 `withDocQueue(docQueueKey(context.workspace, requiredStringOf(body,"docId")), () => writeReplyOf(...))` |
+| `packages/core/src/server/runtime.ts:14,30` | 新增 `./body` 的 `requiredStringOf`、`./queue` 两个 import（按字母序插位） |
+
+- **顺序**：进程内排队在外、`patchFile`/`applyStyle`/`annotationReply` 里的文件锁在内 ⇒ 同文档后来者停在内存里，不再每 `LOCK_RETRY_MS`（25 ms）去 `open(wx)`+`readFile`+`lstat` 一次。
+- 文件锁语义一字未动（`io/lock.ts` 零 diff），跨进程仍靠它；三条写路径（patch/style/annotation）统一走同一个 `dispatchWrite` 入口，不是只保护 patch。
+- `repo` 用 `resolve()` 纯字符串归一（不碰磁盘、不加 `await`）：CLI 侧 `packages/cli/src/run.ts:39` 已 `realpathSync`，所以正常进程序列化是同一物理仓库；真出现 symlink 别名只会**分成两条队列**，不会丢写（锁仍兜底）。这条写进 `queue.ts:9-12` 的注释里。
+
+**修前 / 修后（同一台机、同一 harness：真 HTTP + 真文件锁，macOS APFS tmp）**
+
+| 场景 | 指标 | 修前 | 修后 |
+|---|---|---|---|
+| 20 并发同文档 | 总耗时 / 最慢 | **541 / 538 ms** | **270 / 266 ms** |
+| 20 并发同文档 | 等锁 `open(wx)` 次数 / `sleep` 次数 | 250 / 190 | **60 / 0** |
+| 20 并发同文档 | marker 落地 / revision 去重 | 20/20 / 20 distinct | 20/20 / 20 distinct |
+| docB 单请求（docA 20 并发期间） | 延迟 | 39 ms | **23 ms** |
+| 100 并发 × 5 轮 | 总耗时 / 最慢 | 2901 / 2888 ms | **1701 / 1695 ms** |
+| 100 并发 × 5 轮 | `open(wx)` / `sleep` | 5250 / 4950 | **300 / 0** |
+| 100 并发 × 5 轮 | 500 个 marker 丢失数 | 0 | **0** |
+
+- `open(wx)` 每单 3 次（文档锁之外还有 undo/history 两把），所以修后 20 并发 = 60、100 并发 = 300：**等锁重试彻底归零**，100 并发那行的 5250→300 是 17.5×。
+- **诚实记账**：派单里的“20 并发 8 s / 最慢 8 s”在我这套 harness 上**没复现**——基线是 541/538 ms（本机 patch 单次约 27 ms，不是 60 ms）。所以本轮的收益体现在“轮询消失 + 总耗时减半”，不是“8 s → 1 s”。8 s 那个量级更像是每单 60 ms 且连接不复用的测法（`xargs -P20 curl`）；若你那边要的是这个基线，我可以照那个脚本复跑一次对比。
+- 期望值口径：`revision` 是内容哈希前 16 位（`packages/core/src/server/revision.ts:10` `revisionOf`），**没有单调性**，所以“严格递增”我按“20 个响应各自拿到自己写完后的新哈希、且两两不同”来验（20 distinct + 20 marker 全在 = 无丢更新）。
+
+**map 清理证据（探针副本跑在 /tmp，仓库里的 `queue.ts` 没加任何导出）**
+
+| 探针 | 结果 |
+|---|---|
+| 1000 个不同 docId 各跑一次 | `size=0` |
+| 同一 key 20 并发 | 中途 `size=1`，跑完 `size=0` |
+| 前一个任务抛错 + 后一个任务 | 顺序 `a-in,a-out,b-in,b-out`（严格串行、失败没焊死），`size=0` |
+
+**给测试员（`packages/core/tests/server/queue.test.ts`，可直接照抄）**
+
+```ts
+// A. 串行 + 失败隔离（不需要新导出，行为可见）
+it("同 key 严格串行，前一个抛错不焊死队列", async () => {
+  const order: string[] = [];
+  const key = docQueueKey("/w", "a.html");
+  const first = withDocQueue(key, async () => {
+    order.push("a-in");
+    await new Promise((r) => setTimeout(r, 10));
+    order.push("a-out");
+    throw new Error("boom");
+  });
+  const second = withDocQueue(key, async () => {
+    order.push("b-in");
+  });
+  await expect(first).rejects.toThrow("boom");
+  await second;
+  expect(order).toEqual(["a-in", "a-out", "b-in"]);
+});
+
+// B. 不同 key 不互相等：slow 占着 a.html 时，b.html 必须立刻跑完
+it("不同 key 不排队", async () => {
+  let release = (): void => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const slow = withDocQueue(docQueueKey("/w", "a.html"), () => gate);
+  const started = Date.now();
+  await withDocQueue(docQueueKey("/w", "b.html"), async () => undefined);
+  expect(Date.now() - started).toBeLessThan(200);
+  release();
+  await slow;
+});
+
+// C. 键形如 `<repo>\0<docId>`，且 repo 归一（相对/绝对同一仓库同键）
+it("docQueueKey 归一 repo", () => {
+  expect(docQueueKey("/w", "a.html")).toBe(docQueueKey("/w/./", "a.html"));
+  expect(docQueueKey("/w", "a.html")).toContain("\0");
+});
+
+// D. map 清理（需要 1 个 `@internal` 探针导出，二选一）：
+//    queue.ts 里加 `/** @internal 仅供测试读链尾数；不进 index.ts。 */\nexport const pendingOf = (): number => tails.size;`
+it("1000 个不同 docId 之后链尾表回到 0", async () => {
+  for (let i = 0; i < 1000; i += 1) {
+    await withDocQueue(docQueueKey("/w", `d${String(i)}.html`), async () => undefined);
+  }
+  expect(pendingOf()).toBe(0);
+});
+```
+
+- A/B/C 用现有导出就够，**D 需要你点头加 `pendingOf`**（`@internal`、不进 `index.ts`；`tails.size` 一行、可达，不会破 100%）。不加的话 D 只能靠探针副本（我这轮的证据就是那么来的），测试里无法断言私有 map。
+
+**收尾状态**：`pnpm verify` → `EXIT=0`；`Test Files 115 passed (115)` / `Tests 1439 passed (1439)`；`All files 100 | 100 | 100 | 100`，其中 `queue.ts 100 | 100 | 100 | 100`（**四条分支全可达，没有需要挂账的不可达分支**：`previous ??` 两侧由“首次/续传”覆盖，`tails.get(key) === tail` 两侧由“并发 20 单时前 19 个 finally”覆盖）；`depcruise 267 modules, 1106 dependencies` 无违规；`knip` 无输出。
