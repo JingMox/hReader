@@ -194,3 +194,21 @@ describe("run · 非 Error 的拒绝值", () => {
     expect(err.join("")).toBe("Symbol(非 Error)\n");
   });
 });
+
+describe("run · serve 的 stop 注入", () => {
+  it("should hand the injected stop through to the serve command", async () => {
+    let release: () => void = () => undefined;
+    const stop = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { io, out } = capture({ stop, cwd: dir });
+
+    const running = run(["serve", "a.html", "--port", "0", "--json"], io);
+    setTimeout(() => {
+      release();
+    }, 50);
+
+    expect(await running).toBe(0);
+    expect(out.join("")).toContain('"port"');
+  }, 20_000);
+});

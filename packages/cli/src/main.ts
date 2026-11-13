@@ -18,6 +18,16 @@ const readStdin = async () => {
   return Buffer.concat(chunks);
 };
 
+/** 两个信号任一来一次就关：第二次不处理，让运行时按默认行为兜底。 */
+const stop = new Promise<void>((resolve) => {
+  process.once("SIGTERM", () => {
+    resolve();
+  });
+  process.once("SIGINT", () => {
+    resolve();
+  });
+});
+
 const code = await run(process.argv.slice(2), {
   cwd: process.cwd(),
   stdout: (text) => {
@@ -28,6 +38,7 @@ const code = await run(process.argv.slice(2), {
   },
   readStdin,
   debug: process.env["HR_DEBUG"] === "1",
+  stop,
 });
 
 process.exitCode = code;

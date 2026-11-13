@@ -30,6 +30,13 @@ const EXIT_CODES = {
   io_failure: EXIT_IO,
   style_io_failure: EXIT_IO,
   invalid_utf8: EXIT_IO,
+  not_found: EXIT_FAILURE,
+  invalid_request: EXIT_FAILURE,
+  busy: EXIT_FAILURE,
+  too_many_clients: EXIT_FAILURE,
+  unauthorized: EXIT_FAILURE,
+  forbidden_origin: EXIT_FAILURE,
+  daemon_already_running: EXIT_USAGE,
 } satisfies Record<HrErrorCode, number>;
 
 /** `satisfies` 已保证表内穷尽：CLI 与 core 同仓同版本，不存在"新 core 配旧 CLI"的运行时分支。 */

@@ -10,6 +10,8 @@ export type { Outline, OutlineNode, PendingAnnotation, ReadNodeResult } from "./
 export { applyPatch, parseFragment } from "./ops";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./ops";
 export { nodePatchDeps, patchFile, undoPatch } from "./io";
+export { startServer } from "./server";
+export type { DaemonInfo, RunningServer, ServerDeps, ServerOptions } from "./server";
 export {
   applyStyle,
   assertThemeSafe,

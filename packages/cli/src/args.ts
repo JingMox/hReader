@@ -39,7 +39,13 @@ export type Intent =
       readonly action: PatchAction;
       readonly html: HtmlSource | undefined;
     } & Common)
-  | ({ readonly kind: "style"; readonly path: string; readonly mode: StyleMode } & Common);
+  | ({ readonly kind: "style"; readonly path: string; readonly mode: StyleMode } & Common)
+  | ({
+      readonly kind: "serve";
+      readonly path: string;
+      readonly port: number;
+      readonly allowHosts: readonly string[] | undefined;
+    } & Common);
 
 export type ParsedArgs =
   | { readonly ok: true; readonly intent: Intent }
@@ -214,6 +220,47 @@ const styleIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
   };
 };
 
+const MAX_PORT = 65_535;
+
+const portOf = (raw: Raw): number | "invalid" => {
+  const value = raw.values.get("--port");
+  if (value === undefined) return 0;
+  const parsed = Number(value);
+  const legal = Number.isInteger(parsed) && parsed >= 0 && parsed <= MAX_PORT;
+  return legal ? parsed : "invalid";
+};
+
+const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
+  const [file = "", ...extra] = rest;
+  const message =
+    extra.length > 0
+      ? `serve 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
+      : file === ""
+        ? "serve 缺少 <file>"
+        : unusedFlag(raw, ["--json", "--port", "--workspace", "--allow-host"]);
+  if (message !== undefined) return failure(message, "serve");
+  const port = portOf(raw);
+  if (port === "invalid") return failure(`--port 必须是 0..${String(MAX_PORT)} 的整数`, "serve");
+  const allowRaw = raw.values.get("--allow-host");
+  const allowHosts =
+    allowRaw === undefined
+      ? undefined
+      : allowRaw
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0);
+  return {
+    ok: true,
+    intent: {
+      kind: "serve",
+      path: absoluteOf(file, cwd),
+      port,
+      allowHosts: allowHosts !== undefined && allowHosts.length > 0 ? allowHosts : undefined,
+      ...commonOf(raw, cwd),
+    },
+  };
+};
+
 const topicOf = (positionals: readonly string[]): CommandName | undefined => {
   const [first] = positionals;
   return isCommandName(first) ? first : undefined;
@@ -222,7 +269,7 @@ const topicOf = (positionals: readonly string[]): CommandName | undefined => {
 const build = (raw: Raw, cwd: string): ParsedArgs => {
   const [name, ...rest] = raw.positionals;
   if (name === undefined) {
-    return failure("缺少命令：outline | read | patch | style", undefined);
+    return failure("缺少命令：outline | read | patch | style | serve", undefined);
   }
   if (!isCommandName(name)) {
     return failure(`未知命令：${name}`, undefined);
@@ -230,6 +277,7 @@ const build = (raw: Raw, cwd: string): ParsedArgs => {
   if (name === "outline") return outlineIntent(raw, rest, cwd);
   if (name === "read") return readIntent(raw, rest, cwd);
   if (name === "patch") return patchIntent(raw, rest, cwd);
+  if (name === "serve") return serveIntent(raw, rest, cwd);
   return styleIntent(raw, rest, cwd);
 };
 

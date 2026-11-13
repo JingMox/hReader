@@ -25,7 +25,7 @@ describe("package public surfaces", () => {
 });
 
 describe("core entry · 公共面精确集（R1.4）", () => {
-  it("should not leak internal symbols onto the public surface（27 项精确集）", () => {
+  it("should not leak internal symbols onto the public surface（28 项精确集）", () => {
     // 精确集而不是"至少含有"：多一个内部符号也红，报错直接点名多出来的那个。
     const PUBLIC = [
       "BUILTIN_STYLES",
@@ -52,6 +52,7 @@ describe("core entry · 公共面精确集（R1.4）", () => {
       "replaceTheme",
       "resolveThemePath",
       "serializeHtml",
+      "startServer",
       "toDocumentModel",
       "undoPatch",
       "validateDocument",

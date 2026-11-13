@@ -61,12 +61,16 @@ const readPayloadOf = async (fsApi: FileSystem, path: string): Promise<LockPaylo
   }
 };
 
+/**
+ * 读不到年龄就不能声称它“老”：返回 0 让 `isStale` 走“不陈旧”，
+ * 否则 lstat 的 ENOENT/EACCES 会被当成 `MAX_SAFE_INTEGER`，把刚创建的锁判成陈旧并抢走（会丢写）。
+ */
 const ageOf = async (deps: PatchDeps, path: string): Promise<number> => {
   try {
     const stat = await deps.fs.lstat(path);
     return deps.clock.now().getTime() - stat.mtimeMs;
   } catch {
-    return Number.MAX_SAFE_INTEGER;
+    return 0;
   }
 };
 
@@ -93,10 +97,12 @@ const tryCreate = async (deps: PatchDeps, path: string, payload: Uint8Array): Pr
   }
 };
 
-/** 接管是 CAS：rename 到独占名后比对 nonce，确认移走的正是刚才判陈旧的那一把才删。 */
+/** 接管是 CAS：判定陈旧与移走之间可能被“新的持有者”换过，rename 前再验一次同一把锁。 */
 const trySteal = async (deps: PatchDeps, path: string, nonce: string): Promise<boolean> => {
   const payload = await readPayloadOf(deps.fs, path);
   if (!isStale(payload, await ageOf(deps, path))) return false;
+  const again = await readPayloadOf(deps.fs, path);
+  if (again?.nonce !== payload?.nonce) return false;
   const stealPath = `${path}.steal-${nonce}`;
   try {
     await deps.fs.rename(path, stealPath);
@@ -156,6 +162,11 @@ export const acquireLock = async (
   await mkdirOrFail(deps, dirname(input.path));
   for (;;) {
     if (await tryCreate(deps, input.path, payload)) {
+      // 创建到开工之间也可能被接管（别的进程判我们陈旧）：非本 nonce 就放弃，宁可重试也不并发写。
+      const held = await readPayloadOf(deps.fs, input.path).catch(() => undefined);
+      if (held?.nonce !== nonce) {
+        throw new HrError("locked", `锁在取得后即被接管：${input.path}`);
+      }
       return { release: () => releaseLock(deps.fs, input.path, nonce) };
     }
     if (await trySteal(deps, input.path, nonce)) continue;

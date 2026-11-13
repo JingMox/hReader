@@ -174,8 +174,8 @@ describe("output · 人读文本", () => {
 });
 
 describe("usage · 单一事实源", () => {
-  it("should name all four commands", () => {
-    expect(COMMAND_NAMES).toEqual(["outline", "read", "patch", "style"]);
+  it("should name all five commands", () => {
+    expect(COMMAND_NAMES).toEqual(["outline", "read", "patch", "style", "serve"]);
     expect(isCommandName("patch")).toBe(true);
     expect(isCommandName("nope")).toBe(false);
     expect(isCommandName(undefined)).toBe(false);
