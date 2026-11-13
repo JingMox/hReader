@@ -16,6 +16,12 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   invalid_max_bytes: true,
   invalid_input: true,
   locked: true,
+  invalid_fragment: true,
+  forbidden_content: true,
+  path_outside_workspace: true,
+  not_a_file: true,
+  io_failure: true,
+  undo_unavailable: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {

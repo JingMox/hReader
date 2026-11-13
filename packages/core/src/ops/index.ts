@@ -4,3 +4,5 @@ export { buildOutline } from "./outline";
 export type { Outline, OutlineNode, PendingAnnotation } from "./outline";
 export { readNode } from "./readNode";
 export type { ReadNodeResult } from "./readNode";
+export { applyPatch, parseFragment } from "./patchNode";
+export type { PatchAction, PatchOutcome, PatchRequest } from "./patchNode";

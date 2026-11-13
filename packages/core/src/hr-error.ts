@@ -10,7 +10,13 @@ export type HrErrorCode =
   | "node_not_allowed"
   | "invalid_max_bytes"
   | "invalid_input"
-  | "locked";
+  | "locked"
+  | "invalid_fragment"
+  | "forbidden_content"
+  | "path_outside_workspace"
+  | "not_a_file"
+  | "io_failure"
+  | "undo_unavailable";
 
 /**
  * 唯一对外错误类型。跨包用 `instanceof HrError` 判定，按 `code` 分支；

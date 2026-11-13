@@ -7,6 +7,20 @@ export { toDocumentModel, validateDocument } from "./model";
 export type { DocumentModel } from "./model";
 export { buildOutline, readNode } from "./ops";
 export type { Outline, OutlineNode, PendingAnnotation, ReadNodeResult } from "./ops";
+export { applyPatch, parseFragment } from "./ops";
+export type { PatchAction, PatchOutcome, PatchRequest } from "./ops";
+export { nodePatchDeps, patchFile, undoPatch } from "./io";
+export type {
+  Clock,
+  FileStat,
+  FileSystem,
+  PatchDeps,
+  PatchFileInput,
+  PatchOptions,
+  PatchResult,
+  PatchTargetInput,
+  UndoResult,
+} from "./io";
 // 其余结构类型（attrs/各叶子节点）收在 src/html/index.ts：消费方经 `HtmlNode` 联合自取，
 // 入口重复导出只会让"极小导出面"名存实亡。
 export type {

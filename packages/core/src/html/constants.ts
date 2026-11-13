@@ -93,11 +93,25 @@ export interface HtmlDoctypeNode {
 }
 
 /** attrs 保序且允许重名（重名诊断由解析层发，树不偷偷去重）。 */
+/** 元素在**原始输入字符串**中的区间（仅 `locations: true` 时填充）：区间拼接只碰这三段边界。 */
+export interface SourceSpan {
+  /** `<p` 的起始 offset。 */
+  readonly start: number;
+  /** `</p>` 之后的 offset（含结束标签）。 */
+  readonly end: number;
+  /** 开始标签末尾，即子节点区域的起点。 */
+  readonly innerStart: number;
+  /** 结束标签起点，即子节点区域的终点；无结束标签时等于 `end`。 */
+  readonly innerEnd: number;
+}
+
 export interface HtmlElementNode {
   readonly kind: "element";
   readonly tag: string;
   readonly attrs: readonly HtmlAttribute[];
   readonly children: readonly HtmlNode[];
+  /** 隐含生成的骨架元素没有源码位置，`parseHtml` 在 locations 模式下给零宽区间。 */
+  readonly span?: SourceSpan;
 }
 
 interface HtmlTextNode {

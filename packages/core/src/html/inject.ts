@@ -230,9 +230,16 @@ const enterNode = (task: Extract<Task, { kind: "enter" }>, state: WalkState): vo
   task.sink.push(task.node);
 };
 
-export const injectNodeIds = (parsed: ParsedHtml): InjectedNodeIds => {
+/**
+ * `reserved` 是调用方已知占用的 ID（如补丁片段要避开整篇文档已有 ID）；`insideArticle` 用于把
+ * 片段本身当作注入根。两者都只在 patch 路径上出现，默认值与 M1.2 行为逐字一致。
+ */
+export const injectNodeIds = (
+  parsed: ParsedHtml,
+  options: { readonly reserved?: readonly string[]; readonly insideArticle?: boolean } = {},
+): InjectedNodeIds => {
   const context: AssignContext = {
-    used: collectValidIds(parsed.root),
+    used: new Set([...collectValidIds(parsed.root), ...(options.reserved ?? [])]),
     injected: [],
     diagnostics: [],
   };
@@ -247,7 +254,7 @@ export const injectNodeIds = (parsed: ParsedHtml): InjectedNodeIds => {
     kind: "enter",
     node: parsed.root,
     sink,
-    insideArticle: false,
+    insideArticle: options.insideArticle === true,
     siblingIndex: -1,
     childIndex: -1,
     parentDigest: HASH_SEED,

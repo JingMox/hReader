@@ -13,8 +13,10 @@ import {
   DIAGNOSTIC_SEVERITY,
   type HtmlAttribute,
   type HtmlNode,
+  type HtmlElementNode,
   META_SCRIPT_ID,
   type ParsedHtml,
+  type SourceSpan,
 } from "./constants";
 import { drainStack } from "./stack";
 import { textContentOf } from "./text";
@@ -31,7 +33,29 @@ type P5Leaf =
 interface ParseContext {
   readonly diagnostics: Diagnostic[];
   readonly metaScripts: HtmlNode[];
+  readonly locations: boolean;
 }
+
+/** 元素必有 startTag；缺位置时整体退化为零宽区间。 */
+type P5Location = NonNullable<P5Element["sourceCodeLocation"]>;
+type P5StartTag = NonNullable<P5Location["startTag"]>;
+
+const ZERO_SPAN: SourceSpan = { start: 0, end: 0, innerStart: 0, innerEnd: 0 };
+
+const spanOfLocation = (location: P5Location, startTag: P5StartTag): SourceSpan => ({
+  start: location.startOffset,
+  end: location.endOffset,
+  innerStart: startTag.endOffset,
+  innerEnd: location.endTag === undefined ? location.endOffset : location.endTag.startOffset,
+});
+
+const sourceSpanOf = (element: P5Element): SourceSpan => {
+  const location = element.sourceCodeLocation;
+  if (!location?.startTag) {
+    return ZERO_SPAN;
+  }
+  return spanOfLocation(location, location.startTag);
+};
 
 interface OpenTask {
   readonly source: P5Node;
@@ -65,7 +89,11 @@ const isElement = (node: P5Node): node is P5Element => "tagName" in node;
 const isLeaf = (node: P5Node): node is P5Leaf =>
   node.nodeName === "#text" || node.nodeName === "#comment" || node.nodeName === "#documentType";
 
-const isTemplate = (node: P5Element): node is P5Template => node.nodeName === "template";
+/**
+ * 只有 HTML 命名空间的 `template` 才有 `content` 片段（parse5 仅在 `_insertTemplate` 里挂，且硬编码 `NS.HTML`）；
+ * foreign content（svg/math）里的 `<template>` 是普通元素，按 `nodeName` 判定会去读不存在的 `content`。
+ */
+const hasTemplateContent = (node: P5Element): node is P5Template => "content" in node;
 
 const diagnosticOf = (
   code: DiagnosticCode,
@@ -90,7 +118,7 @@ const joinPath = (parentPath: string, segment: string): string =>
 
 /** `template` 的子节点挂在 `content` 上而不是 `childNodes`，漏了会在往返时丢掉整棵子树。 */
 const descendantsOf = (element: P5Element): readonly P5Node[] =>
-  isTemplate(element) ? element.content.childNodes : element.childNodes;
+  hasTemplateContent(element) ? element.content.childNodes : element.childNodes;
 
 const componentDiagnostic = (element: P5Element, context: ParseContext, path: string): void => {
   const value = attributeOf(element, COMPONENT_ATTRIBUTE);
@@ -132,8 +160,13 @@ const createElementNode = (
   path: string,
 ): HtmlNode => {
   componentDiagnostic(element, context, path);
-  const attributes = toAttributes(element);
-  const node: HtmlNode = { kind: "element", tag: element.tagName, attrs: attributes, children };
+  const base: HtmlElementNode = {
+    kind: "element",
+    tag: element.tagName,
+    attrs: toAttributes(element),
+    children,
+  };
+  const node: HtmlNode = context.locations ? { ...base, span: sourceSpanOf(element) } : base;
   const id = attributeOf(element, "id");
   if (element.tagName === "script" && id === META_SCRIPT_ID) {
     context.metaScripts.push(node);
@@ -211,6 +244,7 @@ const metaScriptDiagnostics = (context: ParseContext): void => {
 
 const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Document =>
   parse5(html, {
+    sourceCodeLocationInfo: context.locations,
     // 浏览器在不跑脚本时的默认口径：`<noscript>` 内容按标记解析（实体解码），不是 raw text。
     // parse5 自己的默认是 true，会把它当 raw text 保留原始实体串，序列化时再被转义一次。
     scriptingEnabled: false,
@@ -222,11 +256,19 @@ const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Docum
     },
   });
 
-export const parseHtml = (html: string): ParsedHtml => {
+/** `locations` 只在需要按源码区间回写时打开（M1.5 patch）：默认关，树与诊断与 M1.1 逐字一致。 */
+export const parseHtml = (
+  html: string,
+  options: { readonly locations?: boolean } = {},
+): ParsedHtml => {
   if (!isString(html)) {
     throw new HrError("invalid_html", "parseHtml 只接受字符串；类型系统外的输入不可恢复");
   }
-  const context: ParseContext = { diagnostics: [], metaScripts: [] };
+  const context: ParseContext = {
+    diagnostics: [],
+    metaScripts: [],
+    locations: options.locations === true,
+  };
   if (html.trim().length === 0) {
     context.diagnostics.push(
       diagnosticOf("empty_document", "文档为空，没有可解析的内容", undefined),
