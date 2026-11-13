@@ -26,6 +26,7 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   unknown_style: true,
   invalid_theme: true,
   style_io_failure: true,
+  invalid_utf8: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {
