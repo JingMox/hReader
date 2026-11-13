@@ -117,3 +117,14 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
   1. 我两次把任务发起给了**错误角色的会话**（`resumeFrom` 填错 id）；两次都在零写入时取消。规则：`resumeFrom` 必须对照 `state.md` 角色行核对，不许凭记忆。
   2. 我在派单里写了不存在的路径（`src/style/css.ts:36`）；编写员自己查出来后按意图正确修改，并在报告里写"我改的比你指的位置更对，因为有两份检查同时在跑"。**角色不该盲从协调者的行号**，我据此把"照抄协调者的行号当圣旨"写成了反面规则。
 - **收口**：`pnpm verify` EXIT=0 / 84 文件 **1109 例** / 四维 100% / `knip` 零 hint。
+
+## M2.1 — 本地 Daemon + SSE 同步桥（G4 PASS，提交 `M2.1`）
+
+- 三方门禁：G1（编写员）→ G2 FAIL（2×P0/5×P1/9×P2）→ R1 修 3×P0 → G2-R PASS → G3（1439 例）→ R5 修丢写 P1 → R7/R8 覆盖与公共面收口 → G2-R2 PASS。
+- 抓到的真问题（按价值排序）：
+  1. **丢写**：`ageOf` 在 `lstat` 失败时返回 `MAX_SAFE_INTEGER`，刚建的锁被判"最陈旧"从而被抢；20 路并发时后写者覆盖前写者，全部返回 200。改为失败返回 `0` + `trySteal` 的 nonce 二次校验。
+  2. **响应体泄露内部状态**：坏 JSON 打开失败时把绝对路径与配置原文写进了浏览器可见响应体。改为固定文案 + 细节只走 `--debug`。
+  3. **SSE 帧注入**：`nodeId` 含 `\n` 可伪造 `event: doc.changed`。统一走 `frame(event, id, payload)` 做 JSON 序列化与 CR/LF 拒绝。
+  4. **请求走私面**：`Transfer-Encoding: chunked` + `Content-Length` 并存时按 CL 处理。改为 400 直接拒。
+- **测量口径教训（协调者判断失误，已记入手册 12.5）**：G2-R2 的"20 并发 8 s"来自 20 个独立 `hr patch` CLI 进程（冷启动），不是 daemon 请求；同条件另测为 449 ms/worst 445 ms。据此派的 R9 一度要撤销，但 `withDocQueue` 已实现并实测把 531 ms 降到 449 ms，且 `queue.ts` 100% 覆盖、清理逻辑有测试，故**保留**（理由从"修 8 s"改为"减少锁文件 churn + 进程内同文档顺序确定"）。
+- 协调者自身错误留档：一次 `resumeFrom` 填错角色会话（已秒级取消、零写入）；一次派单给了错误路径；R9 的派单基于未对齐的性能数字。

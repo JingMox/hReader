@@ -1,0 +1,97 @@
+{
+  "ranAt": "2026-11-13T11:13:13.296Z",
+  "rows": [
+    {
+      "id": "V1",
+      "name": "反向变异：cookie 比较改回 `===`（丢定长比较）",
+      "file": "packages/core/src/server/auth.ts",
+      "find": "  if (given === undefined) return false;",
+      "replace": "  if (given === undefined) return false;\n  if (given === expected) return true;",
+      "tests": [
+        "packages/core/tests/server/auth-timing.test.ts",
+        "packages/core/tests/server/unit-auth.test.ts"
+      ],
+      "status": "KILLED（1 例）",
+      "killers": [
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth-timing.test.ts > auth · 定长比较 should compare the real bytes when the lengths match"
+      ]
+    },
+    {
+      "id": "V2",
+      "name": "Host/Origin 闸门失效",
+      "file": "packages/core/src/server/server.ts",
+      "find": "  const hostOk =\n    hostAllowed(headerOf(req, \"host\"), port, env.allowHosts) &&\n    originAllowed(headerOf(req, \"origin\"), port);",
+      "replace": "  void port;\n  const hostOk = true;",
+      "tests": ["packages/core/tests/server/auth.test.ts"],
+      "status": "KILLED（5 例）",
+      "killers": [
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host 127.0.0.1:1 with 403 forbidden_origin",
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host evil.example with 403 forbidden_origin",
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host 127.0.0.1 with 403 forbidden_origin",
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host 127.0.0.1:8443 with 403 forbidden_origin",
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Origin with a .evil.com suffix and allow the real one"
+      ]
+    },
+    {
+      "id": "V3",
+      "name": "Last-Event-ID 未命中不再发 reset",
+      "file": "packages/core/src/server/hub.ts",
+      "find": "  if (!lookup.hit) res.write(resetFrameOf(note));",
+      "replace": "  if (!lookup.hit && Date.now() < 0) res.write(resetFrameOf(note));",
+      "tests": [
+        "packages/core/tests/server/sse.test.ts",
+        "packages/core/tests/server/unit-ring-diff.test.ts"
+      ],
+      "status": "KILLED（1 例）",
+      "killers": [
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/sse.test.ts > sse · Last-Event-ID should send reset(events_expired) when the id fell out of the ring"
+      ]
+    },
+    {
+      "id": "V4",
+      "name": "事件环不按容量裁",
+      "file": "packages/core/src/server/event-ring.ts",
+      "find": "      if (events.length === capacity) events.shift();",
+      "replace": "      if (events.length > capacity + 50) events.shift();",
+      "tests": [
+        "packages/core/tests/server/unit-ring-diff.test.ts",
+        "packages/core/tests/server/sse.test.ts"
+      ],
+      "status": "KILLED（2 例）",
+      "killers": [
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/sse.test.ts > sse · Last-Event-ID should send reset(events_expired) when the id fell out of the ring",
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/unit-ring-diff.test.ts > createEventRing · 容量与补齐 should drop the oldest event when capacity is reached (boundary still a hit)"
+      ]
+    },
+    {
+      "id": "V5",
+      "name": "请求体不再限 1 MiB",
+      "file": "packages/core/src/server/http-io.ts",
+      "find": "      if (size > MAX_BODY_BYTES) {",
+      "replace": "      if (size > MAX_BODY_BYTES * 100) {",
+      "tests": [
+        "packages/core/tests/server/wire-http.test.ts",
+        "packages/core/tests/server/unit-body-routes.test.ts"
+      ],
+      "status": "KILLED（1 例）",
+      "killers": [
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/wire-http.test.ts > wire · 体大小与半截请求 should refuse a body over 1 MiB as invalid_request (400) and leave the file untouched"
+      ]
+    },
+    {
+      "id": "V6",
+      "name": "revision 截断到 4 位（碰撞空间 16 bit）",
+      "file": "packages/core/src/server/revision.ts",
+      "find": "export const revisionOf = (bytes: Uint8Array): string => sha256Hex(bytes).slice(0, REVISION_CHARS);",
+      "replace": "export const revisionOf = (bytes: Uint8Array): string => sha256Hex(bytes).slice(0, REVISION_CHARS - 12);",
+      "tests": [
+        "packages/core/tests/server/unit-ring-diff.test.ts",
+        "packages/core/tests/server/wire-http.test.ts"
+      ],
+      "status": "KILLED（1 例）",
+      "killers": [
+        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/unit-ring-diff.test.ts > revisionOf · 内容哈希前缀 should be a stable 16-char lowercase hex prefix of sha256"
+      ]
+    }
+  ]
+}

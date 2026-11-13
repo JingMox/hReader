@@ -21,7 +21,14 @@ export type HrErrorCode =
   | "invalid_style"
   | "unknown_style"
   | "invalid_theme"
-  | "style_io_failure";
+  | "style_io_failure"
+  | "not_found"
+  | "invalid_request"
+  | "busy"
+  | "too_many_clients"
+  | "unauthorized"
+  | "forbidden_origin"
+  | "daemon_already_running";
 
 /**
  * 唯一对外错误类型。跨包用 `instanceof HrError` 判定，按 `code` 分支；

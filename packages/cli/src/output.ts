@@ -3,6 +3,7 @@
 
 import type {
   ApplyStyleResult,
+  DaemonInfo,
   HrErrorCode,
   LintHit,
   LintReport,
@@ -97,3 +98,10 @@ export const humanStyle = (result: ApplyStyleResult): string =>
   result.changed
     ? `styled ${result.path} (${String(result.bytes)} bytes)\n`
     : `unchanged ${result.path} (${String(result.bytes)} bytes)\n`;
+
+/** `hr serve` 的第一行：端口与 token 一次性交给调用方（token 不落 CLI 日志）。 */
+export const dataServe = (info: DaemonInfo): string =>
+  `{"port":${String(info.port)},"token":${quote(info.token)},"pid":${String(info.pid)},"workspace":${quote(info.workspace)}}`;
+
+export const humanServe = (info: DaemonInfo): string =>
+  `serving ${info.workspace} on http://127.0.0.1:${String(info.port)}/ (pid ${String(info.pid)})\n`;

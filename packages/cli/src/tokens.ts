@@ -11,9 +11,11 @@ export type Tokenized =
 
 const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--action",
+  "--allow-host",
   "--html",
   "--html-file",
   "--max-bytes",
+  "--port",
   "--visual",
   "--tone",
   "--workspace",

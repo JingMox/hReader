@@ -106,18 +106,25 @@ describe("io 端口的失败翻译（走假 fs，不碰真盘）", () => {
 });
 
 describe("io 端口的失败翻译（续）", () => {
-  it("should take over an unreadable lock by treating its age as infinite", async () => {
+  // 这条曾经把"数据丢失缺陷"写成了期望：`ageOf()` 在 lstat 失败时返回 MAX_SAFE_INTEGER，
+  // 于是一个刚创建、只是暂时读不动的锁会被判成陈旧并抢走 —— 两个写者同时持锁 → 丢写。
+  // 实现已改为"不可读 = 年龄 0 = 不陈旧"；断言随之翻转（改动原因见 worklog M2.1 / 裁定 R5）。
+  it("should keep an unreadable lock and time out instead of stealing it", async () => {
     const lock = "/ws/.hreader/locks/lock.lock";
     const fake = fakeFs({ "/ws/a.html": "x", [lock]: "{broken" });
     for (const dir of dirs) fake.state.dirs.add(dir);
     fake.fail("lstat", systemError("EIO"), (path) => path === lock);
 
-    const handle = await acquireLock(
-      { path: lock, timeoutMs: 0 },
-      depsOf(fake.port, fixedClock(NOW).clock, recordingSleep().sleep),
+    // 假时钟 + 假 sleep 绑定推进：等到 deadline 就抛，不会真等也不会忙转。
+    const local = fixedClock(NOW);
+    const attempt = acquireLock(
+      { path: lock, timeoutMs: 20 },
+      depsOf(fake.port, local.clock, recordingSleep(local).sleep),
     );
 
-    expect(handle).not.toBeUndefined();
-    expect(fake.textAt(lock)).toContain("nonce");
+    await expect(attempt).rejects.toMatchObject({ code: "locked" });
+    await expect(attempt).rejects.toThrow(/锁/u);
+    // 原文件一个字节都不许被动过：抢锁会覆盖 nonce，等于把持有者的写保护抹掉。
+    expect(fake.textAt(lock)).toBe("{broken");
   });
 });

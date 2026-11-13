@@ -6,11 +6,11 @@ import { CWD, expectFailure, parse } from "./args-helpers";
 
 describe("parseArgs · 顶层", () => {
   it("should reject an empty argv with the command list", () => {
-    expectFailure([], "缺少命令：outline | read | patch | style", undefined);
+    expectFailure([], "缺少命令：outline | read | patch | style | serve", undefined);
   });
 
   it("should not echo --json back in an args failure (run.ts owns that)", () => {
-    expectFailure(["--json"], "缺少命令：outline | read | patch | style", undefined);
+    expectFailure(["--json"], "缺少命令：outline | read | patch | style | serve", undefined);
   });
 
   it("should reject an unknown command", () => {

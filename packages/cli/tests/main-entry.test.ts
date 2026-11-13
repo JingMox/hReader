@@ -159,6 +159,20 @@ describe("main.ts · HR_DEBUG", () => {
   });
 });
 
+describe("main.ts · 信号入口", () => {
+  it("should resolve the stop promise on SIGTERM and SIGINT (in-process emit)", async () => {
+    enterShell([]);
+    process.argv = [process.execPath, "main.ts", "--help"];
+    process.exitCode = undefined;
+
+    await loadMain("signals");
+    process.emit("SIGTERM");
+    process.emit("SIGINT");
+
+    expect(process.exitCode).toBe(0);
+  });
+});
+
 afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });

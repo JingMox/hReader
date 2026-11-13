@@ -1,7 +1,7 @@
 # WORKFLOW STATE
 
 - 当前里程碑: **M2**（M1 已全部结卡：7 张卡，`20d5e37`，1109 例）
-- 当前卡片: **M2.1（本地 Daemon + SSE 同步桥）G1 运行中**
+- 当前卡片: **M2.1（本地 Daemon + SSE 同步桥）全门禁通过，待提交**
 - 写者并发: 最多 1 个（M2.1 G1：编写员独占 `src/**`；测试员待命）
 - 上下文阈值: 软 60% 主动压缩；硬 150K tokens 且任务已完成 → 交接重生；单会话 ≥ 3 张卡强制重生
 - 依赖上限（用户 2026-11-13 判定）: **不新增任何依赖**（runtime 与 dev 都算）；现有 runtime 仅 `parse5` + `yaml`
@@ -9,9 +9,9 @@
 ## 会话登记（正式，续接用这些 runId）
 | 角色 | runId | 启动时间 | 上下文占用 | 已完成卡数 | 状态 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 编写员 (worker) | `del_mweql0l3_19ew` | 2026-11-13 | ~50% | 3 | 第 3 代（交接卡 `.workflow/handoffs/worker-3.md`）；M1.6 R2 + M1.8 全轮 + M2.1 G1 |
-| 审计员 (reviewer) | `del_mwep8xjf_h1xz` | 2026-11-13 | ~55% | 7 | M1.8 G2-R PASS；M2.1 G2 待派 |
-| 测试员 (test-scope) | `del_mweoxd04_1ewt` | 2026-11-13 | ~45% | 7 | M1.8 G3.5（1109 例）；M2.1 G3 待派 |
+| 编写员 (worker) | `del_mweznzz6_auq7` | 2026-11-13 | ~35% | 4 | 第 4 代（交接卡 `.workflow/handoffs/worker-4.md`）；M2.1 R7/R8 |
+| 审计员 (reviewer) | `del_mwf0rnkd_uy6f` | 2026-11-13 | ~50% | 8 | M2.1 G2-R2 PASS + G2-R3 测量对齐 |
+| 测试员 (test-scope) | `del_mwezhxn7_qwoi` | 2026-11-13 | ~55% | 8 | M2.1 G3.12 收口（1439 例）|
 
 > 记账教训（M1.8 起）：`resumeFrom` 不许凭记忆填，必须对照上表；派单里的路径/行号必须当场 `sed -n` 核对。
 
@@ -32,9 +32,10 @@
 | M1.3 | ✅ G1/R1 | ✅ PASS | ✅ 393 例 | ✅ PASS | commit `bf34c87`；诊断聚合限流 1024B；5/5 变异体 |
 | M1.4 | ✅ | ✅ PASS(R2) | ✅ 511 例 | ✅ PASS | commit `8916c63`；空壳截断(P0)、path 双口径、meta 白名单误判、死臂 |
 | M1.5 | ✅ R1–R6 | ✅ PASS(R3) | ✅ 721 例 | ✅ PASS | commit `f9d00bb`；TOCTOU/字节保真/`values` 列表/`<svg><template>` 裸崩 |
-| M1.6+M1.7 | ✅ G1/R1/R2 | ✅ PASS(G2-R) | ✅ 924 例 | ✅ PASS | commit `pending`；1×P0 doctype 被挤、CSS 转义绕过、单锚点、load/apply 分叉 |
+| M1.6+M1.7 | ✅ G1/R1/R2 | ✅ PASS(G2-R) | ✅ 924 例 | ✅ PASS | commit `8e5c15b`；1×P0 doctype 被挤、CSS 转义绕过、单锚点、load/apply 分叉 |
 | ~~M1.7~~ | 合并入 M1.6 | - | - | - | 同文件族，省一套门禁 |
-| M1.8+M1.9 | - | - | - | - | 计划合并（CLI + Skill 壳） |
+| M1.8+M1.9 | ✅ G1/R1–R5 | ✅ PASS | ✅ 1112 例 | ✅ PASS | commit `20d5e37`；退出码矩阵、`--json` 单行、裸 node id 回路、realpath |
+| M2.1 | ✅ G1/R1–R8 | ✅ PASS(G2-R2) | ✅ 1439 例 | ✅ PASS | 提交中；3×P0（错误细节/SSE 帧注入/TE+CL）、丢写 P1（`ageOf`）、G2-R3 测量对齐后撤销 R9 |
 
 ## 消息流水
 | 时间 | 方向 | 摘要 | 闭环 |
@@ -69,6 +70,7 @@
 - 暂停条件（仅这三类）：未决 P0、契约冲突需用户裁定、范围变化。
 - 当前卡片：M2.1 G1 运行中（本地 Daemon + SSE 同步桥，零新依赖）。
 - 决策 D3（2026-11-13）：同步桥用 **SSE + POST** 而非 WebSocket——零依赖下自实现 RFC 6455 的掩码/分片/关闭握手是高风险面，SSE 只有行协议且 EventSource 自带重连。`docs/02` 对应措辞已改。
+- 决策 D11（2026-11-13，用户裁定）：**只走串行**，不开 worktree 并行、不做「包工厂」前置卡。理由：单写者 + 单审计 + 单测试的带宽才是真瓶颈，并行只会在共享配置与审查队列上互相咬。
 - 决策 D4–D10：见 `.workflow/cards/M2.1.md` §1（token→HttpOnly cookie、三点反 CSRF、realpath 守卫、事件环缓冲 256、单文档写串行、干净关闭）。
 
 ## 记账规则（新增，自 M1.8 起）
