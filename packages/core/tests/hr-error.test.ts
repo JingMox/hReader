@@ -22,6 +22,10 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   not_a_file: true,
   io_failure: true,
   undo_unavailable: true,
+  invalid_style: true,
+  unknown_style: true,
+  invalid_theme: true,
+  style_io_failure: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {

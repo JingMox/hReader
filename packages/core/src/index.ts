@@ -10,6 +10,40 @@ export type { Outline, OutlineNode, PendingAnnotation, ReadNodeResult } from "./
 export { applyPatch, parseFragment } from "./ops";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./ops";
 export { nodePatchDeps, patchFile, undoPatch } from "./io";
+export {
+  applyStyle,
+  assertThemeSafe,
+  BUILTIN_STYLES,
+  compileTone,
+  DEFAULT_STYLE_ID,
+  discoverStyles,
+  findBuiltinStyle,
+  LINT_HIT_LIMIT,
+  lintByStyle,
+  loadStyle,
+  loadThemeCss,
+  nodeStyleDeps,
+  replaceTheme,
+  resolveThemePath,
+} from "./style";
+export type {
+  ApplyStyleInput,
+  ApplyStyleResult,
+  ExampleSpec,
+  LanguageSpec,
+  LintHit,
+  LintReport,
+  LoadedStyle,
+  LoadStyleInput,
+  ReplaceThemeResult,
+  SentenceRhythmSpec,
+  StyleDeps,
+  StyleDiagnostic,
+  StyleDiscovery,
+  StyleSource,
+  StyleSpec,
+  VocabularySpec,
+} from "./style";
 export type {
   Clock,
   FileStat,

@@ -97,7 +97,14 @@ describe("core public surface · M1.3 boundary", () => {
 });
 
 describe("ops facade", () => {
-  it.todo("should expose exactly buildOutline at runtime（等 G1-R1 收公共面）");
+  it("should expose exactly applyPatch/buildOutline/parseFragment/readNode at runtime（R1.4）", () => {
+    expect(Object.keys(opsEntry).sort()).toEqual([
+      "applyPatch",
+      "buildOutline",
+      "parseFragment",
+      "readNode",
+    ]);
+  });
 
   it("should not leak outline internals", () => {
     expect(leaked(opsEntry)).toEqual([]);
