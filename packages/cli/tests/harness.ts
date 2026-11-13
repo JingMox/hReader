@@ -3,7 +3,7 @@
 // 规矩（docs/03 §11）：每个子进程 `stdio: ["ignore"|fd, "pipe", "pipe"]` + 10s 硬超时，
 // 否则子进程等 stdin、父进程等子进程，会静默挂死整棵套件。
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +29,44 @@ export interface CliOptions {
   readonly env?: Readonly<Record<string, string>>;
 }
 
+/** 挂上 stdout/stderr 与超时/退出事件的监听（body 拆出去，免得单函数过 40 行）。 */
+const wire = (
+  child: ChildProcess,
+  args: readonly string[],
+  resolve: (result: CliResult) => void,
+  reject: (error: Error) => void,
+): void => {
+  let stdout = "";
+  let stderr = "";
+  const timer = setTimeout(() => {
+    child.kill("SIGKILL");
+    reject(new Error(`CLI 子进程超过 ${String(TIMEOUT_MS)}ms 未退出：${args.join(" ")}`));
+  }, TIMEOUT_MS);
+
+  const out = child.stdout;
+  const errOut = child.stderr;
+  if (out === null || errOut === null) {
+    reject(new Error("子进程的 stdout/stderr 不是管道：检查 spawn 的 stdio"));
+    return;
+  }
+  out.setEncoding("utf8");
+  errOut.setEncoding("utf8");
+  out.on("data", (chunk: string) => {
+    stdout += chunk;
+  });
+  errOut.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+  child.on("error", (error) => {
+    clearTimeout(timer);
+    reject(error);
+  });
+  child.on("close", (code, signal) => {
+    clearTimeout(timer);
+    resolve({ code, stdout, stderr, signal });
+  });
+};
+
 export const runCli = async (
   args: readonly string[],
   options: CliOptions = {},
@@ -39,28 +77,11 @@ export const runCli = async (
       env: { ...process.env, ...options.env },
       stdio: [options.stdinFd ?? (options.stdin === undefined ? "ignore" : "pipe"), "pipe", "pipe"],
     });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new Error(`CLI 子进程超过 ${String(TIMEOUT_MS)}ms 未退出：${args.join(" ")}`));
-    }, TIMEOUT_MS);
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on("close", (code, signal) => {
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr, signal });
-    });
+    if (child.stdout === null || child.stderr === null) {
+      reject(new Error("子进程的 stdout/stderr 不是管道：检查 spawn 的 stdio"));
+      return;
+    }
+    wire(child, args, resolve, reject);
     if (options.stdin !== undefined && child.stdin !== null) child.stdin.end(options.stdin);
   });
 
@@ -71,11 +92,23 @@ export const expectNoAnsi = (result: CliResult): void => {
   }
 };
 
-export const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
+export const withTempDir = async <T>(
+  run: (dir: string) => Promise<T>,
+  timeoutMs = 10_000,
+): Promise<T> => {
   const dir = mkdtempSync(join(tmpdir(), "hr-cli-"));
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await run(dir);
+    return await Promise.race([
+      run(dir),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`withTempDir 超过 ${String(timeoutMs)}ms 未完成`));
+        }, timeoutMs);
+      }),
+    ]);
   } finally {
+    if (timer !== undefined) clearTimeout(timer);
     rmSync(dir, { recursive: true, force: true });
   }
 };
@@ -88,3 +121,20 @@ export const parseJsonLine = (text: string): unknown => {
   }
   return JSON.parse(text);
 };
+
+/** 从 `--json` 信封里按路径取字段（`fieldOf(env, "data")`），避免测试里写 `as` 断言。 */
+export const fieldOf = (value: unknown, key: string): unknown => Reflect.get(Object(value), key);
+
+/** 对象自有键（顺序敏感）：`--json` 的键序契约用它断言。 */
+export const keysOf = (value: unknown): readonly string[] =>
+  typeof value === "object" && value !== null
+    ? Reflect.ownKeys(value).map((key) => String(key))
+    : [];
+
+/** 数组/对象按下标取值（配合 `keysOf` 断言嵌套键序）。 */
+export const atOf = (value: unknown, index: number): unknown =>
+  Reflect.get(Object(value), String(index));
+
+/** 只接受字符串的字段（其余一律序列化），让 `toContain` 不依赖断言。 */
+export const textOf = (value: unknown): string =>
+  typeof value === "string" ? value : JSON.stringify(value);

@@ -1,6 +1,9 @@
 // 这层管：argv → 意图 → 命令 → 退出码（CLI 的 io 契约与错误归口）；不做解析、不做格式化。
-// 用法错误是 CLI 自己的码（`usage`），永不冒充 `HrErrorCode`；`--help` 一律 exit 0。
+// 用法错误是 CLI 自己的事：只走 stderr（卡片 §3 的 JSON 形状只描述 `HrError`），退出码 2；`--help` 一律 0。
 // 进程相关的 io 在 `main.ts`：那里不可单测，逻辑全部留在本文件。
+
+import { realpathSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 
 import { HrError } from "@hreader/core";
 
@@ -27,6 +30,33 @@ class UsageError extends Error {}
 
 type Runnable = Exclude<Intent, { readonly kind: "help" }>;
 
+const attemptRealpath = (path: string): string | undefined => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return undefined;
+  }
+};
+
+/** 目标可能尚不存在（patch 允许新建）：缺失后缀由最深的已存在祖先补全。 */
+const realpathThroughAncestors = (path: string): string => {
+  const real = attemptRealpath(path);
+  if (real !== undefined) return real;
+  const parent = dirname(path);
+  return join(realpathThroughAncestors(parent), path.slice(parent.length + 1));
+};
+
+/** 写命令入参：workspace 与目标两侧都取真实路径再算相对路径（R1-P1-2）。
+ * workspace 不存在时同走一条基准——`ENOENT` 由 core 报，不在这里被 realpath 吞掉。 */
+const withinWorkspace = (input: {
+  readonly workspace: string;
+  readonly absolute: string;
+}): { readonly workspace: string; readonly file: string } => {
+  const workspace = attemptRealpath(input.workspace);
+  if (workspace === undefined) throw new UsageError(`--workspace 不存在：${input.workspace}`);
+  return { workspace, file: relative(workspace, realpathThroughAncestors(input.absolute)) };
+};
+
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -38,12 +68,13 @@ const runPatch = async (
   if (intent.html?.kind === "stdin" && html === "") {
     throw new UsageError("--html-stdin 读到的内容为空");
   }
+  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
   return patchCommand({
-    path: intent.path,
+    path: paths.file,
     nodeId: intent.nodeId,
     action: intent.action,
     html,
-    workspace: intent.workspace,
+    workspace: paths.workspace,
     json: intent.json,
   });
 };
@@ -51,26 +82,19 @@ const runPatch = async (
 const runIntent = async (intent: Runnable, io: CliIo): Promise<string> => {
   if (intent.kind === "outline") return outlineCommand(intent);
   if (intent.kind === "read") return readCommand(intent);
-  if (intent.kind === "style") return styleCommand(intent);
+  if (intent.kind === "style") {
+    const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+    return styleCommand({ ...intent, path: paths.file, workspace: paths.workspace });
+  }
   return runPatch(intent, io);
 };
 
-const usageFailure = (
-  message: string,
-  topic: CommandName | undefined,
-  json: boolean,
-  io: CliIo,
-): number => {
-  if (json) io.stdout(jsonError("usage", message));
+const usageFailure = (message: string, topic: CommandName | undefined, io: CliIo): number => {
   io.stderr(`${message}\n${usageText(topic)}`);
   return EXIT_USAGE;
 };
 
 const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
-  if (error instanceof UsageError) {
-    io.stderr(`${error.message}\n`);
-    return EXIT_USAGE;
-  }
   if (!(error instanceof HrError)) {
     io.stderr(`${messageOf(error)}\n`);
     if (io.debug && error instanceof Error && typeof error.stack === "string") {
@@ -85,7 +109,7 @@ const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
 
 export const run = async (argv: readonly string[], io: CliIo): Promise<number> => {
   const parsed = parseArgs(argv, io.cwd);
-  if (!parsed.ok) return usageFailure(parsed.message, parsed.topic, parsed.json, io);
+  if (!parsed.ok) return usageFailure(parsed.message, parsed.topic, io);
   if (parsed.intent.kind === "help") {
     io.stdout(usageText(parsed.intent.topic));
     return EXIT_OK;
@@ -95,7 +119,7 @@ export const run = async (argv: readonly string[], io: CliIo): Promise<number> =
     io.stdout(await runIntent(parsed.intent, io));
     return EXIT_OK;
   } catch (error: unknown) {
-    if (error instanceof UsageError) return usageFailure(error.message, kind, json, io);
+    if (error instanceof UsageError) return usageFailure(error.message, kind, io);
     return reportFailure(error, json, io);
   }
 };

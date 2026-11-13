@@ -3,22 +3,9 @@
 
 import { registerHooks } from "node:module";
 
-// core 的内部相对导入不带扩展名（`./hr-error`、`./ops`）：vitest 会推断，Node ESM 不推断。
-// 补 `.ts` 与 `/index.ts` 后，CLI 与测试解析到同一份源码，不引入构建步骤或第三方加载器。
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    try {
-      return nextResolve(specifier, context);
-    } catch (error) {
-      if (!specifier.startsWith(".")) throw error;
-      try {
-        return nextResolve(`${specifier}.ts`, context);
-      } catch {
-        return nextResolve(`${specifier}/index.ts`, context);
-      }
-    }
-  },
-});
+import { resolveFallback } from "./resolve-hook.ts";
+
+registerHooks({ resolve: resolveFallback });
 
 const { run } = await import("./run");
 

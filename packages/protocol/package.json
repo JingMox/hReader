@@ -4,10 +4,8 @@
   "private": true,
   "type": "module",
   "sideEffects": false,
-  "dependencies": {
-    "@hreader/core": "workspace:*"
-  },
   "devDependencies": {
+    "@hreader/core": "workspace:*",
     "vitest": "3.2.4"
   }
 }

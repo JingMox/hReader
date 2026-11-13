@@ -22,6 +22,7 @@
     "allowUnusedLabels": false,
 
     "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "skipLibCheck": false,
 

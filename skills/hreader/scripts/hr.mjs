@@ -27,9 +27,9 @@ const fail = (message, code) => {
   process.exitCode = code;
 };
 
-const major = Number(process.versions.node.split(".")[0]);
-if (major < 22) {
-  fail(`需要 Node >= 22（当前 ${process.versions.node}）：CLI 直接跑 TypeScript 源码`, 70);
+const [major, minor] = process.versions.node.split(".").map(Number);
+if (major < 22 || (major === 22 && minor < 15)) {
+  fail(`需要 Node >= 22.15（当前 ${process.versions.node}）：CLI 依赖 module.registerHooks`, 70);
 } else if (!existsSync(entry)) {
   fail(`找不到 CLI 入口：${entry}\n（hr.mjs 必须放在仓库的 skills/hreader/scripts/ 下）`, 70);
 } else {
@@ -45,11 +45,11 @@ if (major < 22) {
       fail(`无法启动 CLI 子进程：${error.message}`, 70);
     });
     child.on("exit", (code, signal) => {
-      if (signal !== null) {
-        fail(`CLI 子进程被信号终止：${signal}`, 70);
+      if (code === null) {
+        fail(`CLI 子进程被信号终止：${String(signal)}`, 70);
         return;
       }
-      process.exitCode = code ?? 70;
+      process.exitCode = code;
     });
   }
 }

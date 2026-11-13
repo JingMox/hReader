@@ -34,7 +34,9 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "用法：hr read <file> <nodeId|selector> [--json] [--max-bytes <n>]",
     "",
     "  --max-bytes <n>      子树字节上限（正整数，≤ 10000000；默认 65536）",
-    "  打印目标节点的 HTML 原文；JSON 时为 { html, ids }。",
+    "  第二个参数先按选择器解析；不命中时按 node id（data-hr-id）再试一次；",
+    "  同名的标签优先（`read div` 读的是 <div> 标签，不是 id 为 div 的节点）。",
+    "  打印目标节点的 HTML 原文；JSON 时为 { html, ids }（ids 只列返回的 html 里出现的）。",
   ],
   patch: [
     "用法：hr patch <file> <nodeId> --action <action> (--html <s> | --html-file <p> | --html-stdin) [--json]",

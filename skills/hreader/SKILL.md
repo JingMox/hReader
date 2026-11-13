@@ -32,6 +32,7 @@ node skills/hreader/scripts/hr.mjs style report.html --lint
 
 1. **看结构**：`outline`。输出每行 `- <id>  <标题>  (<字数>)`；没 id 的标题会作为 warning 出现在 stderr，先修 id 再谈改写。
 2. **读原文**：`read <id>` 拿到该节点的 HTML 片段（可能被截断，末尾会给 `truncated` 诊断）。改之前必须读，不要凭大纲猜内容。
+   第二个参数先按选择器解析，不命中时把原串当 node id 再试一次——所以 `outline`/`patch` 打印出的 id 可以直接喂回来。**标签优先**：`read div` 读的是 `<div>` 标签；若某节点 id 恰为 `div`，写 `[data-hr-id="div"]`。
 3. **写片段**：把新内容放进一个临时 `.html` 文件，只用 `--html-file`（`--html` 只适合无引号无换行的短片段）。
 4. **落盘**：选 action——
    - `replace`：整体替换该节点（含它的子节点）。

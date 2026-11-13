@@ -7,8 +7,7 @@ export interface Raw {
 }
 
 export type Tokenized =
-  | { readonly ok: true; readonly raw: Raw }
-  | { readonly ok: false; readonly message: string; readonly json: boolean };
+  { readonly ok: true; readonly raw: Raw } | { readonly ok: false; readonly message: string };
 
 const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--action",
@@ -43,12 +42,12 @@ export const tokenize = (argv: readonly string[]): Tokenized => {
       continue;
     }
     if (token.startsWith("-")) {
-      return { ok: false, message: `未知参数：${token}`, json: switches.has("--json") };
+      return { ok: false, message: `未知参数：${token}` };
     }
     positionals.push(token);
   }
   if (pending !== undefined) {
-    return { ok: false, message: `参数 ${pending} 缺少取值`, json: switches.has("--json") };
+    return { ok: false, message: `参数 ${pending} 缺少取值` };
   }
   return { ok: true, raw: { values, switches, positionals } };
 };
