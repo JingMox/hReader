@@ -18,6 +18,20 @@
     },
     "packages/protocol": {
       "ignoreDependencies": ["@hreader/core"]
+    },
+    "packages/cli": {
+      "entry": [
+        "src/main.ts",
+        "src/args.ts",
+        "src/tokens.ts",
+        "src/input.ts",
+        "src/output.ts",
+        "src/run.ts",
+        "src/usage.ts",
+        "src/exit-codes.ts",
+        "src/commands/*.ts"
+      ],
+      "ignoreDependencies": ["@hreader/core"]
     }
   },
   "ignoreIssues": {

@@ -15,7 +15,7 @@ export const decodeUtf8 = (bytes: Uint8Array, path: string): string => {
   try {
     return decoder.decode(bytes);
   } catch (error: unknown) {
-    throw new HrError("io_failure", `目标文件不是合法 UTF-8：${path}`, { cause: error });
+    throw new HrError("invalid_utf8", `目标文件不是合法 UTF-8：${path}`, { cause: error });
   }
 };
 
