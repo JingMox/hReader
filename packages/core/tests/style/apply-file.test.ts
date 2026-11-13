@@ -198,7 +198,7 @@ describe("applyStyle · 文档读取失败", () => {
         { workspace: "/work", file: "article.html", visualId: "atelier-editorial" },
         env.deps,
       ),
-    ).rejects.toMatchObject({ code: "io_failure" });
+    ).rejects.toMatchObject({ code: "invalid_utf8" });
     expect(env.fake.state.files.get(FILE)).toEqual(new Uint8Array([0xff, 0xfe, 0x3c, 0x68]));
   });
 });

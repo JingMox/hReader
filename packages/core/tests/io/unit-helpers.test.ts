@@ -55,8 +55,8 @@ describe("bytes · 严格 UTF-8 与 BOM 保留", () => {
     expect(Array.from(encodeUtf8(decodeUtf8(bom, "/ws/a.html")))).toEqual([0xef, 0xbb, 0xbf, 0x61]);
   });
 
-  it("should reject invalid UTF-8 with io_failure instead of substituting U+FFFD", () => {
-    expect(codeOf(() => decodeUtf8(new Uint8Array([0xff, 0xfe]), "/ws/a.html"))).toBe("io_failure");
+  it("should reject invalid UTF-8 with invalid_utf8 instead of substituting U+FFFD", () => {
+    expect(codeOf(() => decodeUtf8(new Uint8Array([0xff, 0xfe]), "/ws/a.html"))).toBe("invalid_utf8");
     const error = (() => {
       try {
         decodeUtf8(new Uint8Array([0xff]), "/ws/a.html");

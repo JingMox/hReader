@@ -95,3 +95,8 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
 
 ### Coordinator mistake (logged deliberately)
 - Dispatched G3 by resuming the WRITER's session id (`del_mwelwecz_zerh` instead of tester `del_mwels1wd_zrrb`). Cancelled within seconds (`del_mwemm4ge_8zcx`); `git status` + `ls packages/cli/tests` confirmed **zero writes**. Rule added: before `resumeFrom`, re-read the state table row for the role — never resume from memory.
+
+### G3 run killed by watchdog (del_mwemmn7e_pqwe → resumed as del_mwen6jsy_wdie)
+- Symptom: 5 min of no output mid-run; exit 143. Root cause: a spawned CLI child reading stdin that was never closed → parent waits on child, child waits on stdin.
+- Coordinator verified it was NOT the deep-nesting command: `outline` on 4000-deep AND 40000-deep `<div>` returns EXIT=0 in well under a second.
+- New standing rule (`.workflow/WORKFLOW.md` §11.x): every test spawn needs `stdio: ["ignore","pipe","pipe"]` + a hard timeout; a hang counts as a failure. Test suites must not be able to hang.
