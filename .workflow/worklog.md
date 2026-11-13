@@ -128,3 +128,15 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
   4. **请求走私面**：`Transfer-Encoding: chunked` + `Content-Length` 并存时按 CL 处理。改为 400 直接拒。
 - **测量口径教训（协调者判断失误，已记入手册 12.5）**：G2-R2 的"20 并发 8 s"来自 20 个独立 `hr patch` CLI 进程（冷启动），不是 daemon 请求；同条件另测为 449 ms/worst 445 ms。据此派的 R9 一度要撤销，但 `withDocQueue` 已实现并实测把 531 ms 降到 449 ms，且 `queue.ts` 100% 覆盖、清理逻辑有测试，故**保留**（理由从"修 8 s"改为"减少锁文件 churn + 进程内同文档顺序确定"）。
 - 协调者自身错误留档：一次 `resumeFrom` 填错角色会话（已秒级取消、零写入）；一次派单给了错误路径；R9 的派单基于未对齐的性能数字。
+
+## M2.2 立项（协调者裁定：零依赖手写 UI）
+
+`docs/02` §5 原写"Vite + Preact/React"，与用户 2026-11-13 的"不新增任何依赖（含 dev）"冲突。裁定：**手写 DOM，无框架无 bundler**，`tsc` 直出 ESM，daemon 静态托管；`docs/02` 三处表述已同步。
+
+核心设计（写进 `M2.2.md` §0/§2）：
+- `Host` 接口是**唯一**碰真实 DOM 的适配器；`widgets/**` 只依赖接口与类型，测试用假 Host 即可驱动渲染逻辑，不依赖 jsdom。
+- `keys.ts`（键盘→Intent）、`state.ts`（reducer）、`style-switch.ts` 是纯函数——把可测性放进结构里，而不是靠测试技巧。
+- 不做虚拟 DOM、不做 diff：widget 自己维护 `update`。数据形状固定，通用 diff 是负资产。
+- 分层由 depcruise 表达：`widgets` 不许 import `dom.ts` 实现；纯函数模块不许碰 `document`/`window`/`fetch`/`EventSource`。
+
+**待用户确认（不阻塞）**：零依赖 ⇒ 无 jsdom，DOM 层只能靠 `Host` 假实现 + 手动浏览器验收。若要更高保真度，唯一办法是破例加一个 dev 依赖（如 `happy-dom`）。建议先零依赖做到 M2.4 再评估。
