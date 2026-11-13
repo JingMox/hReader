@@ -307,14 +307,15 @@ flowchart LR
 ### Milestone 1：核心底座、双维风格引擎与 Universal Skill（MVP 闭环）
 * **目标**：让任何支持 CLI / Skill 的 Agent 都能生成具有 `Atelier Editorial` 出版级质感的自包含 HTML，并支持自定义语言风格与命令行增量 Patch。
 * **核心任务**：
-  - [ ] **M1.1 自包含 HTML 规范与 `@hreader/core` AST 引擎**：基于 `parse5` / `rehype` 实现 `data-hr-id` 自动注入、`hr_outline` 骨骼提取、`hr_read_node` 与 `hr_patch_node` 原子操作。
-  - [ ] **M1.2 双维风格引擎与默认风格包**：完成内置视觉主题 `Atelier Editorial`（含明暗双模与 6 大语义组件 CSS）及 `style.yaml` 自定义语言风格解析器（含禁用词 Lint 校验）。
-  - [ ] **M1.3 CLI 与 Universal Skill (`skills/hreader/SKILL.md`)**：封装 `hr` 命令行工具与 `SKILL.md`，在 Claude Code / Antigravity 中跑通“按指定语言风格生成 HTML ➔ 骨骼读取 ➔ 局部节点重写”全流程。
+  - [x] **M1.1 自包含 HTML 规范与 `@hreader/core` AST 引擎**：基于 `parse5` / `rehype` 实现 `data-hr-id` 自动注入、`hr_outline` 骨骼提取、`hr_read_node` 与 `hr_patch_node` 原子操作。
+  - [x] **M1.2 双维风格引擎与默认风格包**：完成内置视觉主题 `Atelier Editorial`（含明暗双模与 6 大语义组件 CSS）及 `style.yaml` 自定义语言风格解析器（含禁用词 Lint 校验）。
+  - [x] **M1.3 CLI 与 Universal Skill (`skills/hreader/SKILL.md`)**：封装 `hr` 命令行工具与 `SKILL.md`，在 Claude Code / Antigravity 中跑通“按指定语言风格生成 HTML ➔ 骨骼读取 ➔ 局部节点重写”全流程。
 
 ### Milestone 2：hReader 阅读器宿主与“划词即指令”双向同步
 * **目标**：告别系统浏览器的简陋预览，提供真正的沉浸式阅读器界面，打通“阅读器划词批注 ➔ Agent 局部更新 ➔ 页面无感热刷新”闭环。
 * **核心任务**：
-  - [ ] **M2.1 本地 Daemon 与 WebSocket 同步桥**：在 `@hreader/core` 中内置轻量 HTTP + WebSocket 服务，监听文件变更与前端批注事件。
+  - [ ] **M2.1 本地 Daemon 与 SSE 同步桥**：在 `@hreader/core` 中内置轻量 HTTP 服务（`node:http`，零依赖），服务端推送走 SSE、客户端命令走 POST，监听文件变更与前端批注事件。
+    > 与初版计划的差异：原计划用 WebSocket。零依赖前提下自实现 RFC 6455 需处理掩码、分片与关闭握手，属于「能写对但很容易写错」的面；SSE 只有行协议且 `EventSource` 自带重连，语义等价。裁定见 `.workflow/cards/M2.1.md` §1 D3。
   - [ ] **M2.2 阅读器核心界面 (`@hreader/reader-ui`)**：实现左栏书库与动态 TOC、中栏沉浸画布（0-Token 视觉主题实时切换、字号/行宽调节、`j`/`k` 键盘导航）、右栏页边批注（Sidenotes）。
   - [ ] **M2.3 划词批注持久化与 Visual Diff**：实现划词高亮/批注自动写入 HTML 内嵌 `<script id="hr-meta">`，以及 Agent 局部 Patch 后的节点闪烁高亮与一键 Undo 回滚。
 
