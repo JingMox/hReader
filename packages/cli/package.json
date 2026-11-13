@@ -1,0 +1,16 @@
+{
+  "name": "@hreader/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "hr": "./src/main.ts"
+  },
+  "dependencies": {
+    "@hreader/core": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

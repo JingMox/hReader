@@ -38,6 +38,20 @@ module.exports = {
       to: { path: "^packages/(chrome-extension|app)/" },
     },
     {
+      name: "cli-is-a-thin-adapter",
+      severity: "error",
+      comment: "CLI 是薄适配层（M1.8 §0）：HTML/CSS/YAML 逻辑只能在 core，CLI 不得引入处理库。",
+      from: { path: "^packages/cli/src" },
+      to: { path: "node_modules/(parse5|yaml|cheerio|jsdom|postcss|css-tree|htmlparser2)" },
+    },
+    {
+      name: "cli-parse-and-commands-stay-pure",
+      severity: "error",
+      comment: "args.ts 与 commands/* 不得碰进程：进程边界只允许在 main.ts / run.ts（M1.8 §0）。",
+      from: { path: "^packages/cli/src/(args|commands/)" },
+      to: { path: "^(node:)?(process|fs)$", dependencyTypes: ["core"] },
+    },
+    {
       name: "src-must-not-import-tests",
       severity: "error",
       comment: "生产代码不得反向依赖测试代码（测试辅助函数会因此漏进发布产物）。",

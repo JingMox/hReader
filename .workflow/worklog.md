@@ -82,3 +82,16 @@
 2. **测试固化的旧裁定会伪装成"实现回归"**：R1 修完后 5 条红全是"测试在钉旧行为"，必须逐条按裁定翻转，不许改实现迁就测试。
 3. **第三方边界的可选字段守卫怎么做 100%**：`yaml` 的 `pos?` 在类型上可选、真实输入永远有 → 内部 `@internal` 导出 + 直接单测，而不是 `/* v8 ignore */`。
 4. **修法本身要复审**：转义反转义的 ReDoS、dedupe 的字节保真、`resolveStyle` 统一后的新死代码——这三条都是"修 bug 引入 bug"的高发位置。
+
+## M1.8 (merged M1.8+M1.9: CLI `hr` + Universal Skill shell) — 2026-11-13
+
+Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch).
+
+### G1 deliverable (run `del_mwelwecz_zerh`)
+- `packages/cli/**` 14 files 1011 lines; `skills/hreader/**` (SKILL.md 178 lines, hr.mjs 193, components-spec 112, style-authoring 118).
+- Modified: `pnpm-workspace.yaml`, `vitest.config.ts`, `knip.json`, `.dependency-cruiser.cjs`, root `package.json`, `src/index.ts` (+invalid_utf8, `readBytes`).
+- `pnpm verify` **RED**: format 3 files; `tsc` TS2322 on `tests/hr-error.test.ts` `CODE_MATRIX` (expected, tester's); coverage `packages/cli` **79.05%** (no tests yet, expected); `depcruise` flagged `main.ts → cli-context.ts` thin wrapper (writer resolved by merging the file, kept `process.exitCode`).
+- Writer self-reported **14 ambiguities** and **13 dead branches** in its own code (§5.2 of `impl-M1.8.md`) — the dead-branch list is now the tester's点名清单.
+
+### Coordinator mistake (logged deliberately)
+- Dispatched G3 by resuming the WRITER's session id (`del_mwelwecz_zerh` instead of tester `del_mwels1wd_zrrb`). Cancelled within seconds (`del_mwemm4ge_8zcx`); `git status` + `ls packages/cli/tests` confirmed **zero writes**. Rule added: before `resumeFrom`, re-read the state table row for the role — never resume from memory.

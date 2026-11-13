@@ -16,6 +16,7 @@ export type HrErrorCode =
   | "path_outside_workspace"
   | "not_a_file"
   | "io_failure"
+  | "invalid_utf8"
   | "undo_unavailable"
   | "invalid_style"
   | "unknown_style"
