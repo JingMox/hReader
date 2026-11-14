@@ -173,3 +173,22 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
   - **钉具名集合，不钉计数**：`REQUIRED_ANCHORS.length toBe(17)` 涨到 33 时只报"expected 33 to be 17"，说不出变的是谁；改成 33 个 id 具名后，删任一条会**指名道姓**。数字断言在"删一个加一个"时全哑。
   - **测试辅助件也要有契约**：测试内 helper 标 `Promise<unknown>` 等于把契约扔了，正解是给具名返回类型，不是在调用处加收窄。
   - 静态规则会误报：`isDeferred` 对 `type="hidden"` 的 `input` 误报 → 移出交互元素集合（而不是靠豁免），并用"加真实探针元素必须红/必须绿"双向证明。
+
+## M2.3 · 划词批注持久化 + 字符级 Visual Diff + 撤销
+
+- **范围**：`packages/core/src/notes/**`、`packages/core/src/server/**`（16 条路由）、`packages/core/src/html/span.ts`、`packages/app/src/**`（notes-surface / diffview / rail / guard）。20 条 AC 全绿，126 文件 / +9807 / -3293。
+- **门禁**：1951 例 / 167 文件 / 四维 perFile 100% / depcruise 372 模块零违规 / knip 干净 / `pnpm verify` EXIT=0（协调者复跑，53.7s）。**本卡是首次全链绿**。
+- **关掉的真缺陷（按发现顺序）**：
+  1. **`div` 假合法**（KD-01 假件造成）：块级容器被当"可承载 span 的元素"，整片正文可被框进一条批注又永远渲染不出来。→ 手册 §10.6「假件比没件更坏」。
+  2. **数量相等 ≠ 身份不变**（KD-02 重识别用例）：`data-hr-id` 在字节级 patch 下被保留，块删了又插回来的新块顶替旧 id。→ 判据换成 `originNodeId` + `degraded:true`。
+  3. **`diffFlow` 不校验权威 `nodeId`**（KD-08 假件写错字段）：给错块发 diff 也照单全收。→ 假件字段全部以源码为真值核对。
+  4. **`blockBasisOf` 丢块报"无变化"**：工作区零快照 + 当前文档也没该块时，`degraded:false` 让用户看到"字符级对比、两版一致"。→ 补 `reason:"block_missing"` + `degradedReason`。
+  5. **`ZERO_SPAN` 抄了三份**（`html/span.ts` / `html/parse.ts` / `style/apply.ts`）：三份字面量相同、注释各写各的。→ 归一到 `html/span.ts` 一处真值源。
+  6. **reducer 穷尽性靠 `?? get()` 兜底**：新增 kind 时静默走默认分支。→ 返回类型改为 `Extract<NoteIntent, noteSubmitted | noteSettled> | undefined`，删除 `??`（写者的 `Exclude<…>` 方案被我否掉：它仍留 7 个死臂）。
+- **流程收获**：
+  - **三个角色的"自报绿"都必须由协调者复跑**：本卡测试员两次报 EXIT=0 而我复跑露 9 红——其中 3 条是我自己把"设计边界"错登记成 `KD-13/14/15`（`known-defects-registry.test.ts` 的 CAP/白名单闸门直接判红），已改判为 `L-01/02/03`（设计边界，非缺陷）。
+  - **审计员的"类型能证明穷尽"比我的字面改法更可靠**：我给的方向是"删 `??`"，写者验证后指出我的 `Exclude<>` 仍留死臂——派单只说方向、允许被证伪。
+  - **消红灯时不许靠放宽门禁**：`spanOf`/`ZERO_SPAN`/`HtmlSpan`/`BlockBasis` 四条 knip 红灯，全部靠"合并真值源 + 收窄门面导出"消掉，没有一条靠 `knipignore` 或 `as any`。
+- **新增遗留（`.workflow/known-defects.md`）**：
+  - `L-04`：`Host.focus`（`packages/app/src/dom.ts:53,141,159-161`）零调用点，死 seam（下一卡二选一：收回或启用）。
+  - `L-05`：diff 响应体 `reason`（`contracts.ts:58`）与 `originNodeId`（`contracts.ts:53`）在 app 侧**零读取**——`isDiffResponse` 连字段都没列，用户看到的那句话来自 `degradedReason`。下一卡三选一：真读 / 标注"仅审计用" / 删掉。
