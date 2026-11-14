@@ -21,7 +21,7 @@ const SYNOPSIS = [
   "hr patch <file> <nodeId> --action <replace|insert_before|insert_after|append|delete>",
   "         (--html <s> | --html-file <p> | --html-stdin) [--json]",
   "hr style <file> (--visual <id> | --tone <id> | --lint) [--json]",
-  "hr serve <file> [--port <n>] [--allow-host <h>] [--json]",
+  "hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",
   "hr --help | hr <cmd> --help",
 ];
 
@@ -56,8 +56,9 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "  --lint               用默认风格的禁用词表检查文档",
   ],
   serve: [
-    "用法：hr serve <file> [--port <n>] [--allow-host <h>] [--json]",
+    "用法：hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",
     "  --allow-host <h>  可重复/逗号分隔；缺省 127.0.0.1:<port> 与 localhost:<port>",
+    "  --app-dir <dir>   构建产物目录（index.html + assets/）；缺省 packages/app/dist",
     "",
     "  --port <n>           监听端口（0 = 系统分配，默认 0）",
     "  起本地 daemon 并在 stdout 打印一行（JSON 时为 { port, token, pid, workspace }）；",

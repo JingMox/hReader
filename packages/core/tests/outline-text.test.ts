@@ -77,6 +77,7 @@ describe("hr_outline · 字数规则", () => {
   });
 
   // D2（已登记，见报告）：拉丁串被内联标签切断时，`countWords` 按文本节点分别起算，一个词变两个。
+  // KD-03
   it.fails("should count a latin run split by inline markup once (spec: 连续串 = 1)", () => {
     expect(wordsOf("<p>distri<b>buted</b></p>")).toBe(1);
   });

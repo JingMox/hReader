@@ -42,7 +42,11 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
 
-  packages/app: {}
+  packages/app:
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
 
   packages/chrome-extension: {}
 

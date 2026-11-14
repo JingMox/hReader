@@ -2,7 +2,7 @@
 // 用法错误是 CLI 自己的事：只走 stderr（卡片 §3 的 JSON 形状只描述 `HrError`），退出码 2；`--help` 一律 0。
 // 进程相关的 io 在 `main.ts`：那里不可单测，逻辑全部留在本文件。
 
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative } from "node:path";
 
@@ -89,12 +89,18 @@ const runServe = async (
   intent: Extract<Runnable, { kind: "serve" }>,
   io: CliIo,
 ): Promise<string> => {
+  // 显式 `--app-dir` 必须真实存在（exit 2）；缺省值不存在仍交给 core 的 200 兜底（M2.1 冻结契约）。
+  // 校验放在 run.ts 而不是 commands/serve.ts：depcruise 的 cli-parse-and-commands-stay-pure 禁止 commands/* 碰 fs。
+  if (intent.appDirGiven && intent.appDir !== undefined && !existsSync(intent.appDir)) {
+    throw new HrError("invalid_input", `--app-dir 目录不存在：${intent.appDir}`);
+  }
   const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
   return serveCommand({
     file: paths.file,
     workspace: paths.workspace,
     port: intent.port,
     home: homedir(),
+    ...(intent.appDir === undefined ? {} : { appDir: intent.appDir }),
     json: intent.json,
     allowHosts: intent.allowHosts,
     stop: io.stop ?? never,

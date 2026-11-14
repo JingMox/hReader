@@ -74,6 +74,7 @@ describe("paths · 编码逃逸（续）", () => {
 
   // 真 bug：NUL 落到 `resolveTarget` 后由 `realpath` 抛 ERR_INVALID_ARG_VALUE（非 HrError），
   // 被兜底成 500 `io_failure`；语义上这是坏输入，应为 400 `invalid_request`（且不触碰磁盘）。
+  // KD-06
   it.fails("should reject a NUL byte as invalid_request (400)", async () => {
     await withServer(async (ctx) => {
       const response = await httpCall(ctx.port, {

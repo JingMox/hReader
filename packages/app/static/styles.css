@@ -1,0 +1,123 @@
+/* 这层管：三栏骨架的布局事实（AC2.6）——栅格列宽、68ch 正文宽、1100px 折点、
+   以及栅格子项上的 min-width:0 / overflow-wrap:anywhere（防长 URL 撑破）。
+   不做动画（transition 只允许 color/background 100ms）。 */
+
+:root {
+  --hr-side: 280px;
+  --hr-gap: 16px;
+  --hr-ink: #1b1a17;
+  --hr-paper: #f7f3ea;
+  --hr-rule: #d9d2c2;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--hr-paper);
+  color: var(--hr-ink);
+  font-family: "Iowan Old Style", "Songti SC", serif;
+}
+
+#hr-root {
+  display: grid;
+  grid-template-columns: var(--hr-side) minmax(0, 1fr) var(--hr-side);
+  gap: var(--hr-gap);
+  min-height: 100vh;
+  padding: var(--hr-gap);
+  box-sizing: border-box;
+}
+
+#hr-root > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#hr-library {
+  grid-column: 1;
+}
+
+#hr-canvas {
+  grid-column: 2;
+  min-width: 0;
+}
+
+#hr-notes {
+  grid-column: 3;
+  border-left: 1px solid var(--hr-rule);
+  padding-left: var(--hr-gap);
+}
+
+#hr-statusbar {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--hr-gap);
+  border-top: 1px solid var(--hr-rule);
+  padding-top: 8px;
+  font-size: 12px;
+}
+
+/* 正文宽：只读约 68ch，长链接不撑破（overflow-wrap 在栅格子项上兜底）。 */
+#hr-doc {
+  max-width: 68ch;
+  margin: 0 auto;
+  line-height: 1.7;
+}
+
+#hr-doc [data-hr-id] {
+  transition: background 100ms;
+  border-left: 2px solid transparent;
+  padding-left: 8px;
+}
+
+#hr-doc .doc__block--on {
+  background: #efe7d6;
+  border-left-color: var(--hr-ink);
+}
+
+.canvas--focus #hr-doc {
+  max-width: 60ch;
+}
+
+#hr-toc {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.toc__item {
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.toc__item--on {
+  background: #efe7d6;
+  font-weight: 600;
+}
+
+.toc__item--h2 {
+  padding-left: 16px;
+}
+
+.toc__item--h3 {
+  padding-left: 28px;
+}
+
+/* 1100px 折点：两栏（书库折叠成抽屉），旁注落到正文下方。 */
+@media (max-width: 1100px) {
+  #hr-root {
+    grid-template-columns: minmax(0, 1fr) var(--hr-side);
+  }
+
+  #hr-library {
+    display: none;
+  }
+
+  #hr-canvas {
+    grid-column: 1;
+  }
+
+  #hr-notes {
+    grid-column: 2;
+  }
+}

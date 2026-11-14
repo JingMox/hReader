@@ -226,6 +226,7 @@ describe("hr_outline · 结构 · 续 3 · 续 1", () => {
   // D3（已登记，见报告）：`firstArticleOf` 在 LIFO 栈上按文档序 push，实际先看到**最后一个** article。
 });
 describe("hr_outline · 结构 · 续 3 · 续 1", () => {
+  // KD-04
   it.fails("should outline the first article when a document has several", () => {
     const outline = outlineOf(
       `${articleOf(heading(1, "a1", "第一"))}${articleOf(heading(1, "a2", "第二"))}`,

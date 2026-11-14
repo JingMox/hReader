@@ -127,6 +127,7 @@ describe("truncate · codepoint boundaries", () => {
   });
 
   // D-P2（见报告）：只在码点边界停手，NFD 的 `e`+U+0301 会被切出“没带重音的空壳 e”。
+  // KD-05
   it.fails("should never leave an orphan combining mark for any budget", () => {
     const nfd = "e\u0301".repeat(2_000);
     const html = `<section data-hr-id="s1">${nfd}</section>`;
@@ -163,6 +164,7 @@ describe("truncate · multi-codepoint clusters", () => {
   });
 
   // D-族（P2，见报告）：截断只在码点边界停手，ZWJ 家族会被切出"半个家庭"。
+  // KD-05
   it.fails("should never cut a ZWJ family apart", () => {
     const result = readIn(`<section data-hr-id="s1">${"👨‍👩‍👧‍👦".repeat(600)}</section>`, "#s1", 2003);
 

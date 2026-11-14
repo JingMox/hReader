@@ -1,0 +1,228 @@
+// 这层管：`boot` 的接线契约——状态 → widget 更新、SSE 事件 → 串行刷新、键盘 → intent、
+// 主题选择 → IO + 落定；用假 Host / 假 Sse / 假时钟泵，全部在调用序列上断言。
+
+import { describe, expect, it } from "vitest";
+
+import { boot, settleTheme } from "../src/boot.ts";
+import { intentOf } from "../src/keys.ts";
+
+const ROOT = "#hr-root";
+import type { BootDeps, ReaderIntent } from "./support/boot-harness.ts";
+import {
+  blocksOf,
+  captureUnhandled,
+  countingStore,
+  flush,
+  harnessOf,
+  recordingStore,
+} from "./support/boot-harness.ts";
+
+describe("boot · 首屏与 widget 更新", () => {
+  it("should mount the four widgets and inject the document HTML once", () => {
+    const h = harnessOf(true);
+    const booted = boot(h.deps);
+    expect(h.fake.calls.filter((call) => call.op === "html")).toHaveLength(1);
+    expect(h.fake.calls.some((call) => call.op === "children")).toBe(true);
+    booted.destroy();
+    expect(h.closed()).toBe(true);
+    expect(h.fake.ops().at(-1)).toBe("destroy");
+  });
+
+  it("should refresh only on doc.changed / doc.reloaded and drop unrelated events", async () => {
+    const h = harnessOf(true);
+    boot(h.deps);
+    h.emit({ id: 1, type: "library.changed", payload: {} });
+    h.emit({ id: 2, type: "doc.changed", payload: {} });
+    await flush();
+    h.emit({ id: 3, type: "doc.reloaded", payload: {} });
+    await flush();
+    expect(h.fetched.document).toBe(2);
+    expect(h.store.get().revision).toBe("r1");
+    expect(blocksOf(h.store.get())).toEqual(["hr-a"]);
+  });
+
+  it("should refresh with an empty block list when the model omits children", async () => {
+    const h = harnessOf(true);
+    boot({ ...h.deps, fetchModel: () => Promise.resolve({ revision: "r9", model: {} }) });
+    h.emit({ id: 1, type: "doc.changed", payload: {} });
+    await flush();
+    expect(blocksOf(h.store.get())).toEqual([]);
+    expect(h.store.get().revision).toBe("r9");
+  });
+});
+
+describe("boot · 键盘与主题", () => {
+  it("should dispatch plain intents and ignore unknown keys", () => {
+    const h = harnessOf(true);
+    boot(h.deps);
+    h.type("j");
+    h.type("h");
+    h.type("/");
+    h.type("z");
+    expect(h.store.get().focus).toBe(true);
+    expect(h.store.get().searchOpen).toBe(true);
+    h.type("Escape");
+    expect(h.store.get().panel).toBe("closed");
+  });
+});
+
+describe("boot · widget intent → store", () => {
+  it("should dispatch a widget intent into the shared store", () => {
+    const h = harnessOf(true);
+    boot(h.deps);
+    h.fake.fire(`${ROOT} #hr-theme-select`, "change", { value: "manuscript" });
+    expect(h.store.get().themeRequested).toBe("manuscript");
+    // 已知缺陷（报告「待裁定 #2」）：widget 的 intent 只进 store，没接到 `themeSwitcher`，
+    // 所以 `style.select` 一次也不会被叫（G3-R3 时主题切换是死的；R4 起走 `dispatchIntent`，见 main-inject 的主题接线用例）。
+    expect(h.selectCalls).toEqual([]);
+  });
+});
+
+describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）", () => {
+  it("should press / and focus the search box exactly once", () => {
+    const h = harnessOf(true);
+    boot(h.deps);
+
+    h.keyHandlers[0]?.({ key: "/" });
+
+    // `searchOpened` 的唯一副作用：focus 一次，选择器精确。
+    expect(h.fake.calls.filter((call) => call.op === "focus")).toEqual([
+      { op: "focus", args: ["#hr-root #hr-search"] },
+    ]);
+    // 同一个 if 链的 false 臂：`/` 不是 scrollTo。
+    expect(h.fake.ops()).not.toContain("scrollTo");
+  });
+
+  it("should press j and neither focus nor scroll (both false arms)", () => {
+    const h = harnessOf(true);
+    boot(h.deps);
+
+    h.keyHandlers[0]?.({ key: "j" });
+
+    // `move` 走 store，不碰 host 的两个副作用出口。
+    expect(h.fake.ops()).not.toContain("focus");
+    expect(h.fake.ops()).not.toContain("scrollTo");
+    // 只有一个块：`j` 到顶后仍停在同一块（不越界、不抛）。
+    expect(h.store.get().activeId).toBe("hr-a");
+  });
+});
+
+describe("boot · 键路由的意图集合（boot.ts:133 为何是死分支）", () => {
+  it("should never route a key to the scrollTo effect", () => {
+    const state = harnessOf(true).store.get();
+    const keys = ["j", "k", "h", "/", "c", "Escape", "x", "Enter"];
+
+    // `intentOf` 是 `keyHandlerOf` 唯一的意图来源；它产的 kind 里没有 `scrollTo`，
+    // 所以 `boot.ts:133` 的 scrollTo 副作用对键盘路径结构性不可达（G3-R5 §3）。
+    expect(keys.map((key) => intentOf({ key }, state)?.kind ?? "none")).toEqual([
+      "move",
+      "move",
+      "toggleFocus",
+      "searchOpened",
+      "none",
+      "panelClosed",
+      "none",
+      "none",
+    ]);
+  });
+});
+
+describe("boot · 主题落定与回滚", () => {
+  it("should keep the applied theme and roll themeRequested back when the load fails", async () => {
+    const h = harnessOf(false);
+    boot(h.deps);
+    await flush();
+    h.store.dispatch({ kind: "themeSelected", theme: "manuscript" });
+    expect(h.store.get().themeRequested).toBe("manuscript");
+    h.store.dispatch({ kind: "themeSettled", theme: "manuscript", ok: false });
+    expect(h.store.get().theme).toBe("atelier-editorial");
+    expect(h.store.get().themeRequested).toBe("atelier-editorial");
+  });
+});
+
+describe("boot · destroy 与串行泵", () => {
+  it("should unbind keys, unsubscribe and close the sse", () => {
+    const h = harnessOf(true);
+    const counted = countingStore(h.store);
+    boot({ ...h.deps, store: counted.store }).destroy();
+    expect(h.keysBound()).toBe(0);
+    expect(counted.counts.subscribe).toBe(1);
+    expect(counted.counts.off).toBe(1);
+    expect(h.closed()).toBe(true);
+  });
+
+  // 已知缺陷（src 侧）：`createPump` 的 `tail.then(task, task)` 没有 `catch`，
+  // 刷新失败会成为 unhandledRejection（浏览器控制台报错）；泵本身仍能继续跑下一轮。
+  it("should keep serving the next refresh after a rejection (and surface it)", async () => {
+    const caught = captureUnhandled();
+    const h = harnessOf(true);
+    const counters = { calls: 0 };
+    const deps: BootDeps = {
+      ...h.deps,
+      fetchDocument: () => {
+        counters.calls += 1;
+        return counters.calls === 1
+          ? Promise.reject(new Error("boom"))
+          : Promise.resolve("<p>三</p>");
+      },
+    };
+    const intents: ReaderIntent[] = [];
+    boot({ ...deps, store: recordingStore(h.store, intents) });
+    h.emit({ id: 1, type: "doc.changed", payload: {} });
+    await flush();
+    h.emit({ id: 2, type: "doc.changed", payload: {} });
+    await flush();
+    await flush();
+    caught.stop();
+    expect(counters.calls).toBe(2);
+    expect(intents.filter((intent) => intent.kind === "documentChanged").length).toBeGreaterThan(0);
+    expect(caught.seen).toHaveLength(1);
+  });
+});
+
+describe("boot · 首屏主题失败不回退", () => {
+  it("should keep the old theme when the first theme fails to load", async () => {
+    const h = harnessOf(false);
+    const booted = boot(h.deps);
+    await flush();
+    expect(h.selectCalls.length).toBe(1);
+    expect(h.store.get().theme).toBe("atelier-editorial");
+    booted.destroy();
+  });
+});
+
+describe("boot · settleTheme 的两个结局", () => {
+  it("should apply the theme and mark it settled when the switch succeeds", async () => {
+    const h = harnessOf(true);
+    const ok = await settleTheme(h.deps, { theme: "manuscript", previous: "atelier-editorial" });
+
+    expect(ok).toBe(true);
+    expect(h.selectCalls).toEqual([{ theme: "manuscript", current: "atelier-editorial" }]);
+  });
+
+  it("should report failed and keep the previous theme when the CSS cannot load", async () => {
+    const h = harnessOf(false);
+    const ok = await settleTheme(h.deps, { theme: "manuscript", previous: "atelier-editorial" });
+
+    expect(ok).toBe(false);
+    expect(h.selectCalls).toEqual([{ theme: "manuscript", current: "atelier-editorial" }]);
+  });
+});
+
+describe("boot · 服务器没给任何主题", () => {
+  it("should skip the first theme entirely when the list is empty", () => {
+    const h = harnessOf(true);
+    const booted = boot({ ...h.deps, themes: [] });
+    expect(h.selectCalls).toEqual([]);
+    booted.destroy();
+    expect(h.fake.ops().at(-1)).toBe("destroy");
+  });
+
+  it("should fall back to the first list entry when defaultTheme is omitted", async () => {
+    const h = harnessOf(true);
+    const booted = boot({ ...h.deps, themes: ["manuscript"] });
+    await flush();
+    expect(h.selectCalls).toEqual([{ theme: "manuscript", current: "manuscript" }]);
+    booted.destroy();
+  });
+});

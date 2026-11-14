@@ -61,6 +61,7 @@ describe("wire · 体大小与半截请求", () => {
 
   // 真 bug：`http-io.chunksOf` 只监听 data/end，客户端中途销毁后 Promise 永不落地，
   // 连接与闭包夹着 body 一直挂着（fd/内存泄漏）；正确做法是监听 `aborted`/`close` 并以 invalid_request 结束。
+  // KD-07
   it.fails("should answer a truncated (EOF) request close, not hang", async () => {
     await withServer(async (ctx) => {
       const raw = await exchange(

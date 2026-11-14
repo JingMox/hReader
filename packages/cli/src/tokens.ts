@@ -12,6 +12,7 @@ export type Tokenized =
 const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--action",
   "--allow-host",
+  "--app-dir",
   "--html",
   "--html-file",
   "--max-bytes",
@@ -52,4 +53,15 @@ export const tokenize = (argv: readonly string[]): Tokenized => {
     return { ok: false, message: `参数 ${pending} 缺少取值` };
   }
   return { ok: true, raw: { values, switches, positionals } };
+};
+
+/** `--allow-host`：逗号分隔、去空白、丢空项；空列表视为未设置（`undefined`）。 */
+export const allowHostsOf = (raw: Raw): readonly string[] | undefined => {
+  const allowRaw = raw.values.get("--allow-host");
+  if (allowRaw === undefined) return undefined;
+  const hosts = allowRaw
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  return hosts.length > 0 ? hosts : undefined;
 };

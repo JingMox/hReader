@@ -71,6 +71,14 @@ module.exports = {
       to: { dependencyTypes: ["npm-no-pkg", "npm-unknown"] },
     },
     {
+      name: "widgets-use-host-interface",
+      severity: "error",
+      comment:
+        "widgets/** 只依赖 Host 接口与纯状态；不许直接 import dom.ts 的实现（M2.2 裁定 #4）。",
+      from: { path: "^packages/app/src/widgets/" },
+      to: { path: "^packages/app/src/dom\\.ts$", dependencyTypesNot: ["type-only"] },
+    },
+    {
       name: "no-dev-dependency-from-src",
       severity: "error",
       comment: "运行时代码不得依赖 devDependencies，否则发布后必然崩。",
