@@ -95,7 +95,43 @@ describe("matchRoute · 精确分段匹配（续）", () => {
       params: {},
       route: { kind: "themes", auth: "none" },
     });
-    expect(ROUTES).toHaveLength(12);
+  });
+});
+
+describe("matchRoute · M2.3 的批注与撤销", () => {
+  it("should match the five new POST/GET routes", () => {
+    expect(matchRoute("GET", "/api/doc/a.html/annotations")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html" },
+      route: { kind: "annotations", auth: "cookie" },
+    });
+    expect(matchRoute("POST", "/api/doc/a.html/annotations")).toMatchObject({
+      kind: "route",
+      route: { kind: "annotationAdd", auth: "cookie+csrf" },
+    });
+    expect(matchRoute("POST", "/api/doc/a.html/annotations/an-1a2b3c4d/resolve")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html", anId: "an-1a2b3c4d" },
+      route: { kind: "annotationResolve", auth: "cookie+csrf" },
+    });
+    expect(matchRoute("GET", "/api/doc/a.html/notes/an-1a2b3c4d/diff")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html", anId: "an-1a2b3c4d" },
+      route: { kind: "annotationDiff", auth: "cookie" },
+    });
+    expect(matchRoute("POST", "/api/doc/a.html/undo")).toMatchObject({
+      kind: "route",
+      route: { kind: "undo", auth: "cookie+csrf" },
+    });
+  });
+
+  it("should freeze the table at 17 entries (12 + 5)", () => {
+    expect(ROUTES).toHaveLength(17);
+  });
+
+  it("should not let an annotation id span a slash", () => {
+    expect(matchRoute("POST", "/api/doc/a.html/annotations/an-1a2b/x/resolve").kind).toBe("none");
+    expect(matchRoute("GET", "/api/doc/a.html/notes/an-1a2b/x/diff").kind).toBe("none");
   });
 });
 

@@ -1,5 +1,7 @@
 // 这层管：服务端的裸类型（选项、daemon 记录、SSE 事件、HTTP 回复计划）；不含逻辑、不碰 IO。
 
+import type { DiffResult } from "../annotations/diff";
+
 /** 三个超时都可通过 `timeouts` 覆盖（测试传 50 ms，不必真等 10 秒）。 */
 export interface Timeouts {
   readonly headersMs: number;
@@ -38,6 +40,23 @@ export interface SseEvent {
   readonly id: number;
   readonly type: string;
   readonly payload: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * `GET /api/doc/<docId>/notes/<anId>/diff` 的响应体（AC4.4）。
+ * `nodeId` 是**当前文档**里那块的真实 id（重识别成功时与批注记录的旧 id 不同），
+ * 旧 id 只在重识别成功时以 `originNodeId` 出现；`block_missing` 时两者都等于旧 id。
+ */
+export interface AnnotationDiffBody {
+  readonly revision: string;
+  readonly nodeId: string;
+  readonly originNodeId?: string;
+  readonly before: string;
+  readonly after: string;
+  readonly chunks: DiffResult["chunks"];
+  readonly degraded: boolean;
+  readonly reason?: string;
+  readonly degradedReason?: string;
 }
 
 /** 处理器只产出数据，写 socket 与加安全头由 `server.ts` 统一做（处理器因此可单测）。 */

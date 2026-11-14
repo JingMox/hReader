@@ -1,11 +1,27 @@
 // 这层管：唯一的浏览器入口——把真 `document`/`fetch`/`EventSource`/`window` 塞进纯层。
-// **除了这个文件与 `dom.ts`，`packages/app/src` 没有别的地方碰全局。**
+// （`wiring.ts` 的 `keySourceOf` 为了同处拥有键盘事件源，也持有一份最小 `window` 声明。）
 
 import { boot, type ModelResponse, type OutlineResponse } from "./boot.ts";
+import type { AppIo } from "./io.ts";
+export type { AppIo, RevisionResponse } from "./io.ts";
 import { createDomHost, type DocumentLike, type Host } from "./dom.ts";
-import type { KeyLike } from "./keys.ts";
+import { isAnnotationList, isDiffResponse } from "./guard.ts";
+import { rawSelectionOf, type BlockElementLike } from "./widgets/selection.ts";
+import { textOfBlocks } from "./widgets/blocks-text.ts";
 import { createSse, type SseHandlers, type SourceLike } from "./sse.ts";
+import { measureSelection } from "./measure.ts";
+import { errorLogger } from "./log.ts";
+import { docIdOf } from "./doc-id.ts";
+export { docIdOf, type DocIdSource } from "./doc-id.ts";
 import { initialState } from "./state.ts";
+import { keySourceOf, type KeyboardLike } from "./wiring.ts";
+export {
+  annotationIntentOf,
+  renderAnnotations,
+  renderDiff,
+  revertOf,
+  submitAnnotationOf,
+} from "./wiring.ts";
 import { createStore } from "./store.ts";
 import { createStyleSwitch } from "./style-switch.ts";
 
@@ -13,6 +29,23 @@ import { createStyleSwitch } from "./style-switch.ts";
 declare const document: DocumentLike;
 declare const window: {
   readonly location: { readonly href: string };
+  /** 划词（AC5.1）：只读 `anchorNode/anchorOffset/focusNode/focusOffset` 四项。 */
+  readonly getSelection?: () => {
+    readonly anchorNode: {
+      readonly parentElement: { readonly closest: BlockElementLike["closest"] } | null;
+    } | null;
+    readonly anchorOffset: number;
+    readonly focusNode: unknown;
+    readonly focusOffset: number;
+    /** 有 Range 就用它量块内字符偏移（裁定 #11）；没有则退回 anchor/focus 偏移。 */
+    readonly rangeCount?: number;
+    readonly getRangeAt?: (index: number) => {
+      readonly startContainer: unknown;
+      readonly startOffset: number;
+      readonly endContainer: unknown;
+      readonly endOffset: number;
+    };
+  } | null;
   readonly addEventListener: (type: string, listener: (event: KeyboardLike) => void) => void;
   readonly removeEventListener: (type: string, listener: (event: KeyboardLike) => void) => void;
 };
@@ -20,15 +53,6 @@ declare const EventSource: new (
   url: string,
   init?: { withCredentials?: boolean },
 ) => BrowserEventSource;
-
-/** `keydown` 事件只读这四个字段。 */
-interface KeyboardLike {
-  readonly key: string;
-  readonly metaKey?: boolean;
-  readonly ctrlKey?: boolean;
-  readonly altKey?: boolean;
-  readonly target?: { readonly tagName?: string; readonly isContentEditable?: boolean } | null;
-}
 
 interface BrowserEventSource {
   readonly addEventListener: (
@@ -44,12 +68,6 @@ interface BrowserEventSource {
 export interface ThemeList {
   readonly themes: readonly string[];
   readonly default: string;
-}
-
-/** 页面需要的两类 IO：文本与"带守卫的 JSON"。注入点只在这一层。 */
-export interface AppIo {
-  readonly text: (path: string) => Promise<string>;
-  readonly json: <T>(path: string, guard: (value: unknown) => value is T) => Promise<T>;
 }
 
 export interface MainOptions {
@@ -134,6 +152,18 @@ export const createHttpIo = (): AppIo => ({
     if (!response.ok) throw new Error(`${path} → ${String(response.status)}`);
     return await response.text();
   },
+  post: async (path, body, guard) => {
+    const response = await fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`${path} → ${String(response.status)}`);
+    const parsed: unknown = await response.json();
+    if (!guard(parsed)) throw new Error(`${path} → 响应形状不符`);
+    return parsed;
+  },
   json: async (path, guard) => {
     const response = await fetch(path, {
       credentials: "same-origin",
@@ -146,32 +176,6 @@ export const createHttpIo = (): AppIo => ({
   },
 });
 
-const keySourceOf = (handler: (event: KeyLike) => void): (() => void) => {
-  const listener = (event: KeyboardLike): void => {
-    handler({
-      key: event.key,
-      metaKey: event.metaKey === true,
-      ctrlKey: event.ctrlKey === true,
-      altKey: event.altKey === true,
-      target: event.target ?? null,
-    });
-  };
-  window.addEventListener("keydown", listener);
-  return () => {
-    window.removeEventListener("keydown", listener);
-  };
-};
-
-/** `data-doc-id` 优先，其次 `?doc=`（`href` 可注入，方便测 URL 分支）。 */
-export const docIdOf = (source: {
-  readonly attr: string | null;
-  readonly href: string;
-}): string => {
-  if (source.attr !== null && source.attr !== "") return source.attr;
-  const fromUrl = new URL(source.href).searchParams.get("doc");
-  return fromUrl ?? "";
-};
-
 /** 组装 `boot` 的依赖；IO 全部走注入（`@internal`：测试用假 io 驱动每一条分支）。 */
 export interface BootInput {
   readonly docId: string;
@@ -181,12 +185,18 @@ export interface BootInput {
   readonly host: Host;
 }
 
+/** 块的纯文本（`c` 键的整块锚点、diff 的 after）；标签只在这里被剥一次。 */
+const bindOf =
+  (io: AppIo) =>
+  <T>(path: string, guard: (value: unknown) => value is T): (() => Promise<T>) =>
+  async () =>
+    await io.json(path, guard);
+
 export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
   const { docId, themes, documentHtml, io, host } = input;
   const encoded = encodeURIComponent(docId);
-  const bind = <T>(path: string, guard: (value: unknown) => value is T): (() => Promise<T>) => {
-    return async () => await io.json(path, guard);
-  };
+  const bind = bindOf(io);
+  const blockTextOf = textOfBlocks(host, documentHtml);
   return boot({
     host,
     store: createStore(initialState(docId, themes.default)),
@@ -204,6 +214,19 @@ export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
     fetchModel: bind(`/api/doc/${encoded}/model`, isModelResponse),
     fetchOutline: bind(`/api/doc/${encoded}/outline`, isOutlineResponse),
     keySource: keySourceOf,
+    logger: errorLogger,
+    notes: {
+      io,
+      fetchAnnotations: async () =>
+        await io.json(`/api/doc/${encoded}/annotations`, isAnnotationList),
+      // 裁定 #8：diff 由服务端算（复用 core 的 `diffText`），浏览器只渲染 chunk。
+      fetchDiff: async (annotationId: string) =>
+        await io.json(
+          `/api/doc/${encoded}/notes/${encodeURIComponent(annotationId)}/diff`,
+          isDiffResponse,
+        ),
+      textOf: blockTextOf,
+    },
   });
 };
 
@@ -234,6 +257,11 @@ export const main = async (options: MainOptions = {}): Promise<void> => {
     io.text(`/s/${encoded}`),
   ]);
   const booted = bootWith({ docId, themes, documentHtml: html, io, host });
+  // 划词 → 选区描述（AC5.1）：字符偏移用 Range 量（裁定 #11），跨块用"最近块祖先"判定。
+  window.addEventListener("mouseup", () => {
+    const raw = rawSelectionOf(window.getSelection?.() ?? null, measureSelection());
+    if (raw !== undefined) booted.selection?.(raw);
+  });
   // 真页面卸载时拆掉监听与连接（`main.ts` 的 destroy 因此可达，P0-4）。
   window.addEventListener("pagehide", () => {
     booted.destroy();

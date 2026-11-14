@@ -17,9 +17,17 @@ export type RouteKind =
   | "patch"
   | "style"
   | "annotation"
+  | "annotations"
+  | "annotationAdd"
+  | "annotationResolve"
+  | "annotationDiff"
+  | "undo"
   | "events";
 
 const DOC_PARAM = ":docId";
+
+/** 批注 id（`an-<8 hex>`）：只占一段，不匹配任何带 `/` 的值。 */
+const AN_PARAM = ":anId";
 
 /** 吞掉剩余全部段（`/assets/<path>`，允许子目录）；空段与越界由 `handlers.assetReply` 再判。 */
 const REST_PARAM = ":path";
@@ -62,6 +70,16 @@ export const ROUTES: readonly Route[] = Object.freeze([
   route("POST", ["api", "patch"], "cookie+csrf", "patch"),
   route("POST", ["api", "style"], "cookie+csrf", "style"),
   route("POST", ["api", "annotation"], "cookie+csrf", "annotation"),
+  route("GET", ["api", "doc", DOC_PARAM, "annotations"], "cookie", "annotations"),
+  route("POST", ["api", "doc", DOC_PARAM, "annotations"], "cookie+csrf", "annotationAdd"),
+  route(
+    "POST",
+    ["api", "doc", DOC_PARAM, "annotations", AN_PARAM, "resolve"],
+    "cookie+csrf",
+    "annotationResolve",
+  ),
+  route("GET", ["api", "doc", DOC_PARAM, "notes", AN_PARAM, "diff"], "cookie", "annotationDiff"),
+  route("POST", ["api", "doc", DOC_PARAM, "undo"], "cookie+csrf", "undo"),
   route("GET", ["api", "events"], "cookie", "events"),
 ]);
 
@@ -111,6 +129,20 @@ export const matchRoute = (method: string, pathname: string): RouteLookup => {
   return allowed.length === 0
     ? { kind: "none" }
     : { kind: "method", allowed: Object.freeze(allowed) };
+};
+
+/**
+ * 具名参数取值：命中就返回，缺失才用 `fallback`。
+ * 写成循环而不是 `params[key] ?? fallback`，是因为后者在"路由保证一定有这个参数"的地方
+ * 会留下一条**永远取不到**的默认值臂（M2.3 R3 覆盖率裁定）；循环的两条臂共享同一行，都是真实路径。
+ */
+export const paramOf = (
+  params: Readonly<Record<string, string>>,
+  key: string,
+  fallback: string,
+): string => {
+  for (const [name, value] of Object.entries(params)) if (name === key) return value;
+  return fallback;
 };
 
 type DecodedParams =

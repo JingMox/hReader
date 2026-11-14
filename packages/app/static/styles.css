@@ -1,6 +1,6 @@
 /* 这层管：三栏骨架的布局事实（AC2.6）——栅格列宽、68ch 正文宽、1100px 折点、
    以及栅格子项上的 min-width:0 / overflow-wrap:anywhere（防长 URL 撑破）。
-   不做动画（transition 只允许 color/background 100ms）。 */
+   transition 只允许 color/background（例外：`.hr-flash` 的 2s background 过渡，AC4.3）。 */
 
 :root {
   --hr-side: 280px;
@@ -101,6 +101,57 @@ body {
 
 .toc__item--h3 {
   padding-left: 28px;
+}
+
+/* M2.3 的面板/提示样式：开关只靠 class。规则只保证"挂上的 class 看得见"，不做主题系统。 */
+.note-btn {
+  /* 不用 display：作者层的 display 会压掉 UA 的 `[hidden]{display:none}`。 */
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.note-error {
+  color: #8a1f11;
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.note-error:empty {
+  display: none;
+}
+
+/* 编辑器与 diff 面板默认不占位，`--open` 才展开。 */
+#hr-note-editor {
+  display: none;
+}
+
+#hr-note-editor.sidenote-editor--open {
+  display: block;
+}
+
+#hr-diff {
+  display: none;
+}
+
+#hr-diff.diff--open {
+  display: block;
+  margin-top: 12px;
+}
+
+/* 右栏开着时给一条左侧强调线（`syncView` 是唯一写点）。 */
+#hr-notes.sidenotes--open {
+  border-left-color: var(--hr-ink);
+}
+
+/* 划词命中的块（AC5.1）与 `doc.changed` 的闪烁块（AC4.3）。 */
+#hr-doc .hr-note-target {
+  outline: 2px solid #b8860b;
+  outline-offset: 2px;
+}
+
+#hr-doc .hr-flash {
+  background: #f3e2a8;
+  transition: background 2000ms ease-out;
 }
 
 /* 1100px 折点：两栏（书库折叠成抽屉），旁注落到正文下方。 */

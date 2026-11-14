@@ -1,6 +1,19 @@
 // 这层管：阅读器的全部状态与状态迁移（纯函数）。没有 DOM、没有计时器、没有 fetch：
 // `reduce(state, intent)` 返回**同一引用**表示"什么都没变"，`store` 据此不通知订阅者。
 
+import {
+  initialNoteSlice,
+  isDiffIntent,
+  isNoteIntent,
+  reduceDiff,
+  reduceNote,
+  type DiffIntent,
+  type DiffSlice,
+  type NoteIntent,
+  type NoteSlice,
+} from "./notes-state.ts";
+import { closedDiff } from "./notes.ts";
+
 export interface OutlineNode {
   readonly id: string;
   readonly level: number;
@@ -12,7 +25,7 @@ export type ConnState = "connecting" | "live" | "reconnecting" | "offline";
 
 export type Panel = "closed" | "sidenote";
 
-export interface ReaderState {
+export interface ReaderState extends NoteSlice, DiffSlice {
   readonly docId: string;
   readonly revision: string;
   /** 真实生效的主题（`themeSettled ok:true` 才更新）。 */
@@ -59,9 +72,13 @@ export type ReaderIntent =
   | { readonly kind: "searchOpened" }
   | { readonly kind: "conn"; readonly conn: ConnState }
   | { readonly kind: "themeSelected"; readonly theme: string }
-  | { readonly kind: "themeSettled"; readonly theme: string; readonly ok: boolean };
+  | { readonly kind: "themeSettled"; readonly theme: string; readonly ok: boolean }
+  | NoteIntent
+  | DiffIntent;
 
 export const initialState = (docId: string, theme: string): ReaderState => ({
+  ...initialNoteSlice,
+  diff: closedDiff,
   docId,
   revision: "",
   theme,
@@ -192,6 +209,14 @@ const isPanelIntent = (intent: ReaderIntent): intent is PanelIntent =>
 /** 顶层只做"分派到小组"，每个小组的 switch/分支复杂度因此各自可控。 */
 export const reduce = (state: ReaderState, intent: ReaderIntent): ReaderState => {
   if (isDocIntent(intent)) return reduceDoc(state, intent);
+  if (isNoteIntent(intent)) {
+    const next = reduceNote(state, intent);
+    return next === state ? state : { ...state, ...next };
+  }
+  if (isDiffIntent(intent)) {
+    const next = reduceDiff(state, intent);
+    return next === state ? state : { ...state, ...next };
+  }
   if (isNavIntent(intent)) return reduceNav(state, intent);
   if (isPanelIntent(intent)) return reducePanel(state, intent);
   if (intent.kind === "conn") return reduceConn(state, intent);

@@ -12,6 +12,7 @@ import type {
   PatchResult,
   PendingAnnotation,
   ReadNodeResult,
+  UndoResult,
 } from "@hreader/core";
 
 /** `Diagnostic` 不在 core 的公开面（`src/index.ts` 没有导出）；这里用结构类型，不强求 core 扩大导出。 */
@@ -105,3 +106,9 @@ export const dataServe = (info: DaemonInfo): string =>
 
 export const humanServe = (info: DaemonInfo): string =>
   `serving ${info.workspace} on http://127.0.0.1:${String(info.port)}/ (pid ${String(info.pid)})\n`;
+
+export const dataUndo = (result: UndoResult): string =>
+  `{"path":${quote(result.path)},"bytes":${String(result.bytes)},"restoredFrom":${quote(result.restoredFrom)},"sha256":${quote(result.sha256)}}`;
+
+export const humanUndo = (result: UndoResult): string =>
+  `undone ${result.path} (${String(result.bytes)} bytes, from ${result.restoredFrom})\n`;

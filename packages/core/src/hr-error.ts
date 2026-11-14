@@ -28,7 +28,11 @@ export type HrErrorCode =
   | "too_many_clients"
   | "unauthorized"
   | "forbidden_origin"
-  | "daemon_already_running";
+  | "daemon_already_running"
+  // M2.3：批注 / 撤销（只三个新码，`not_found` 复用既有值）
+  | "invalid_payload"
+  | "nothing_to_undo"
+  | "anchor_lost";
 
 /**
  * 唯一对外错误类型。跨包用 `instanceof HrError` 判定，按 `code` 分支；

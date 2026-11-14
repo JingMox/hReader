@@ -68,3 +68,17 @@ describe("intentOf · 修饰键与可编辑目标", () => {
     expect(intentOf(key("j", { target: {} }), stateOf())).toEqual({ kind: "move", delta: 1 });
   });
 });
+
+describe("intentOf · Shift+D 的 diff 快捷键", () => {
+  it("should map Shift+D (upper or lower case) to diffToggled", () => {
+    expect(intentOf(key("D", { shiftKey: true }), stateOf())).toEqual({ kind: "diffToggled" });
+    expect(intentOf(key("d", { shiftKey: true }), stateOf())).toEqual({ kind: "diffToggled" });
+  });
+
+  it("should ignore d when shiftKey is absent or false", () => {
+    // 键盘适配层会把缺失归一成 `false`；这里直接钉住纯映射本身：判定一旦放宽成
+    // `shiftKey !== false`，缺字段的 `d` 就会冒出 diffToggled，第一条断言先红。
+    expect(intentOf(key("d"), stateOf())).toBeUndefined();
+    expect(intentOf(key("d", { shiftKey: false }), stateOf())).toBeUndefined();
+  });
+});

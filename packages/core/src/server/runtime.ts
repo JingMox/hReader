@@ -11,25 +11,21 @@ import type { PatchDeps } from "../io/ports";
 import type { DocumentModel } from "../model/constants";
 import { toDocumentModel } from "../model/derive";
 import type { StyleDeps } from "../style";
-import { requiredStringOf } from "./body";
 import type { Reply } from "./contracts";
 import { diffNodes } from "./diff-nodes";
+import { annotationDiffReply, annotationsReply } from "./annotation-replies";
 import {
-  annotationReply,
   documentReply,
-  LOCK_WAIT_MS,
   modelReply,
   outlineReply,
-  patchReply,
-  styleReply,
   type HandlerContext,
   type Written,
 } from "./handlers";
-import { bodyRecordOf, jsonOf } from "./http-io";
+import { dispatchWrite } from "./write-replies";
+import { jsonOf } from "./http-io";
 import type { Hub } from "./hub";
-import { docQueueKey, withDocQueue } from "./queue";
 import { revisionOf } from "./revision";
-import type { Route } from "./routes";
+import { paramOf, type Route } from "./routes";
 import { assetReply, indexReply, themesReply, themeReply } from "./static";
 import { createWatcher, type WatchFn, type Watcher } from "./watcher";
 
@@ -131,16 +127,6 @@ const watchOf = (deps: RuntimeDeps, hub: Hub, state: Watched, workspace: string)
   return watcher;
 };
 
-const writeReplyOf = (
-  context: HandlerContext,
-  route: Route,
-  body: Readonly<Record<string, unknown>>,
-): Promise<Written> => {
-  if (route.kind === "patch") return patchReply(context, body, LOCK_WAIT_MS);
-  if (route.kind === "style") return styleReply(context, body, LOCK_WAIT_MS);
-  return annotationReply(context, body, LOCK_WAIT_MS);
-};
-
 /** `/`、`/assets/*`、`/api/theme[/<id>]` 都不碰文档状态，直接由静态层出 `Reply`。 */
 interface StaticInput {
   readonly context: HandlerContext;
@@ -171,15 +157,22 @@ type StaticKind = Extract<Route["kind"], "home" | "assets" | "theme" | "themes">
 const isStaticKind = (kind: Route["kind"]): kind is StaticKind =>
   kind === "home" || kind === "assets" || kind === "theme" || kind === "themes";
 
-const dispatchWrite = async (
+/** 读类路由（document/model/outline/annotations）共用"先 remember 再取"。 */
+type ReadKind = Extract<Route["kind"], "document" | "model" | "outline" | "annotations">;
+
+const isReadKind = (kind: Route["kind"]): kind is ReadKind =>
+  kind === "document" || kind === "model" || kind === "outline" || kind === "annotations";
+
+const readReplyOf = async (
   context: HandlerContext,
-  route: Route,
-  req: IncomingMessage,
-  bodyMs: number,
-): Promise<Written> => {
-  const body = await bodyRecordOf(req, bodyMs);
-  const key = docQueueKey(context.workspace, requiredStringOf(body, "docId"));
-  return withDocQueue(key, () => writeReplyOf(context, route, body));
+  kind: ReadKind,
+  docId: string,
+  remember: Runtime["remember"],
+): Promise<Reply> => {
+  await remember(docId);
+  if (kind === "document") return (await documentReply(context, docId)).reply;
+  if (kind === "annotations") return annotationsReply(context, docId);
+  return kind === "model" ? modelReply(context, docId) : outlineReply(context, docId);
 };
 
 const dispatchOf =
@@ -204,13 +197,17 @@ const dispatchOf =
       const input = { context, route, params, docId: options.docId };
       return staticOf({ ...input, hasDocQuery: url.searchParams.has("doc") });
     }
-    if (route.kind === "document" || route.kind === "model" || route.kind === "outline") {
-      const docId = params["docId"] ?? options.docId;
-      await runtime.remember(docId);
-      if (route.kind === "document") return (await documentReply(context, docId)).reply;
-      return route.kind === "model" ? modelReply(context, docId) : outlineReply(context, docId);
+    if (route.kind === "annotationDiff") {
+      return annotationDiffReply(context, {
+        docId: paramOf(params, "docId", options.docId),
+        anId: paramOf(params, "anId", ""),
+      });
     }
-    const written = await dispatchWrite(context, route, req, bodyMs);
+    if (isReadKind(route.kind)) {
+      const docId = paramOf(params, "docId", options.docId);
+      return readReplyOf(context, route.kind, docId, runtime.remember);
+    }
+    const written = await dispatchWrite(context, route, params, { req, bodyMs });
     runtime.noteWrite(written);
     return written.reply;
   };

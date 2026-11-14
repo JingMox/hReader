@@ -29,7 +29,16 @@ const isEditableTarget = (target: KeyTargetLike | null | undefined): boolean =>
   (target.isContentEditable === true ||
     EDITABLE_TAGS.includes((target.tagName ?? "").toUpperCase()));
 
+const diffShortcutOf = (event: KeyLike): ReaderIntent | undefined => {
+  if (event.shiftKey === true && (event.key === "D" || event.key === "d"))
+    return { kind: "diffToggled" };
+  // `w` 是 Revert（撤销上一 revision），不是"接受"——kind 名与语义必须一致（裁定 #2）。
+  return event.key === "w" ? { kind: "revert" } : undefined;
+};
+
 const isPrintableShortcut = (event: KeyLike, state: ReaderState): ReaderIntent | undefined => {
+  const diffIntent = diffShortcutOf(event);
+  if (diffIntent !== undefined) return diffIntent;
   if (event.key === "/") return { kind: "searchOpened" };
   if (event.key === "j") return { kind: "move", delta: 1 };
   if (event.key === "k") return { kind: "move", delta: -1 };

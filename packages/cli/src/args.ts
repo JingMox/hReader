@@ -1,8 +1,5 @@
-// 这层管：argv → 意图的纯函数（不读 process、不做 IO、不抛异常）；错误用联合返回。
-// CLI 层的用法错误（exit 2）全部在这里产生，core 的 `HrError` 在命令层才可能出现。
-
+// argv → 意图的纯函数（不读 process、不做 IO、不抛异常）；CLI 用法错误（exit 2）全部在这里产生。
 import { resolve } from "node:path";
-
 import type { PatchAction } from "@hreader/core";
 
 import { allowHostsOf, tokenize, type Raw } from "./tokens";
@@ -12,12 +9,10 @@ export type HtmlSource =
   | { readonly kind: "inline"; readonly text: string }
   | { readonly kind: "file"; readonly path: string }
   | { readonly kind: "stdin" };
-
 export type StyleMode =
   | { readonly kind: "visual"; readonly id: string }
   | { readonly kind: "tone"; readonly id: string }
   | { readonly kind: "lint" };
-
 interface Common {
   readonly json: boolean;
   readonly workspace: string;
@@ -40,6 +35,7 @@ export type Intent =
       readonly html: HtmlSource | undefined;
     } & Common)
   | ({ readonly kind: "style"; readonly path: string; readonly mode: StyleMode } & Common)
+  | ({ readonly kind: "undo"; readonly path: string } & Common)
   | ({
       readonly kind: "serve";
       readonly path: string;
@@ -262,31 +258,39 @@ const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
   };
 };
 
-const topicOf = (positionals: readonly string[]): CommandName | undefined => {
-  const [first] = positionals;
-  return isCommandName(first) ? first : undefined;
+const plainIntent = (raw: Raw, rest: readonly string[], cwd: string, kind: "undo"): ParsedArgs => {
+  const [file = "", ...extra] = rest;
+  const problem =
+    extra.length > 0
+      ? `${kind} 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
+      : file === ""
+        ? `${kind} 缺少 <file>`
+        : unusedFlag(raw, ["--json", "--workspace"]);
+  if (problem !== undefined) return failure(problem, kind);
+  return { ok: true, intent: { kind, path: absoluteOf(file, cwd), ...commonOf(raw, cwd) } };
 };
 
 const build = (raw: Raw, cwd: string): ParsedArgs => {
   const [name, ...rest] = raw.positionals;
   if (name === undefined) {
-    return failure("缺少命令：outline | read | patch | style | serve", undefined);
+    return failure("缺少命令：outline | read | patch | style | undo | serve", undefined);
   }
-  if (!isCommandName(name)) {
-    return failure(`未知命令：${name}`, undefined);
-  }
+  if (!isCommandName(name)) return failure(`未知命令：${name}`, undefined);
   if (name === "outline") return outlineIntent(raw, rest, cwd);
   if (name === "read") return readIntent(raw, rest, cwd);
   if (name === "patch") return patchIntent(raw, rest, cwd);
   if (name === "serve") return serveIntent(raw, rest, cwd);
+  if (name === "undo") return plainIntent(raw, rest, cwd, "undo");
   return styleIntent(raw, rest, cwd);
 };
 
 export const parseArgs = (argv: readonly string[], cwd: string): ParsedArgs => {
   const tokenized = tokenize(argv);
   if (!tokenized.ok) return failure(tokenized.message, undefined);
+  const [first] = tokenized.raw.positionals;
   if (tokenized.raw.switches.has("--help")) {
-    return { ok: true, intent: { kind: "help", topic: topicOf(tokenized.raw.positionals) } };
+    const topic: CommandName | undefined = isCommandName(first) ? first : undefined;
+    return { ok: true, intent: { kind: "help", topic } };
   }
   return build(tokenized.raw, cwd);
 };

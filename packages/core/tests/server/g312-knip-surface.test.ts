@@ -101,8 +101,8 @@ describe("门面 · 可单测部件仍可用", () => {
     const wrong = matchRoute("POST", "/api/events");
     expect(wrong.kind).toBe("method");
 
-    // M2.2：`/assets/:path`、`/api/theme`、`/api/theme/:styleId` 让冻结路由表从 9 变 12。
-    expect(ROUTES).toHaveLength(12);
+    // M2.2 让冻结路由表 9 → 12，M2.3 的批注/撤销五条 → 17。
+    expect(ROUTES).toHaveLength(17);
     expect(statusOf("locked")).toBe(409);
     expect(statusOf("too_many_clients")).toBe(429);
     expect(statusOf("path_outside_workspace")).toBe(403);

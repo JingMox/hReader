@@ -37,6 +37,9 @@ const EXIT_CODES = {
   unauthorized: EXIT_FAILURE,
   forbidden_origin: EXIT_FAILURE,
   daemon_already_running: EXIT_USAGE,
+  invalid_payload: EXIT_FAILURE,
+  nothing_to_undo: EXIT_FAILURE,
+  anchor_lost: EXIT_FAILURE,
 } satisfies Record<HrErrorCode, number>;
 
 /** `satisfies` 已保证表内穷尽：CLI 与 core 同仓同版本，不存在"新 core 配旧 CLI"的运行时分支。 */

@@ -2,15 +2,13 @@
 
 import { type HtmlElementNode, type HtmlNode, type SourceSpan } from "../html/constants";
 import { parseHtml } from "../html/parse";
+import { ZERO_SPAN } from "../html/span";
 import { drainStack } from "../html/stack";
 import { HrError } from "../hr-error";
 import { assertThemeSafe } from "./css";
 
 /** 与 `ops/readNode/constants.ts` 的 `THEME_ANCHOR_ID` 同值：外壳锚点是 docs/02 §3.1 的规范常量。 */
 const THEME_ANCHOR_ID = "hr-theme";
-
-/** 合成骨架的区间（`html/parse.ts` 的 `ZERO_SPAN`）；缺 `span` 时退化成同一份，比较只看字节。 */
-const ZERO_SPAN: SourceSpan = { start: 0, end: 0, innerStart: 0, innerEnd: 0 };
 
 /** 没有 `<html>` 时唯一的落点：紧跟 prologue（doctype/注释/缩进），绝不插到它前面。 */
 const PROLOGUE = /^(?:\s|<!--[\s\S]*?-->)*<!doctype[^>]*>/iu;
@@ -34,7 +32,8 @@ interface Anchor {
 }
 
 /** `locations: true` 下每个元素都有区间；`{ ...ZERO_SPAN, ...undefined }` 仍是零宽，无需分支。 */
-const spanOf = (node: HtmlElementNode): SourceSpan => ({ ...ZERO_SPAN, ...node.span });
+/** 与 `html/span.ts` 的 `spanOf` 不同：这里只取值——缺失（未开 locations）就补零宽，不回答"元素在不在"（P2-2）。 */
+const spanOrZero = (node: HtmlElementNode): SourceSpan => ({ ...ZERO_SPAN, ...node.span });
 
 /** 源码里真的有字节：parse5 合成的 `<html>`/`<head>` 拿到零宽区间，与"源码里没有该标签"同义。 */
 const hasBytes = (span: SourceSpan): boolean => span.end > span.start;
@@ -67,7 +66,7 @@ const themesOf = (root: HtmlNode): readonly Anchor[] => {
   const anchors: Anchor[] = [];
   for (const node of drainStack(stack)) {
     if (node.kind === "element") {
-      if (isThemeBlock(node)) anchors.push({ node, span: spanOf(node) });
+      if (isThemeBlock(node)) anchors.push({ node, span: spanOrZero(node) });
       pushReversed(node.children, stack);
       continue;
     }
@@ -82,7 +81,7 @@ const tagSpansOf = (root: HtmlNode): ReadonlyMap<string, SourceSpan> => {
   const stack: HtmlNode[] = [root];
   for (const node of drainStack(stack)) {
     if (node.kind === "element") {
-      if (!spans.has(node.tag)) spans.set(node.tag, spanOf(node));
+      if (!spans.has(node.tag)) spans.set(node.tag, spanOrZero(node));
       pushReversed(node.children, stack);
       continue;
     }

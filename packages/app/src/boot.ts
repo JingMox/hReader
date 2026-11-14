@@ -1,5 +1,6 @@
 // 这层管：组装（store ← sse ← widgets ← keys ← style）。没有业务规则：
-// 状态迁移在 `state.ts`，渲染在 `widgets/**`，退避在 `sse.ts`；这里只做"接线 + 串行泵"。
+// 状态迁移在 `state.ts`，渲染在 `widgets/**`，state → DOM 的全量同步在 `wiring.ts` 的 `syncView`，
+// 退避在 `sse.ts`；这里只做"接线 + 串行泵"。
 
 import type { Host } from "./dom.ts";
 import { intentOf, type KeyLike } from "./keys.ts";
@@ -7,11 +8,17 @@ import type { Sse, SseEvent, SseHandlers } from "./sse.ts";
 import type { ConnState, OutlineNode, ReaderIntent, ReaderState } from "./state.ts";
 import type { Store } from "./store.ts";
 import type { StyleSwitch } from "./style-switch.ts";
+import { changedNodesOf, flashChanged, type Schedule } from "./flash.ts";
 import { mountCanvas } from "./widgets/canvas.ts";
 import type { Widget } from "./widgets/library.ts";
 import { mountLibrary } from "./widgets/library.ts";
 import { mountSidenotes } from "./widgets/sidenotes.ts";
 import { mountStatusbar } from "./widgets/statusbar.ts";
+import { renderNotes, wireNotes, type NotesDeps } from "./notes-wire.ts";
+import { missingAnchorsOf, reportMissingAnchors } from "./anchors.ts";
+import type { RawSelection } from "./widgets/selection.ts";
+import { COPY } from "./widgets/copy.ts";
+import { syncView } from "./wiring.ts";
 
 export interface ModelResponse {
   readonly revision: string;
@@ -27,6 +34,8 @@ export interface BootDeps {
   readonly store: Store;
   /** 由 boot 传入 handler 后返回连接对象（`main.ts` 负责把真 `EventSource` 塞进去）。 */
   readonly openSse: (handlers: SseHandlers) => Sse;
+  /** 闪烁的计时器（AC4.3）；缺省用真 `setTimeout`（`main.ts` 不传即真实现）。 */
+  readonly schedule?: Schedule;
   readonly style: StyleSwitch;
   /** 文档正文 HTML（`GET /s/<docId>`）。 */
   readonly documentHtml: string;
@@ -39,10 +48,16 @@ export interface BootDeps {
   readonly fetchOutline: () => Promise<OutlineResponse>;
   /** 键盘事件源（真实实现是 `window`，由 `main.ts` 注入）。 */
   readonly keySource: (handler: (event: KeyLike) => void) => () => void;
+  /** M2.3：批注与 diff 的接线；缺省时批注相关意图全部无副作用（M2.2 的用例不受影响）。 */
+  readonly notes?: NotesDeps;
+  /** 诊断出口（缺锚点等"必须可见地失败"的消息）；`main.ts` 接 `console.error`。 */
+  readonly logger?: (message: string) => void;
 }
 
 export interface Booted {
   readonly destroy: () => void;
+  /** 选区事件入口（`main.ts` 在 `mouseup` 时调；跨块/空白选区不产生意图）。 */
+  readonly selection?: (selection: RawSelection) => void;
 }
 
 const ROOT = "#hr-root";
@@ -140,55 +155,143 @@ const applyFirstTheme = (deps: BootDeps, pump: (task: () => Promise<void>) => vo
   });
 };
 
+const defaultSchedule: Schedule = (ms, run) => {
+  const handle = setTimeout(run, ms);
+  return () => {
+    clearTimeout(handle);
+  };
+};
+
 const sseHandlersOf = (
+  deps: BootDeps,
   store: Store,
   pump: (task: () => Promise<void>) => void,
-  reload: () => Promise<void>,
+  hooks: { readonly reload: () => Promise<void>; readonly flash: { stop?: () => void } },
 ): SseHandlers => ({
   onEvent: (event: SseEvent): void => {
-    if (event.type === "doc.changed" || event.type === "doc.reloaded") pump(reload);
+    if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
+    // 上一次闪烁的计时器先收掉：连发 `doc.changed` 时不留下孤儿定时器（也因此 `clearTimeout` 可达）。
+    hooks.flash.stop?.();
+    hooks.flash.stop = flashChanged(
+      deps.host,
+      changedNodesOf(event.payload),
+      deps.schedule ?? defaultSchedule,
+    );
+    pump(hooks.reload);
   },
   onState: (conn: ConnState): void => {
     store.dispatch({ kind: "conn", conn });
   },
 });
 
-export const boot = (deps: BootDeps): Booted => {
-  const { host, store } = deps;
-  // 先建泵与主题切换器，再挂 widget：所有意图（键盘、下拉、TOC 点击、搜索框）都从
-  // 这一个 `dispatchIntent` 出去——**同一意图只有一个出口**（见 G3-R3 #1 / G3-R5）。
-  const pump = createPump();
-  const selectTheme = themeSwitcher(deps, pump);
-  const dispatchIntent = (intent: ReaderIntent): void => {
-    store.dispatch(intent);
-    if (intent.kind === "themeSelected") selectTheme(intent);
-    if (intent.kind === "searchOpened") host.focus(`${ROOT} #hr-search`);
-  };
-  const widgets = mountAll(deps, dispatchIntent);
-  const unsubscribe = store.subscribe((next: ReaderState) => {
-    for (const widget of widgets) widget.update(next);
+const bootedOf = (wired: ReturnType<typeof wireNotes> | undefined, stop: () => void): Booted => ({
+  ...(wired === undefined
+    ? {}
+    : {
+        selection: (raw: RawSelection): void => {
+          wired.selection(raw);
+        },
+      }),
+  destroy: stop,
+});
+
+interface Mounted {
+  readonly widgets: readonly Widget[];
+  readonly wired: ReturnType<typeof wireNotes> | undefined;
+}
+
+const wiredOf = (
+  deps: BootDeps,
+  store: Store,
+  pump: (task: () => Promise<void>) => void,
+  dispatch: (intent: ReaderIntent) => void,
+): ReturnType<typeof wireNotes> | undefined => {
+  if (deps.notes === undefined) return undefined;
+  const wired = wireNotes({
+    host: deps.host,
+    notes: deps.notes,
+    reload: reloadOf(deps, store),
+    store,
+    pump,
+    dispatch,
   });
-  // 首屏的正文由 mount 注入；把它的指纹记进 state，后续只 diff 变化的块。
+  wired.wireDom();
+  return wired;
+};
+
+const mountAllWithNotes = (
+  deps: BootDeps,
+  store: Store,
+  pump: (task: () => Promise<void>) => void,
+  dispatch: (intent: ReaderIntent) => void,
+): Mounted => {
+  const widgets = mountAll(deps, dispatch);
+  return { widgets, wired: wiredOf(deps, store, pump, dispatch) };
+};
+
+/** 首屏记账 + 主题 + SSE + 键盘：返回拆卸函数（`boot` 只保留调度与装配）。 */
+const startFlows = (
+  deps: BootDeps,
+  store: Store,
+  pump: (task: () => Promise<void>) => void,
+  dispatch: (intent: ReaderIntent) => void,
+): (() => void) => {
   store.dispatch({
     kind: "blocksLoaded",
     blocks: store.get().blocks,
     outline: store.get().outline,
     html: deps.documentHtml,
   });
-
-  const reload = reloadOf(deps, store);
-  // 首屏就应用默认主题（AC5.1 的"初始"，之前只有切换）。
   applyFirstTheme(deps, pump);
-  const sse = deps.openSse(sseHandlersOf(store, pump, reload));
-  const unbindKeys = deps.keySource(keyHandlerOf(store, dispatchIntent));
+  const flash: { stop?: () => void } = {};
+  const sse = deps.openSse(
+    sseHandlersOf(deps, store, pump, { reload: reloadOf(deps, store), flash }),
+  );
+  const unbindKeys = deps.keySource(keyHandlerOf(store, dispatch));
   sse.start();
-
-  return {
-    destroy: () => {
-      unbindKeys();
-      unsubscribe();
-      sse.close();
-      host.destroy();
-    },
+  return () => {
+    flash.stop?.();
+    unbindKeys();
+    sse.close();
+    deps.host.destroy();
   };
+};
+
+export const boot = (deps: BootDeps): Booted => {
+  const { host, store } = deps;
+  // 一个意图只有一个出口（G3-R3 #1 / G3-R5）。
+  const pump = createPump();
+  const selectTheme = themeSwitcher(deps, pump);
+  const notes = deps.notes;
+  function dispatchIntent(intent: ReaderIntent): void {
+    // 守卫必须在 dispatch **之前**求值：`w` 的可用性取决于"此刻"面板是否开着（P0-2 的根因）。
+    if (wired !== undefined && !wired.before(intent)) return;
+    store.dispatch(intent);
+    if (intent.kind === "themeSelected") selectTheme(intent);
+    // `/` 只给可见提示：搜索框模板里是 `disabled`（不聚焦死控件）；同一句文案也写在它的 `title` 上。
+    if (intent.kind === "searchOpened") host.text(`${ROOT} #hr-hint`, COPY.searchDeferred);
+    wired?.after(intent);
+  }
+  const { widgets, wired } = mountAllWithNotes(deps, store, pump, dispatchIntent);
+  host.attr(`${ROOT} #hr-search`, "title", COPY.searchDeferred);
+  // 模板缺锚点必须**可见地失败**（裁定 #1）：函数存在 ≠ 路径可达。
+  if (host.has !== undefined) {
+    reportMissingAnchors(host, deps.logger ?? (() => undefined), missingAnchorsOf(host));
+  }
+  // state → DOM 的全量同步在 `wiring.ts`（与 `renderAnnotations`/`renderDiff` 同族）。
+  const renderNotesOf = (state: ReaderState): void => {
+    renderNotes(host, state);
+  };
+  const subscriber = syncView({
+    host,
+    widgets,
+    ...(notes === undefined ? {} : { renderNotes: renderNotesOf }),
+  });
+  const unsubscribe = store.subscribe(subscriber);
+  if (wired !== undefined) pump(wired.load);
+  const stopFlows = startFlows(deps, store, pump, dispatchIntent);
+  return bootedOf(wired, () => {
+    unsubscribe();
+    stopFlows();
+  });
 };

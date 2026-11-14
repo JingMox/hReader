@@ -9,6 +9,22 @@ export interface NodeSpec {
   readonly children?: readonly NodeSpec[];
 }
 
+/** 镜像 `@hreader/core` 的 `TextAnchor`：app 不能依赖 core（会拉进 node 内建），故只镜像结构。 */
+export interface AnchorSpec {
+  readonly exact: string;
+  readonly prefix: string;
+  readonly suffix: string;
+  readonly start: number;
+}
+
+/** 镜像 `@hreader/core` 的 `ChunkKind | TextChunk`（同上，纯结构镜像）。 */
+export type DiffKind = "same" | "ins" | "del";
+
+export interface DiffChunk {
+  readonly kind: DiffKind;
+  readonly text: string;
+}
+
 /** 事件里我们用到的两个成员：`closest` 与 `value`。真实 target 用 `Reflect` 适配，不做类型断言。 */
 export interface TargetLike {
   readonly closest?: (selector: string) => { getAttribute: (name: string) => string | null } | null;
@@ -36,6 +52,8 @@ export interface Host {
   ) => () => void;
   readonly focus: (selector: string) => void;
   readonly scrollTo: (selector: string) => void;
+  /** 锚点是否存在（裁定 #1：模板缺锚点必须**可见地失败**，不能静默跳过）。可选：假 host 可省。 */
+  readonly has?: (selector: string) => boolean;
   readonly destroy: () => void;
 }
 
@@ -44,6 +62,12 @@ export interface DocumentLike {
   readonly body: { readonly getAttribute: (name: string) => string | null };
   readonly querySelector: (selector: string) => ElementLike | null;
   readonly createElement: (tag: string) => ElementLike;
+  /** `Range` 的最小声明（裁定 #11 的字符偏移）；缺省表示不量偏移。 */
+  readonly createRange?: () => {
+    readonly selectNodeContents: (node: unknown) => void;
+    readonly setEnd: (node: unknown, offset: number) => void;
+    readonly toString: () => string;
+  };
 }
 
 export interface ElementLike {
@@ -114,7 +138,7 @@ const paintOps = (
 /** 只碰文本/属性/类名的那些。 */
 const textOps = (
   root: DocumentLike,
-): Pick<Host, "text" | "attr" | "html" | "cls" | "focus" | "scrollTo"> => ({
+): Pick<Host, "text" | "attr" | "html" | "cls" | "focus" | "scrollTo" | "has"> => ({
   text: (selector, value) => {
     const element = found(root, selector);
     if (element !== undefined && element.textContent !== value) element.textContent = value;
@@ -138,6 +162,7 @@ const textOps = (
   scrollTo: (selector) => {
     found(root, selector)?.scrollIntoView?.({ block: "start" });
   },
+  has: (selector) => found(root, selector) !== undefined,
 });
 
 export const createDomHost = (root: DocumentLike): Host => {

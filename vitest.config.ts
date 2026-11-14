@@ -25,6 +25,9 @@ export default defineConfig({
   },
   test: {
     include: ["packages/*/tests/**/*.test.ts"],
+    // 本机 16GB / v8 覆盖率下，默认线程池（≈核数）会把 swap 打爆；2 个 worker 峰值内存约为原来的 1/3。
+    // 这是限流，不是放宽门禁：阈值仍是 perFile 四维 100%。
+    maxWorkers: 2,
     coverage: {
       provider: "v8",
       include: ["packages/*/src/**/*.ts"],

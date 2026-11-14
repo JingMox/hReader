@@ -12,7 +12,7 @@
       <aside id="hr-library" class="library">
         <h2 id="hr-lib-title"></h2>
         <label id="hr-search-label" for="hr-search">搜索</label>
-        <input id="hr-search" type="search" />
+        <input id="hr-search" type="search" disabled title="搜索将在后续卡片启用" />
         <h3 id="hr-toc-title"></h3>
         <ul id="hr-toc"></ul>
       </aside>
@@ -26,12 +26,42 @@
       </main>
       <aside id="hr-notes" class="sidenotes">
         <h3 id="hr-notes-title"></h3>
-        <p id="hr-notes-body"></p>
+        <div id="hr-notes-actions" class="notes-actions">
+          <!-- `hidden` 只是无 JS 时的首帧兜底：`boot.ts` 的 `syncView` 会在有选区时摘除、失选区时带回。 -->
+          <button id="hr-note-btn" type="button" class="note-btn" hidden>批注选区</button>
+        </div>
+        <div id="hr-note-editor" class="note-editor">
+          <label id="hr-note-draft-label" for="hr-note-draft">批注</label>
+          <textarea id="hr-note-draft" class="note-draft" rows="3"></textarea>
+          <div class="note-editor-actions">
+            <button id="hr-note-submit" type="button">提交</button>
+            <button id="hr-note-cancel" type="button">取消</button>
+          </div>
+        </div>
+        <!-- 错误/提示放在编辑器外：跨块选区等提示在编辑器关着时也必须看得见。 -->
+        <p id="hr-note-error" class="note-error" role="alert"></p>
+        <section id="hr-notes-pending" class="notes-group" aria-labelledby="hr-notes-pending-title">
+          <h4 id="hr-notes-pending-title">未处理</h4>
+        </section>
+        <section
+          id="hr-notes-resolved"
+          class="notes-group"
+          aria-labelledby="hr-notes-resolved-title"
+        >
+          <h4 id="hr-notes-resolved-title">已归档</h4>
+        </section>
+        <div id="hr-notes-body" class="notes-body"></div>
+        <section id="hr-diff" class="diff">
+          <h4 id="hr-diff-title">改动对比</h4>
+          <p id="hr-diff-status"></p>
+          <div id="hr-diff-chunks"></div>
+        </section>
       </aside>
       <footer id="hr-statusbar" class="statusbar">
         <span id="hr-conn"></span>
         <span id="hr-version"></span>
         <span id="hr-shortcuts"></span>
+        <span id="hr-hint" role="status"></span>
       </footer>
     </div>
     <script type="module" src="/assets/main.js"></script>

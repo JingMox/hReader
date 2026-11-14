@@ -12,3 +12,5 @@ export {
   type ReaderIntent,
   type ReaderState,
 } from "./state.ts";
+
+export { REQUIRED_ANCHORS, missingAnchorsOf } from "./anchors.ts";

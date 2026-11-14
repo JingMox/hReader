@@ -1,13 +1,11 @@
 // 这层管：把一条批注按源码区间写回 `<script id="hr-meta">`（只改该 script 的内部文本）；不落盘、不加锁。
 
+import { elementsOf, insertMeta } from "../annotations/meta-insert";
+import { normalizeStatus, type Annotation } from "../annotations/model";
 import { HrError } from "../hr-error";
-import {
-  type HtmlElementNode,
-  type HtmlNode,
-  HR_ID_ATTRIBUTE,
-  META_SCRIPT_ID,
-} from "../html/constants";
+import { type HtmlElementNode, HR_ID_ATTRIBUTE, META_SCRIPT_ID } from "../html/constants";
 import { parseHtml } from "../html/parse";
+import { spanOf } from "../html/span";
 import { attributeOf } from "../model/attrs";
 
 export interface AnnotationInput {
@@ -46,19 +44,6 @@ const checkRange = (html: string, input: AnnotationInput): void => {
   if (input.text.length === 0) throw new HrError("invalid_input", "text 不能为空");
 };
 
-const elementsOf = (root: HtmlNode): readonly HtmlElementNode[] => {
-  const out: HtmlElementNode[] = [];
-  const stack: HtmlNode[] = [root];
-  // 数组迭代器按下标走，循环中 `push` 进去的子节点会被同一轮访问到（等价于先前的 pop 循环）。
-  for (const current of stack) {
-    if (current.kind === "element") out.push(current);
-    if (current.kind === "document" || current.kind === "element") {
-      for (const child of current.children) stack.push(child);
-    }
-  }
-  return out;
-};
-
 /** 覆盖 `[start, end)` 的最内层元素：区间更小的那个才是"批注真正落在哪"。 */
 const deepestContaining = (
   elements: readonly HtmlElementNode[],
@@ -68,9 +53,9 @@ const deepestContaining = (
   let best: HtmlElementNode | undefined;
   let bestWidth = Number.MAX_SAFE_INTEGER;
   for (const element of elements) {
-    const span = element.span;
-    // 只有带位置的元素能"覆盖"：无位置或退化区间直接跳过，宽度就地算，不再另开两个含死分支的判据函数。
-    if (span === undefined || span.end <= span.start) continue;
+    const span = spanOf(element);
+    // 只有真实出现的元素能"覆盖"：合成节点（片段里的 `html/head/body`）区间零宽，直接跳过。
+    if (span.end <= span.start) continue;
     if (span.start > start || end > span.end) continue;
     const width = span.end - span.start;
     if (width < bestWidth) {
@@ -85,6 +70,25 @@ const targetIdOf = (elements: readonly HtmlElementNode[], start: number, end: nu
   const element = deepestContaining(elements, start, end);
   return element === undefined ? "root" : (attributeOf(element, HR_ID_ATTRIBUTE) ?? "root");
 };
+
+/**
+ * 记录形状必须与 `readAnnotations` 的必填判定同口径：`nodeId` / `anchor.exact` / `createdAt` 缺任一，
+ * 卡片会被当成脏数据跳过——写成功、读不回来就是批注当场丢（容错不能替写入缺陷兜底）。
+ */
+const recordOf = (
+  elements: readonly HtmlElementNode[],
+  input: AnnotationInput,
+  newId: string,
+  createdAt: string,
+): Annotation => ({
+  id: newId,
+  nodeId: targetIdOf(elements, input.start, input.end),
+  // 片段路径拿不到文档侧的上下文，前缀/后缀留空；`start` 只是消歧提示，仍是片段内偏移。
+  anchor: { exact: input.text, prefix: "", suffix: "", start: input.start },
+  note: input.note ?? input.text,
+  status: normalizeStatus(input.status) ?? "pending",
+  createdAt,
+});
 
 const isUnknownArray = (value: unknown): value is readonly unknown[] => Array.isArray(value);
 
@@ -104,41 +108,32 @@ const annotationsOfMeta = (inner: string, file: string): readonly unknown[] => {
   return annotations;
 };
 
-/** 没有 meta 脚本时插在 `</body>` 前；连 body 都没有（片段文档）就追加到末尾。 */
-const insertMeta = (html: string, record: Readonly<Record<string, string>>): string => {
-  const block = `${META_OPEN}${scriptSafeJson({ annotations: [record] })}${META_CLOSE}`;
-  const closeAt = html.toLowerCase().lastIndexOf("</body>");
-  if (closeAt < 0) return `${html}${block}`;
-  return `${html.slice(0, closeAt)}${block}${html.slice(closeAt)}`;
-};
-
 /**
  * 返回新 id 与整篇新文本；调用方负责加锁与原子写。
+ * `createdAt` 由调用方从注入的时钟取（本层不读时钟），与 `annotationOps` 的时间来源同一处。
  * `changed` 恒为真（追加一条批注必然改变文本），保留字段是为了和 `patch/style` 同一形状。
  */
 export const appendAnnotation = (
   html: string,
   input: AnnotationInput,
   newId: string,
+  createdAt: string,
 ): AnnotationOutcome => {
   checkRange(html, input);
   const parsed = parseHtml(html, { locations: true });
   const elements = elementsOf(parsed.root);
-  const record = {
-    id: newId,
-    targetId: targetIdOf(elements, input.start, input.end),
-    comment: input.note ?? input.text,
-    status: input.status,
-  };
+  const record = recordOf(elements, input, newId, createdAt);
   const meta = elements.find(
     (element) => element.tag === "script" && attributeOf(element, "id") === META_SCRIPT_ID,
   );
-  if (meta?.span === undefined) {
-    const next = insertMeta(html, record);
+  const metaSpan = spanOf(meta);
+  if (metaSpan === null || metaSpan.end <= metaSpan.start) {
+    const script = `${META_OPEN}${scriptSafeJson({ annotations: [record] })}${META_CLOSE}`;
+    const next = insertMeta(html, script);
     return { html: next, newId, changed: next !== html };
   }
-  const inner = html.slice(meta.span.innerStart, meta.span.innerEnd);
+  const inner = html.slice(metaSpan.innerStart, metaSpan.innerEnd);
   const annotations = annotationsOfMeta(inner, "hr-meta");
-  const next = `${html.slice(0, meta.span.innerStart)}${scriptSafeJson({ annotations: [...annotations, record] })}${html.slice(meta.span.innerEnd)}`;
+  const next = `${html.slice(0, metaSpan.innerStart)}${scriptSafeJson({ annotations: [...annotations, record] })}${html.slice(metaSpan.innerEnd)}`;
   return { html: next, newId, changed: next !== html };
 };

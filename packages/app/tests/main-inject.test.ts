@@ -18,10 +18,21 @@ import {
   themes,
 } from "./support/main-stubs.ts";
 
+interface ValueCarrier {
+  readonly value?: string;
+}
+
+/** 事件形状守卫：DOM 事件在这里只可能被当成 "带 value 的对象" 用（同 `packages/app/src/dom.ts` 的约定）。 */
+const isValueCarrier = (event: unknown): event is ValueCarrier =>
+  typeof event === "object" && event !== null;
+
+const valueCarrierOf = (event: unknown): ValueCarrier => (isValueCarrier(event) ? event : {});
+
 interface RecordedHost {
   readonly texts: [string, string][];
   readonly host: Host;
   readonly fireChange: (value: string) => void;
+  readonly fire: (selector: string, type: string, event: unknown) => void;
 }
 
 const recordingHostOf = (): RecordedHost => {
@@ -53,6 +64,9 @@ const recordingHostOf = (): RecordedHost => {
     fireChange: (value) => {
       handlers.get("#hr-root #hr-theme-select|change")?.({ value });
     },
+    fire: (selector, type, event) => {
+      handlers.get(`${selector}|${type}`)?.(valueCarrierOf(event));
+    },
   };
 };
 
@@ -63,8 +77,29 @@ const ioOf = (css: string, asked: string[] = []): AppIo => ({
     return Promise.resolve(path.startsWith("/api/theme/") ? css : ARTICLE);
   },
   json: (path, guard) => {
+    asked.push(path);
     const candidate: unknown =
-      path === "/api/theme" ? themes : path.endsWith("/model") ? model : outline;
+      path === "/api/theme"
+        ? themes
+        : path.endsWith("/model")
+          ? model
+          : path.endsWith("/outline")
+            ? outline
+            : path.endsWith("/annotations")
+              ? {
+                  annotations: [
+                    {
+                      id: "an-1a2b3c4d",
+                      nodeId: "hr-a",
+                      note: "批注",
+                      status: "pending",
+                      anchor: { exact: "一", prefix: "", suffix: "", start: 0 },
+                      createdAt: "2024-01-01T00:00:00.000Z",
+                    },
+                  ],
+                  lost: [],
+                }
+              : { chunks: [{ kind: "ins", text: "新段落" }], degraded: false };
     return guard(candidate)
       ? Promise.resolve(candidate)
       : Promise.reject(new Error(`${path} → 响应形状不符`));

@@ -54,7 +54,7 @@ export const errorReply = (error: unknown): Reply => {
       body: JSON.stringify({ code: "invalid_request", message: publicMessageOf(error.message) }),
     };
   }
-  if (error instanceof HrError) {
+  if (error instanceof HrError && error.code !== "anchor_lost") {
     const fixed = FIXED_MESSAGES[error.code];
     return {
       status: statusOf(error.code),

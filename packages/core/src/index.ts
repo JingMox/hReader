@@ -67,3 +67,41 @@ export type {
   InjectedNodeIds,
   ParsedHtml,
 } from "./html";
+
+// ---- M2.3：批注（纯层）+ 落盘编排 + 撤销 ----
+export {
+  ANCHOR_LIMITS,
+  annotationIdOf,
+  DIFF_CHAR_LIMIT,
+  diffText,
+  NOTE_LIMIT,
+  readAnnotations,
+  resolveAnchor,
+  writeAnnotations,
+} from "./annotations";
+export type {
+  AnchorDocument,
+  AnchorFailure,
+  AnchorResult,
+  Annotation,
+  AnnotationStatus,
+  ChunkKind,
+  DiffResult,
+  ReadResult,
+  TextAnchor,
+  TextChunk,
+} from "./annotations";
+export {
+  addAnnotation,
+  listAnnotations,
+  reopenAnnotation,
+  resolveAnnotation,
+} from "./ops/annotationOps";
+export type {
+  AddAnnotationInput,
+  AnnotationWriteResult,
+  ListResult,
+  ResolveInput,
+} from "./ops/annotationOps";
+export { revertLast } from "./ops/revertOp";
+export type { RevertResult } from "./ops/revertOp";

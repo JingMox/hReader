@@ -174,8 +174,8 @@ describe("output · 人读文本", () => {
 });
 
 describe("usage · 单一事实源", () => {
-  it("should name all five commands", () => {
-    expect(COMMAND_NAMES).toEqual(["outline", "read", "patch", "style", "serve"]);
+  it("should name all six commands", () => {
+    expect(COMMAND_NAMES).toEqual(["outline", "read", "patch", "style", "undo", "serve"]);
     expect(isCommandName("patch")).toBe(true);
     expect(isCommandName("nope")).toBe(false);
     expect(isCommandName(undefined)).toBe(false);
@@ -239,6 +239,9 @@ describe("exit-codes · AC2 冻结表", () => {
     ["invalid_fragment", 1],
     ["forbidden_content", 1],
     ["undo_unavailable", 1],
+    ["invalid_payload", 1],
+    ["nothing_to_undo", 1],
+    ["anchor_lost", 1],
     ["invalid_style", 1],
     ["unknown_style", 1],
     ["invalid_theme", 1],
