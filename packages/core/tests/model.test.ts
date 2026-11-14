@@ -128,6 +128,7 @@ describe("toDocumentModel · 空白归一", () => {
   // 规格没写死 NBSP/全角空格：卡片只写"空白归一"。按测试员口径，只压 ASCII 空白、不改字符类
   // 才算"归一"，所以这条按该口径写，当前实现会红 —— 登记为 D2（`\s+`/u 会连 NBSP、U+3000、
   // U+FEFF 一起压成 ASCII 空格）。修好之前 `it.fails` 把它当"已知裂缝"看着，不许删。
+  // KD-01
   it.fails("should keep NBSP and ideographic space (only ASCII whitespace is folded) [D2]", () => {
     expect(shapeOf(derive("<article><p>a\u00A0b\u3000c</p></article>"))).toEqual([
       "p:a\u00A0b\u3000c",

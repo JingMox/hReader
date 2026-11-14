@@ -140,3 +140,18 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
 - 分层由 depcruise 表达：`widgets` 不许 import `dom.ts` 实现；纯函数模块不许碰 `document`/`window`/`fetch`/`EventSource`。
 
 **待用户确认（不阻塞）**：零依赖 ⇒ 无 jsdom，DOM 层只能靠 `Host` 假实现 + 手动浏览器验收。若要更高保真度，唯一办法是破例加一个 dev 依赖（如 `happy-dom`）。建议先零依赖做到 M2.4 再评估。
+
+## M2.2 · 阅读器三栏骨架（零依赖手写 DOM）
+
+- **范围**：`packages/app/**`（14 文件 → 1290 行）+ core 静态托管两条路由（`/`、`/assets/:path`）+ `GET /api/theme` + CLI `--app-dir`。路由 9 → 12。
+- **门禁**：1643 例 / 133 文件 / 四维 perFile 100% / depcruise 308 模块零违规 / knip 干净 / `verify` EXIT=0（协调者复跑）。
+- **6 轮返工关掉的真缺陷**：
+  1. **SSE 帧 100% 被丢弃**（服务端 `event: doc.changed` vs 客户端只听 `message`）——增量链路运行时是死的，而 1568 例全绿、变异 6/6 全杀。→ 手册 §10.5「假件只能控时序，不能定义格式」。
+  2. **`--app-dir` 词法器不认** → 静态托管整条链路不可达。
+  3. **主题下拉完全无效**（`dispatchIntent` 只写 store，`themeSelected` 到不了 `selectTheme`），且被 `it.fails` 钉成"已知失败"。→ KD 登记制 + CAP。
+  4. **点 TOC 不滚正文**（`scrollTo` 分支放在 `keyHandlerOf` 里，按键永远产不出该 intent）——覆盖率缺口把它暴露出来。→ 手册 §10.7「每层路由都要有从最外层入口出发的用例」。
+- **流程收获**：
+  - `it.fails` 一律禁止用于功能卡；已知缺陷只能走 `KD-nn` 标记 + `.workflow/known-defects.md` + CAP=10 的机械闸门（`known-defects-registry.test.ts`）。
+  - 测试员两次自报"EXIT=0"不可复现 → 交付必须贴原始输出块，协调者在 commit 前自己复跑。
+  - 覆盖率缺口先分类：**死代码 → 删**；**走错层的活代码 → 位移**（M2.2 R5 即此）；**真缺用例 → 补**。
+  - `verify` 链加入 `pnpm build`（否则 `dist` 陈旧，验收时浏览器拿到旧 JS，绿是假的）。

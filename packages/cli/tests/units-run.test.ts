@@ -96,9 +96,12 @@ describe("run · 用法错误（exit 2）", () => {
     expect(out).toEqual([]);
     expect(err.join("")).toContain("outline 缺少 <file>\nhReader CLI\n");
   });
+});
 
+describe("run · 用法错误在 --json 下的信封（F1 缺口）", () => {
   // 待裁定 F1：卡片 §3 要求"错误也遵守 --json"，但 args 失败信封里没有 json 字段，
   // usageFailure 拿不到 --json，于是 usage 错误在 --json 下只写 stderr。断言保留，用 it.fails 固定缺口。
+  // KD-09
   it.fails("should also emit a usage JSON envelope on stdout under --json", async () => {
     const { io, out, err } = capture();
     const code = await run(["outline", "--json"], io);
@@ -109,14 +112,18 @@ describe("run · 用法错误（exit 2）", () => {
   });
 
   // 同上 F1：空 stdin 走 UsageError 分支，--json 下没有 stdout 信封。
-  it.fails("should treat empty --html-stdin as a usage error (both modes)", async () => {
+  // KD-10
+  it("should treat empty --html-stdin as a usage error in plain mode", async () => {
     const plain = capture();
     expect(
       await run(["patch", "a.html", "hr-c", "--action", "append", "--html-stdin"], plain.io),
     ).toBe(2);
     expect(plain.out).toEqual([]);
     expect(plain.err.join("")).toContain("--html-stdin 读到的内容为空");
+  });
 
+  // KD-10
+  it.fails("should treat empty --html-stdin as a usage error under --json too", async () => {
     const json = capture();
     expect(
       await run(

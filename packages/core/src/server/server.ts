@@ -11,7 +11,7 @@ import { COOKIE_NAME, hostAllowed, originAllowed } from "./auth";
 import { HttpFault } from "./http-io";
 import type { DaemonInfo, Reply, ServerOptions } from "./contracts";
 import { portOpen, readDaemonOf, removeDaemonOf, staleDaemonOf, writeDaemonOf } from "./daemon";
-import { healthzReply, homeReply } from "./handlers";
+import { healthzReply } from "./handlers";
 import { authOf, errorReply, headerOf, jsonOf, methodNotAllowed, sendResult } from "./http-io";
 import { MAX_HEADER_BYTES, timeoutsOf } from "./limits";
 import { createServerHub, type Hub } from "./hub";
@@ -85,12 +85,9 @@ const gateOf = (env: ServeEnv, req: IncomingMessage): Reply | undefined => {
   return hostOk ? undefined : jsonOf(403, { code: "forbidden_origin" });
 };
 
-/** 不碰文档的静态页：`/` 与 `/healthz`；其余路由返回 undefined，由 `planOf` 继续分流。 */
-const pageOf = (env: ServeEnv, route: Route): Reply | undefined => {
-  if (route.kind === "home") return homeReply(env.docId);
-  if (route.kind === "healthz") return healthzReply(env.now() - env.startedAt);
-  return undefined;
-};
+/** 不碰构建产物、也不碰文档的唯一一页：`/healthz`；其余交给 `planOf`/`runtime`。 */
+const pageOf = (env: ServeEnv, route: Route): Reply | undefined =>
+  route.kind === "healthz" ? healthzReply(env.now() - env.startedAt) : undefined;
 
 const planOf = (env: ServeEnv, req: IncomingMessage, url: URL): Plan => {
   const gate = gateOf(env, req);
@@ -110,11 +107,9 @@ const planOf = (env: ServeEnv, req: IncomingMessage, url: URL): Plan => {
   return { kind: "dispatch", route: lookup.route, params: decoded.params };
 };
 
-/** 内部导出仅供边界测试（不进公共面）：HTTP/1.1 解析器总会填 `req.url`，`undefined` 一支真实请求到不了。
- * @internal */
+/** @internal 边界测试用：真实请求的 `req.url` 总有值，`undefined` 一支不可达。 */
 export const baseUrlOf = (rawUrl: string | undefined, port: number): URL =>
   new URL(rawUrl ?? "/", `http://127.0.0.1:${String(port)}`);
-
 const serve = async (env: ServeEnv, req: IncomingMessage, res: ServerResponse): Promise<void> => {
   const url = baseUrlOf(req.url, env.port());
   const plan = planOf(env, req, url);
@@ -254,7 +249,12 @@ const assemble = (options: ServerOptions, deps: ServerDeps): Assembled => {
   const token = randomBytes(TOKEN_BYTES).toString("base64url");
   const hub = createServerHub(options.diagnose);
   const runtime = createRuntime(
-    { workspace: options.workspace, docId: options.docId, bodyMs: timeoutsOf(options).bodyMs },
+    {
+      workspace: options.workspace,
+      docId: options.docId,
+      bodyMs: timeoutsOf(options).bodyMs,
+      appDir: options.appDir ?? "",
+    },
     {
       patch: deps.patch,
       style: deps.style,

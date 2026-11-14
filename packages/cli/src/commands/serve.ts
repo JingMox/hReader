@@ -12,6 +12,8 @@ export interface ServeInput {
   /** `~/.hreader/daemon.json` 的父目录。 */
   readonly home: string;
   readonly json: boolean;
+  /** 构建产物目录（`GET /`、`/assets/*` 的根）；`undefined` = 未配置（core 用 200 兜底首页）。 */
+  readonly appDir?: string;
   /** `--allow-host`：整体替换默认的回环 Host 集合。 */
   readonly allowHosts?: readonly string[] | undefined;
   /** 由 `main.ts` 从 SIGTERM/SIGINT 解出的关闭信号。 */
@@ -19,12 +21,14 @@ export interface ServeInput {
 }
 
 export const serveCommand = async (input: ServeInput): Promise<string> => {
+  const appDir = input.appDir;
   const running = await startServer(
     {
       workspace: input.workspace,
       port: input.port,
       home: input.home,
       docId: input.file,
+      ...(appDir === undefined ? {} : { appDir }),
       ...(input.allowHosts === undefined ? {} : { allowHosts: input.allowHosts }),
     },
     { patch: nodePatchDeps, style: nodeStyleDeps(input.workspace), now: Date.now },

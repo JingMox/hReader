@@ -64,6 +64,7 @@ describe("auth · ?t= 入口", () => {
 
   // D5 要求 cookie 是"随机 32B 会话 secret"；现状把 daemon token 直接当 cookie 发。
   // 后果：token 泄漏面从"一次性入口"扩大到每个请求，且无法单独吊销会话。
+  // KD-08
   it.fails(
     "should mint a fresh session secret instead of reusing the daemon token (D5)",
     async () => {

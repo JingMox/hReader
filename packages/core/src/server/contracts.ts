@@ -14,8 +14,10 @@ export interface ServerOptions {
   readonly port: number;
   /** `~/.hreader/daemon.json` 的父目录。 */
   readonly home: string;
-  /** 打开的那篇文档（相对 workspace 的路径）：`/` 与 `/api/events` 的默认目标。 */
+  /** 打开的那篇文档（相对 workspace 的路径）：`/api/events` 的默认目标。 */
   readonly docId: string;
+  /** 构建产物目录（`index.html` + `assets/`）：`GET /`、`GET /assets/*` 从这里读；缺省由 CLI 补 `packages/app/dist`。 */
+  readonly appDir?: string;
   /** `--allow-host` 的整体替换值；缺省用回环两种写法（`127.0.0.1:<port>`/`localhost:<port>`）。 */
   readonly allowHosts?: readonly string[];
   /** 诊断出口（帧头被替换、内部错误细节）；缺省丢弃，`--debug` 时由 CLI 接到 stderr。 */

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>hReader</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <style id="hr-theme"></style>
+    <div id="hr-root">
+      <aside id="hr-library" class="library">
+        <h2 id="hr-lib-title"></h2>
+        <label id="hr-search-label" for="hr-search">搜索</label>
+        <input id="hr-search" type="search" />
+        <h3 id="hr-toc-title"></h3>
+        <ul id="hr-toc"></ul>
+      </aside>
+      <main id="hr-canvas" class="canvas">
+        <div id="hr-controls" class="controls">
+          <label id="hr-theme-label" for="hr-theme-select"></label>
+          <select id="hr-theme-select"></select>
+          <span id="hr-focus-label"></span>
+        </div>
+        <article id="hr-doc" class="doc"></article>
+      </main>
+      <aside id="hr-notes" class="sidenotes">
+        <h3 id="hr-notes-title"></h3>
+        <p id="hr-notes-body"></p>
+      </aside>
+      <footer id="hr-statusbar" class="statusbar">
+        <span id="hr-conn"></span>
+        <span id="hr-version"></span>
+        <span id="hr-shortcuts"></span>
+      </footer>
+    </div>
+    <script type="module" src="/assets/main.js"></script>
+  </body>
+</html>

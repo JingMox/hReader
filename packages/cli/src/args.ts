@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 import type { PatchAction } from "@hreader/core";
 
-import { tokenize, type Raw } from "./tokens";
+import { allowHostsOf, tokenize, type Raw } from "./tokens";
 import { isCommandName, type CommandName } from "./usage";
 
 export type HtmlSource =
@@ -45,6 +45,11 @@ export type Intent =
       readonly path: string;
       readonly port: number;
       readonly allowHosts: readonly string[] | undefined;
+      /** 构建产物目录（`index.html` + `assets/`）；缺省 `packages/app/dist`。 */
+      /** 显式 `--app-dir` 的绝对路径；未给就是 `undefined`（让 core 走 M2.1 的 200 兜底）。 */
+      readonly appDir: string | undefined;
+      /** 用户是否显式给了 `--app-dir`：`run.ts` 据此决定"目录不存在就 exit 2"。 */
+      readonly appDirGiven: boolean;
     } & Common);
 
 export type ParsedArgs =
@@ -237,25 +242,21 @@ const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
       ? `serve 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
       : file === ""
         ? "serve 缺少 <file>"
-        : unusedFlag(raw, ["--json", "--port", "--workspace", "--allow-host"]);
+        : unusedFlag(raw, ["--json", "--port", "--workspace", "--allow-host", "--app-dir"]);
   if (message !== undefined) return failure(message, "serve");
   const port = portOf(raw);
   if (port === "invalid") return failure(`--port 必须是 0..${String(MAX_PORT)} 的整数`, "serve");
-  const allowRaw = raw.values.get("--allow-host");
-  const allowHosts =
-    allowRaw === undefined
-      ? undefined
-      : allowRaw
-          .split(",")
-          .map((item) => item.trim())
-          .filter((item) => item.length > 0);
+  const appDirRaw = raw.values.get("--app-dir");
   return {
     ok: true,
     intent: {
       kind: "serve",
       path: absoluteOf(file, cwd),
       port,
-      allowHosts: allowHosts !== undefined && allowHosts.length > 0 ? allowHosts : undefined,
+      allowHosts: allowHostsOf(raw),
+      // 缺省必须留 undefined：core 据此走 M2.1 的 200 兜底（裁定 R2-P0-2）。
+      appDir: appDirRaw === undefined ? undefined : resolve(cwd, appDirRaw),
+      appDirGiven: appDirRaw !== undefined,
       ...commonOf(raw, cwd),
     },
   };

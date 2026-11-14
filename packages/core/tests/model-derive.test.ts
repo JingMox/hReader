@@ -75,6 +75,7 @@ describe("toDocumentModel · 文本归属 · 续", () => {
   // 规格要求块边界当词边界（同 <br>），所以 "x<section>y</section>z" 应为 "x y z"；
   // 实现只在"进入"块级时补空格（derive.ts:separateBlock），"离开"时不补，得到 "x yz"。
   // 注入后块级元素都有 id，折叠路径几乎只在未注入输入里可达，故定 P2；修好后本用例会转红，请翻成 it。
+  // KD-02
   it.fails("should separate text that follows a folded block subtree (D1)", () => {
     const root = rawModelOf('<article data-hr-id="doc"><section>x<p>y</p>z</section></article>');
 

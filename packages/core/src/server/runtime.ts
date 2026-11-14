@@ -25,11 +25,12 @@ import {
   type HandlerContext,
   type Written,
 } from "./handlers";
-import { bodyRecordOf } from "./http-io";
+import { bodyRecordOf, jsonOf } from "./http-io";
 import type { Hub } from "./hub";
 import { docQueueKey, withDocQueue } from "./queue";
 import { revisionOf } from "./revision";
 import type { Route } from "./routes";
+import { assetReply, indexReply, themesReply, themeReply } from "./static";
 import { createWatcher, type WatchFn, type Watcher } from "./watcher";
 
 interface RuntimeDeps {
@@ -90,7 +91,6 @@ const publishChanged = (input: PublishInput): void => {
       input.state.revision = revision;
       input.hub.publish("doc.changed", {
         docId: relative(input.workspace, input.target.realPath),
-        path: input.target.realPath,
         revision,
         changedNodes,
       });
@@ -104,12 +104,14 @@ const watchOf = (deps: RuntimeDeps, hub: Hub, state: Watched, workspace: string)
   const onFileChange = (path: string): void => {
     if (internalOf(workspace, path)) return;
     const active = state.active;
+    // 载荷只给 workspace 相对路径：绝对路径不进浏览器（P1-7，与 `doc.changed` 同口径）。
+    const docPath = relative(workspace, path);
     if (active === undefined) {
-      hub.publish("library.changed", { path });
+      hub.publish("library.changed", { path: docPath });
       return;
     }
     if (path !== active.realPath) {
-      hub.publish("library.changed", { path });
+      hub.publish("library.changed", { path: docPath });
       return;
     }
     void modelOfPath(deps, active).then(
@@ -117,7 +119,7 @@ const watchOf = (deps: RuntimeDeps, hub: Hub, state: Watched, workspace: string)
         publishChanged({ hub, deps, state, workspace, model, target: active });
       },
       () => {
-        hub.publish("doc.error", { path });
+        hub.publish("doc.error", { path: docPath });
       },
     );
   };
@@ -138,6 +140,36 @@ const writeReplyOf = (
   if (route.kind === "style") return styleReply(context, body, LOCK_WAIT_MS);
   return annotationReply(context, body, LOCK_WAIT_MS);
 };
+
+/** `/`、`/assets/*`、`/api/theme[/<id>]` 都不碰文档状态，直接由静态层出 `Reply`。 */
+interface StaticInput {
+  readonly context: HandlerContext;
+  readonly route: Route;
+  readonly params: Readonly<Record<string, string>>;
+  readonly docId: string;
+  readonly hasDocQuery: boolean;
+}
+
+const onlyValueOf = (params: Readonly<Record<string, string>>): string =>
+  Object.values(params).join("");
+
+const staticOf = (input: StaticInput): Promise<Reply> => {
+  switch (input.route.kind) {
+    case "home":
+      return indexReply(input.context, input.docId, input.hasDocQuery);
+    case "themes":
+      return themesReply(input.context);
+    case "assets":
+      return assetReply(input.context, onlyValueOf(input.params));
+    default:
+      return themeReply(input.context, onlyValueOf(input.params));
+  }
+};
+
+type StaticKind = Extract<Route["kind"], "home" | "assets" | "theme" | "themes">;
+
+const isStaticKind = (kind: Route["kind"]): kind is StaticKind =>
+  kind === "home" || kind === "assets" || kind === "theme" || kind === "themes";
 
 const dispatchWrite = async (
   context: HandlerContext,
@@ -162,6 +194,16 @@ const dispatchOf =
     params: Readonly<Record<string, string>>,
     req: IncomingMessage,
   ): Promise<Reply> => {
+    if (isStaticKind(route.kind)) {
+      // `req.url` 在 HTTP/1.1 的 origin-form 请求里恒有值；缺失只可能来自“手搓的请求对象”，
+      // 所以这里给一条能测的 400，而不是一个永远进不去的 `?? "/"` 默认值。
+      if (req.url === undefined) {
+        return jsonOf(400, { code: "invalid_request", message: "请求行缺少 URL" });
+      }
+      const url = new URL(req.url, "http://local");
+      const input = { context, route, params, docId: options.docId };
+      return staticOf({ ...input, hasDocQuery: url.searchParams.has("doc") });
+    }
     if (route.kind === "document" || route.kind === "model" || route.kind === "outline") {
       const docId = params["docId"] ?? options.docId;
       await runtime.remember(docId);
@@ -192,7 +234,6 @@ const noteWriterOf =
     state.revision = written.revision;
     hub.publish("doc.changed", {
       docId: relative(options.workspace, written.target.realPath),
-      path: written.target.realPath,
       revision: written.revision,
       changedNodes: written.changedNodes,
     });
@@ -204,31 +245,47 @@ const noteWriterOf =
     );
   };
 
+const rememberOf =
+  (ctx: {
+    readonly options: { readonly workspace: string };
+    readonly deps: RuntimeDeps;
+    readonly state: Watched;
+    readonly watcher: Watcher;
+  }): ((docId: string) => Promise<ResolvedTarget>) =>
+  async (docId) => {
+    const target = await resolveTarget(
+      { workspace: ctx.options.workspace, file: docId },
+      ctx.deps.patch.fs,
+    );
+    if (ctx.state.active?.realPath === target.realPath) return target;
+    ctx.state.active = target;
+    ctx.state.model = await modelOfPath(ctx.deps, target);
+    ctx.state.revision = revisionOf(await ctx.deps.patch.fs.readFile(target.realPath));
+    ctx.watcher.add(dirname(target.realPath), basename(target.realPath));
+    return target;
+  };
+
 export const createRuntime = (
-  options: { readonly workspace: string; readonly docId: string; readonly bodyMs: number },
+  options: {
+    readonly workspace: string;
+    readonly docId: string;
+    readonly bodyMs: number;
+    /** 构建产物根；缺省空串（只有 `/`、`/assets/*`、`/api/theme/*` 用得到）。 */
+    readonly appDir?: string;
+  },
   deps: RuntimeDeps,
   hub: Hub,
 ): Runtime => {
   const state: Watched = { active: undefined, model: undefined, revision: undefined };
   const context: HandlerContext = {
     workspace: options.workspace,
+    appDir: options.appDir ?? "",
     deps: deps.patch,
     styleDeps: deps.style,
   };
   const watcher = watchOf(deps, hub, state, options.workspace);
   const noteWrite = noteWriterOf({ options, deps, hub, state, watcher });
-  const remember = async (docId: string): Promise<ResolvedTarget> => {
-    const target = await resolveTarget(
-      { workspace: options.workspace, file: docId },
-      deps.patch.fs,
-    );
-    if (state.active?.realPath === target.realPath) return target;
-    state.active = target;
-    state.model = await modelOfPath(deps, target);
-    state.revision = revisionOf(await deps.patch.fs.readFile(target.realPath));
-    watcher.add(dirname(target.realPath), basename(target.realPath));
-    return target;
-  };
+  const remember = rememberOf({ options, deps, state, watcher });
   return {
     remember,
     noteWrite,

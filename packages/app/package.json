@@ -3,5 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "sideEffects": false
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build-static.mjs"
+  },
+  "exports": {
+    ".": "./dist/assets/index.js"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
 }

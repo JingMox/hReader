@@ -8,10 +8,37 @@ describe("parseArgs · serve 的默认值与 --allow-host", () => {
   it("should default port 0, cwd workspace and no allowHosts", () => {
     expect(parse(["serve", "doc.html"])).toEqual({
       ok: true,
-      intent: { kind: "serve", path: "/repo/doc.html", port: 0, json: false, workspace: "/repo" },
+      intent: {
+        kind: "serve",
+        path: "/repo/doc.html",
+        port: 0,
+        json: false,
+        workspace: "/repo",
+        appDir: undefined,
+        appDirGiven: false,
+      },
     });
   });
+});
 
+describe("parseArgs · serve 的 --app-dir", () => {
+  it("should resolve an explicit --app-dir against cwd and mark appDirGiven", () => {
+    expect(parse(["serve", "doc.html", "--app-dir", "ui/dist"])).toEqual({
+      ok: true,
+      intent: {
+        kind: "serve",
+        path: "/repo/doc.html",
+        port: 0,
+        json: false,
+        workspace: "/repo",
+        appDir: "/repo/ui/dist",
+        appDirGiven: true,
+      },
+    });
+  });
+});
+
+describe("parseArgs · serve 的 --allow-host 列表", () => {
   it("should split, trim and drop blank --allow-host entries", () => {
     expect(parse(["serve", "doc.html", "--allow-host", " a.example , ,b.example "])).toEqual({
       ok: true,
@@ -21,12 +48,22 @@ describe("parseArgs · serve 的默认值与 --allow-host", () => {
         port: 0,
         json: false,
         workspace: "/repo",
+        appDir: undefined,
+        appDirGiven: false,
         allowHosts: ["a.example", "b.example"],
       },
     });
     expect(parse(["serve", "doc.html", "--allow-host", " , "])).toEqual({
       ok: true,
-      intent: { kind: "serve", path: "/repo/doc.html", port: 0, json: false, workspace: "/repo" },
+      intent: {
+        kind: "serve",
+        path: "/repo/doc.html",
+        port: 0,
+        json: false,
+        workspace: "/repo",
+        appDir: undefined,
+        appDirGiven: false,
+      },
     });
   });
 });

@@ -56,7 +56,7 @@ describe("字段取值 · 缺/错类型", () => {
 });
 
 describe("matchRoute · 精确分段匹配", () => {
-  it("should match the nine frozen routes", () => {
+  it("should match the GET routes of the frozen table", () => {
     expect(matchRoute("GET", "/").kind).toBe("route");
     expect(matchRoute("get", "/healthz").kind).toBe("route");
     expect(matchRoute("GET", "/s/doc.html")).toMatchObject({
@@ -64,6 +64,11 @@ describe("matchRoute · 精确分段匹配", () => {
       params: { docId: "doc.html" },
       route: { kind: "document", auth: "token" },
     });
+  });
+});
+
+describe("matchRoute · 精确分段匹配（续）", () => {
+  it("should match the POST routes and both document views", () => {
     expect(matchRoute("POST", "/api/patch")).toMatchObject({
       kind: "route",
       route: { kind: "patch", auth: "cookie+csrf" },
@@ -74,9 +79,27 @@ describe("matchRoute · 精确分段匹配", () => {
     expect(matchRoute("GET", "/api/doc/a/b/model").kind).toBe("none");
     expect(matchRoute("GET", "/api/doc/a.html/model").kind).toBe("route");
     expect(matchRoute("GET", "/api/doc/a.html/outline").kind).toBe("route");
-    expect(ROUTES).toHaveLength(9);
+    // M2.2 新增的两条静态入口：/assets/<任意深度路径> 与内置主题的 CSS。
+    expect(matchRoute("GET", "/assets/app/main.js")).toMatchObject({
+      kind: "route",
+      params: { path: "app/main.js" },
+      route: { kind: "assets", auth: "none" },
+    });
+    expect(matchRoute("GET", "/api/theme/atelier-editorial")).toMatchObject({
+      kind: "route",
+      params: { styleId: "atelier-editorial" },
+      route: { kind: "theme", auth: "none" },
+    });
+    expect(matchRoute("GET", "/api/theme")).toMatchObject({
+      kind: "route",
+      params: {},
+      route: { kind: "themes", auth: "none" },
+    });
+    expect(ROUTES).toHaveLength(12);
   });
+});
 
+describe("matchRoute · 方法不允许与全不匹配", () => {
   it("should report the allowed methods when the path matches but the method does not", () => {
     expect(matchRoute("GET", "/api/patch")).toEqual({ kind: "method", allowed: ["POST"] });
     expect(matchRoute("POST", "/healthz")).toEqual({ kind: "method", allowed: ["GET"] });

@@ -1,7 +1,7 @@
 # WORKFLOW STATE
 
 - 当前里程碑: **M2**（M1 已全部结卡：7 张卡，`20d5e37`，1109 例）
-- 当前卡片: **M2.1（本地 Daemon + SSE 同步桥）全门禁通过，待提交**
+- 当前卡片: **M2.2 已 G4 PASS 并提交（commit 见 worklog §M2.2）；下一张 M2.3**
 - 写者并发: 最多 1 个（M2.1 G1：编写员独占 `src/**`；测试员待命）
 - 上下文阈值: 软 60% 主动压缩；硬 150K tokens 且任务已完成 → 交接重生；单会话 ≥ 3 张卡强制重生
 - 依赖上限（用户 2026-11-13 判定）: **不新增任何依赖**（runtime 与 dev 都算）；现有 runtime 仅 `parse5` + `yaml`
@@ -35,7 +35,8 @@
 | M1.6+M1.7 | ✅ G1/R1/R2 | ✅ PASS(G2-R) | ✅ 924 例 | ✅ PASS | commit `8e5c15b`；1×P0 doctype 被挤、CSS 转义绕过、单锚点、load/apply 分叉 |
 | ~~M1.7~~ | 合并入 M1.6 | - | - | - | 同文件族，省一套门禁 |
 | M1.8+M1.9 | ✅ G1/R1–R5 | ✅ PASS | ✅ 1112 例 | ✅ PASS | commit `20d5e37`；退出码矩阵、`--json` 单行、裸 node id 回路、realpath |
-| M2.1 | ✅ G1/R1–R8 | ✅ PASS(G2-R2) | ✅ 1439 例 | ✅ PASS | 提交中；3×P0（错误细节/SSE 帧注入/TE+CL）、丢写 P1（`ageOf`）、G2-R3 测量对齐后撤销 R9 |
+| M2.1 | ✅ G1/R1–R8 | ✅ PASS(G2-R2) | ✅ 1439 例 | ✅ PASS | commit `dc9e9c2`（+`5dfd71c`）；3×P0（错误细节/SSE 帧注入/TE+CL）、丢写 P1（`ageOf`/窗口期扫描 root）|
+| M2.2 | ✅ | ✅ G2-R2 PASS | ✅ 1643 例 / 133 文件 / 四维 100% / EXIT=0（协调者复跑） | ✅ | 零依赖 UI；1290 行；6 轮返工关 4 个 P0；`verify` 现含 `build`（防 dist 陈旧） |
 
 ## 消息流水
 | 时间 | 方向 | 摘要 | 闭环 |

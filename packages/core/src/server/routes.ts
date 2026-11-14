@@ -7,6 +7,9 @@ export type AuthKind = "none" | "cookie" | "token" | "cookie+csrf";
 
 export type RouteKind =
   | "home"
+  | "assets"
+  | "theme"
+  | "themes"
   | "healthz"
   | "document"
   | "model"
@@ -17,6 +20,11 @@ export type RouteKind =
   | "events";
 
 const DOC_PARAM = ":docId";
+
+/** 吞掉剩余全部段（`/assets/<path>`，允许子目录）；空段与越界由 `handlers.assetReply` 再判。 */
+const REST_PARAM = ":path";
+
+/** `%2F` 解码后可以带 `/`，所以只有 `DOC_PARAM` 与 `REST_PARAM` 两个占位符，不做正则。 */
 
 export interface Route {
   readonly method: HttpMethod;
@@ -44,6 +52,9 @@ const route = (
 
 export const ROUTES: readonly Route[] = Object.freeze([
   route("GET", [], "cookie", "home"),
+  route("GET", ["assets", REST_PARAM], "none", "assets"),
+  route("GET", ["api", "theme"], "none", "themes"),
+  route("GET", ["api", "theme", ":styleId"], "none", "theme"),
   route("GET", ["healthz"], "none", "healthz"),
   route("GET", ["s", DOC_PARAM], "token", "document"),
   route("GET", ["api", "doc", DOC_PARAM, "model"], "cookie", "model"),
@@ -66,15 +77,22 @@ const paramsOf = (
   candidate: Route,
   segments: readonly string[],
 ): Record<string, string> | undefined => {
-  if (candidate.segments.length !== segments.length) return undefined;
+  const pattern = candidate.segments;
+  const restAt = pattern.indexOf(REST_PARAM);
+  if (restAt === -1 ? pattern.length !== segments.length : segments.length <= restAt) {
+    return undefined;
+  }
   const params: Record<string, string> = {};
-  for (const [index, pattern] of candidate.segments.entries()) {
-    const segment = segments.slice(index, index + 1).join("");
-    if (pattern === DOC_PARAM) {
-      params["docId"] = segment;
-      continue;
+  // 按 pattern 遍历、按位置从段里"取一个"：`slice+join` 不产生未定义值与死分支，
+  // 少段时的 `""` 一定被下面的 `wanted !== actual` 判成不匹配（空段在更早的守卫里已被拒）。
+  for (const [index, wanted] of pattern.entries()) {
+    const actual = segments.slice(index, index + 1).join("");
+    if (wanted === REST_PARAM) {
+      params["path"] = segments.slice(index).join("/");
+      return params;
     }
-    if (pattern !== segment) return undefined;
+    if (wanted.startsWith(":")) params[wanted.slice(1)] = actual;
+    else if (wanted !== actual) return undefined;
   }
   return params;
 };

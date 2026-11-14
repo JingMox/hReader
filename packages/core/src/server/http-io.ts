@@ -1,6 +1,7 @@
 // 这层管：HTTP 协议的读写细节（响应写入 / 请求体读取 / 鉴权与 CSRF 判定）；不含业务调用。
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { extname } from "node:path";
 
 import { HrError, type HrErrorCode } from "../hr-error";
 import { decodeUtf8, encodeUtf8 } from "../io/bytes";
@@ -79,6 +80,38 @@ export const methodNotAllowed = (allowed: readonly string[]): Reply => ({
   headers: { ...JSON_HEADERS, allow: allowed.join(", ") },
   body: JSON.stringify({ code: "invalid_request", message: `只接受 ${allowed.join(", ")}` }),
 });
+
+const CONTENT_TYPES: Readonly<Record<string, string>> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+};
+
+export const contentTypeOf = (path: string): string =>
+  CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
+
+/** 应用页只允许同源脚本：`/assets/main.js` 不能被 `default-src 'none'` 连带禁掉。 */
+export const APP_CSP =
+  "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:";
+
+const MAX_ASSET_PATH = 512;
+/** 文件名单段上限（多数文件系统 255）：更长的段交给内核只会拿到 `ENAMETOOLONG`。 */
+const MAX_SEGMENT_NAME = 255;
+
+/** `/assets/<path>` 的解码后白名单：空段、`.`、`..`、反斜杠、NUL、超长一律拒（AC1.2）。 */
+export const assetSegmentsOf = (rawPath: string): readonly string[] | undefined => {
+  if (rawPath.length === 0 || rawPath.length > MAX_ASSET_PATH) return undefined;
+  if (rawPath.includes("\0") || rawPath.includes("\\") || rawPath.startsWith("/")) return undefined;
+  const segments = rawPath.split("/");
+  const bad = segments.some(
+    (part) => part === "" || part === "." || part === ".." || part.length > MAX_SEGMENT_NAME,
+  );
+  return bad ? undefined : segments;
+};
 
 export const headerOf = (req: IncomingMessage, name: string): string | undefined => {
   const value = req.headers[name];

@@ -24,6 +24,8 @@ import { revisionOf } from "./revision";
 
 export interface HandlerContext {
   readonly workspace: string;
+  /** 构建产物目录（`index.html` + `assets/`），由 `ServerOptions.appDir` 传入。 */
+  readonly appDir: string;
   readonly deps: PatchDeps;
   readonly styleDeps: StyleDeps;
 }
@@ -72,26 +74,6 @@ const htmlReply = (body: Uint8Array | string): Reply => ({
   headers: HTML_HEADERS,
   body,
 });
-
-/** 文本节点位置的转义：文件名里的 `<`/`&` 不能变成标签（URL 侧已有 `encodeURIComponent`）。 */
-const escapeText = (text: string): string =>
-  text
-    .replace(/&/gu, "&amp;")
-    .replace(/</gu, "&lt;")
-    .replace(/>/gu, "&gt;")
-    .replace(/"/gu, "&quot;");
-
-export const homeReply = (docId: string): Reply =>
-  htmlReply(
-    [
-      "<!doctype html>",
-      '<meta charset="utf-8">',
-      "<title>hReader</title>",
-      "<h1>hReader</h1>",
-      `<p>当前文档：<a href="/s/${encodeURIComponent(docId)}">${escapeText(docId)}</a></p>`,
-      '<p><a href="/api/healthz">healthz</a></p>',
-    ].join(""),
-  );
 
 export const healthzReply = (uptimeMs: number): Reply =>
   jsonReply(200, { ok: true, uptimeMs, pid: process.pid });
