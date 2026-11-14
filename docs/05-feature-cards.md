@@ -14,7 +14,7 @@
 
 | Card | 标题 | 依赖 | Scope(写) | 关键交付 |
 | :--- | :--- | :--- | :--- | :--- |
-| M1.0 | Monorepo 骨架与最严 CI | — | `pnpm-workspace.yaml`, `tsconfig*`, `eslint*`, `prettier*`, `vitest*`, `stryker*`, `.dependency-cruiser.cjs`, `knip.json`, `package.json`, `packages/*/package.json`(空壳) | `pnpm ci` 可跑通（空实现也全绿） |
+| M1.0 | Monorepo 骨架与最严 CI | — | `pnpm-workspace.yaml`, `tsconfig*`, `eslint*`, `prettier*`, `vitest*`, `stryker*`, `.dependency-cruiser.cjs`, `knip.json`, `package.json`, `packages/*/package.json`(空壳) | `pnpm verify` 可跑通（空实现也全绿） |
 | M1.1 | HTML 解析 / 序列化 / `data-hr-id` 注入 | M1.0 | `packages/core/src/html/**` | 容错解析、稳定 ID、最小 diff 序列化 |
 | M1.2 | 文档模型与不变量校验 | M1.1 | `packages/core/src/model/**` | 树模型、ID 唯一性、组件白名单校验 |
 | M1.3 | `hr_outline` 骨骼提取 | M1.2 | `packages/core/src/ops/outline*` | 章节树 + 字数 + 未处理批注摘要 |
@@ -37,7 +37,7 @@
 
 > **执行记录（2026-11-12，commit `f1eba42`，`G4: PASS`）**：按 `.workflow/cards/M1.0.md`（含 R1/R2 修订）执行，与本表原稿的偏差如下，均已在卡片与审计报告中留痕：
 > - 本卡**不引入构建步骤**：无 `dist`、无 `publint`/`attw`、无 `packages/cli`（CLI 按 M1.8 落地）。原 AC2 作废，理由：M1 的测试与类型检查直接跑源码，产物只会给门禁添噪声。
-> - 聚合门禁脚本命名为 `verify` 而非 `ci`（`pnpm ci` 是 pnpm 内建 clean-install，会遮蔽同名脚本造成假绿）。
+> - 聚合门禁脚本命名为 `verify` 而非 `ci`（`pnpm verify` 是 pnpm 内建 clean-install，会遮蔽同名脚本造成假绿）。
 > - commitlint 未纳入本卡（历史会在 M1.0–M1.9 之间被返工提交污染，收益低于成本），提交信息规范改为人工约定 + 门禁记录表。
 > - Stryker 在 M1.0 仅接入配置，真正卡阈值从 M1.1 起（本卡无可变异代码）。
 
@@ -127,6 +127,10 @@
 - AC5 端到端演练（测试员执行）：在临时目录生成一篇含 3 组件的 HTML → `hr outline` → `hr read` → `hr patch` 重写一段 → `hr style --lint` → 结果可被普通浏览器打开且样式正确（用 headless 浏览器截图/断言 DOM 计算样式）。
 
 ---
+
+## 横切口径：`data-hr-id` 与批注锚点的生命周期
+
+`data-hr-id` 由内容派生（详见 `.workflow/cards/M2.3.md` §8）：同一份字节两次注入 id 稳定，编辑则会让 id 漂移。批注的 `nodeId` **不做落盘迁移**，锚点失效由读时重识别兜底（三档：命中 / `block_reidentified` / `block_missing`）。**发布前**若更换 id 方案，必须先交付 `nodeId` 迁移脚本，否则既有批注全部失效；当前未发布，无迁移义务（`L-02`，重构卡 R-6）。
 
 ## Milestone 2–4 卡片（暂只列标题，开工时再拆）
 

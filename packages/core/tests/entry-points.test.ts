@@ -24,39 +24,53 @@ describe("package public surfaces", () => {
   });
 });
 
-describe("core entry · 公共面精确集（R1.4）", () => {
-  it("should not leak internal symbols onto the public surface（28 项精确集）", () => {
+const PUBLIC = [
+  "ANCHOR_LIMITS",
+  "BUILTIN_STYLES",
+  "DEFAULT_STYLE_ID",
+  "DIFF_CHAR_LIMIT",
+  "HrError",
+  "LINT_HIT_LIMIT",
+  "NOTE_LIMIT",
+  "addAnnotation",
+  "annotationIdOf",
+  "applyPatch",
+  "applyStyle",
+  "assertThemeSafe",
+  "buildOutline",
+  "compileTone",
+  "diffText",
+  "discoverStyles",
+  "findBuiltinStyle",
+  "injectNodeIds",
+  "lintByStyle",
+  "listAnnotations",
+  "loadStyle",
+  "loadThemeCss",
+  "nodePatchDeps",
+  "nodeStyleDeps",
+  "parseFragment",
+  "parseHtml",
+  "patchFile",
+  "readAnnotations",
+  "readNode",
+  "reopenAnnotation",
+  "replaceTheme",
+  "resolveAnchor",
+  "resolveAnnotation",
+  "resolveThemePath",
+  "revertLast",
+  "serializeHtml",
+  "startServer",
+  "toDocumentModel",
+  "undoPatch",
+  "validateDocument",
+  "writeAnnotations",
+];
+
+describe("core entry · 精确集", () => {
+  it("should not leak internal symbols onto the public surface（41 项精确集）", () => {
     // 精确集而不是"至少含有"：多一个内部符号也红，报错直接点名多出来的那个。
-    const PUBLIC = [
-      "BUILTIN_STYLES",
-      "DEFAULT_STYLE_ID",
-      "HrError",
-      "LINT_HIT_LIMIT",
-      "applyPatch",
-      "applyStyle",
-      "assertThemeSafe",
-      "buildOutline",
-      "compileTone",
-      "discoverStyles",
-      "findBuiltinStyle",
-      "injectNodeIds",
-      "lintByStyle",
-      "loadStyle",
-      "loadThemeCss",
-      "nodePatchDeps",
-      "nodeStyleDeps",
-      "parseFragment",
-      "parseHtml",
-      "patchFile",
-      "readNode",
-      "replaceTheme",
-      "resolveThemePath",
-      "serializeHtml",
-      "startServer",
-      "toDocumentModel",
-      "undoPatch",
-      "validateDocument",
-    ];
 
     expect(Object.keys(coreEntry).sort()).toEqual(PUBLIC);
     for (const internal of ["resolveStyle", "readThemeCss", "THEME_ANCHOR_ID", "messageOf"]) {

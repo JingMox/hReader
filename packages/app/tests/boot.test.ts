@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { boot, settleTheme } from "../src/boot.ts";
 import { intentOf } from "../src/keys.ts";
+import { COPY } from "../src/widgets/copy.ts";
 
 const ROOT = "#hr-root";
 import type { BootDeps, ReaderIntent } from "./support/boot-harness.ts";
@@ -79,18 +80,30 @@ describe("boot · widget intent → store", () => {
 });
 
 describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）", () => {
-  it("should press / and focus the search box exactly once", () => {
+  it("should press / and write the deferred hint instead of focusing the disabled search box", () => {
     const h = harnessOf(true);
     boot(h.deps);
 
     h.keyHandlers[0]?.({ key: "/" });
 
-    // `searchOpened` 的唯一副作用：focus 一次，选择器精确。
-    expect(h.fake.calls.filter((call) => call.op === "focus")).toEqual([
-      { op: "focus", args: ["#hr-root #hr-search"] },
-    ]);
+    // `searchOpened` 的唯一副作用：把"搜索还没接线"写进状态栏提示（`boot.ts:272`）。
+    // 搜索框在模板里是 `disabled`——聚焦一个点不动的控件比没有更糟，所以这里不能出现 focus。
+    const hints = h.fake.calls
+      .filter((call) => call.op === "text" && call.args[0] === `${ROOT} #hr-hint`)
+      .map((call) => call.args[1]);
+    expect(hints.at(-1)).toBe(COPY.searchDeferred);
+    // 空串写进去等于没提示：文案本身必须非空。
+    expect(COPY.searchDeferred.length).toBeGreaterThan(0);
+    expect(h.fake.ops()).not.toContain("focus");
     // 同一个 if 链的 false 臂：`/` 不是 scrollTo。
     expect(h.fake.ops()).not.toContain("scrollTo");
+    // 同一句文案也挂在 `title` 上（`boot.ts:276`），鼠标悬停时同样能读到延期原因。
+    expect(
+      h.fake.calls.filter(
+        (call) =>
+          call.op === "attr" && call.args[0] === `${ROOT} #hr-search` && call.args[1] === "title",
+      ),
+    ).toEqual([{ op: "attr", args: [`${ROOT} #hr-search`, "title", COPY.searchDeferred] }]);
   });
 
   it("should press j and neither focus nor scroll (both false arms)", () => {

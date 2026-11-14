@@ -17,6 +17,8 @@ import { portOpen } from "../../src/server/daemon";
 import { watcherLike } from "./casts";
 import { cookieOf, httpCall, openSse, rawExchange, withServer } from "./harness";
 
+/** 写入时间戳由调用方从注入时钟取；纯函数层只透传，测试里用固定值保证字节级可比。 */
+const CREATED_AT = "2026-01-01T00:00:00.000Z";
 const dirs: string[] = [];
 afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
@@ -78,7 +80,7 @@ describe("annotation · meta 缺 annotations 键", () => {
       '<article data-hr-id="hr-a"><p data-hr-id="hr-b">x</p></article><script id="hr-meta">{}</script>';
 
     const input: AnnotationInput = { start: 0, end: 1, text: "x", note: undefined, status: "open" };
-    const outcome = appendAnnotation(html, input, "hr-note-new");
+    const outcome = appendAnnotation(html, input, "hr-note-new", CREATED_AT);
 
     expect(outcome.html).toContain('"id":"hr-note-new"');
   });

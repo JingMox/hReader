@@ -153,11 +153,9 @@ describe("sidenotes/statusbar · 面板与连接状态", () => {
       { op: "attr", args: [`${ROOT} #hr-notes`, "data-active-id", "hr-a"] },
       { op: "attr", args: [`${ROOT} #hr-notes`, "data-active-id", "<removed>"] },
     ]);
-    expect(
-      fake.calls.some(
-        (call) => call.op === "cls" && call.args[1] === "sidenotes--open" && call.args[2] === "1",
-      ),
-    ).toBe(true);
+    // `sidenotes--open` 不归 widget 管：它的唯一写者是 `syncView`（`wiring.ts:84`），
+    // 因为“打开”由 `panel === "sidenote" || diff.open` 两个字段共同决定。
+    // 那条表达式的断言在 `wiring.test.ts`（`syncView · 面板开合类`）。
   });
 
   it("should rewrite the connection text only when it changes", () => {

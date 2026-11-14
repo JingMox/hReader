@@ -1,6 +1,6 @@
 // 这层管：`--help` 文本的单一来源（根目录 + 每条命令一段）；不做解析、不格式化结果。
 
-export const COMMAND_NAMES = ["outline", "read", "patch", "style", "serve"] as const;
+export const COMMAND_NAMES = ["outline", "read", "patch", "style", "undo", "serve"] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
@@ -21,6 +21,7 @@ const SYNOPSIS = [
   "hr patch <file> <nodeId> --action <replace|insert_before|insert_after|append|delete>",
   "         (--html <s> | --html-file <p> | --html-stdin) [--json]",
   "hr style <file> (--visual <id> | --tone <id> | --lint) [--json]",
+  "hr undo <file> [--json]",
   "hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",
   "hr --help | hr <cmd> --help",
 ];
@@ -54,6 +55,12 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "  --visual <id>        把主题写进文档（只替换 style 内部）",
     "  --tone <id>          打印该风格编译后的 prompt",
     "  --lint               用默认风格的禁用词表检查文档",
+  ],
+  undo: [
+    "用法：hr undo <file> [--json]",
+    "",
+    "  恢复到最近一份历史快照（与批注/样式/patch 共用同一条快照链）；",
+    "  没有历史时报 nothing_to_undo（退出码非 0）。",
   ],
   serve: [
     "用法：hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",

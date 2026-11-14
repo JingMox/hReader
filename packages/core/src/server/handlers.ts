@@ -63,7 +63,8 @@ const JSON_HEADERS: Readonly<Record<string, string>> = {
   "content-type": "application/json; charset=utf-8",
 };
 
-const jsonReply = (status: number, value: unknown): Reply => ({
+/** @internal 由 M2.3 处理器（annotation-replies.ts）复用；不进公共导出面。 */
+export const jsonReply = (status: number, value: unknown): Reply => ({
   status,
   headers: JSON_HEADERS,
   body: JSON.stringify(value),
@@ -81,14 +82,16 @@ export const healthzReply = (uptimeMs: number): Reply =>
 const modelOf = (bytes: Uint8Array, label: string): DocumentModel =>
   toDocumentModel(parseHtml(decodeUtf8(bytes, label)));
 
-const targetOf = (ctx: HandlerContext, docId: string): Promise<ResolvedTarget> =>
+/** @internal 同上：批注处理器要按 docId 解析目标。 */
+export const targetOf = (ctx: HandlerContext, docId: string): Promise<ResolvedTarget> =>
   resolveTarget({ workspace: ctx.workspace, file: docId }, ctx.deps.fs);
 
 const bytesOf = (ctx: HandlerContext, target: ResolvedTarget): Promise<Uint8Array> =>
   ctx.deps.fs.readFile(target.realPath);
 
 /** `locked` 是"另一个写请求在跑"的正常状态，对 HTTP 应表达为 409 而非 500。 */
-const busy = async <T>(work: () => Promise<T>): Promise<T> => {
+/** @internal `locked` → 409 的翻译只该有一处。 */
+export const busy = async <T>(work: () => Promise<T>): Promise<T> => {
   try {
     return await work();
   } catch (error: unknown) {
@@ -211,7 +214,7 @@ const inputOf = (body: Readonly<Record<string, unknown>>): AnnotationInput => ({
   end: integerFieldOf(body, "end"),
   text: requiredStringOf(body, "text"),
   note: stringFieldOf(body, "note"),
-  status: "pending_ai",
+  status: "pending",
 });
 
 /** 读-改-写必须整段在锁里：`appendAnnotation` 要读当前 `hr-meta` 再整篇重写，锁外读会丢并发写。 */
@@ -224,7 +227,9 @@ const appendWithLock = async (
   busy(() =>
     runLocked(target, ctx.deps, { lockTimeoutMs: lockMs }, async () => {
       const html = decodeUtf8(await bytesOf(ctx, target), target.realPath);
-      const outcome = appendAnnotation(html, input, `an_${nonce().slice(0, 8)}`);
+      // 时间戳只从注入的时钟来（`annotationOps` 同源），否则同一次写入不可复现。
+      const createdAt = ctx.deps.clock.now().toISOString();
+      const outcome = appendAnnotation(html, input, `an_${nonce().slice(0, 8)}`, createdAt);
       if (outcome.changed) {
         await writeAtomic(
           { path: target.realPath, workspace: ctx.workspace, data: encodeUtf8(outcome.html) },

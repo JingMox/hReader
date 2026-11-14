@@ -21,7 +21,7 @@ export interface Harness {
   readonly deps: BootDeps;
   readonly store: Store;
   readonly fake: FakeHost;
-  readonly keyHandlers: ((event: { key: string }) => void)[];
+  readonly keyHandlers: ((event: { key: string; shiftKey?: boolean }) => void)[];
   readonly selectCalls: { theme: string; current: string }[];
   readonly fetched: Counters;
   readonly closed: () => boolean;
@@ -37,7 +37,7 @@ export const outlineOf = (): OutlineResponse => ({
 interface Sink {
   readonly counters: Counters;
   readonly flags: { sseClosed: boolean; keys: number };
-  readonly keys: ((event: { key: string }) => void)[];
+  readonly keys: ((event: { key: string; shiftKey?: boolean }) => void)[];
   readonly selectCalls: { theme: string; current: string }[];
 }
 

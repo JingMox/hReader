@@ -5,6 +5,7 @@ import { ARTICLE_TAG, HR_ID_ATTRIBUTE } from "../../html/constants";
 import { injectNodeIds } from "../../html/inject";
 import { parseHtml } from "../../html/parse";
 import { serializeHtml } from "../../html/serialize";
+import { ZERO_SPAN } from "../../html/span";
 import { HrError } from "../../hr-error";
 import { attributeValue, isBlockLevel } from "./attrs";
 import {
@@ -43,10 +44,9 @@ interface Injected {
 
 const NO_DIAGNOSTICS: readonly Diagnostic[] = [];
 
-const ZERO_SPAN: SourceSpan = { start: 0, end: 0, innerStart: 0, innerEnd: 0 };
-
 /** locations 模式下每个元素都有 span（隐含骨架是零宽），这里用数据合并代替缺失分支。 */
-const spanOf = (target: HtmlElementNode): SourceSpan => ({ ...ZERO_SPAN, ...target.span });
+/** 与 `html/span.ts` 的 `spanOf` 不同：这里只取值——缺失（未开 locations）就补零宽，不回答"元素在不在"（P2-2）。 */
+const spanOrZero = (target: HtmlElementNode): SourceSpan => ({ ...ZERO_SPAN, ...target.span });
 
 const isKnownAction = (value: string): boolean => PATCH_ACTIONS.some((action) => action === value);
 
@@ -140,7 +140,7 @@ const spliceFor = (
   request: FragmentRequest,
   reserved: readonly string[],
 ): Splice | undefined => {
-  const span = spanOf(located.target);
+  const span = spanOrZero(located.target);
   if (request.action === "delete") {
     if (located.isRoot) throw rootRejection("delete");
     return { from: span.start, to: span.end, text: "", newIds: [] };

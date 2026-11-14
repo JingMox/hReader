@@ -18,6 +18,7 @@ import {
   type ParsedHtml,
   type SourceSpan,
 } from "./constants";
+import { ZERO_SPAN } from "./span";
 import { drainStack } from "./stack";
 import { textContentOf } from "./text";
 
@@ -39,8 +40,6 @@ interface ParseContext {
 /** 元素必有 startTag；缺位置时整体退化为零宽区间。 */
 type P5Location = NonNullable<P5Element["sourceCodeLocation"]>;
 type P5StartTag = NonNullable<P5Location["startTag"]>;
-
-const ZERO_SPAN: SourceSpan = { start: 0, end: 0, innerStart: 0, innerEnd: 0 };
 
 const spanOfLocation = (location: P5Location, startTag: P5StartTag): SourceSpan => ({
   start: location.startOffset,

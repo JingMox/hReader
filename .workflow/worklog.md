@@ -155,3 +155,21 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
   - 测试员两次自报"EXIT=0"不可复现 → 交付必须贴原始输出块，协调者在 commit 前自己复跑。
   - 覆盖率缺口先分类：**死代码 → 删**；**走错层的活代码 → 位移**（M2.2 R5 即此）；**真缺用例 → 补**。
   - `verify` 链加入 `pnpm build`（否则 `dist` 陈旧，验收时浏览器拿到旧 JS，绿是假的）。
+
+## M2.3 · 划词批注持久化 + Visual Diff + 撤销
+
+- **范围**：20 条 AC / 16 条路由。新增 `packages/core/src/server/annotation.ts`、`annotation-basis.ts`（重识别三档）、`diff.ts`（字符级 + 格子数闸）、`annotationOps.ts`、`annotation-replies.ts`；app 侧 `notes-*.ts` 四类批注面 + `diffview.ts`。
+- **门禁（协调者亲跑，非自证）**：1951 例 / 167 文件 / 四维 perFile 100% / depcruise 372 模块零违规 / knip 干净 / `verify` EXIT=0，53.7s。
+- **G2 首轮 FAIL(2×P0) 与收口轮关掉的真缺陷**：
+  1. **`diffFlow` 扔掉服务端权威 `nodeId`**（`notes-wire.ts`），改用本地 `activeId` —— 而我们刚把 `nodeId` 提升为必填并让守卫强制校验。后果：文档编辑后批注重识别到新 id，diff 面板标到**已不在 DOM 的旧 id**。字段验了不用 = 没验。
+  2. **`blockBasisOf` 的早退把"块丢了"报成"无变化"**（`annotation-basis.ts:101`）：工作区零快照 + 当前文档也没这块时，不给 `reason`、不置 `degraded`，用户看到「字符级对比、无变化」。测试员写用例把它钉红，并**拒绝**把断言改成 `toBeUndefined()` 蒙过去。
+  3. `noteSettled` 的 `card` 字段零生产者（死字段）。
+  4. `reduceNote` 用 `undefined` 当"该 intent 未处理"信号 + 尾部 `: state` 兜底 —— 死臂、且将来新增 kind 会被**静默吞掉**。改为类型穷尽（`Extract<…, noteSubmitted|noteSettled>`），并用"加一个假 kind 看它编译错"证明。
+  5. 同一个零宽区间常量被抄三份（`html/span.ts`、`html/parse.ts`、`style/apply.ts`）→ 归一到一份真值源。
+- **9 条全量红的归因**：3 条是协调者自己的登记失误（把三条"设计边界"编成 `KD-13/14/15` 塞进登记表，把 `CAP=10` 挤到 13）→ 改判 `L-01/02/03` 单列一节；6 条是测试过期，0 条 src 回归。
+- **流程收获**：
+  - **门禁分两层**：轻量四联（`format:check`+`lint`+`typecheck`，6s，每角色每次交付必跑、全仓）+ 重量四联（`build`+`coverage`+`depcruise`+`knip`，3–4min，收口时协调者跑）。教训：角色各自只跑"定向测试 + 自己文件的 eslint"会让全仓 lint 的 2 条旧契约残影躲到最后。
+  - **变异表按"判定"列举，不按"函数"列举**：`sameSlotAs` 去掉 `&& slot.depth === previous.depth` 后**全套件全绿**——这条"同 tag 不同层不得继承身份"零覆盖，而行覆盖率看着很健康。首轮 SURVIVED 是收获，不是失误。
+  - **钉具名集合，不钉计数**：`REQUIRED_ANCHORS.length toBe(17)` 涨到 33 时只报"expected 33 to be 17"，说不出变的是谁；改成 33 个 id 具名后，删任一条会**指名道姓**。数字断言在"删一个加一个"时全哑。
+  - **测试辅助件也要有契约**：测试内 helper 标 `Promise<unknown>` 等于把契约扔了，正解是给具名返回类型，不是在调用处加收窄。
+  - 静态规则会误报：`isDeferred` 对 `type="hidden"` 的 `input` 误报 → 移出交互元素集合（而不是靠豁免），并用"加真实探针元素必须红/必须绿"双向证明。

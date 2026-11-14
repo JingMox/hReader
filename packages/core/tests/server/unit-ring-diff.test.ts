@@ -2,7 +2,6 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { HrErrorCode } from "../../src/hr-error";
 import type { DocumentModel } from "../../src/model";
 import { diffNodes } from "../../src/server/diff-nodes";
 import {
@@ -12,7 +11,7 @@ import {
   READY_FRAME,
 } from "../../src/server/event-ring";
 import { revisionOf, REVISION_CHARS } from "../../src/server/revision";
-import { statusOf } from "../../src/server/status";
+import { statusOf, type ServerCode } from "../../src/server/status";
 
 const node = (
   id: string,
@@ -105,7 +104,7 @@ describe("revisionOf · 内容哈希前缀", () => {
   });
 });
 
-const STATUS_CASES: readonly (readonly [HrErrorCode, number])[] = [
+const STATUS_CASES: readonly (readonly [ServerCode, number])[] = [
   ["invalid_html", 400],
   ["no_article", 422],
   ["node_not_found", 404],
@@ -133,6 +132,8 @@ const STATUS_CASES: readonly (readonly [HrErrorCode, number])[] = [
   ["unauthorized", 401],
   ["forbidden_origin", 403],
   ["daemon_already_running", 409],
+  ["invalid_payload", 400],
+  ["nothing_to_undo", 409],
 ];
 
 describe("statusOf · 冻结错误码 → HTTP 状态", () => {
@@ -141,7 +142,7 @@ describe("statusOf · 冻结错误码 → HTTP 状态", () => {
   });
 
   it("should cover the whole frozen table without a fallthrough", () => {
-    expect(STATUS_CASES.map(([code]) => code)).toHaveLength(27);
+    expect(STATUS_CASES.map(([code]) => code)).toHaveLength(29);
     expect(STATUS_CASES.every(([, status]) => status >= 400)).toBe(true);
   });
 });

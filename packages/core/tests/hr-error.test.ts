@@ -34,6 +34,9 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   unauthorized: true,
   forbidden_origin: true,
   daemon_already_running: true,
+  invalid_payload: true,
+  nothing_to_undo: true,
+  anchor_lost: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {

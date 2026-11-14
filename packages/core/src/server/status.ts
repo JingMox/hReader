@@ -2,8 +2,11 @@
 
 import type { HrErrorCode } from "../hr-error";
 
+/** 服务端**会抛**的码；`anchor_lost` 是客户端的"锚点失效"reason，服务端永不抛（裁定 #14）。 */
+export type ServerCode = Exclude<HrErrorCode, "anchor_lost">;
+
 /** 4xx 只给"客户端能改对"的错；服务端自身故障一律 500，避免把基础设施问题伪装成输入问题。 */
-const STATUS: Readonly<Record<HrErrorCode, number>> = {
+const STATUS: Readonly<Record<ServerCode, number>> = {
   invalid_html: 400,
   no_article: 422,
   node_not_found: 404,
@@ -31,6 +34,8 @@ const STATUS: Readonly<Record<HrErrorCode, number>> = {
   unauthorized: 401,
   forbidden_origin: 403,
   daemon_already_running: 409,
+  invalid_payload: 400,
+  nothing_to_undo: 409,
 };
 
-export const statusOf = (code: HrErrorCode): number => STATUS[code];
+export const statusOf = (code: ServerCode): number => STATUS[code];

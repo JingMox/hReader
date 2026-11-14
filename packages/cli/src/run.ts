@@ -14,6 +14,7 @@ import { patchCommand } from "./commands/patch";
 import { readCommand } from "./commands/read";
 import { serveCommand } from "./commands/serve";
 import { styleCommand } from "./commands/style";
+import { undoCommand } from "./commands/undo";
 import { EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./exit-codes";
 import { sourceText } from "./input";
 import { jsonError } from "./output";
@@ -83,6 +84,11 @@ const runPatch = async (
   });
 };
 
+const runUndo = async (intent: Extract<Runnable, { kind: "undo" }>): Promise<string> => {
+  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+  return undoCommand({ path: paths.file, workspace: paths.workspace, json: intent.json });
+};
+
 const never = new Promise<void>(() => undefined);
 
 const runServe = async (
@@ -111,6 +117,7 @@ const runIntent = async (intent: Runnable, io: CliIo): Promise<string> => {
   if (intent.kind === "outline") return outlineCommand(intent);
   if (intent.kind === "read") return readCommand(intent);
   if (intent.kind === "serve") return runServe(intent, io);
+  if (intent.kind === "undo") return runUndo(intent);
   if (intent.kind === "style") {
     const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
     return styleCommand({ ...intent, path: paths.file, workspace: paths.workspace });

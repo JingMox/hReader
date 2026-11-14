@@ -252,7 +252,7 @@ sequenceDiagram
 
 ### 5. hReader 阅读器宿主设计 (`packages/reader-client`)
 
-阅读器采用 **Web UI + Tauri v2 外壳** 双栖架构（当前阶段只做 Web：`packages/app`，零新增依赖、无 bundler、无框架，由 daemon 静态托管；Tauri 外壳留待后期）（同一套前端代码，既可由本地 Daemon 通过 `http://localhost:4321` 在任意浏览器/IDE Webview 中打开，也可编译为约 8MB 的 macOS/Windows/Linux 原生桌面 App）：
+阅读器采用 **Web UI + Tauri v2 外壳** 双栖架构（当前阶段只做 Web：`packages/app`，无 bundler、无框架，由 daemon 静态托管；Tauri 外壳留待后期）（同一套前端代码，既可由本地 Daemon 通过 `http://localhost:4321` 在任意浏览器/IDE Webview 中打开，也可编译为约 8MB 的 macOS/Windows/Linux 原生桌面 App）：
 
 * **左栏：书库与语义大纲（Library & Outline）**
   * 自动扫描工作区或本地归档目录中的 `.html` 文档，按标签与阅读状态分类。
@@ -282,7 +282,7 @@ hReader/
 ├── packages/
 │   ├── core/                           # @hreader/core: AST解析、DOM Patch、风格引擎、WS Daemon
 │   ├── cli/                            # @hreader/cli: 命令行工具 (hr outline/patch/serve/style)
-│   ├── app/                            # @hreader/app: 阅读器前端（零依赖手写 DOM，tsc 直出 ESM，无 bundler）
+│   ├── app/                            # @hreader/app: 阅读器前端（TS 直出 ESM，无 bundler；运行时依赖按需引入，见 §依赖策略）
 │   ├── desktop/                        # @hreader/desktop: Tauri v2 桌面端外壳 (后期按需开启)
 │   ├── mcp-server/                     # @hreader/mcp: 标准 MCP Server (含 MCP-UI)
 │   ├── pi-extension/                   # pi-hreader.ts: Pi Coding Agent 单文件扩展
@@ -292,6 +292,14 @@ hReader/
 ```
 
 ---
+
+## 依赖策略（2026-11-14 用户裁定，取代"零依赖手搓"）
+
+- **默认按需引入成熟库**：能用成熟开源库直接解决的问题，优先用库；手搓只保留在"引入库的风险大于收益"的场合（体积、许可、原生依赖、维护停滞）。
+- **已手搓的模块允许替换**（例如 `packages/core/src/annotations/diff.ts` 的手写 LCS → 成熟 diff 库）：走**单独的重构卡**，分批替换，不夹在功能卡里；未结的卡先收口，不许在卡中途推翻已过审的实现。
+- **需先确认的两类**：①前端运行时依赖（`@hreader/app` 目前无 bundler）；②底层核心架构替换（框架 / 打包器 / AST / 解析引擎）。选型方案须列出候选、体积、维护活跃度、替换成本、回退方案。
+- **可自行引入**：Node 服务端与测试侧的轻量成熟库（HTTP 工具、diff、测试辅助、fuzz 生成器…），在卡片里登记"引了什么、为什么、替代了什么手搓代码"即可。
+- **门禁不变**：`knip` 不得有"装了没用"的依赖，`dependency-cruiser` 层次规则不得破窗，`perFile` 四维 100% 不放宽。
 
 ## 五、 分阶段演进路线图 (Phased Roadmap)
 
@@ -314,11 +322,11 @@ flowchart LR
 ### Milestone 2：hReader 阅读器宿主与“划词即指令”双向同步
 * **目标**：告别系统浏览器的简陋预览，提供真正的沉浸式阅读器界面，打通“阅读器划词批注 ➔ Agent 局部更新 ➔ 页面无感热刷新”闭环。
 * **核心任务**：
-  - [ ] **M2.1 本地 Daemon 与 SSE 同步桥**：在 `@hreader/core` 中内置轻量 HTTP 服务（`node:http`，零依赖），服务端推送走 SSE、客户端命令走 POST，监听文件变更与前端批注事件。
-    > 与初版计划的差异：原计划用 WebSocket。零依赖前提下自实现 RFC 6455 需处理掩码、分片与关闭握手，属于「能写对但很容易写错」的面；SSE 只有行协议且 `EventSource` 自带重连，语义等价。裁定见 `.workflow/cards/M2.1.md` §1 D3。
+  - [ ] **M2.1 本地 Daemon 与 SSE 同步桥**：在 `@hreader/core` 中内置轻量 HTTP 服务（`node:http`），服务端推送走 SSE、客户端命令走 POST，监听文件变更与前端批注事件。
+    > 与初版计划的差异：原计划用 WebSocket。自实现 RFC 6455 需处理掩码、分片与关闭握手，属于「能写对但很容易写错」的面；SSE 只有行协议且 `EventSource` 自带重连，语义等价。裁定见 `.workflow/cards/M2.1.md` §1 D3。
     > 超时全部用 Node 内置三档（`headersTimeout` / `requestTimeout` / `keepAliveTimeout`）：超限时由解析器收尾（**不再由服务端手写 408 帧**），头部/半截请求直接关连接。成帧不合规（重复 `Content-Length`、`Transfer-Encoding` 与 `Content-Length` 并存、非 `chunked` 的 TE）由 Node 解析器先拒，客户端拿到裸 `400`/`431`/`501`，**没有 JSON 体**。
     > **事件环只存事件、不带文档实体**（非目标，P2-D）：环形缓冲容量固定为 256，若把节点/段落实体塞进去，内存上界就跟着文档大小走；代价是客户端在 `doc.changed` 后需要一次 `GET /api/doc/<id>/model` 取内容，换取**与文档大小无关的内存上界**。
-  - [x] **M2.2 阅读器核心界面 (`@hreader/app`，零依赖手写 DOM)**：实现左栏书库与动态 TOC、中栏沉浸画布（0-Token 视觉主题实时切换、字号/行宽调节、`j`/`k` 键盘导航）、右栏页边批注（Sidenotes）。
+  - [x] **M2.2 阅读器核心界面 (`@hreader/app`)**：实现左栏书库与动态 TOC、中栏沉浸画布（0-Token 视觉主题实时切换、字号/行宽调节、`j`/`k` 键盘导航）、右栏页边批注（Sidenotes）。
   - [ ] **M2.3 划词批注持久化与 Visual Diff**：实现划词高亮/批注自动写入 HTML 内嵌 `<script id="hr-meta">`，以及 Agent 局部 Patch 后的节点闪烁高亮与一键 Undo 回滚。
 
 ### Milestone 3：MCP、Pi 与 DeepSeek Harness 全生态插件适配
