@@ -17,7 +17,10 @@ const viewUriOf = (relativePath: string): string => `${VIEW_URI_PREFIX}${docIdOf
 /** 资源内容里只有 `text`：与工具结果的 `content[]` 不是一个形状。 */
 const textOfResource = (contents: readonly unknown[]): string => {
   const [first] = contents;
-  return typeof first === "object" && first !== null && "text" in first && typeof first.text === "string"
+  return typeof first === "object" &&
+    first !== null &&
+    "text" in first &&
+    typeof first.text === "string"
     ? first.text
     : "";
 };

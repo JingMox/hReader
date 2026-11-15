@@ -28,9 +28,14 @@ const portOf = (value: unknown): number | undefined => {
   return typeof port === "number" ? port : undefined;
 };
 
+/** 本仓唯一一处 `~/.hreader/daemon.json` 路径拼写：core 只导出 `startServer`，未导出 `daemonStatePath()`
+ * （`daemonFileOf` 收在 `core/src/server/index.ts`，不在包入口）；M3.2 若 core 导出即改为引用，
+ * 见 `.workflow/known-defects.md` 的 `L-10`。视图只读这个落点拿端口，不写它。 */
+const DAEMON_STATE_FILE = join(".hreader", "daemon.json");
+
 const daemonBaseUrlOf = async (home: string): Promise<string | undefined> => {
   try {
-    const raw: unknown = JSON.parse(await readFile(join(home, ".hreader", "daemon.json"), "utf8"));
+    const raw: unknown = JSON.parse(await readFile(join(home, DAEMON_STATE_FILE), "utf8"));
     const port = portOf(raw);
     return port === undefined ? undefined : `http://127.0.0.1:${String(port)}/`;
   } catch {

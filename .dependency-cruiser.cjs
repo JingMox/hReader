@@ -98,6 +98,12 @@ module.exports = {
     exclude: { path: "^(dist|coverage)/|^packages/[^/]+/(dist|coverage)/" },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: "tsconfig.json" },
+    // 依赖的 `exports` 通配（如 `@modelcontextprotocol/sdk` 的 "./*"）只有显式打开导出字段才解析得到；
+    // 默认 enhanced-resolve 不读 exports，会让这类边一律 couldNotResolve（虚假红线）。
+    enhancedResolveOptions: {
+      exportsFields: ["exports"],
+      conditionNames: ["import", "require", "node", "default"],
+    },
     reporterOptions: { text: { highlightFocused: true } },
   },
 };

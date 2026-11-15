@@ -52,9 +52,13 @@ const writeNewDocOf = async (
     throw new HrError("invalid_document", `生成的文档没过校验：${firstDiagnostic.message}`);
   }
   await mkdir(dirname(target.absolute), { recursive: true });
-  await writeFile(target.absolute, html, { encoding: "utf8", flag: "wx" }).catch((error: unknown) => {
-    throw new HrError("io_failure", `写入失败（文件已存在或不可写）：${target.file}`, { cause: error });
-  });
+  await writeFile(target.absolute, html, { encoding: "utf8", flag: "wx" }).catch(
+    (error: unknown) => {
+      throw new HrError("io_failure", `写入失败（文件已存在或不可写）：${target.file}`, {
+        cause: error,
+      });
+    },
+  );
   return okResult(
     { path: target.file, title: args.title },
     { ui: { resourceUri: `${UI_URI_PREFIX}${docIdOf(target.file)}` } },
