@@ -335,6 +335,7 @@ flowchart LR
   - [x] **M3.1 `@hreader/mcp-server`**：实现标准 MCP Tools、语言风格 Prompts 注册，并兼容 `MCP-UI` 内联资源协议。
   - [ ] **M3.2 Pi 插件 (`pi-hreader.ts`)**：编写单文件 TypeScript 扩展，实现 `/hreader`、`/hr-style` 命令及阅读器批注向 Pi `context.ui` 的自动投递。
   - [ ] **M3.3 DeepSeek Harness 插件 (`@hreader/dsh-bundle`)**：基于 Cordis 编写插件入口与 `cordis.patch.yml`，实现语言风格 Prompt Hook 动态织入、强类型事件触发 Agent Loop 局部修补、以及 `dsh-web-app` 内嵌阅读面板。
+  - [ ] **M3.4 `hr_undo` 工具**：给 MCP 层补撤销入口（前端与 HTTP 早已有 `undoPatch`，MCP 缺一个工具）。2026-11-15 用户裁定从 M3.1 拆出，避免撑爆单卡验收范围。
 
 ### Milestone 4：Tauri v2 独立桌面端与“AI 风格萃取工坊”
 * **目标**：完善独立桌面软件体验，降低用户编写自定义语言风格的门槛。
