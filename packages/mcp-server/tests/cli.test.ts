@@ -5,7 +5,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
-import { cliIoOf, modeOf, portOfAddress, runMain, startHttp, USAGE } from "../src/cli";
+import {
+  cliIoOf,
+  modeOf,
+  portOfAddress,
+  runMain,
+  startHttp,
+  USAGE,
+  warningLinesOf,
+} from "../src/cli";
 
 const stderrLines = (): string[] => {
   const written: string[] = [];
@@ -19,6 +27,13 @@ const stderrLines = (): string[] => {
 afterEach(() => {
   vi.restoreAllMocks();
   process.exitCode = undefined;
+});
+
+describe("warningLinesOf", () => {
+  it("should stay silent when the theme resources are found, and speak up when they are not", () => {
+    expect(warningLinesOf(undefined)).toEqual([]);
+    expect(warningLinesOf("WARNING 主题资源缺失：/nope")).toEqual(["WARNING 主题资源缺失：/nope"]);
+  });
 });
 
 describe("modeOf", () => {
@@ -96,6 +111,16 @@ describe("cliIoOf", () => {
     const [clientSide] = InMemoryTransport.createLinkedPair();
 
     await expect(cliIoOf(() => clientSide).startStdio()).resolves.toBeUndefined();
+  });
+
+  it("should turn a transport error into one stderr line instead of dying silently", async () => {
+    const written = stderrLines();
+    const [clientSide] = InMemoryTransport.createLinkedPair();
+
+    await cliIoOf(() => clientSide).startStdio();
+    clientSide.onerror?.(new Error("ReadBuffer exceeded maximum size of 10485760 bytes"));
+
+    expect(written.join("")).toContain("[hreader-mcp] 传输错误：ReadBuffer exceeded maximum size");
   });
 });
 

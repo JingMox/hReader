@@ -1,7 +1,7 @@
 // 这层管：MCP-UI 视图资源（`ui://hreader/view/{docId}`）——AC-7 的「没 daemon 也要能读」，
 // 以及 daemon 在跑时横幅指向它的真实端口（Marco 4：视图只引用端口，不代管进程）。
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -88,25 +88,54 @@ describe("ui://hreader/view", () => {
   });
 });
 
-describe("ui://hreader/view · 兜底页", () => {
-  it("should render an unreadable document as a note, not an error", async () => {
-    expect(await sessionViewTextOf("missing.html")).toContain("文档不可读");
+/** `resources/read` 的失败走 JSON-RPC error：`code` 是规范码，`data.code` 是我们的细码。 */
+const resourceErrorOf = async (uri: string): Promise<{ code: unknown; data: unknown }> => {
+  const session = await sessionOf();
+  const error: unknown = await session.client.readResource({ uri }).then(
+    () => undefined,
+    (thrown: unknown) => thrown,
+  );
+  await session.close();
+  return {
+    code: Reflect.get(Object(error), "code"),
+    data: Reflect.get(Object(error), "data"),
+  };
+};
+
+describe("ui://hreader/view · 不存在时不再回假成功", () => {
+  it("should reject an unreadable document instead of returning a shell page", async () => {
+    const { code, data } = await resourceErrorOf(viewUriOf("missing.html"));
+
+    // 锁的是 M3.1 的裁定（F6-②）：回一页"文档不可读"的壳对宿主是假成功。
+    expect(code).toBe(-32002);
+    expect(Reflect.get(Object(data), "code")).toBe("not_found");
   });
 
-  it("should answer an empty docId with a dead-view page", async () => {
-    const session = await sessionOf();
-    const result = await session.client.readResource({ uri: VIEW_URI_PREFIX });
-    await session.close();
+  it("should reject an empty docId", async () => {
+    const { code, data } = await resourceErrorOf(VIEW_URI_PREFIX);
 
-    expect(textOfResource(result.contents)).toContain("视图已失效");
+    expect(code).toBe(-32002);
+    expect(Reflect.get(Object(data), "code")).toBe("not_found");
   });
 
-  it("should answer a bad docId with a dead-view page", async () => {
-    const session = await sessionOf();
-    const result = await session.client.readResource({ uri: `${VIEW_URI_PREFIX}..` });
-    await session.close();
+  it("should reject a view that escapes the workspace", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "hreader-mcp-outside-"));
+    await writeFile(join(outside, "secret.html"), "<p>外面</p>", "utf8");
+    await symlink(join(outside, "secret.html"), join(workspace, "link.html"));
 
-    expect(textOfResource(result.contents)).toContain("视图已失效");
+    const { code, data } = await resourceErrorOf(viewUriOf("link.html"));
+    await rm(outside, { recursive: true, force: true });
+
+    // 参数指错了（docId 指向工作区外）：`-32602`，细码仍是 `path_outside_workspace`。
+    expect(code).toBe(-32602);
+    expect(Reflect.get(Object(data), "code")).toBe("path_outside_workspace");
+  });
+
+  it("should reject a bad docId", async () => {
+    const { code, data } = await resourceErrorOf(`${VIEW_URI_PREFIX}..`);
+
+    expect(code).toBe(-32002);
+    expect(Reflect.get(Object(data), "code")).toBe("not_found");
   });
 });
 

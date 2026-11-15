@@ -3,28 +3,41 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { HrError, parseHtml, validateDocument } from "@hreader/core";
+import { HrError, injectNodeIds, parseHtml, serializeHtml, validateDocument } from "@hreader/core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { guarded, okResult } from "../errors";
 import { docIdOf, UI_URI_PREFIX } from "../ui";
-import { assertInsideWorkspace, documentTargetOf, type DocumentTarget } from "./target";
+import {
+  FILE_PATH_HINT,
+  assertInsideWorkspace,
+  documentTargetOf,
+  writeFailureOf,
+  type DocumentTarget,
+} from "./target";
 
 export const createDocShape = {
-  filePath: z
+  filePath: z.string().min(1).describe(FILE_PATH_HINT),
+  title: z
     .string()
     .min(1)
-    .describe("要新建的 HTML 文档路径（工作区内，相对当前目录或绝对路径）；已存在则拒绝"),
-  title: z.string().min(1).describe("文档标题（写进 `<title>` 与 `<h1>`）；正文之后再靠 patch 补"),
+    // 块的 id 由内容派生（core `inject.ts` 的 `seedOf`：标签 + 兄弟序号 + 文本前 64 字符），而 `replace`
+    // 会让被替换节点换 id（`L-02` 的既有设计，为了 patch 幂等）——所以这里必须提前说清，别让宿主缓存。
+    .describe(
+      "文档标题（写进 `<title>` 与 `<h1>`）；正文之后再靠 patch 补。" +
+        "新建文档的块 id 由内容派生：首次写入正文后 id 会变，" +
+        "请以 `hr_outline`/`hr_read_node` 的最新 id 为准，不要缓存返回值里的 id。",
+    ),
 };
 
 type CreateDocArgs = z.infer<z.ZodObject<typeof createDocShape>>;
 
 /** 裁定 #5：最小合法文档 = `<article>` + `<h1>` + 一个 `<section>`，不做模板系统。
- * `<article>` 的 `data-hr-id` 不是装饰：`validateDocument` 要求它存在，后续整篇替换也以它为靶。 */
-const minimalDocOf = (title: string): string =>
-  `<!doctype html>
+ * 骨架里只写 `<article data-hr-id="root">`：`validateDocument` 要求它存在，后续整篇替换也以它为靶。
+ * 其余节点的 id 一律交给 core 的 `injectNodeIds`——本包不手写 id 规则（手写的结论必然是
+ * “新建的文档对 `hr_patch_node` 只有一个靶子 `root`、大纲为空”，与 core 漂移一次就断一条链路）。 */
+const skeletonOf = (title: string): string => `<!doctype html>
 <html lang="zh">
 <head>
 <meta charset="utf-8">
@@ -41,14 +54,16 @@ const minimalDocOf = (title: string): string =>
 </html>
 `;
 
+const minimalDocOf = (title: string): string =>
+  serializeHtml(injectNodeIds(parseHtml(skeletonOf(title))).parsed);
+
 const writeNewOf = async (target: DocumentTarget, html: string): Promise<void> => {
   try {
     await mkdir(dirname(target.absolute), { recursive: true });
     await writeFile(target.absolute, html, { encoding: "utf8", flag: "wx" });
   } catch (error: unknown) {
-    throw new HrError("io_failure", `写入失败（目录不可建、文件已存在或不可写）：${target.file}`, {
-      cause: error,
-    });
+    // errno → 码的映射收在 `target.ts` 一处：读与写用同一张表（`ENAMETOOLONG` 是 `invalid_input`）。
+    throw writeFailureOf(error, target);
   }
 };
 

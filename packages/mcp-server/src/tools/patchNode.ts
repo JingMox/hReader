@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { guarded, okResult } from "../errors";
 import { docIdOf, UI_URI_PREFIX } from "../ui";
-import { documentTargetOf } from "./target";
+import { FILE_PATH_HINT, coreFailureOf, documentTargetOf } from "./target";
 
 /** 与 core 的 `PatchAction` 同集合；写成 `satisfies` 让 core 改名时这里编译期就红。 */
 const ACTIONS = [
@@ -19,7 +19,7 @@ const ACTIONS = [
 ] as const satisfies readonly PatchAction[];
 
 export const patchNodeShape = {
-  filePath: z.string().min(1).describe("要改的 HTML 文档路径（工作区内，相对当前目录或绝对路径）"),
+  filePath: z.string().min(1).describe(FILE_PATH_HINT),
   nodeId: z.string().min(1).describe("目标节点的 `data-hr-id`；要换整篇内容用 `root`"),
   action: z
     .enum(ACTIONS)
@@ -43,6 +43,8 @@ export const patchNodeCall = (args: PatchNodeArgs): Promise<CallToolResult> =>
     const result = await patchFile(
       { workspace: target.workspace, file: target.file, request: requestOf(args) },
       nodePatchDeps,
-    );
+    ).catch((error: unknown) => {
+      throw coreFailureOf(error, target);
+    });
     return okResult(result, { ui: { resourceUri: `${UI_URI_PREFIX}${docIdOf(target.file)}` } });
   });

@@ -1,173 +1,34 @@
 // 这层管：被交付的那个产物——AC-4 要求的高风险面。
 // 测的是 `package.json` 的 `bin` 指向的 `dist/main.js`（宿主唯一会 spawn 的东西），不是 src：
 // 真子进程、真 stdio，逐行验证 stdout 只有 JSON-RPC 帧；错误路径同样不许往 stdout 漏一个字符。
+// 坏输入与超限帧在 `stream.test.ts`，探针本身在 `probe.ts`。
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { BUILTIN_STYLES, compileTone } from "@hreader/core";
+
 import { ANNOTATED_DOC, isRecord } from "./harness";
+import {
+  INITIALIZED,
+  INITIALIZE,
+  HANDSHAKE_COUNT,
+  REPO_ROOT,
+  binPathOf,
+  buildDist,
+  byIdOf,
+  linesOf,
+  probeOf,
+  resultOf,
+  textOf,
+  toolNamesOf,
+} from "./probe";
 
-const PACKAGE_ROOT = fileURLToPath(new URL("..", import.meta.url));
-const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const HANDSHAKE_COUNT = 4;
-
-const INITIALIZE = {
-  jsonrpc: "2.0",
-  id: 1,
-  method: "initialize",
-  params: {
-    protocolVersion: "2025-06-18",
-    capabilities: {},
-    clientInfo: { name: "stdio-test", version: "0.0.0" },
-  },
-};
-const INITIALIZED = { jsonrpc: "2.0", method: "notifications/initialized" };
-const TOOLS_LIST = { jsonrpc: "2.0", id: 2, method: "tools/list" };
-const PROMPTS_LIST = { jsonrpc: "2.0", id: 3, method: "prompts/list" };
-const RESOURCES_LIST = { jsonrpc: "2.0", id: 4, method: "resources/list" };
-
-const linesOf = (messages: readonly unknown[]): readonly string[] =>
-  messages.map((message) => JSON.stringify(message));
-
-const HANDSHAKE = linesOf([INITIALIZE, INITIALIZED, TOOLS_LIST, PROMPTS_LIST, RESOURCES_LIST]);
-
-/** 输入全坏：一行畸形 JSON、一条不认识的方法、一条缺参数的 `tools/call`、一条越界路径的 `tools/call`。 */
-const BROKEN_INPUT = [
-  `{"jsonrpc":"2.0","id":`,
-  ...linesOf([{ jsonrpc: "2.0", id: 5, method: "no/such/method" }]),
-  ...linesOf([
-    { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "hr_outline", arguments: {} } },
-  ]),
-  ...linesOf([
-    {
-      jsonrpc: "2.0",
-      id: 7,
-      method: "tools/call",
-      params: { name: "hr_outline", arguments: { filePath: "/etc/hosts" } },
-    },
-  ]),
-];
-
-interface ProbeOptions {
-  readonly lines?: readonly string[];
-  readonly expected?: number;
-  readonly cwd?: string;
-}
-
-interface Probe {
-  readonly frames: readonly Record<string, unknown>[];
-  readonly lines: readonly string[];
-  readonly stderrText: string;
-  readonly exitCode: number | null;
-}
-
-const framesOf = (lines: readonly string[]): readonly Record<string, unknown>[] =>
-  lines.map((line) => {
-    const parsed: unknown = JSON.parse(line);
-    return isRecord(parsed) ? parsed : {};
-  });
-
-const nonEmptyOf = (chunks: readonly string[]): readonly string[] =>
-  chunks
-    .join("")
-    .split("\n")
-    .filter((line) => line.trim() !== "");
-
-/** 等响应齐了就关 stdin：stdio 传输随之收尾，进程自己退。 */
-const exitCodeOf = async (
-  child: ChildProcess,
-  chunks: readonly string[],
-  expected: number,
-): Promise<number | null> =>
-  new Promise<number | null>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error("MCP 进程在 15s 内没有把响应写完"));
-    }, 15_000);
-    const poll = setInterval(() => {
-      if (nonEmptyOf(chunks).length >= expected) {
-        clearInterval(poll);
-        child.stdin?.end();
-      }
-    }, 20);
-    child.once("error", reject);
-    child.once("close", (code) => {
-      clearInterval(poll);
-      clearTimeout(timer);
-      resolve(code);
-    });
-  });
-
-const probeOf = async (entry: string, options: ProbeOptions = {}): Promise<Probe> => {
-  const { lines = HANDSHAKE, expected = HANDSHAKE_COUNT, cwd = PACKAGE_ROOT } = options;
-  const child = spawn(process.execPath, [entry], { cwd, stdio: ["pipe", "pipe", "pipe"] });
-  const chunks: string[] = [];
-  const errors: string[] = [];
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk: string) => chunks.push(chunk));
-  child.stderr.on("data", (chunk: string) => errors.push(chunk));
-  for (const line of lines) child.stdin.write(`${line}\n`);
-
-  const exitCode = await exitCodeOf(child, chunks, expected);
-  const stdoutLines = nonEmptyOf(chunks);
-  return {
-    frames: framesOf(stdoutLines),
-    lines: stdoutLines,
-    stderrText: errors.join(""),
-    exitCode,
-  };
-};
-
-const binPathOf = async (): Promise<string> => {
-  const parsed: unknown = JSON.parse(await readFile(join(PACKAGE_ROOT, "package.json"), "utf8"));
-  const bin = isRecord(parsed) ? parsed["bin"] : undefined;
-  const entry = isRecord(bin) ? bin["hreader-mcp"] : undefined;
-  return typeof entry === "string" ? join(PACKAGE_ROOT, entry) : "";
-};
-
-const toolNamesOf = (frames: readonly Record<string, unknown>[]): readonly string[] => {
-  const result = frames[1]?.["result"];
-  if (!isRecord(result) || !Array.isArray(result["tools"])) return [];
-  return result["tools"].flatMap((one) =>
-    isRecord(one) && typeof one["name"] === "string" ? [one["name"]] : [],
-  );
-};
-
-const errorCodeOf = (frame: Record<string, unknown> | undefined): unknown => {
-  const error = frame?.["error"];
-  return isRecord(error) ? error["code"] : undefined;
-};
-
-/** 响应顺序不跟输入顺序（同步能答的帧先出）：断言只能按 `id` 取，不能按下标。 */
-const byIdOf = (
-  frames: readonly Record<string, unknown>[],
-): Map<unknown, Record<string, unknown>> => new Map(frames.map((frame) => [frame["id"], frame]));
-
-const resultOf = (frame: Record<string, unknown> | undefined): Record<string, unknown> => {
-  const result = frame?.["result"];
-  return isRecord(result) ? result : {};
-};
-
-const textOf = (frame: Record<string, unknown> | undefined): string => {
-  const content = resultOf(frame)["content"];
-  if (!Array.isArray(content)) return "";
-  return content
-    .flatMap((one) => (isRecord(one) && typeof one["text"] === "string" ? [one["text"]] : []))
-    .join("\n");
-};
-
-beforeAll(() => {
-  // 测交付物就先把它造出来：`build` 自己会清 dist，避免拿旧产物测新代码。
-  execFileSync("pnpm", ["-C", PACKAGE_ROOT, "build"], { cwd: REPO_ROOT, stdio: "pipe" });
-}, 180_000);
-
+beforeAll(buildDist, 180_000);
 describe("dist/main.js · the thing a host spawns", () => {
   it("should point the package bin at the built artifact", async () => {
     const entry = await binPathOf();
@@ -210,32 +71,81 @@ describe("dist/main.js · tool surface", () => {
   }, 30_000);
 });
 
-describe("dist/main.js · broken input", () => {
-  it("should answer broken input with json-rpc frames and log the rest to stderr", async () => {
-    const { lines, frames, stderrText, exitCode } = await probeOf(await binPathOf(), {
-      lines: [...HANDSHAKE, ...BROKEN_INPUT],
-      expected: HANDSHAKE_COUNT + 3,
+const STYLE_PRESET = "atelier-editorial";
+
+/** 三条出口问同一个预设：工具、资源、prompt——它们必须给出同一份风格。 */
+const STYLE_EXIT_LINES = linesOf([
+  INITIALIZE,
+  INITIALIZED,
+  {
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: { name: "hr_apply_style", arguments: { filePath: "a.html", visualId: STYLE_PRESET } },
+  },
+  {
+    jsonrpc: "2.0",
+    id: 3,
+    method: "resources/read",
+    params: { uri: `hreader://styles/${STYLE_PRESET}` },
+  },
+  {
+    jsonrpc: "2.0",
+    id: 4,
+    method: "prompts/get",
+    params: { name: "use-hreader-style", arguments: { toneId: STYLE_PRESET } },
+  },
+]);
+
+/** 预设的视觉维度落在 `inherits_visual`；仓库里只有那一份 `theme.css`。 */
+const presetOf = (id: string): (typeof BUILTIN_STYLES)[number] | undefined =>
+  BUILTIN_STYLES.find((style) => style.id === id);
+
+/** prompt 的正文：`messages[0].content.text`（不经过 JSON 转义，多行片段才比得动）。 */
+const promptBodyOf = (answer: Record<string, unknown> | undefined): string => {
+  const messages: unknown = resultOf(answer)["messages"];
+  const first: unknown = Array.isArray(messages) ? messages[0] : undefined;
+  const content: unknown = isRecord(first) ? first["content"] : undefined;
+  return isRecord(content) && typeof content["text"] === "string" ? content["text"] : "";
+};
+
+const injectedThemeOf = (html: string): string =>
+  /<style id="hr-theme">([\s\S]*?)<\/style>/u.exec(html)?.[1] ?? "";
+
+describe("dist/main.js · 风格三出口", () => {
+  // G3 P0-2：内置预设的 theme.css 在源码布局里找得到、在 bundle 里找不到——只有真产物能证明这件事。
+  it("should serve a builtin preset through the tool, the resource and the prompt alike", async () => {
+    const styleDir = await mkdtemp(join(tmpdir(), "hreader-mcp-style-"));
+    await writeFile(join(styleDir, "a.html"), ANNOTATED_DOC, "utf8");
+    const { frames, stderrText } = await probeOf(await binPathOf(), {
+      lines: STYLE_EXIT_LINES,
+      expected: 4,
+      cwd: styleDir,
     });
     const byId = byIdOf(frames);
+    const resource = JSON.stringify(resultOf(byId.get(3))["contents"]);
+    const promptText = promptBodyOf(byId.get(4));
+    const preset = presetOf(STYLE_PRESET);
+    if (preset === undefined) throw new Error(`内置预设里没有 ${STYLE_PRESET}`);
+    // 三个出口必须都回到**同一份源**：工具的 CSS 等于盘上的 theme.css，资源与 prompt 等于预设 spec。
+    const themeCss = await readFile(
+      join(REPO_ROOT, "styles", preset.inheritsVisual, "theme.css"),
+      "utf8",
+    );
+    const toneSpec = compileTone(preset);
+    const injected = injectedThemeOf(await readFile(join(styleDir, "a.html"), "utf8"));
 
-    // ① 每一行都还是 JSON-RPC：畸形行让 SDK 直接丢弃（不回 -32700、也不给 id:null），
-    //    进程没崩、stdout 也没多出任何非协议文本。
-    expect(byId.has(null)).toBe(false);
-    expect(frames.every((frame) => frame["jsonrpc"] === "2.0")).toBe(true);
-    expect([...byId.keys()].sort()).toEqual([1, 2, 3, 4, 5, 6, 7]);
-
-    // ② 三种坏输入各自的答复：未知方法 / 缺参数 / 越界路径。
-    expect(errorCodeOf(byId.get(5))).toBe(-32601);
-    expect(resultOf(byId.get(6))["isError"]).toBe(true);
-    expect(resultOf(byId.get(7))["isError"]).toBe(true);
-    expect(textOf(byId.get(7))).toContain("[path_outside_workspace]");
-
-    // ③ 日志真的走 stderr（含前缀与工具名），stdout 里一个字符都没有。
-    expect(stderrText).toContain("[hreader-mcp]");
-    expect(stderrText).toContain("hr_outline");
-    expect(lines.join("")).not.toContain("[hreader-mcp]");
-    expect(exitCode).toBe(0);
-  }, 45_000);
+    expect(stderrText).not.toContain("unknown_style");
+    expect(resultOf(byId.get(2))["isError"]).toBeUndefined();
+    // ① 工具：注入的样式块与预设的 theme.css 逐字一致（改一个字符就红）。
+    expect(injected.trim()).toBe(themeCss.trim());
+    // ② 资源：YAML 里带的是同一份 spec 的人设，而不是某个写死的短语。
+    expect(resource).toContain(preset.language.persona);
+    // ③ prompt：编译出的规约与资源同源，取 compileTone 的前三行当落地锚。
+    expect(promptText).toContain(toneSpec.split("\n").slice(0, 3).join("\n").trim());
+    expect(promptText).toContain(preset.language.persona);
+    await rm(styleDir, { recursive: true, force: true });
+  }, 30_000);
 });
 
 describe("dist/main.js · self-contained", () => {
@@ -268,7 +178,11 @@ describe("dist/main.js · self-contained", () => {
       expect(resultOf(answer)["isError"]).toBeUndefined();
       expect(isRecord(outline) && Array.isArray(outline["nodes"])).toBe(true);
       expect(isRecord(outline) ? outline["wordCount"] : 0).toBeGreaterThan(0);
-      expect(stderrText).toBe("");
+      // 仓库外布局：stderr 只有两行——`workspace=` 与一条"主题资源缺失"的 WARNING（stdout 不受影响）。
+      const stderrLines = stderrText.trimEnd().split("\n");
+      expect(stderrLines).toHaveLength(2);
+      expect(stderrLines[0]?.startsWith("[hreader-mcp] workspace=/")).toBe(true);
+      expect(stderrLines[1]?.startsWith("[hreader-mcp] WARNING 主题资源缺失：")).toBe(true);
     } finally {
       await rm(hostDir, { recursive: true, force: true });
     }
