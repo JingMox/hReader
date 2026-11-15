@@ -9,6 +9,8 @@ export { LINT_HIT_LIMIT, lintByStyle } from "./lint";
 export { discoverStyles, loadStyle } from "./load";
 export { nodeStyleDeps } from "./node";
 export { BUILTIN_STYLES, DEFAULT_STYLE_ID, findBuiltinStyle } from "./presets";
+export { readStyleSource } from "./source";
+export type { StyleSourceText } from "./source";
 export { loadThemeCss, resolveThemePath } from "./theme";
 export type {
   ApplyStyleInput,

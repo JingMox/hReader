@@ -1,0 +1,21 @@
+// 这层管：包入口的导出面——测试与将来的进程内嵌只认 `@hreader/mcp-server` 这一个面。
+
+import { describe, expect, it } from "vitest";
+
+import * as entry from "../src/index";
+
+describe("@hreader/mcp-server", () => {
+  it("should expose the server factory and the cli seams", () => {
+    expect(typeof entry.createServer).toBe("function");
+    expect(entry.SERVER_VERSION).toBe("0.0.0");
+    expect(typeof entry.modeOf).toBe("function");
+    expect(typeof entry.runMain).toBe("function");
+    expect(typeof entry.startHttp).toBe("function");
+    expect(typeof entry.styleIdsOf).toBe("function");
+    expect(entry.STYLE_URI_PREFIX).toBe("hreader://styles/");
+    expect(entry.UI_URI_PREFIX).toBe("ui://hreader/view/");
+    expect(entry.UI_MIME_TYPE).toBe("text/html;profile=mcp-app");
+    expect(entry.USE_STYLE_PROMPT).toBe("use-hreader-style");
+    expect(entry.USAGE).toContain("hreader-mcp");
+  });
+});

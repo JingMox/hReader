@@ -25,6 +25,7 @@ export {
   loadStyle,
   loadThemeCss,
   nodeStyleDeps,
+  readStyleSource,
   replaceTheme,
   resolveThemePath,
 } from "./style";
@@ -43,6 +44,7 @@ export type {
   StyleDiagnostic,
   StyleDiscovery,
   StyleSource,
+  StyleSourceText,
   StyleSpec,
   VocabularySpec,
 } from "./style";

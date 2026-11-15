@@ -1,0 +1,23 @@
+{
+  "name": "@hreader/mcp-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "hreader-mcp": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc --noEmit -p tsconfig.build.json && esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/main.js --sourcemap --banner:js='import { createRequire as __cr } from \"node:module\"; const require = __cr(import.meta.url);'"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@hreader/core": "workspace:*",
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "vitest": "3.2.4"
+  }
+}
