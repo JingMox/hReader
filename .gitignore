@@ -10,3 +10,6 @@ coverage/
 *.tsbuildinfo
 .eslintcache
 .deltabox/
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts.map

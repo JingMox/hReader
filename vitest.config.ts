@@ -12,6 +12,7 @@ const ALIASES = [
   "@hreader/renderer-html",
   "@hreader/chrome-extension",
   "@hreader/app",
+  "@hreader/mcp-server",
 ] as const;
 
 export default defineConfig({
