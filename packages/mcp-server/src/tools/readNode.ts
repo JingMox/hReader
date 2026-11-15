@@ -8,7 +8,10 @@ import { guarded, okResult } from "../errors";
 import { documentTargetOf, readInsideWorkspace } from "./target";
 
 export const readNodeShape = {
-  filePath: z.string().min(1).describe("含该节点的 HTML 文档路径（相对当前目录或绝对路径）"),
+  filePath: z
+    .string()
+    .min(1)
+    .describe("含该节点的 HTML 文档路径（工作区内，相对当前目录或绝对路径）"),
   nodeId: z
     .string()
     .min(1)

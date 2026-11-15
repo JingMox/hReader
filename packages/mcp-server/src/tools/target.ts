@@ -1,11 +1,11 @@
-// 这层管：`filePath` → core 能吃的 `{workspace, file}`，以及只读工具读文本前的那道边界检查。
+// 这层管：`filePath` → core 能吃的 `{workspace, file}`，以及本包唯一那道边界判定（读与建共用同一个口径）。
 
 import { readFile, realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { HrError } from "@hreader/core";
 
-interface DocumentTarget {
+export interface DocumentTarget {
   /** 边界（core 的 `workspace`）。 */
   readonly workspace: string;
   /** 相对 `workspace` 的路径：core 的 `resolveTarget` 自己会 realpath + 拒逃逸。 */
@@ -18,19 +18,44 @@ export const documentTargetOf = (filePath: string, cwd: string): DocumentTarget 
   return { workspace: cwd, file: relative(cwd, absolute), absolute };
 };
 
+/** 与 core 的 `io/errors.ts` 同形：只把 `code` 原样取出、不做类型收窄，非字符串自然比不相等。 */
+const codeOf = (error: unknown): unknown => Reflect.get(Object(error), "code");
+
 /**
- * 写路径的逃逸判定在 core 的 `resolveTarget` 里（适配层不复制它）。只读工具（outline/read_node）
- * 不落盘、core 也没有公开的"读文本"入口，所以这里用同一个原语（realpath）补一道同语义的边界，
- * 避免把任意绝对路径的内容读给模型。判定口径与 core 一致：realpath 后不得在 workspace 之外。
+ * 要新建的目标还不存在，`realpath` 会 `ENOENT`（父级是文件时是 `ENOTDIR`）：退到最近的既存祖先。
+ * 根目录必然解析得出来，所以这个循环只从 `return` 收尾；其余错误原样抛出（"解析不了"不等于"就在界内"）。
  */
-export const readInsideWorkspace = async (target: DocumentTarget): Promise<string> => {
+const realpathOfExisting = async (candidate: string): Promise<string> => {
+  for (;;) {
+    try {
+      return await realpath(candidate);
+    } catch (error: unknown) {
+      const code = codeOf(error);
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+      candidate = dirname(candidate);
+    }
+  }
+};
+
+/**
+ * 边界判定（本包只此一处，读、建同一个口径）：目标本身、或它最近的既存祖先，`realpath`
+ * 之后必须落在 `realpath(workspace)` 之内。
+ * 两件事靠它成立：一是符号链接逃逸（`ln -s /tmp workspace/link` 之后传 `link/x.html`）被拒；
+ * 二是**顺序**——调用方必须在 `mkdir`/`writeFile` 之前调用它，反了就是先把目录建出去再发现越界。
+ */
+export const assertInsideWorkspace = async (target: DocumentTarget): Promise<void> => {
   const [workspace, absolute] = await Promise.all([
     realpath(target.workspace),
-    realpath(target.absolute),
+    realpathOfExisting(target.absolute),
   ]);
   const inside = relative(workspace, absolute);
   if (inside.startsWith("..") || isAbsolute(inside)) {
     throw new HrError("path_outside_workspace", `目标不在工作区内：${target.absolute}`);
   }
-  return readFile(absolute, "utf8");
+};
+
+/** 只读工具（outline/read_node）不落盘、core 也没有公开的"读文本"入口，所以判定完直接读。 */
+export const readInsideWorkspace = async (target: DocumentTarget): Promise<string> => {
+  await assertInsideWorkspace(target);
+  return readFile(target.absolute, "utf8");
 };
