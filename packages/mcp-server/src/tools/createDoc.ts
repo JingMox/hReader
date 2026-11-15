@@ -9,13 +9,13 @@ import { z } from "zod";
 
 import { guarded, okResult } from "../errors";
 import { docIdOf, UI_URI_PREFIX } from "../ui";
-import { documentTargetOf } from "./target";
+import { assertInsideWorkspace, documentTargetOf, type DocumentTarget } from "./target";
 
 export const createDocShape = {
   filePath: z
     .string()
     .min(1)
-    .describe("要新建的 HTML 文档路径（相对当前目录或绝对路径）；已存在则拒绝"),
+    .describe("要新建的 HTML 文档路径（工作区内，相对当前目录或绝对路径）；已存在则拒绝"),
   title: z.string().min(1).describe("文档标题（写进 `<title>` 与 `<h1>`）；正文之后再靠 patch 补"),
 };
 
@@ -41,6 +41,17 @@ const minimalDocOf = (title: string): string =>
 </html>
 `;
 
+const writeNewOf = async (target: DocumentTarget, html: string): Promise<void> => {
+  try {
+    await mkdir(dirname(target.absolute), { recursive: true });
+    await writeFile(target.absolute, html, { encoding: "utf8", flag: "wx" });
+  } catch (error: unknown) {
+    throw new HrError("io_failure", `写入失败（目录不可建、文件已存在或不可写）：${target.file}`, {
+      cause: error,
+    });
+  }
+};
+
 const writeNewDocOf = async (
   args: CreateDocArgs,
   htmlOf: (title: string) => string,
@@ -51,14 +62,9 @@ const writeNewDocOf = async (
   if (firstDiagnostic !== undefined) {
     throw new HrError("invalid_document", `生成的文档没过校验：${firstDiagnostic.message}`);
   }
-  await mkdir(dirname(target.absolute), { recursive: true });
-  await writeFile(target.absolute, html, { encoding: "utf8", flag: "wx" }).catch(
-    (error: unknown) => {
-      throw new HrError("io_failure", `写入失败（文件已存在或不可写）：${target.file}`, {
-        cause: error,
-      });
-    },
-  );
+  // 先判定再建：`filePath` 来自模型输出，而模型可被文档里的注入操纵——越界必须先拒，不能先建目录。
+  await assertInsideWorkspace(target);
+  await writeNewOf(target, html);
   return okResult(
     { path: target.file, title: args.title },
     { ui: { resourceUri: `${UI_URI_PREFIX}${docIdOf(target.file)}` } },

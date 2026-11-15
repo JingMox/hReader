@@ -9,7 +9,10 @@ import { guarded, okResult } from "../errors";
 import { documentTargetOf } from "./target";
 
 export const applyStyleShape = {
-  filePath: z.string().min(1).describe("要换肤的 HTML 文档路径（相对当前目录或绝对路径）"),
+  filePath: z
+    .string()
+    .min(1)
+    .describe("要换肤的 HTML 文档路径（工作区内，相对当前目录或绝对路径）"),
   visualId: z
     .string()
     .min(1)

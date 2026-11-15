@@ -19,7 +19,7 @@ const ACTIONS = [
 ] as const satisfies readonly PatchAction[];
 
 export const patchNodeShape = {
-  filePath: z.string().min(1).describe("要改的 HTML 文档路径（相对当前目录或绝对路径）"),
+  filePath: z.string().min(1).describe("要改的 HTML 文档路径（工作区内，相对当前目录或绝对路径）"),
   nodeId: z.string().min(1).describe("目标节点的 `data-hr-id`；要换整篇内容用 `root`"),
   action: z
     .enum(ACTIONS)

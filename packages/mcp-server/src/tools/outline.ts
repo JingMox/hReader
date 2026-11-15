@@ -8,7 +8,10 @@ import { guarded, okResult } from "../errors";
 import { documentTargetOf, readInsideWorkspace } from "./target";
 
 export const outlineShape = {
-  filePath: z.string().min(1).describe("要读结构的那份 HTML 文档的路径（相对当前目录或绝对路径）"),
+  filePath: z
+    .string()
+    .min(1)
+    .describe("要读结构的那份 HTML 文档的路径（工作区内，相对当前目录或绝对路径）"),
 };
 
 type OutlineArgs = z.infer<z.ZodObject<typeof outlineShape>>;
