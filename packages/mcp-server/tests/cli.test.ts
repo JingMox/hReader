@@ -121,7 +121,10 @@ describe("startHttp", () => {
     expect(running.port).toBeGreaterThan(0);
     const response = await fetch(`http://127.0.0.1:${String(running.port)}/mcp`, {
       method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
