@@ -238,7 +238,7 @@ sequenceDiagram
     * `/hreader [path]`：拉起本地 hReader 阅读视图并开启双向监听。
     * `/hr-style [tone-id]`：切换当前 Pi 会话绑定的语言风格与视觉主题。
   * **注册工具**：向 Pi 暴露 `hreader_outline`、`hreader_read_node`、`hreader_patch_node`。
-  * **终端与阅读器联动**：监听本地 Daemon 的 WebSocket 事件；当用户在阅读器里点击“让 Pi 修改此段”时，调用 `context.ui.notify` 提示用户，并将选中的节点源码与批注自动组装为下一轮 Prompt 注入 Pi。
+  * **终端与阅读器联动**：订阅本地 Daemon 的 **SSE** 事件流（`GET /api/events`，`cookie` 认证 + `Last-Event-ID` 回填 + 心跳帧；M2.1 决定用 SSE 而非 WebSocket，见 `packages/core/src/server/event-ring.ts`）；事件到达后按需拉取批注（`GET /api/doc/:docId/annotations`），有新条目时调用 `ctx.ui.confirm` / `ctx.ui.notify` 提示用户，把节点源码与批注组装成消息注入 Pi 上下文（`pi.sendUserMessage` / `pi.sendMessage`）。
 
 #### ④ DeepSeek Harness 插件 (`packages/dsh-bundle`)
 * 深度适配 **DeepSeek Harness (`dsh`)** 的 **Cordis** 微内核架构：
@@ -333,7 +333,7 @@ flowchart LR
 * **目标**：将 `@hreader/core` 与阅读器能力无缝接入主流 Agent 框架。
 * **核心任务**：
   - [x] **M3.1 `@hreader/mcp-server`**：实现标准 MCP Tools、语言风格 Prompts 注册，并兼容 `MCP-UI` 内联资源协议。
-  - [ ] **M3.2 Pi 插件 (`pi-hreader.ts`)**：编写单文件 TypeScript 扩展，实现 `/hreader`、`/hr-style` 命令及阅读器批注向 Pi `context.ui` 的自动投递。
+  - [x] **M3.2 Pi 插件 (`pi-hreader.ts`)**：编写单文件 TypeScript 扩展，实现 `/hreader`、`/hr-style` 命令及阅读器批注向 Pi `context.ui` 的自动投递。
   - [ ] **M3.3 DeepSeek Harness 插件 (`@hreader/dsh-bundle`)**：基于 Cordis 编写插件入口与 `cordis.patch.yml`，实现语言风格 Prompt Hook 动态织入、强类型事件触发 Agent Loop 局部修补、以及 `dsh-web-app` 内嵌阅读面板。
   - [ ] **M3.4 `hr_undo` 工具**：给 MCP 层补撤销入口（前端与 HTTP 早已有 `undoPatch`，MCP 缺一个工具）。2026-11-15 用户裁定从 M3.1 拆出，避免撑爆单卡验收范围。
 

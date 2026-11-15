@@ -128,6 +128,52 @@
 
 ---
 
+## M3.2 Pi 扩展（`packages/pi-extension`）使用节
+
+单文件扩展：`pi-hreader.ts` 本身就是一个可加载的 Pi 扩展，零本地 import、运行时只依赖 `typebox` 与 `node:` 内建。
+
+**装法**：
+
+```bash
+cp packages/pi-extension/pi-hreader.ts ~/.pi/agent/extensions/   # 或：pi -e packages/pi-extension/pi-hreader.ts
+```
+
+**两条斜杠命令**（需先 `hr serve` 起 daemon，扩展不会自己拉起进程）：
+
+- `/hreader <path>`：把文档推给阅读器并订阅它的批注事件；`<path>` 相对 daemon 的 workspace 或绝对路径。
+  无参时只给用法 + daemon 状态（`127.0.0.1:<port>`、workspace，换过视觉时追加当前风格）——不打印根 URL，
+  因为 `GET /` 是 cookie 认证、`/s/:docId` 是 token 认证，无参时没有可点的合法链接。
+- `/hr-style <id>`：换当前文档的视觉。无参列出可选 id；id 只来自 daemon 的 `GET /api/theme`，不在列表里的 id
+  连 `POST /api/style` 都不发。风格记在**文档**上（`POST /api/style` 带的就是 `docId`）：换到别的文档时状态行
+  不报上一个文档的风格，换回来仍记得；连发两次时后一次生效，先发的慢响不覆盖。daemon 与用户来源的字符串
+  进终端前会净化控制字符并截断到 400 字符（主题 id 来自 workspace 目录名，属不可信输入）。
+
+**三个工具**（供模型在会话里读写文档）：`hreader_outline`（结构 + 每节字数 + 未处理批注）、`hreader_read_node`
+（单个节点的真实 HTML 与其批注）、`hreader_patch_node`（`replace`/`insert_before`/`insert_after`/`append`/`delete`）。
+三者都返回文本，失败时把 daemon 的错误码转成文本，不抛裸异常。
+
+**批注联动**：订阅 `/api/events` 的 SSE；文档的 `doc.changed` 到达时拉一次待处理批注（`pending_ai`），
+同一 `anId` 只问一次；无 UI 模式（`pi -p`/`--json`）只提示，不擅自注入会话。事件环过期（`reason: events_expired`）
+会明确提示刷新，不当成未知事件吞掉；断线带 `Last-Event-ID` 每 2 秒重连，`session_shutdown` 时收尾。
+
+**限制**：单文件（不再拆模块）；不扫主题目录——视觉清单只认 daemon 的 `GET /api/theme`；
+只换视觉不换语气（语气规约是 MCP 侧"写稿前读规约"的能力，Pi 侧不重复实现）。
+
+---
+
+### 验证（M3.2 结卡时的实测数字）
+
+| 项 | 值 |
+| :--- | :--- |
+| 全仓 | **2247 例 / 203 文件**，`pnpm verify` 退出 0 |
+| 扩展包 | **145 例 / 12 文件** |
+| `pi-hreader.ts` | 1200 行，语句/分支/函数/行 **100/100/100/100**（无 uncovered） |
+| `depcruise` | 443 模块 / 1835 依赖，0 违规 |
+| `pnpm smoke:pi` | 5 行全绿（真 pi 1.5.2 加载；`/hreader`、`/hr-style` 都被执行；对照组落模型） |
+| 变异 | 四轮共 **67** 个，存活 6（其中 4 条转成真缺陷修复、2 条转成假证人修复） |
+
+**这套测试怎么证明自己有效**：不是看覆盖率，而是看「删掉实现里的一行，有没有用例红」。本卡删一行仍全绿的情况出现过 4 次，其中 3 次是真缺陷（见 `.workflow/cards/M3.2.md` §9.3 的 11 条缺陷表）。
+
 ## 横切口径：`data-hr-id` 与批注锚点的生命周期
 
 `data-hr-id` 由内容派生（详见 `.workflow/cards/M2.3.md` §8）：同一份字节两次注入 id 稳定，编辑则会让 id 漂移。批注的 `nodeId` **不做落盘迁移**，锚点失效由读时重识别兜底（三档：命中 / `block_reidentified` / `block_missing`）。**发布前**若更换 id 方案，必须先交付 `nodeId` 迁移脚本，否则既有批注全部失效；当前未发布，无迁移义务（`L-02`，重构卡 R-6）。
@@ -138,7 +184,7 @@
 - M2.2 Reader UI 三栏骨架（书库/TOC/画布/边栏）
 - M2.3 划词批注持久化 + Visual Diff + Undo
 - M3.1 MCP Server（5 tools + resources + prompts + MCP-UI）
-- M3.2 Pi 扩展单文件（`/hreader`、`/hr-style`、context.ui 注入）
+- M3.2 Pi 扩展单文件（`/hreader`、`/hr-style`、context.ui 注入）——使用节见上
 - M3.3 DSH Cordis 插件（prompt hook + 强类型事件 + Web 面板）
 - M4.1 `hr style extract` 风格萃取
 - M4.2 Tauri v2 桌面端
