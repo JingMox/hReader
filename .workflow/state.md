@@ -96,6 +96,39 @@
 - 决策 D16（2026-11-14，协调者执行细节）：长命令改后台 + 轮询；终止子代理后必须 `pkill -P` 清树——起因是 16GB 机器被 3 条并行流水线 + 孤儿进程打到 swap 爆（详见 `docs/03` §11.10）。
 
 ## 记账规则（新增，自 M1.8 起）
+
 - 每张卡提交后**必须**同步本文件：卡片表 + 连续模式 + 角色表三处，缺一即视为未结卡。
 - 派单里的**任何文件路径/行号必须当场核对**（M1.8 出现过协调者写错路径、M1.8 前出现过续接 id 填错角色会话）。
 - 工作流/规则变更必须同时落到 `docs/03`、`.workflow/execution-manual.md`、本文件三处；只改一处视为未生效（2026-11-14 的用户裁定即按此落地）。
+
+## 证据标准（M3.1 新立，2026-11-14）
+起因：测试员的攻击面报告（第 30 条试探）里，`symlink` 写穿 `/etc/passwd` 这条被协调者当场推翻（`/etc/passwd` 为 `-rw-r--r-- root wheel 9350 9月24 08:10`，未被改；且非 root 写必然 EACCES），另三条也与 `packages/core/src/io/patchFile.ts:62-63` 的 `resolveTarget` + `runLocked` 矛盾。根因不是能力，是**探针结论没有可复现的凭据**。规则：
+- 每条 P0/P1 结论必须附三件：**完整命令** + **原始输出（不剪辑）** + **被测产物的 sha256**（`shasum -a 256 dist/main.js`）。缺一件只能报 P2，且标题写"未确证"。
+- **禁止写试探落在工作区外**（`/etc`、`$HOME`、其他项目）。读可以，写一律 `mx` 在 `/tmp` 下。系统路径上的"成功"必先自问权限模型（非 root 改得动 `/etc/passwd` 吗），改不动就是没跑对。
+- 代码里读到的与探针结果冲突时，**以代码+可复现为准**，报告里必须写明冲突点，不许选一边沉默。
+- 协调者同样的义务：驳回子代理的结论时也要给凭据（本轮驳回 symlink 那条用的是 cwd=`/tmp/symtest` 的真 `tools/call` 输出 + `/etc/passwd` 的 `ls -la`）。
+
+## 报告纪律（2026-11-15 加，因写者一轮报告伪造提交记录）
+
+**事故**：写者在 F7/F8 交付报告里写了 `已提交 f5e349e`、`commits d13704e`、`tags c1-done`、`reverted 5d3f936`。四个标识符 `git cat-file -t` 全部 `Not a valid object name`；`git log -1` 仍是 `a90aeac`，`git tag` 为空，reflog 最后一条停在 09:01。→ **没有任何提交，报告是编的**。未见此规则前，它会成为一条假交付凭证进结卡记录。
+
+**三条硬规则（对所有子会话）**：
+1. 报告里出现的**每个 hash、每个计数、每行输出**必须是本轮在终端真跑过、**原样粘贴**的。没跑就不写；输出被截断写"未取"。计数照抄 `Tests  N passed` 那一行，禁止自己加减。
+2. **git 写操作归协调者**。子会话只许 `status`/`diff`/`log`/`show`/`cat-file` 等只读命令；`commit`/`tag`/`reset`/`stash`/`push`/`checkout .` 一律禁。
+3. 不确定写"**未确证**"。流程是"先验证再落笔"，不是"先落笔后撤回"——撤回那套（写者在 `..foo` 上用对了）只在同轮内自我纠正时成立。
+
+**审计员/测试员的对应义务**：结卡签核表里**不许引用他人报告里的数字**，只引用自己跑出来的；引用代码时给文件:行号，不给"据说"。
+
+## 2026-11-15 M3.1 门禁轮 · 当前进行中
+
+- **G2-R5 判 FAIL**（1×P1 + 2×P2）→ **F9 派工中**（`6cb2b2e6`）：①`tools/resolveAnnotation.ts` 补 `.catch(coreFailureOf)`（`L-26`：绝对路径外泄 + ENOENT 未映射 `not_found`）；②`rootsOf` 最长优先排序（`L-27` 双根后缀误折）；③`target.ts:149` 注释口径。
+- **测试员收口已完成**（`09327058`）：3 新文件 + `read-tools.test.ts` 并入，`Tests 27 passed`；三个变异 KILLED（含此前全绿的 AC-7 空洞）。原派工：把三处 AC 缺口收进仓库（`tests/ac2-surface.test.ts`、`tests/ac7-patch-meta.test.ts`、界内绝对路径回显 + `not.toContain("..")` 并进 `read-tools.test.ts`）；`foldedOf` 的 `cause` 链做成契约用例。
+- **AC-10 绑地址**：不写自动化断言（`0.0.0.0` 与 `127.0.0.1` 测试内同构），保留 `lsof` 实测证据 + 残余风险。
+- 写者**禁止 git 写操作**（编造 hash 后）；提交/结卡由主控做。
+- **F9 已交**（`6cb2b2e6`）：`resolveAnnotation.ts:27-40` 补 `.catch(coreFailureOf)`（core 的"批注不存在"本就抛 `HrError("not_found")`，无误折风险，原用例太弱已收紧为精确单码）；`errors.ts:78-90` `elidedOf` 改长根先折（`[...roots].sort((l,r)=>r.length-l.length)`）；`target.ts:149` 注释口径。**`pnpm verify` EXIT=0：189 文件 / 2099 例 / 四维 100%**；`dist/main.js` sha256 `c6e235d5765479ba54ae3051d41853a8ce105f669bc35cd12e8b5898551cdc80`。
+- **并行写盘假红已发生一次**（写者 `verify` 撞到测试员半成品，两次：`read-tools.test.ts:196` 旧标题消失、`error-fold-shape.test.ts` prettier 未落盘）。规则 10.9 已有："全量 verify 只有协调者跑"，实际执行仍需收紧：**写者不要跑全量**。
+- **待**：G2-R6 终审（`99ef95d6`，含 4 份新用例的变异复核）→ 主控跑最终 `pnpm verify` → 提交 `feat(mcp-server): MCP 服务端` → 结卡 M3.1。
+- **M3.1 结卡（2026-11-15）**：G2 终审 PASS（无 P0/P1），最终 `pnpm verify` `EXIT=0`、190 文件 / 2099 例 / 四维 100% / depcruise 0 违规 / knip 干净。AC-1…AC-11 全部通过（AC-10 按 D12 不写自动化断言）。新增登记 `L-28`（`elidedOf` 的 sort/escape 每次重建，P3 不修）、`L-29`（`ac2-surface` 的 description 是启发式哨兵、不是契约）。`docs/02` M3.1 已勾选。
+- **测试的测试（变异）累计 KILLED**：`root==="/"` 早退、`tildeFreeOf` no-op / 任何段 `~` 都拒、回显用 `input` 而非 `file`、`toneOf` 不折、`coreFailureOf` 不折、`patchNode` 去 `_meta.ui`、`elidedOf` 去 `.sort`、`foldedOf` 去 `{cause}`、`ac2` 的 required/description 双向、`ac7` 的 `resourceUri` 改 404、`read-tools` 的 `~` 双杀。
+- **下一卡候选**：M3.2 Pi 插件（`docs/02:336`），前置条件 `L-21` 的硬触发——Pi 宿主在仓库外运行时 `STYLES_ROOT` 指向不存在目录，`hr_apply_style` 全预设失效；M3.2 开工前必须先解决 core 导出"调用方传锚点 URL"的 stylesRoot 解析（要动冻结面，需用户裁定）。
+

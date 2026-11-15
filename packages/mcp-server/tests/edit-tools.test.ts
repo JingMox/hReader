@@ -186,7 +186,7 @@ describe("hr_resolve_annotation", () => {
     expect(written).toContain("补了新数据");
   });
 
-  it("should turn an unknown annotationId into a tool error", async () => {
+  it("should keep an unknown annotationId a plain miss, not a missing document", async () => {
     await docIn("doc.html");
     const session = await sessionOf();
     const result = await session.client.callTool({
@@ -196,6 +196,23 @@ describe("hr_resolve_annotation", () => {
     await session.close();
 
     expect(isErrorResultOf(result)).toBe(true);
-    expect(codeOf(result)).not.toBe("");
+    expect(codeOf(result)).toBe("not_found");
+    expect(textOf(result)).toContain("ann-nope");
+  });
+});
+
+describe("hr_resolve_annotation · 失败的翻译", () => {
+  it("should translate a missing document like the other tools, with no absolute path in the body", async () => {
+    const session = await sessionOf();
+    const result = await session.client.callTool({
+      name: "hr_resolve_annotation",
+      arguments: { filePath: "nope.html", annotationId: "ann-01" },
+    });
+    await session.close();
+
+    const text = textOf(result);
+    expect(codeOf(result)).toBe("not_found");
+    expect(text).toContain("nope.html");
+    expect(text).not.toContain(process.cwd());
   });
 });

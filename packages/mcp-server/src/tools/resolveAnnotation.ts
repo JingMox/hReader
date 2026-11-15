@@ -5,13 +5,10 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { guarded, okResult } from "../errors";
-import { documentTargetOf } from "./target";
+import { FILE_PATH_HINT, coreFailureOf, documentTargetOf } from "./target";
 
 export const resolveAnnotationShape = {
-  filePath: z
-    .string()
-    .min(1)
-    .describe("带批注的 HTML 文档路径（工作区内，相对当前目录或绝对路径）"),
+  filePath: z.string().min(1).describe(FILE_PATH_HINT),
   annotationId: z
     .string()
     .min(1)
@@ -35,6 +32,8 @@ export const resolveAnnotationCall = (args: ResolveAnnotationArgs): Promise<Call
         ...(args.resolutionNote === undefined ? {} : { resolutionNote: args.resolutionNote }),
       },
       nodePatchDeps,
-    );
+    ).catch((error: unknown) => {
+      throw coreFailureOf(error, target);
+    });
     return okResult(result);
   });

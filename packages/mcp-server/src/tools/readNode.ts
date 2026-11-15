@@ -5,13 +5,10 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { guarded, okResult } from "../errors";
-import { documentTargetOf, readInsideWorkspace } from "./target";
+import { FILE_PATH_HINT, documentTargetOf, readInsideWorkspace } from "./target";
 
 export const readNodeShape = {
-  filePath: z
-    .string()
-    .min(1)
-    .describe("含该节点的 HTML 文档路径（工作区内，相对当前目录或绝对路径）"),
+  filePath: z.string().min(1).describe(FILE_PATH_HINT),
   nodeId: z
     .string()
     .min(1)

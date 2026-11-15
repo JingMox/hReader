@@ -10,6 +10,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { HrError } from "@hreader/core";
 
 import { logLine, messageOf } from "./log";
+import { styleRootWarningOf } from "./styleDeps";
 import { createServer } from "./server";
 
 export const USAGE = [
@@ -90,12 +91,22 @@ export interface MainIo {
 export const cliIoOf = (transportOf: () => Transport): MainIo => ({
   startStdio: async () => {
     const mcp = createServer(process.cwd());
-    await mcp.connect(transportOf());
+    const transport = transportOf();
+    // SDK 的 `ReadBuffer` 超限（默认 10MB 单帧）时只调 `onerror` 然后自己 `close`：不接这一行，
+    // 进程就在**一声不响**中退出，宿主只看到服务器凭空消失。
+    transport.onerror = (error: Error) => {
+      logLine(`传输错误：${messageOf(error)}`);
+    };
+    await mcp.connect(transport);
   },
   startHttp,
 });
 
 const defaultIo = cliIoOf(() => new StdioServerTransport());
+
+/** 资源缺失的警告要不要打：纯函数，两种输入都由 `cli.test.ts` 直接求值（不打桩、不 mock）。 */
+export const warningLinesOf = (warning: string | undefined): readonly string[] =>
+  warning === undefined ? [] : [warning];
 
 /** 返回值 = 进程退出码。stdio 模式下它只在"起不来"时才回（成功后进程被 stdin 拖着）。 */
 export const runMain = async (argv: readonly string[], io: MainIo = defaultIo): Promise<number> => {
@@ -109,6 +120,11 @@ export const runMain = async (argv: readonly string[], io: MainIo = defaultIo): 
     return 2;
   }
   try {
+    // 宿主唯一能自证"工作区是哪个目录"的地方：stdio 的 stdout 是协议通道，只能写 stderr。
+    // 资源缺失也不该等宿主第一次 `hr_apply_style` 才知道（仓库外布局，`L-21`）。
+    [`workspace=${process.cwd()}`, ...warningLinesOf(styleRootWarningOf())].forEach((line) => {
+      logLine(line);
+    });
     if (mode.kind === "stdio") {
       await io.startStdio();
       return 0;

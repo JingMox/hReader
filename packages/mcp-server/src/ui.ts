@@ -3,6 +3,7 @@
 
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
+import { readInsideWorkspace, type DocumentTarget } from "./tools/target";
 import { homedir } from "node:os";
 import { join, normalize, sep } from "node:path";
 
@@ -74,13 +75,10 @@ ${body}
 </html>
 `;
 
-/** 无 daemon、文档不可读都**不是错误**：宿主 UI 不该因为后台没开就拿不到资源（AC-7）。 */
-export const viewHtmlOf = async (relativePath: string): Promise<string> => {
+/** 无 daemon 不是错误（AC-7：宿主 UI 不该因为后台没开就拿不到资源）；**文档读不出来才是**——
+ * 以前回一页"文档不可读"的壳，对宿主是假成功（跟 `unknown_style` 撒谎同类）。 */
+export const viewHtmlOf = async (target: DocumentTarget): Promise<string> => {
   const banner = daemonBanner(await daemonBaseUrlOf(homedir()));
-  try {
-    const text = await readFile(relativePath, "utf8");
-    return PAGE(relativePath, banner, `<article>${text}</article>`);
-  } catch {
-    return PAGE(relativePath, banner, `<p>文档不可读：${escapeHtml(relativePath)}</p>`);
-  }
+  const text = await readInsideWorkspace(target);
+  return PAGE(target.file, banner, `<article>${text}</article>`);
 };

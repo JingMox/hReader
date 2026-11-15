@@ -1,18 +1,16 @@
 // 这层管：`hr_apply_style`（换视觉 / 取调性规约）；CSS 注入与规约编译都在 core。
 
-import { applyStyle, compileTone, HrError, loadStyle, nodeStyleDeps } from "@hreader/core";
+import { applyStyle, compileTone, HrError, loadStyle } from "@hreader/core";
 import type { ApplyStyleResult } from "@hreader/core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
-import { guarded, okResult } from "../errors";
-import { documentTargetOf } from "./target";
+import { foldedOf, guarded, okResult } from "../errors";
+import { styleDepsOf } from "../styleDeps";
+import { FILE_PATH_HINT, coreFailureOf, documentTargetOf } from "./target";
 
 export const applyStyleShape = {
-  filePath: z
-    .string()
-    .min(1)
-    .describe("要换肤的 HTML 文档路径（工作区内，相对当前目录或绝对路径）"),
+  filePath: z.string().min(1).describe(FILE_PATH_HINT),
   visualId: z
     .string()
     .min(1)
@@ -39,10 +37,15 @@ const visualOf = async (
 ): Promise<ApplyStyleResult | undefined> =>
   args.visualId === undefined
     ? undefined
-    : applyStyle({ workspace, file, visualId: args.visualId }, nodeStyleDeps(workspace));
+    : applyStyle({ workspace, file, visualId: args.visualId }, styleDepsOf(workspace));
 
-const toneOf = async (toneId: string, workspace: string): Promise<string> =>
-  compileTone((await loadStyle({ id: toneId }, nodeStyleDeps(workspace))).spec);
+const toneOf = async (toneId: string, workspace: string): Promise<string> => {
+  // 风格解析的文案来自 core：绝对路径在这个出口折掉（用户传的 `filePath` 不经过这里）。
+  const loaded = await loadStyle({ id: toneId }, styleDepsOf(workspace)).catch((error: unknown) => {
+    throw foldedOf(error);
+  });
+  return compileTone(loaded.spec);
+};
 
 export const applyStyleCall = (args: ApplyStyleArgs): Promise<CallToolResult> =>
   guarded("hr_apply_style", async () => {
@@ -51,7 +54,9 @@ export const applyStyleCall = (args: ApplyStyleArgs): Promise<CallToolResult> =>
     }
     const target = documentTargetOf(args.filePath, process.cwd());
     const outcome: StyleOutcome = {
-      visual: await visualOf(args, target.workspace, target.file),
+      visual: await visualOf(args, target.workspace, target.file).catch((error: unknown) => {
+        throw coreFailureOf(error, target);
+      }),
       tone: args.toneId === undefined ? undefined : await toneOf(args.toneId, target.workspace),
     };
     return okResult(outcome);
