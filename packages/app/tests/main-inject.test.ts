@@ -54,7 +54,6 @@ const recordingHostOf = (): RecordedHost => {
       handlers.set(`${selector}|${type}`, handler);
       return () => undefined;
     },
-    focus: noop,
     scrollTo: noop,
     destroy: noop,
   };

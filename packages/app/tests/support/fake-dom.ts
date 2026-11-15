@@ -24,7 +24,6 @@ export interface FakeElement {
   addEventListener: (type: string, handler: (event: { target: TargetLike }) => void) => void;
   removeEventListener: (type: string, handler: (event: { target: TargetLike }) => void) => void;
   fire: (type: string, target: TargetLike) => void;
-  focus?: () => void;
   scrollIntoView?: (options: { block: "start" }) => void;
 }
 
@@ -39,7 +38,6 @@ export interface FakeDocument {
 }
 
 const handleOf = (element: FakeElement, withHandles: boolean): void => {
-  if (withHandles) element.focus = () => element.calls.push("focus");
   if (withHandles)
     element.scrollIntoView = (options) => element.calls.push(`scroll:${options.block}`);
 };

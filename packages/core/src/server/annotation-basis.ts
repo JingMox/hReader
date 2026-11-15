@@ -56,14 +56,15 @@ interface BlockBasis {
   readonly before: string;
   readonly after: string;
   /**
-   * 三档语义（D.4）：
+   * 三档语义（D.4）。C1/`L-05` 后这两个字段不再上 wire，**只作 core 内部的重识别判据**：
    * - 命中：`nodeId` = 命中 id，`originNodeId` 缺省（新旧相同，给了是噪音）；
    * - 重识别成功：`nodeId` = 当前文档里那块的真实 id（旧 id 常已被 patch 换掉），
-   *   `originNodeId` = 批注记录里的旧 id（前端按它标“这条批注原本属于哪块”）；
+   *   `originNodeId` = 批注记录里的旧 id，内部用它区分“同一块换了 id”与“另一块顶了位”；
    * - `block_missing`：`nodeId` 与 `originNodeId` 都等于旧 id。
    */
   readonly nodeId: string;
   readonly originNodeId?: string;
+  /** 不是文案，是 `degraded` 的驱动输入：只要它出现，响应就必须声明降级。 */
   readonly reason?: ReidentifyReason;
   /** 人话文案：前端直接显示，不做码表翻译。 */
   readonly degradedReason?: string;

@@ -115,19 +115,15 @@ const diffOfDeletedBlock = async (ctx: TestServer): Promise<unknown> => {
   return diffOf(ctx, anId);
 };
 
-/** 判定“按位置重识别到同一块”：`reason` 必须精确，`after` 必须是**那块**的新文本。
- *  D.4 裁定：重识别时 `nodeId` = **新** id（前端用它标块），`originNodeId` = 批注记录的旧 id。 */
-const expectReidentified = (
-  body: unknown,
-  after: string,
-  newNodeId: string,
-  oldNodeId: string,
-): void => {
-  expect(fieldOf(body, "reason")).toBe("block_reidentified");
+/** 判定“按位置重识别到同一块”：必须声明降级，且 `after` 必须是**那块**的新文本。
+ *  D.4 裁定：重识别时 `nodeId` = **新** id（前端用它标块）；旧 id 不再上 wire（C1/L-05）。 */
+const expectReidentified = (body: unknown, after: string, newNodeId: string): void => {
+  // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+  expect(fieldOf(body, "reason")).toBeUndefined();
   expect(fieldOf(body, "after")).toBe(after);
   expect(fieldOf(body, "degraded")).toBe(true);
   expect(fieldOf(body, "nodeId")).toBe(newNodeId);
-  expect(fieldOf(body, "originNodeId")).toBe(oldNodeId);
+  expect(fieldOf(body, "originNodeId")).toBeUndefined();
 };
 
 /** 两条结果必须各自只含自己那块的新文本，且都声明“ID 重建”。 */
@@ -136,21 +132,24 @@ const expectOwnBlockOnly = (
   right: unknown,
   ids: { readonly leftNodeId: string; readonly rightNodeId: string },
 ): void => {
-  // 旧 id 在 patch 后已经不在正文里了；响应必须给“现在能标到的那一块”的 id，另带旧 id 供排查。
+  // 旧 id 在 patch 后已经不在正文里了；响应必须给“现在能标到的那一块”的 id，并声明降级。
   expect(fieldOf(left, "nodeId")).toBe(ids.leftNodeId);
   expect(fieldOf(right, "nodeId")).toBe(ids.rightNodeId);
   expect(ids.leftNodeId).not.toBe("hr-c");
   expect(ids.rightNodeId).not.toBe("hr-d");
-  expect(fieldOf(left, "originNodeId")).toBe("hr-c");
-  expect(fieldOf(right, "originNodeId")).toBe("hr-d");
+  // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+  expect(fieldOf(left, "originNodeId")).toBeUndefined();
+  expect(fieldOf(right, "originNodeId")).toBeUndefined();
+  expect(fieldOf(left, "degraded")).toBe(true);
+  expect(fieldOf(right, "degraded")).toBe(true);
   expect(textOf(left)).toContain("左块新说");
   expect(textOf(left)).not.toContain("右块新说");
   expect(textOf(right)).toContain("右块新说");
   expect(textOf(right)).not.toContain("左块新说");
   expect(textOf(left)).not.toBe(textOf(right));
-  // patch 重建了块 ID：按位置重识别，口语上“内容变了”，所以必须声明降级（裁定：三档语义）。
-  expect(fieldOf(left, "degraded")).toBe(true);
-  expect(fieldOf(left, "reason")).toBe("block_reidentified");
+  // patch 重建了块 ID：按位置重识别，口语上“内容变了”，所以必须声明降级（裁定：三档语义）；
+  // 上面那两条 `degraded` 就是这一位。C1/L-05：wire 不再有 reason/originNodeId。
+  expect(fieldOf(left, "reason")).toBeUndefined();
 };
 
 describe("GET …/diff · 粒度是块（P1-4）", () => {
@@ -204,21 +203,21 @@ describe("GET …/diff · 块 ID 重建后的三档语义（D.4）", () => {
 
       expect(fieldOf(body, "before")).toBe("正文一");
       expect(newNodeId).not.toBe("hr-c");
-      expectReidentified(body, "左块新说", newNodeId, "hr-c");
+      expectReidentified(body, "左块新说", newNodeId);
     });
   });
 
   it("should report block_missing when the annotated block is gone", async () => {
     await withServer(async (ctx) => {
       const body = await diffOfDeletedBlock(ctx);
-
       expect(fieldOf(body, "after")).toBe("");
       expect(fieldOf(body, "degraded")).toBe(true);
-      expect(fieldOf(body, "reason")).toBe("block_missing");
+      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+      expect(fieldOf(body, "reason")).toBeUndefined();
       expect(typeof fieldOf(body, "degradedReason")).toBe("string");
-      // 没有替身可给：`nodeId` 只能回旧 id，`originNodeId` 同值（D.4）。
+      // 没有替身可给：`nodeId` 只能回旧 id（D.4）；旧 id 不再另起字段。
       expect(fieldOf(body, "nodeId")).toBe("hr-d");
-      expect(fieldOf(body, "originNodeId")).toBe("hr-d");
+      expect(fieldOf(body, "originNodeId")).toBeUndefined();
     });
   });
 });

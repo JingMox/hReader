@@ -87,14 +87,15 @@ describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）",
     h.keyHandlers[0]?.({ key: "/" });
 
     // `searchOpened` 的唯一副作用：把"搜索还没接线"写进状态栏提示（`boot.ts:272`）。
-    // 搜索框在模板里是 `disabled`——聚焦一个点不动的控件比没有更糟，所以这里不能出现 focus。
+    // 搜索框在模板里是 `disabled`——聚焦一个点不动的控件比没有更糟，所以按键路径不能聚焦它。
     const hints = h.fake.calls
       .filter((call) => call.op === "text" && call.args[0] === `${ROOT} #hr-hint`)
       .map((call) => call.args[1]);
     expect(hints.at(-1)).toBe(COPY.searchDeferred);
     // 空串写进去等于没提示：文案本身必须非空。
     expect(COPY.searchDeferred.length).toBeGreaterThan(0);
-    expect(h.fake.ops()).not.toContain("focus");
+    // “没聚焦”由上面两条（写进 `#hr-hint` 的文案 + 非空）证明：`focus` op 已随 C1/L-04
+    // 从 `Host` 上删除，`ops()` 结构上再也不可能含 `"focus"`，留着那条断言只会恒真。
     // 同一个 if 链的 false 臂：`/` 不是 scrollTo。
     expect(h.fake.ops()).not.toContain("scrollTo");
     // 同一句文案也挂在 `title` 上（`boot.ts:276`），鼠标悬停时同样能读到延期原因。
@@ -106,14 +107,13 @@ describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）",
     ).toEqual([{ op: "attr", args: [`${ROOT} #hr-search`, "title", COPY.searchDeferred] }]);
   });
 
-  it("should press j and neither focus nor scroll (both false arms)", () => {
+  it("should press j and not scroll", () => {
     const h = harnessOf(true);
     boot(h.deps);
 
     h.keyHandlers[0]?.({ key: "j" });
 
-    // `move` 走 store，不碰 host 的两个副作用出口。
-    expect(h.fake.ops()).not.toContain("focus");
+    // `move` 走 store，不碰 host 唯一剩下的副作用出口 `scrollTo`（`focus` 已随 C1/L-04 移除）。
     expect(h.fake.ops()).not.toContain("scrollTo");
     // 只有一个块：`j` 到顶后仍停在同一块（不越界、不抛）。
     expect(h.store.get().activeId).toBe("hr-a");

@@ -155,12 +155,10 @@ export const annotationDiffReply = async (ctx: HandlerContext, ids: DocAnId): Pr
     revision: revisionOf(bytes),
     // 裁定：重识别后响应里的 `nodeId` 必须是当前文档里的真实 id（否则前端标不到块）。
     nodeId: basis.nodeId,
-    ...(basis.originNodeId === undefined ? {} : { originNodeId: basis.originNodeId }),
     before: basis.before,
     after: basis.after,
     chunks: diff.chunks,
     degraded: diff.degraded || basis.reason !== undefined,
-    ...(basis.reason === undefined ? {} : { reason: basis.reason }),
     ...(basis.degradedReason === undefined ? {} : { degradedReason: basis.degradedReason }),
   };
   return jsonReply(200, body);
