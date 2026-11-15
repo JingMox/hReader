@@ -9,7 +9,7 @@ export { buildOutline, readNode } from "./ops";
 export type { Outline, OutlineNode, PendingAnnotation, ReadNodeResult } from "./ops";
 export { applyPatch, parseFragment } from "./ops";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./ops";
-export { nodePatchDeps, patchFile, undoPatch } from "./io";
+export { isInside, isInsideOrSelf, nodePatchDeps, patchFile, undoPatch } from "./io";
 export { startServer } from "./server";
 export type { DaemonInfo, RunningServer, ServerDeps, ServerOptions } from "./server";
 export {

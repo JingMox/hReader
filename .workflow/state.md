@@ -131,4 +131,6 @@
 - **M3.1 结卡（2026-11-15）**：G2 终审 PASS（无 P0/P1），最终 `pnpm verify` `EXIT=0`、190 文件 / 2099 例 / 四维 100% / depcruise 0 违规 / knip 干净。AC-1…AC-11 全部通过（AC-10 按 D12 不写自动化断言）。新增登记 `L-28`（`elidedOf` 的 sort/escape 每次重建，P3 不修）、`L-29`（`ac2-surface` 的 description 是启发式哨兵、不是契约）。`docs/02` M3.1 已勾选。
 - **测试的测试（变异）累计 KILLED**：`root==="/"` 早退、`tildeFreeOf` no-op / 任何段 `~` 都拒、回显用 `input` 而非 `file`、`toneOf` 不折、`coreFailureOf` 不折、`patchNode` 去 `_meta.ui`、`elidedOf` 去 `.sort`、`foldedOf` 去 `{cause}`、`ac2` 的 required/description 双向、`ac7` 的 `resourceUri` 改 404、`read-tools` 的 `~` 双杀。
 - **下一卡候选**：M3.2 Pi 插件（`docs/02:336`），前置条件 `L-21` 的硬触发——Pi 宿主在仓库外运行时 `STYLES_ROOT` 指向不存在目录，`hr_apply_style` 全预设失效；M3.2 开工前必须先解决 core 导出"调用方传锚点 URL"的 stylesRoot 解析（要动冻结面，需用户裁定）。
+- **M3.1.1 开工（2026-11-15，用户裁定后）**：用户批准①动 core（**只加导出、逻辑一行不改**）②`hr_undo` 另开 M3.4。卡 `.workflow/cards/M3.1.1.md`，写者 run `04307480`。范围：`L-21`（styles 随产物走 + 包内优先候选）、`L-13`（core barrel 导出 `isInsideOrSelf`，mcp 停抄）、`L-17`（knip entry 加 `src/main.ts`）、AC-1 假安装用例（dist+styles 拷到 `/tmp/install-sim/`，三预设逐个真握手）。
+- **M3.4（待开卡）**：`hr_undo`。前置 `L-25`；core 已有 `undoPatch`/快照链（`packages/core/src/index.ts` 已导出 `undoPatch`）。
 
