@@ -151,7 +151,10 @@ describe("diff 基版 · 基版取哪一份", () => {
       expect(fieldOf(body, "nodeId")).toBe("hr-c");
       expect(fieldOf(body, "before")).toBe("正文一");
       expect(fieldOf(body, "after")).toBe("");
-      expect(fieldOf(body, "reason")).toBe("block_missing");
+      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+      expect(fieldOf(body, "reason")).toBeUndefined();
+      expect(fieldOf(body, "degraded")).toBe(true);
+      expect(typeof fieldOf(body, "degradedReason")).toBe("string");
     });
   });
 });
@@ -177,7 +180,8 @@ describe("diff 基版 · 批注指向的块在工作区外被删掉", () => {
         expect(fieldOf(body, "nodeId")).toBe("hr-gone");
         expect(fieldOf(body, "before")).toBe("");
         expect(fieldOf(body, "after")).toBe("");
-        expect(fieldOf(body, "reason")).toBe("block_missing");
+        // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+        expect(fieldOf(body, "reason")).toBeUndefined();
         expect(fieldOf(body, "degraded")).toBe(true);
         expect(chunkTextOf(body)).toBe("");
       },
@@ -200,7 +204,9 @@ describe("diff 基版 · 同 tag 但不同层", () => {
         const body = await diffOf(ctx, anId);
 
         expect(fieldOf(body, "nodeId")).toBe("hr-deep");
-        expect(fieldOf(body, "reason")).toBe("block_missing");
+        // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+        expect(fieldOf(body, "reason")).toBeUndefined();
+        expect(fieldOf(body, "degraded")).toBe(true);
         expect(fieldOf(body, "before")).toBe("深块");
       },
       (workspace) => {
@@ -231,7 +237,8 @@ describe("diff 基版 · 块在正文里但历史里没有", () => {
       expect(fieldOf(body, "nodeId")).toBe("hr-c");
       expect(fieldOf(body, "before")).toBe("");
       expect(fieldOf(body, "degraded")).toBe(true);
-      expect(fieldOf(body, "reason")).toBe("block_missing");
+      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+      expect(fieldOf(body, "reason")).toBeUndefined();
       expect(fieldOf(body, "degradedReason")).toBe("历史里找不到该块");
       expect(chunkTextOf(body)).toBe("手改回来的块");
     });
@@ -252,10 +259,12 @@ describe("diff 基版 · 历史被裁空", () => {
       const body = await diffOf(ctx, anId);
 
       expect(fieldOf(body, "nodeId")).toBe("hr-c");
-      expect(fieldOf(body, "originNodeId")).toBe("hr-c");
+      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+      expect(fieldOf(body, "originNodeId")).toBeUndefined();
       expect(fieldOf(body, "before")).toBe("");
       expect(fieldOf(body, "after")).toBe("");
-      expect(fieldOf(body, "reason")).toBe("block_missing");
+      expect(fieldOf(body, "reason")).toBeUndefined();
+      expect(fieldOf(body, "degraded")).toBe(true);
       expect(fieldOf(body, "degradedReason")).toBe("历史里找不到该块");
     });
   });

@@ -1,4 +1,6 @@
 // 这层管：服务端的裸类型（选项、daemon 记录、SSE 事件、HTTP 回复计划）；不含逻辑、不碰 IO。
+// 变更留痕（C1，`L-05`）：diff 响应体删掉 `originNodeId` 与 `reason`——app 侧零读取，
+// `degraded` + `degradedReason` 已把"降没降级、为什么"说完；见 `.workflow/cards/C1.md`。
 
 import type { DiffResult } from "../annotations/diff";
 
@@ -44,18 +46,18 @@ export interface SseEvent {
 
 /**
  * `GET /api/doc/<docId>/notes/<anId>/diff` 的响应体（AC4.4）。
- * `nodeId` 是**当前文档**里那块的真实 id（重识别成功时与批注记录的旧 id 不同），
- * 旧 id 只在重识别成功时以 `originNodeId` 出现；`block_missing` 时两者都等于旧 id。
+ * `nodeId` 是**当前文档**里那块的真实 id（重识别成功时与批注记录的旧 id 不同）。
  */
 export interface AnnotationDiffBody {
+  /** 供客户端据此丢弃过期 diff（响应可能比 `doc.changed` 先到）；**当前 app 尚未使用**。 */
   readonly revision: string;
   readonly nodeId: string;
-  readonly originNodeId?: string;
+  /** `chunks` 的可重建自证输入（起点）：core 侧测试用 `rebuild(chunks)` 与 `after` 交叉验证，`chunks` 才不是孤证。 */
   readonly before: string;
+  /** `chunks` 的可重建自证输入（终点）：`before` + `chunks` 必须逐字复原它。 */
   readonly after: string;
   readonly chunks: DiffResult["chunks"];
   readonly degraded: boolean;
-  readonly reason?: string;
   readonly degradedReason?: string;
 }
 

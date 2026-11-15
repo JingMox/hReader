@@ -192,3 +192,13 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
 - **新增遗留（`.workflow/known-defects.md`）**：
   - `L-04`：`Host.focus`（`packages/app/src/dom.ts:53,141,159-161`）零调用点，死 seam（下一卡二选一：收回或启用）。
   - `L-05`：diff 响应体 `reason`（`contracts.ts:58`）与 `originNodeId`（`contracts.ts:53`）在 app 侧**零读取**——`isDiffResponse` 连字段都没列，用户看到的那句话来自 `degradedReason`。下一卡三选一：真读 / 标注"仅审计用" / 删掉。
+
+## C1 · 清 `L-04` / `L-05`（死 seam + wire 零消费字段）
+
+- **门禁**：1951 例 / 167 文件 / 四维 perFile 100% / depcruise 零违规 / knip 干净 / `pnpm verify` EXIT=0（协调者复跑，54.2s）。用例数与 M2.3 相同——纯删除，没有靠删断言换绿。
+- **清掉的**：`Host.focus`（`dom.ts:53/141/159-161`）+ `ElementLike.focus?`（`:16`，写者主动发现的"第二条残腿"）；wire 的 `AnnotationDiffBody.reason` 与 `.originNodeId`（`contracts.ts`），内部 `BlockBasis` 语义一字未动（`degraded` 仍由 `basis.reason !== undefined` 驱动）。
+- **9 条 wire 断言"转换而非删除"**：改成字段存在的反向锁，断言条数不减（basis 34→38、per-block 35→36、route 26→27）。测试员做**变异自检**：把两字段塞回 `annotation-replies.ts` → 9 条全红（其中 2 条 `expected 'hr-c' to be undefined` 证明 `originNodeId` 的锁真开火），还原后 sha256 逐字节一致。
+- **卡自身的事实错误**：我写"`annotations-diff-basis.test.ts` 对 `originNodeId` 的断言测的是内部结构"——错，它们读 `fieldOf(body, …)`。写者撞红 9 条后才报上来。→ 新规矩：卡里凡"某测试测的是内部结构"，写卡时**必须打开文件看它读对象还是读 `body`**。
+- **零消费字段的两种命运**（本卡最重要的判据）：`reason` **该删**（`degradedReason` 已把"降没降级、为什么"说完）；`revision` **该用/该留**（过期响应唯一判据）；`before`/`after` **该留**（core 侧 `rebuild(chunks) === after` 的交叉验证输入，删了 `chunks` 就成孤证）。留下来的必须在契约里写明"线上为什么有它"，且不许美化——`revision` 如实写"当前 app 尚未使用"。
+- **注释也是代码的一部分**：`annotation-basis.ts:60-66` 原写"前端按 `originNodeId` 标这条批注原本属于哪块"，而 wire 已无该字段、app 从不读它。**代码删干净了、注释还在替它作证**——测试员报出、本卡修掉。
+- **恒真断言比没断言更坏**：`boot.test.ts:97,116` 的 `not.toContain("focus")` 在 `focus` op 移除后结构上不可能失败。测试员删它之前先证明"原意图已由其它断言承接"（临时删 `boot.ts:273` 的副作用 → 用例变红 → 还原 sha256 一致），而不是删完就算。

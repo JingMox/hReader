@@ -112,7 +112,9 @@ describe("GET …/diff · 正常路径", () => {
       expect(String(fieldOf(body, "after"))).toContain("新正文");
       // 裁定：块被改写导致 ID 重建 ⇒ 即使文本可比，也必须声明降级并给出原因。
       expect(fieldOf(body, "degraded")).toBe(true);
-      expect(fieldOf(body, "reason")).toBe("block_reidentified");
+      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+      expect(fieldOf(body, "reason")).toBeUndefined();
+      expect(typeof fieldOf(body, "degradedReason")).toBe("string");
       expect(typeof fieldOf(body, "revision")).toBe("string");
     });
   });

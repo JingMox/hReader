@@ -50,7 +50,7 @@ describe("text/attr/html · 只在变化时写", () => {
   });
 });
 
-describe("cls/focus/scrollTo · 可选元素不炸", () => {
+describe("cls/scrollTo · 可选元素不炸", () => {
   it("should toggle classes and tolerate a missing selector", () => {
     const element = fakeElement("div");
     const host = createDomHost(docWith([["#c", element]]));
@@ -59,7 +59,7 @@ describe("cls/focus/scrollTo · 可选元素不炸", () => {
     expect(element.classes.get("on")).toBe(true);
   });
 
-  it("should call focus and scrollIntoView when the element has them", () => {
+  it("should scroll only when the element has scrollIntoView", () => {
     const seen = fakeElement("div");
     const bare = fakeElement("div", false);
     const host = createDomHost(
@@ -68,12 +68,11 @@ describe("cls/focus/scrollTo · 可选元素不炸", () => {
         ["#b", bare],
       ]),
     );
-    host.focus("#f");
     host.scrollTo("#f");
-    host.focus("#b");
     host.scrollTo("#b");
-    host.focus("#missing");
-    expect(seen.calls).toEqual(["focus", "scroll:start"]);
+    host.scrollTo("#missing");
+    // 两条臂都要真的跑到：有 `scrollIntoView` → 记一次；没有 → 静默不炸。
+    expect(seen.calls).toEqual(["scroll:start"]);
     expect(bare.calls).toEqual([]);
   });
 });

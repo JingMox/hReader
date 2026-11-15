@@ -50,7 +50,6 @@ export interface Host {
     type: string,
     handler: (target: TargetLike) => void,
   ) => () => void;
-  readonly focus: (selector: string) => void;
   readonly scrollTo: (selector: string) => void;
   /** 锚点是否存在（裁定 #1：模板缺锚点必须**可见地失败**，不能静默跳过）。可选：假 host 可省。 */
   readonly has?: (selector: string) => boolean;
@@ -88,7 +87,6 @@ export interface ElementLike {
     type: string,
     handler: (event: { target: TargetLike }) => void,
   ) => void;
-  readonly focus?: () => void;
   readonly remove?: () => void;
   readonly scrollIntoView?: (options: { block: "start" }) => void;
 }
@@ -138,7 +136,7 @@ const paintOps = (
 /** 只碰文本/属性/类名的那些。 */
 const textOps = (
   root: DocumentLike,
-): Pick<Host, "text" | "attr" | "html" | "cls" | "focus" | "scrollTo" | "has"> => ({
+): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "has"> => ({
   text: (selector, value) => {
     const element = found(root, selector);
     if (element !== undefined && element.textContent !== value) element.textContent = value;
@@ -155,9 +153,6 @@ const textOps = (
   },
   cls: (selector, name, on) => {
     found(root, selector)?.classList.toggle(name, on);
-  },
-  focus: (selector) => {
-    found(root, selector)?.focus?.();
   },
   scrollTo: (selector) => {
     found(root, selector)?.scrollIntoView?.({ block: "start" });
