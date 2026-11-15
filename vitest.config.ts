@@ -31,7 +31,10 @@ export default defineConfig({
     maxWorkers: 2,
     coverage: {
       provider: "v8",
-      include: ["packages/*/src/**/*.ts"],
+      // `pi-hreader.ts` 是 M3.2 AC-1 强制的**单文件**扩展（它在包根，不在 `src/` 下），
+      // 但"新文件也要过 perFile 四维 100%"是本卡风险点 6 的原话：不把它列进来，
+      // 覆盖率就变成了对"零行文件"的 100%，是假绿。
+      include: ["packages/*/src/**/*.ts", "packages/*/pi-hreader.ts"],
       reporter: ["text", "json-summary"],
       thresholds: {
         perFile: true,

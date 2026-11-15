@@ -150,6 +150,19 @@ export default tseslint.config(
     rules: { "import/no-default-export": "off" },
   },
   {
+    // M3.2 AC-1：Pi 只能加载**单文件**扩展，`export default (pi) => void` 是该形态的唯一入口。
+    // `max-lines` 同理：本仓 300 行上限是为"一个文件一个职责"设的，而卡面把"零本地 import"
+    // 硬约束成"全部职责挤在一个文件"。不取消上限，只放到 1200（当前 ~1010 行，留一次批次的余量）。
+    // `max-params` 的触发点只有一个：AC-6 要求的 `tool.execute(toolCallId, params, signal, onUpdate, ctx)`
+    // 是 Pi 定的五参签名，本文件必须照抄，故这条规则在本文件不适用。
+    files: ["packages/pi-extension/pi-hreader.ts"],
+    rules: {
+      "import/no-default-export": "off",
+      "max-lines": ["error", { max: 1200 }],
+      "max-params": "off",
+    },
+  },
+  {
     files: ["**/*.mjs"],
     extends: [js.configs.recommended],
     languageOptions: { sourceType: "module", globals: globals.node },

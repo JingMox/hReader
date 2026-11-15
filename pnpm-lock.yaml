@@ -97,6 +97,16 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
 
+  packages/pi-extension:
+    dependencies:
+      typebox:
+        specifier: 1.3.27
+        version: 1.3.27
+    devDependencies:
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
+
   packages/protocol:
     devDependencies:
       '@hreader/core':
@@ -2184,6 +2194,9 @@ packages:
   type-is@2.1.0:
     resolution: {integrity: sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==}
     engines: {node: '>= 18'}
+
+  typebox@1.3.27:
+    resolution: {integrity: sha512-zu+jc1pcy4UiNThxikUr36f0Rybk9PEeCg/NE6adeWr/SKsdNO4EzZHYRDlv2YCVAfj3Odq3dESSo/jNyoBXzA==}
 
   typed-array-buffer@1.0.3:
     resolution: {integrity: sha512-nAYYwfY3qnzX30IkA6AQZjVbtK6duGontcQm1WSG1MD94YLqK0515GNApXkoxKOWMusVssAHWLh9SeaoefYFGw==}
@@ -4597,6 +4610,8 @@ snapshots:
       content-type: 2.1.0
       media-typer: 1.1.1
       mime-types: 3.0.2
+
+  typebox@1.3.27: {}
 
   typed-array-buffer@1.0.3:
     dependencies:

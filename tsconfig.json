@@ -5,10 +5,12 @@
     "packages/*/src/**/*.tsx",
     "packages/*/src/**/*.mts",
     "packages/*/src/**/*.cts",
+    "packages/*/pi-hreader.ts",
     "packages/*/tests/**/*.ts",
     "packages/*/tests/**/*.tsx",
     "packages/*/tests/**/*.mts",
     "packages/*/tests/**/*.cts",
+    "scripts/**/*.ts",
     "vitest.config.ts"
   ]
 }
