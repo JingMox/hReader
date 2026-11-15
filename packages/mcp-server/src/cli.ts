@@ -122,9 +122,11 @@ export const runMain = async (argv: readonly string[], io: MainIo = defaultIo): 
   try {
     // 宿主唯一能自证"工作区是哪个目录"的地方：stdio 的 stdout 是协议通道，只能写 stderr。
     // 资源缺失也不该等宿主第一次 `hr_apply_style` 才知道（仓库外布局，`L-21`）。
-    [`workspace=${process.cwd()}`, ...warningLinesOf(styleRootWarningOf())].forEach((line) => {
-      logLine(line);
-    });
+    [`workspace=${process.cwd()}`, ...warningLinesOf(styleRootWarningOf(process.cwd()))].forEach(
+      (line) => {
+        logLine(line);
+      },
+    );
     if (mode.kind === "stdio") {
       await io.startStdio();
       return 0;

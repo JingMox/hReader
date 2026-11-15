@@ -9,24 +9,15 @@ import { HrError, nodeStyleDeps } from "@hreader/core";
 import type { StyleDeps } from "@hreader/core";
 
 /**
- * 内置主题在 `<repo>/styles/<id>/theme.css`。core 的 `nodeStyleDeps` 按**它自己模块**的 URL 往上四层
- * 推仓库根（`packages/core/src/style/node.ts:14`），源码布局下成立；本包被 esbuild 打成 `dist/main.js`
- * 之后 `import.meta.url` 落进 `packages/mcp-server/dist/`，同样的相对深度指向 `<仓库父目录>/styles/`
- * ——内置预设的 `theme.css` 一个都找不到（G3 P0-2 实测：`hr_apply_style` 全部 `unknown_style`）。
- * 所以这里按**本文件**的位置重算：`src/` 与 `dist/` 都在 `packages/mcp-server/` 下一层，
- * `../../../styles/` 两种布局都落在仓库根，再把它显式传给 core（core 侧一行不改）。
+ * 包内自带的主题资源（**不同的事实**，不是仓库根的第二份拼写）：`build` 把仓库根 `styles/` 整棵拷成
+ * `<pkg>/styles`，而 `src/styleDeps.ts` 与 `dist/main.js` 都恰好比包根深一层，所以 `../styles/`
+ * 在源码布局和发布布局里都指向 `<pkg>/styles`（M3.1.1 §2 的锚点推导）。
  *
- * 但产物被拷到仓库之外时这个相对路径同样落空（包没随附主题资源）。那时**不许**让 core 报
- * `unknown_style`——风格是存在的，是资源没定位到；错归因比报错更贵。
- *
- * 发布布局改这里时，必须同时看 `packages/core/src/style/node.ts:14` 的那句"发布时需把 styles/ 拷进包内
- * 再改这里"——两处都是"仓库根在哪"的约定，只改一处就会像 `L-21` 那样在仓库外失效。
- *
- * 错误码选 `style_io_failure` 而不是新码：错误码是宿主用来分流的契约，一个只为"我们打包打错了"
- * 存在的码，会把构建缺陷永久写进对外接口——宿主拿到它既不能重试也不能改参数，只能读文案。
- * `style_io_failure` 的原意"主题资源定位/读取失败"恰好是事实。
+ * 仓库根在哪**只**由 core 拼：`packages/core/src/style/node.ts:14` 的 `nodeStyleDeps(workspace).stylesRoot`。
+ * 那边注释写着"发布时需把 styles/ 拷进包内再改这里"——本文件就是那个"包内"，两边要能互相找到，
+ * 否则发布时只会改一处（`L-21`）。
  */
-const STYLES_ROOT = fileURLToPath(new URL("../../../styles/", import.meta.url));
+const PACKAGE_STYLES_ROOT = fileURLToPath(new URL("../styles/", import.meta.url));
 
 /** 哨兵：拿一个真实预设的真实文件当证据——空目录不能让 `existsSync(stylesRoot)` 蒙混过关。 */
 const SENTINEL_VISUAL_ID = "atelier-editorial";
@@ -35,13 +26,34 @@ const THEME_FILE = "theme.css";
 const themesAbsentOf = (stylesRoot: string): boolean =>
   !existsSync(join(stylesRoot, SENTINEL_VISUAL_ID, THEME_FILE));
 
+/** 候选顺序写死"包内优先"：发布版里包内那份才是真值源，仓库根只兜底源码直跑（未 build）。 */
+export const styleCandidatesOf = (workspace: string): readonly string[] => [
+  PACKAGE_STYLES_ROOT,
+  nodeStyleDeps(workspace).stylesRoot,
+];
+
+/** 第一个真有主题资源的候选；一个都没有就返回 `undefined`（"在不在"只问哨兵文件）。 */
+export const firstThemeRootOf = (candidates: readonly string[]): string | undefined =>
+  candidates.find((root) => !themesAbsentOf(root));
+
 /**
- * `stylesRootOverride` 只为让"资源缺失"这条错误码可测；正常调用一律不传。
+ * `stylesRootOverride` 只为让"资源缺失"这条错误码可测；正常调用一律不传（传了它就是唯一候选）。
  * 检查放在**真用时**（不落模块顶层）：import 本文件不该因为布局问题就炸。
  */
+const candidatesOf = (workspace: string, stylesRootOverride?: string): readonly string[] =>
+  stylesRootOverride === undefined ? styleCandidatesOf(workspace) : [stylesRootOverride];
+
+const stylesRootOf = (workspace: string, stylesRootOverride?: string): string | undefined =>
+  firstThemeRootOf(candidatesOf(workspace, stylesRootOverride));
+
+/**
+ * 资源一个都定位不到时**不许**让 core 报 `unknown_style`——风格是存在的，是资源没定位到；
+ * 错归因比报错更贵。错误码选 `style_io_failure` 而不是新码：错误码是宿主用来分流的契约，
+ * 一个只为"我们打包打错了"存在的码，会把构建缺陷永久写进对外接口。
+ */
 export const styleDepsOf = (workspace: string, stylesRootOverride?: string): StyleDeps => {
-  const stylesRoot = stylesRootOverride ?? STYLES_ROOT;
-  if (themesAbsentOf(stylesRoot)) {
+  const stylesRoot = stylesRootOf(workspace, stylesRootOverride);
+  if (stylesRoot === undefined) {
     throw new HrError(
       "style_io_failure",
       // 正文里只给包内相对位置：绝对路径属于宿主布局，只该出现在 stderr 的 WARNING 里。
@@ -53,10 +65,13 @@ export const styleDepsOf = (workspace: string, stylesRootOverride?: string): Sty
   return { ...nodeStyleDeps(workspace), stylesRoot };
 };
 
-/** 启动时给宿主的一条 WARNING；资源齐（仓库内布局）时返回 `undefined`，一个字都不打。 */
-export const styleRootWarningOf = (stylesRootOverride?: string): string | undefined => {
-  const stylesRoot = stylesRootOverride ?? STYLES_ROOT;
-  return themesAbsentOf(stylesRoot)
-    ? `WARNING 主题资源缺失：${stylesRoot}；hr_apply_style 将不可用`
+/** 启动时给宿主的一条 WARNING；资源齐时返回 `undefined`，一个字都不打。 */
+export const styleRootWarningOf = (
+  workspace: string,
+  stylesRootOverride?: string,
+): string | undefined => {
+  const candidates = candidatesOf(workspace, stylesRootOverride);
+  return firstThemeRootOf(candidates) === undefined
+    ? `WARNING 主题资源缺失：${candidates.join("、")}；hr_apply_style 将不可用`
     : undefined;
 };

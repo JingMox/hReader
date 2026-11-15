@@ -26,7 +26,7 @@ const outside = (reason: string, file: string): HrError =>
   new HrError("path_outside_workspace", `${reason}：${file}`);
 
 /** 边界判定是纯字符串运算：只认"严格在 base 之下"，base 自身不算。 */
-const isInside = (base: string, candidate: string): boolean => {
+export const isInside = (base: string, candidate: string): boolean => {
   const rel = relative(base, candidate);
   return rel.length > 0 && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 };

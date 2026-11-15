@@ -3,14 +3,20 @@
 // 源码布局下 core 自己算得对，只有打完 bundle / 拷出仓库才会错；`stdio.test.ts` 的真产物用例是主证据，
 // 这里把它钉成能直接指出"缺哪个文件"的便宜断言。
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
-import { BUILTIN_STYLES, HrError, loadStyle } from "@hreader/core";
+import { BUILTIN_STYLES, HrError, loadStyle, nodeStyleDeps } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-import { styleDepsOf, styleRootWarningOf } from "../src/styleDeps";
+import {
+  firstThemeRootOf,
+  styleCandidatesOf,
+  styleDepsOf,
+  styleRootWarningOf,
+} from "../src/styleDeps";
 
 /** 一定不存在的一段路径：拿它冒充"产物被拷到仓库外"的布局。 */
 const ABSENT_ROOT = join(tmpdir(), "hreader-styles-root-that-is-not-there");
@@ -61,7 +67,37 @@ describe("styleDepsOf · 主题资源缺失", () => {
   });
 
   it("should warn once at startup and stay silent when the styles are there", () => {
-    expect(styleRootWarningOf()).toBeUndefined();
-    expect(styleRootWarningOf(ABSENT_ROOT)).toContain("WARNING 主题资源缺失：");
+    expect(styleRootWarningOf("/workspace")).toBeUndefined();
+    expect(styleRootWarningOf("/workspace", ABSENT_ROOT)).toContain("WARNING 主题资源缺失：");
+  });
+});
+
+/** 造一棵"主题资源齐全"的假根：哨兵文件真的存在，`firstThemeRootOf` 才会认它。 */
+const themeRootOf = (name: string): string => {
+  const root = join(mkdtempSync(join(tmpdir(), `hreader-style-${name}-`)), "styles");
+  mkdirSync(join(root, "atelier-editorial"), { recursive: true });
+  writeFileSync(join(root, "atelier-editorial", "theme.css"), ":root{}");
+  return root;
+};
+
+describe("候选顺序", () => {
+  it("should put the package-local styles first, with core's repo root as the dev fallback", () => {
+    const [first, second] = styleCandidatesOf("/workspace");
+
+    // 包内优先：发布版里包内那份才是真值源（AC-7：把顺序反了，这条必红）。
+    // 写精确值而不是 `toContain("packages/mcp-server/styles")`：任何包含该片段的路径（含仓库根那份）都能过子串断言。
+    expect(first).toBe(fileURLToPath(new URL("../styles/", import.meta.url)));
+    // 仓库根只兜底源码直跑：它由 core 拼，本包不自己写一次深度（AC-3）。
+    expect(second).toBe(nodeStyleDeps("/workspace").stylesRoot);
+  });
+
+  it("should take the first candidate that really has the theme, so the order is load-bearing", () => {
+    const packageLocal = themeRootOf("package");
+    const repoRoot = themeRootOf("repo");
+
+    // 这两条锁的是**辅助函数契约**（"取第一个真有主题的候选"），不是生产接线：
+    // "包内优先"是否真的接上，由 `install-sim.test.ts` 的哨兵臂黑盒覆盖（往包内那份写哨兵，落盘含哨兵）。
+    expect(firstThemeRootOf([packageLocal, repoRoot])).toBe(packageLocal);
+    expect(firstThemeRootOf([repoRoot, packageLocal])).toBe(repoRoot);
   });
 });

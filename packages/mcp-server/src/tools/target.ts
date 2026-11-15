@@ -1,9 +1,9 @@
 // 这层管：`filePath` → core 能吃的 `{workspace, file}`，以及本包唯一那道边界判定（读与建共用同一个口径）。
 
 import { readFile, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-import { HrError } from "@hreader/core";
+import { HrError, isInside, isInsideOrSelf } from "@hreader/core";
 
 import { foldedOf } from "../errors";
 
@@ -51,20 +51,11 @@ const codeOf = (error: unknown): unknown =>
   typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
 
 /**
- * 与 core `packages/core/src/io/paths.ts:29-32` 的 `isInside` **逐字等价**——适配层不许写第二套路径策略。
- * 三处细节缺一不可：`startsWith("..")` 会把工作区里合法存在的 `..foo/` 判成逃逸
- * （`relative("/ws", "/ws/..foo/x") === "..foo/x"`），所以要比 `..${sep}`；
- * `rel === ".."` 是父目录本身、`rel === ""` 是 base 自身，两者都不算界内。
- * core 未导出 `isInside`/`isInsideOrSelf`：M3.2 若导出即改为引用，见 `L-13`。
+ * 边界判定只写一处：不存在的是**祖先**目录，允许恰好就是 workspace（`isInsideOrSelf`）；
+ * 存在的是**目标**本身，要求严格在界内（core 的 `isInside` 就是"在界内且不等于自身"）。
+ * `L-13` 收掉的就是本文件当初逐字镜像 core `packages/core/src/io/paths.ts:34-40` 的那份复本；
+ * `D6` 又收掉了一句"`!== workspace &&`"——那是重新推导 core 已内化的规则。
  */
-const isInside = (base: string, candidate: string): boolean => {
-  const rel = relative(base, candidate);
-  return rel.length > 0 && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
-};
-
-/** 目录要比的可能是 workspace 本身（目标不存在时退到的祖先，恰好就是它）：这一支才放行相等。 */
-const isInsideOrSelf = (base: string, candidate: string): boolean =>
-  candidate === base || isInside(base, candidate);
 
 interface ExistingPath {
   readonly path: string;

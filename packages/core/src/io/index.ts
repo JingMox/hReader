@@ -7,6 +7,7 @@ export type {
   PatchTargetInput,
   UndoResult,
 } from "./contracts";
+export { isInside, isInsideOrSelf } from "./paths";
 export { nodePatchDeps } from "./node-fs";
 export { patchFile } from "./patchFile";
 export type { Clock, FileStat, FileSystem, PatchDeps } from "./ports";

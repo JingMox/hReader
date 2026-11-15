@@ -197,26 +197,39 @@ const buildLockOf = async (deadline: number): Promise<boolean> => {
 };
 
 /** 产物比所有输入都新就不用再建：并发文件排队拿到锁之后，第二个起直接跳过。 */
+/** 目录下每个条目的 mtime，展平成一维给调用方取最大值。 */
+const stampsOf = async (root: string): Promise<readonly number[]> => {
+  const names = await readdir(root, { recursive: true });
+  return Promise.all(
+    names.map((name) =>
+      stat(join(root, name)).then(
+        (info) => info.mtimeMs,
+        () => 0,
+      ),
+    ),
+  );
+};
+
+/**
+ * 产物必须比**所有会进 dist 的源**新：`src/**`、`package.json`，以及仓库根 `styles/**`——
+ * build 会把 `styles/` 拷进包里，漏盯它就会出现"改了主题不重建，install-sim 拿上一次的拷贝当基准"。
+ * 包内的 `styles/` 是生成物，不参与比较。
+ */
 const distIsFresh = async (): Promise<boolean> => {
   const built = await stat(join(PACKAGE_ROOT, "dist", "main.js")).then(
     (info) => info.mtimeMs,
     () => 0,
   );
   if (built === 0) return false;
-  const sources = await readdir(join(PACKAGE_ROOT, "src"), { recursive: true });
-  const stamps = await Promise.all(
-    sources.map((name) =>
-      stat(join(PACKAGE_ROOT, "src", name)).then(
-        (info) => info.mtimeMs,
-        () => 0,
-      ),
+  const stamps = [
+    ...(await stampsOf(join(PACKAGE_ROOT, "src"))),
+    ...(await stampsOf(join(REPO_ROOT, "styles"))),
+    await stat(join(PACKAGE_ROOT, "package.json")).then(
+      (info) => info.mtimeMs,
+      () => 0,
     ),
-  );
-  const config = await stat(join(PACKAGE_ROOT, "package.json")).then(
-    (info) => info.mtimeMs,
-    () => 0,
-  );
-  return built > Math.max(config, ...stamps);
+  ];
+  return built > Math.max(...stamps);
 };
 
 /** 测交付物就先把它造出来：`build` 自己会清 dist，避免拿旧产物测新代码。 */

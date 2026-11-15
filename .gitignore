@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# 生成物：`build` 把仓库根 styles/ 拷进来（M3.1.1 AC-1），不入库
+packages/mcp-server/styles/
 coverage/
 .stryker-tmp/
 *.log
