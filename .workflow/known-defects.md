@@ -46,3 +46,12 @@
 | L-06 | `AnnotationDiffBody.revision`（`packages/core/src/server/contracts.ts`）app 侧**零读取**：`guard.ts:60-74` 的 `isDiffResponse` 连形状都不校验，`notes-wire.ts:42-52` 的 `fetchDiff` 返回类型与 `notes-state.ts:219` 的 `diffShown` 都不含它。 | P3（潜在竞态护栏未被使用） | **本卡不删**（删掉等于扔掉唯一的过期响应判据）。下一卡二选一：app 用 `revision` 丢弃"比 `doc.changed` 先到的过期 diff"，或删字段。**不许第三次记成"仅审计用"**。 |
 | L-07 | `AnnotationDiffBody.before` / `.after` app 侧零读取（app 只渲染 `chunks`）。 | P3（契约自证输入，非死字段） | **保留**，理由已落 `contracts.ts` 注释：core 侧靠 `rebuild(chunks) === after` 证明 `chunks` 不丢字节，删了就是孤证。这条不算待办，算"已裁定保留"，除非将来出现真正消费方。 |
 | L-08 | wire 契约**没有键集锁**：C1 之后仍可能悄悄新增第三个零消费字段（`reason`/`originNodeId` 就是这样一路漏过来的，靠人肉逐字段排查才抓到）。 | P2（整类回归的口子） | 下一卡：对每个 wire 响应体加 `expect(Object.keys(body).sort()).toStrictEqual([...])` 键集锁（或引入 zod schema 并让 `guard.ts` 用它解析）。**这是把"零消费字段"从人审变成机审的唯一办法。** |
+
+## M3.1 · 残留风险与已裁定的设计边界（2026-11-14，写者交付时自报 + 协调者裁定）
+
+| ID | 内容 | 定级 | 处置 |
+| --- | --- | --- | --- |
+| L-09 | `packages/mcp-server/src/tools/target.ts` 自己 `readFile` 文本做读侧路径校验（realpath + 拒绝 `..`）：core 只公开了写侧入口 `patchFile`，没有公开的"读文本"入口，于是同一类路径校验在两处（core 写侧 + 本包读侧）。 | P2（同一事实两处拼写） | 下一卡：core 导出读侧入口（如 `readFileText(deps, file)`，内部复用已有路径校验），本包改为引用。**在此之前不许再在适配层加第二处路径校验。** |
+| L-10 | `packages/mcp-server/src/ui.ts` 复制了 `~/.hreader/daemon.json` 的落点约定：core 未导出该路径常量。这是 `readStyleSource`（M3.1 §5.1）刚以同一理由否掉的病在三小时后再现。 | P2（同一事实两处拼写） | 下一卡：core 导出 `daemonStatePath(deps)`；本包改为引用。当前本包内该拼写**已收敛为一处**，并用 `grep -rn "daemon.json" packages/` 自证。 |
+| L-11 | `resources/read` 的错误码到不了宿主：MCP SDK 把 handler 抛出的异常统一成 JSON-RPC `-32603` + message，`HrError.code` 只能进服务端 stderr。故本包删掉了"`catch` → 重抛 `HrError`"这层（包了也传不出去，只多一条不可测分支）。 | P3（协议层限制，非本仓缺陷） | 接受现状，不做处理。若将来要求"资源错误也带 code"，只能改走 `contents` 里塞结构化错误文本——**那要用户拍板改协议语义，不算 bug 修复。** |
+| L-12 | `hr_read_node` 把 `nodeId` 直接拼进 CSS 选择器 `[data-hr-id="…"]`，schema 未做字符白名单。当前成立依赖一个外部事实：core 生成的 id 恒为 `[a-z0-9-]`（`inject.ts` 的内容派生规则）。 | P3（信任 core 生成规则） | 下一卡：`nodeId` 入参加 `^[a-z0-9-]+$` 白名单并给用例——**适配层不该把"上游的生成规则"当作安全边界**，这条和 `L-09` 同源。 |
