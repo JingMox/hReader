@@ -33,6 +33,17 @@ const readFileOr = async (path: string): Promise<Uint8Array> => {
 export const readTextFile = async (path: string): Promise<string> =>
   decodeStrict(await readFileOr(path), path);
 
+export interface SizedText {
+  readonly bytes: number;
+  readonly text: string;
+}
+
+/** 语料要的是字节数（上限按字节算）与文本（严格解码）两者：分开取就得读两遍文件。 */
+export const readTextFileSized = async (path: string): Promise<SizedText> => {
+  const bytes = await readFileOr(path);
+  return { bytes: bytes.length, text: decodeStrict(bytes, path) };
+};
+
 export const sourceText = async (
   source: HtmlSource,
   readStdin: () => Promise<Uint8Array>,

@@ -32,7 +32,10 @@ export type HrErrorCode =
   // M2.3：批注 / 撤销（只三个新码，`not_found` 复用既有值）
   | "invalid_payload"
   | "nothing_to_undo"
-  | "anchor_lost";
+  | "anchor_lost"
+  // M4.1：风格提取（`llm_failure` 的 message 里不许出现 key、prompt 或响应体原文）
+  | "llm_failure"
+  | "file_exists";
 
 /**
  * 唯一对外错误类型。跨包用 `instanceof HrError` 判定，按 `code` 分支；

@@ -4,6 +4,8 @@
 import type {
   ApplyStyleResult,
   DaemonInfo,
+  ExtractStats,
+  ExtractStyleResult,
   HrErrorCode,
   LintHit,
   LintReport,
@@ -74,6 +76,15 @@ export const dataTone = (prompt: string): string => `{"prompt":${quote(prompt)}}
 export const dataStyle = (result: ApplyStyleResult): string =>
   `{"path":${quote(result.path)},"changed":${bool(result.changed)}}`;
 
+const statsJson = (stats: ExtractStats): string =>
+  `{"paragraphs":${String(stats.paragraphs)},"sentences":${String(stats.sentences)},` +
+  `"averageSentenceChars":${String(stats.averageSentenceChars)},` +
+  `"maxParagraphSentences":${String(stats.maxParagraphSentences)}}`;
+
+/** `path` 为 `null` = 只打印没写盘；`yaml` 原样给（调用方可直接落盘或再改）。 */
+export const dataStyleExtract = (result: ExtractStyleResult, path: string | null): string =>
+  `{"path":${path === null ? "null" : quote(path)},"stats":${statsJson(result.stats)},"yaml":${quote(result.yaml)}}`;
+
 const outlineLines = (nodes: readonly OutlineNode[], depth: number): readonly string[] =>
   nodes.flatMap((node) => [
     `${"  ".repeat(depth)}- ${node.id}  ${node.text}  (${String(node.wordCount)}w)`,
@@ -112,3 +123,7 @@ export const dataUndo = (result: UndoResult): string =>
 
 export const humanUndo = (result: UndoResult): string =>
   `undone ${result.path} (${String(result.bytes)} bytes, from ${result.restoredFrom})\n`;
+
+export const humanStyleExtract = (result: ExtractStyleResult, path: string): string =>
+  `extracted ${path} (${String(result.stats.paragraphs)} 段、${String(result.stats.sentences)} 句，` +
+  `平均句长 ${String(result.stats.averageSentenceChars)} 字，每段 ≤ ${String(result.stats.maxParagraphSentences)} 句)\n`;

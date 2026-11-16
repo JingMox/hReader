@@ -38,6 +38,7 @@ const code = await run(process.argv.slice(2), {
   },
   readStdin,
   debug: process.env["HR_DEBUG"] === "1",
+  env: process.env,
   stop,
 });
 

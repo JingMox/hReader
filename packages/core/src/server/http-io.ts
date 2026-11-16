@@ -9,7 +9,7 @@ import { COOKIE_NAME, CSRF_HEADER, cookieOf, csrfAllowed, tokenMatches } from ".
 import { MAX_BODY_BYTES, jsonBodyOf } from "./body";
 import type { Reply } from "./contracts";
 import type { Route } from "./routes";
-import { statusOf } from "./status";
+import { isServerCode, statusOf } from "./status";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -54,7 +54,7 @@ export const errorReply = (error: unknown): Reply => {
       body: JSON.stringify({ code: "invalid_request", message: publicMessageOf(error.message) }),
     };
   }
-  if (error instanceof HrError && error.code !== "anchor_lost") {
+  if (error instanceof HrError && isServerCode(error.code)) {
     const fixed = FIXED_MESSAGES[error.code];
     return {
       status: statusOf(error.code),

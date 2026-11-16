@@ -2,8 +2,7 @@
 // Pi 只把**单个模块**当扩展加载（`~/.pi/agent/extensions/*/pi-hreader.ts` 或 `pi -e ./pi-hreader.ts`），
 // 所以全部实现都在本文件：零本地相对 import、零 `@hreader/*`（M3.2 AC-1）。
 // 因此这里是 core 协议知识的第二份拼写（卡内 D9 已裁定接受），约束手段是 AC-7 的漂移钉子，不是共享代码。
-// 纯层（帧解析 / 路径推导 / 错误文本 / 节点切片）在前；副作用（文件、网络、定时器）只经 `HreaderDeps` 注入。
-//
+// 纯层（帧解析 / 路径推导 / 错误文本 / 节点切片）在前；副作用（文件/网络/定时器）只经 `HreaderDeps` 注入。
 // Pi 的类型是从 `pi-coding-agent@1.5.2` 的 d.ts **手抄**的（D10：不装该依赖，它的 d.ts 要求 DOM 与完整
 // `@types/node`，与本仓 `lib: ["ES2023"]` + `types: []` + `skipLibCheck: false` 冲突）。原文如下，类型一漂移就比这几段：
 //   ExtensionUIContext（dist/core/extensions/types.d.ts:83-91）
@@ -422,6 +421,8 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   invalid_payload: "请求体不合法",
   nothing_to_undo: "没有可撤销的改动",
   anchor_lost: "批注锚点已失效（那段文字被改过了）",
+  file_exists: "目标文件已存在（要覆盖请显式加 --force）",
+  llm_failure: "风格建议层调用失败（检查 key / 网络，或用 --no-llm 走纯统计版）",
 };
 
 export const errorTextOf = (code: string, detail?: string): string => {
