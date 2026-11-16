@@ -8,7 +8,7 @@ import type { Dropped, Suggestions } from "./suggest";
 const nfcOf = (text: string): string => text.normalize("NFC");
 
 /**
- * 统计命中表在前、追加按响应顺序、首次出现为准（卡 §10 R5/D3）。追加侧独占 24 条，
+ * 统计命中表在前、追加按响应顺序、首次出现为准（卡 §10 R5/D3）。总额与统计层共享 24 条，
  * 满额后不再追加并聚合记一条 `too_long`——不静默截断，用户能从 `--json` 看见被压掉的建议。
  */
 const forbiddenOf = (

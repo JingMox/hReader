@@ -8,10 +8,8 @@ const MAX_RULE_CHARS = 120;
 const MAX_RULES = 6;
 const MAX_EXAMPLES = 2;
 
-/**
- * 追加 `forbidden` 的条数上限：**追加侧独占 24**，不是与统计层共享的总额——统计层已有 k 条时，
- * 合并阶段实际只留下 24-k 条，被压掉的建议聚合记一条 `forbidden`+`too_long`（见 `merge.ts`）。
- */
+/** 单次响应最多收 24 条 `forbidden` 候选（候选上限，不是产物总额）；合并阶段与统计层共享 `MAX_FORBIDDEN=24`
+ * 总额（统计层 k 条时实得 `24-k`），溢出聚合记一条 `too_long`。 */
 const MAX_APPENDED_FORBIDDEN = 24;
 
 /** 响应 `content` 的字节上限：超过就当整份不可解析，不再逐字段读一个几十 MB 的串。 */
@@ -235,14 +233,16 @@ const rhythmStyleOf = (
   );
 };
 
+const nonBlankOf = (text: string | undefined): boolean => (text ?? "").trim().length > 0;
 /**
- * "这份建议能不能用"（AC-3②，B 案判据）：四个"模型才有"的字段里有任意一个**非空**即可用。
- * 整份不可解析时它们必然全空，所以不必另看 `dropped`；`forbidden` 只是追加项，不参与判断。
+ * "这份建议能不能用"（AC-3②，B 案判据）：四个"模型才有"的字段里有任意一个非空白即可用；
+ * 整份不可解析时它们必然全空，故不必另看 `dropped`，`forbidden` 只是追加项也不参与判断。
+ * 本谓词对外导出，调用方可能传没 trim 过的对象，所以 trim 在这里做，不假设入参已规范化。
  */
 export const llmUsableOf = (suggestions: Suggestions): boolean =>
-  (suggestions.persona ?? "").length > 0 ||
-  (suggestions.narrativeRules ?? []).length > 0 ||
-  (suggestions.rhythmStyle ?? "").length > 0 ||
+  nonBlankOf(suggestions.persona) ||
+  (suggestions.narrativeRules ?? []).some(nonBlankOf) ||
+  nonBlankOf(suggestions.rhythmStyle) ||
   (suggestions.examples ?? []).length > 0;
 
 /** 逐个字段读；每个字段的失败都只丢自己、记一条 `dropped`，不影响其它字段。 */

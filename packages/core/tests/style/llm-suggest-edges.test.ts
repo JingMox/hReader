@@ -1,8 +1,9 @@
-// 这层管：`suggestionsOf` 的长度边界（200/201、120/121、24/25、2/3）与编码容忍（``` 围栏、BOM）；字段丢弃见 llm-suggest。
+// 这层管：`suggestionsOf` 的长度边界（200/201、120/121、24/25、2/3）、编码容忍（``` 围栏、BOM）
+// 与 `llmUsableOf` 对外部直构对象的容忍；字段丢弃见 llm-suggest。
 
 import { describe, expect, it } from "vitest";
 
-import { suggestionsOf } from "../../src/style/extract";
+import { llmUsableOf, suggestionsOf } from "../../src/style/extract";
 
 const responseOf = (content: string): string =>
   JSON.stringify({ choices: [{ message: { content } }] });
@@ -45,5 +46,14 @@ describe("suggestionsOf · 围栏与 BOM", () => {
     const raw = responseOf(`\`\`\`json\n\uFEFF${contentOf({ persona: "冷峻。" })}\n\`\`\``);
 
     expect(suggestionsOf(raw).suggestions.persona).toBe("冷峻。");
+  });
+});
+
+// `llmUsableOf` 从 barrel 导出，外部可能传没 trim 过的对象：空白不算 owned。
+describe("llmUsableOf · 外部直构对象", () => {
+  it("should treat a hand-built set with only blank strings as unusable", () => {
+    expect(
+      llmUsableOf({ persona: "   ", forbidden: ["x"], narrativeRules: [], examples: [] }),
+    ).toBe(false);
   });
 });
