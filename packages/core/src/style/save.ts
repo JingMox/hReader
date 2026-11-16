@@ -22,10 +22,12 @@ export interface SavedStyle {
   readonly spec: StyleSpec;
 }
 
-/** 与 `applyStyle` 的守卫同一口径：`--out` 落在 workspace 外一律拒绝，不就地猜相对根。 */
+/** 与 `packages/cli/src/run.ts` 的 `withinWorkspace` 同一口径：`--out` 落在 workspace 外一律拒绝。 */
 const resolvedPathOf = (path: string, workspace: string): string => {
   const target = resolve(workspace, path);
   const rel = relative(workspace, target);
+  // @internal 仅 Windows 跨盘可达（`relative` 会返回带盘符的绝对路径）；本仓 CI 只跑 POSIX，
+  // 故真实输入触发不到这一支。
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
     throw new HrError(
       "path_outside_workspace",

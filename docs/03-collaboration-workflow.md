@@ -583,3 +583,19 @@ Error: dsh: invalid profile name "/var/folders/…/hreader-dsh-profile-HYrJIG"
 3. **禁止软断言**：断言必须落在**产物结构**上。本轮换成 `dsh --profile <name> --dump-config`（help 原文 `print the composed profile tree and exit`）的合成树三行（`# == @hreader/dsh-bundle` / `- id: hreader` / `name: '@hreader/dsh-bundle'`），它不是“命令成功后的副作用”，而是“插件真的进了合成树”。
 4. **家目录必隔离**：会写 `~/.dsh` / `~/.hreader` 的烟测必须显式注入 `DSH_HOME`（`node_modules/@deepseek-ai/dsh-home-paths/lib/index.js:15` `DSH_HOME_ENV`，`:109` 优先级「显式 > $DSH_HOME > ~/.dsh」），并附“跑完 `ls ~/.dsh/profiles` 无新增”的验证方法（本轮实测跑前后都是 `desktop node_modules open-design web`）。
 5. 同理可用的一手价值：装真二进制只需要 2 分钟与一个隔离目录（`npm i -D` 到 `/tmp`），比在假身上猜 API 便宜得多——凡是“产出必须在宿主里生效”的能力，**优先装真的**。
+
+### 11.23 「防御性相等分支」自己会变成死代码（M4.1 F1，2026-11-16）
+
+**事故**：审计员提了一条 P2——`packages/core/src/style/extract/stats.ts` 的排序比较器在同键时回 `1`，违反比较器的自反契约。写者照办，加了一行 `if (left[0] === right[0]) return 0;`。这一行**永远不可达**：被排序的条目来自 `Map`，同一个 bigram 不可能有两个条目，而 `sort` 的比较器只拿两个不同元素。
+
+更难看的部分：写者只跑了七个定向测试文件，全部 `Tests N passed`，于是在交付里写"全绿"；我跑全量 `pnpm verify` 第一次就红：
+
+```
+ stats.ts  |  100 | 96.87 | 100 | 100 | 78
+ERROR: Coverage for branches (96.87%) does not meet global threshold (100%) for packages/core/src/style/extract/stats.ts
+```
+
+**规则**：
+1. **"修一条契约"不等于"加一个 `if`"**。当你想加的分支是为了满足"理论上可能"的输入时，先问：这个输入能由真实数据构造出来吗？不能就把它变成**内部符号 + 直接单测**（`@internal` 导出，先例 `packages/core/src/style/spec.ts` 的 `syntaxErrorOf`），让覆盖率看得见它被覆盖。
+2. **定向测试全绿 ≠ 全量绿**：`verify` 里带覆盖率门槛（perFile 100%），而定向 `vitest run <file>` 不会跑门槛判定。写者交付时**只能声称"定向 N 例通过"**，"全绿"三个字留给跑过 `pnpm verify` 的人（§11.13 的补强：本轮有人不是编造，而是**混淆了两种绿的语义**）。
+3. 审计员提的 P2 也适用于自己：审计员说"同键应回 0"是对的，但**没说清怎么测**；执行者照做时若不问"谁能触发它"，就会把契约修成死代码。派单里凡涉及"补一条分支"，同时写明"这条分支由什么输入/单测触发"。

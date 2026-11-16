@@ -38,6 +38,12 @@ describe("markdownParagraphsOf · 排除结构行", () => {
     expect(markdownParagraphsOf(STRUCTURAL)).toEqual(["正文一段。", "正文二段。"]);
   });
 
+  it("should drop lines that are nothing but an html tag", () => {
+    const text = ['<div class="note">', "", "正文一段。", "", "</div>"].join("\n");
+
+    expect(markdownParagraphsOf(text)).toEqual(["正文一段。"]);
+  });
+
   it("should skip front matter only when it opens the file", () => {
     expect(markdownParagraphsOf("---\ntitle: x\n---\n正文。")).toEqual(["正文。"]);
     expect(markdownParagraphsOf("正文。\n---\n后文。")).toEqual(["正文。", "后文。"]);
@@ -76,6 +82,15 @@ describe("sentenceCountOf · 句末口径", () => {
     expect(sentenceCountOf("One. Two.")).toBe(2);
   });
 
+  it("should count a question mark as a sentence end on its own", () => {
+    // 与"？"连写的情况无关：单独一个"？"也必须收尾，否则整段被读成一句。
+    expect(sentenceCountOf("是？否。")).toBe(2);
+  });
+
+  it("should count an exclamation mark as a sentence end on its own", () => {
+    expect(sentenceCountOf("走！停。")).toBe(2);
+  });
+
   it("should count an unpunctuated paragraph as one sentence", () => {
     expect(sentenceCountOf("没有句号的一段")).toBe(1);
     expect(sentenceCountOf("   ")).toBe(0);
@@ -97,6 +112,11 @@ describe("maxParagraphSentencesOf · P75 与夹取", () => {
     );
   });
 
+  it("should floor an interpolated P75 that lands on .5", () => {
+    // 句数 [1,2,5] → position 1.5 → 2 + (5-2)*0.5 = 3.5：floor 得 3，round 会得 4。
+    expect(maxParagraphSentencesOf(["一。", "一。二。", "一。二。三。四。五。"])).toBe(3);
+  });
+
   it("should clamp a corpus of very short paragraphs up to 2", () => {
     expect(maxParagraphSentencesOf(["一。", "二。"])).toBe(2);
   });
@@ -113,6 +133,11 @@ describe("averageSentenceCharsOf · 均值", () => {
     expect(averageSentenceCharsOf(["一二。三四五六。"])).toBe(4);
   });
 
+  it("should round an average that lands on .5 up", () => {
+    // 5 字 / 1 句 + 4 字 / 1 句 = 9 字 2 句 = 4.5：round 得 5，floor 会得 4。
+    expect(averageSentenceCharsOf(["一二三四。", "一二三。"])).toBe(5);
+  });
+
   it("should return 0 when there is nothing to average", () => {
     expect(averageSentenceCharsOf(["  "])).toBe(0);
   });
@@ -125,8 +150,9 @@ describe("forbiddenPhrasesOf · 语料 0 次", () => {
     expect(phrases[0]).toBe("说实话");
   });
 
-  it("should never exceed the card §4 cap", () => {
-    expect(forbiddenPhrasesOf("").length).toBeLessThanOrEqual(MAX_FORBIDDEN);
+  it("should fill exactly the card §4 cap when the corpus uses no filler at all", () => {
+    // F1 的 binding 点是套话表长度本身；F2 的 LLM 追加才真正考验这条上限。
+    expect(forbiddenPhrasesOf("").length).toBe(MAX_FORBIDDEN);
   });
 });
 
@@ -138,6 +164,11 @@ describe("recommendedWordsOf · 实词 top16", () => {
   it("should order ties by codepoint so every machine agrees", () => {
     // 同频按码位升序：文 U+6587 < 断 U+65AD，所以"文件"在前，与出现顺序无关。
     expect(recommendedWordsOf("文件 断言")).toEqual(["文件", "断言"]);
+  });
+
+  it("should order equal-frequency ties by code unit, not by locale collation", () => {
+    // "是"(U+662F) 码位小于 "最"(U+6700)，ICU 排序却把 "最" 放前面：两种口径在这里分叉。
+    expect(recommendedWordsOf("是最，最是。")).toEqual(["是最", "最是"]);
   });
 
   it("should drop stopword bigrams and non-CJK pairs", () => {

@@ -29,6 +29,7 @@ const descriptionOf = (input: ExtractStyleInput, stats: ExtractStats): string =>
   `由 ${String(input.corpus.length)} 篇语料统计生成：${String(stats.paragraphs)} 个段落、` +
   `${String(stats.sentences)} 句，平均句长 ${String(stats.averageSentenceChars)} 字。`;
 
+/** @internal 只给 extract 自身与组装边界测试用；对外入口是 `extractStyle`。 */
 export const styleSpecOf = (
   input: ExtractStyleInput,
   stats: ExtractStats,

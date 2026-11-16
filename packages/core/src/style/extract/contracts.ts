@@ -31,7 +31,10 @@ export interface ExtractStyleResult {
   readonly stats: ExtractStats;
 }
 
-/** 卡 §4 的硬上限：`forbidden` 24 条、`recommended` 16 条。 */
+/**
+ * 卡 §4 的硬上限：`forbidden` 24 条、`recommended` 16 条。
+ * F1 由套话表长度（恰好 24）兜底，这条上限还不 binding；F2 的 LLM 追加工序才真正撞上它。
+ */
 export const MAX_FORBIDDEN = 24;
 
 export const MAX_RECOMMENDED = 16;

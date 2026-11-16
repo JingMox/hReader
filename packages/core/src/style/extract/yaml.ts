@@ -22,6 +22,7 @@ const exampleLinesOf = (examples: readonly ExampleSpec[]): readonly string[] =>
         ]),
       ];
 
+/** @internal 只给 extract 自身与序列化边界测试用；对外入口是 `extractStyle`。 */
 export const styleYamlOf = (spec: StyleSpec): string => {
   const { language } = spec;
   const lines = [
