@@ -1,6 +1,7 @@
 // 这层管：CLI 自己的字节 → 文本（严格 UTF-8、保留 BOM）与片段来源读取；不做 HTML/CSS/YAML 语义。
 
 import { readFile, stat } from "node:fs/promises";
+import type { Stats } from "node:fs";
 
 import { HrError } from "@hreader/core";
 
@@ -39,16 +40,27 @@ const readFileOr = async (path: string): Promise<Uint8Array> => {
 export const readTextFile = async (path: string): Promise<string> =>
   decodeStrict(await readFileOr(path), path);
 
+const notRegularFileOf = (path: string, stats: Stats): HrError => {
+  const what = stats.isDirectory() ? "目录" : "非普通文件";
+  return new HrError("invalid_input", `语料只能是普通文件：${path} 是${what}`);
+};
+
 /**
  * 上限按字节算：`stat` 只读目录项，超限文件连一次解码器都不进（500 MiB 也不会被读成字符串）。
  * 尺寸是无符号整数，与 `readFile` 读到的 `byteLength` 同一个量。
+ *
+ * 先确认是普通文件：目录、字符设备（`/dev/zero` 报 size 0）与 FIFO（同样 size 0）会让上限
+ * 检查直接放行，随后 `readFile` 要么无界读、要么永远等不到写入方。
  */
 export const fileSizeOf = async (path: string): Promise<number> => {
+  let stats: Stats;
   try {
-    return (await stat(path)).size;
+    stats = await stat(path);
   } catch (error: unknown) {
     throw readErrorOf(error, path);
   }
+  if (!stats.isFile()) throw notRegularFileOf(path, stats);
+  return stats.size;
 };
 
 export const sourceText = async (
