@@ -174,6 +174,34 @@ cp packages/pi-extension/pi-hreader.ts ~/.pi/agent/extensions/   # 或：pi -e p
 
 **这套测试怎么证明自己有效**：不是看覆盖率，而是看「删掉实现里的一行，有没有用例红」。本卡删一行仍全绿的情况出现过 4 次，其中 3 次是真缺陷（见 `.workflow/cards/M3.2.md` §9.3 的 11 条缺陷表）。
 
+## M3.4 `hr_undo`（撤销最近一次写）
+
+一个工具、一个必填参数 `filePath`：撤销该文档最近一次落盘，不参数化"撤几次"（要连撤就再调一次）。
+
+**语义由 `@hreader/core` 的 `revertLast` 决定，本包不重实现**：取最近一份快照 → 校验**快照自身**的哈希与文件名一致
+（防截断/改写；**不校验目标文件**是否被人改过）→ 原子还原 → 删掉该快照。快照链是 patch / 批注处理 / 新建文档共用的一条，所以"上一次写"可能是其中任意一种。
+
+- **成功**：文本给出还原来源（`.hreader/history/<docId 路径的 sha1>/<内容 sha256 前 16 位>-<ISO 时间戳>-<seq>.html`）
+  与**还原后**的字节数，`_meta.ui.resourceUri` 指向
+  `ui://hreader/view/<docId>`，并附 `revision`（还原后内容的 sha256 前 16 位，与核心 SSE/前端对齐 revision 同源）。
+- **失败**：`not_found`（路径不存在）、`not_a_file`（是目录）、`nothing_to_undo`（没有历史快照 / 已被撤过 /
+  快照目录被外部删掉）。核心内部的 `undo_unavailable` **不外泄**——它只表示"存档读不出来"，对外一律翻成
+  `nothing_to_undo`，且绝不落到兜底的 `internal`。
+- **并发**：锁住在 core（`runLocked`），同一个文件上两个并发的 `hr_undo` 只会有一个成功，另一个拿到 `nothing_to_undo`。
+- **锁等待不抄 HTTP 的 5000ms**：HTTP 侧 `LOCK_WAIT_MS` 不在 core 的公开面上，而 `hr_patch_node` 用的就是 core 默认值
+  （`DEFAULT_LOCK_TIMEOUT_MS = 2000`）。同一个文件上两个工具必须同源，否则并发语义分叉——所以第三参不传。
+  2000ms ≥ 锁的实际持有时长，串行化照样成立。
+- **残缺是安全的**：快照目录被手工清空后调 `hr_undo` 得到 `nothing_to_undo`，目标文件原地不动（不是半还原）。
+
+**给 Agent 的使用建议（重要）**：**换过样式之后再 undo，正文会跟样式一起回退**（`L-32`：`applyStyle` 不写快照，
+`packages/core/src/style/applyFile.ts` 全文没有 `writeSnapshot`）。所以"刚换完视觉、又想撤掉上一次小改动"时，
+**不要指望 undo 只退一步**——要么先 `hr_read_node` 确认正文，再重新 `hr_patch_node` 一次；要么接受这一步会回到
+换视觉之前的整份内容。HTTP 侧 `POST /api/doc/<docId>/undo` 是同一个 `revertLast`，行为完全一样。
+
+**限制**：undo 的粒度是"一次**留了快照**的写"，不是"一次字段修改"；也不做 `--dry-run`：先 `hr_read_node` 看现状。
+
+---
+
 ## 横切口径：`data-hr-id` 与批注锚点的生命周期
 
 `data-hr-id` 由内容派生（详见 `.workflow/cards/M2.3.md` §8）：同一份字节两次注入 id 稳定，编辑则会让 id 漂移。批注的 `nodeId` **不做落盘迁移**，锚点失效由读时重识别兜底（三档：命中 / `block_reidentified` / `block_missing`）。**发布前**若更换 id 方案，必须先交付 `nodeId` 迁移脚本，否则既有批注全部失效；当前未发布，无迁移义务（`L-02`，重构卡 R-6）。
@@ -183,7 +211,7 @@ cp packages/pi-extension/pi-hreader.ts ~/.pi/agent/extensions/   # 或：pi -e p
 - M2.1 Daemon（HTTP + WS + watcher + 事件协议）
 - M2.2 Reader UI 三栏骨架（书库/TOC/画布/边栏）
 - M2.3 划词批注持久化 + Visual Diff + Undo
-- M3.1 MCP Server（5 tools + resources + prompts + MCP-UI）
+- M3.1 MCP Server（7 tools + resources + prompts + MCP-UI）
 - M3.2 Pi 扩展单文件（`/hreader`、`/hr-style`、context.ui 注入）——使用节见上
 - M3.3 DSH Cordis 插件（prompt hook + 强类型事件 + Web 面板）
 - M4.1 `hr style extract` 风格萃取

@@ -18,6 +18,7 @@ const REQUIRED_BY_TOOL: Record<string, readonly string[]> = {
   hr_apply_style: ["filePath"],
   hr_resolve_annotation: ["filePath", "annotationId"],
   hr_create_doc: ["filePath", "title"],
+  hr_undo: ["filePath"],
 };
 
 interface ListedTool {

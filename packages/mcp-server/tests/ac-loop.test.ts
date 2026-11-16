@@ -137,7 +137,13 @@ const patchAndReadBackOf = async (workspace: string, oldId: unknown): Promise<vo
 
 /**
  * undo：快照是"写前字节"，所以退回到建稿那一刻。
- * MCP 层没有 undo 工具（工具面只有六个），这一环只能走 core 的入口——deps 用生产的。
+ * 这个 E2E 覆盖两条关系：**MCP stdio 工具面 ↔ core 进程内原语**的字节对齐，以及**构建产物真能启动**
+ * （`probe.ts` 用 `buildDist` 真跑 `pnpm build`、再用 `spawn(process.execPath, [entry])` 起子进程走 stdio 握手）。
+ * 撤销这一步**刻意**在进程内用 `undoPatch` 而不是工具：本文件的读改侧已经把返回值和旧 id 逐字比对过了，
+ * 撤销要的正是 CLI 侧同款的 `UndoResult`（`restoredFrom`/字节数），走工具面就只能拿到映射后的文本。
+ * MCP 侧对外入口是 `hr_undo`（`src/tools/undo.ts`，经 `revertLast`）；两者语义相同，错误码不同：
+ * `undo_unavailable` 是 core 层码，工具面把它翻成 `nothing_to_undo`——所以下面断言里的
+ * `undo_unavailable` 是本函数**刻意**留在 core 层的结果，不是工具面的行为。
  */
 const undoBackOf = async (workspace: string, createdBytes: Buffer): Promise<void> => {
   const restored = await undoPatch({ workspace, file: "loop.html" }, nodePatchDeps);

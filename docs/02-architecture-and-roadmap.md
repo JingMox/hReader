@@ -180,15 +180,17 @@ language_style:
 
 ### 3. 语义 DOM 增量编辑协议 (`Semantic DOM Patch Protocol`)
 
-为了支撑所有插件高效编辑 HTML，`@hreader/core` 提供以下 5 个核心原语（API / CLI / MCP Tools 一一对应）：
+为了支撑所有插件高效编辑 HTML，`@hreader/core` 提供以下 7 个核心原语（与 MCP Tools 一一对应）：
 
 | 原语名称 | 输入参数 | Token 消耗与作用说明 |
 | :--- | :--- | :--- |
+| `hr_create_doc` | `filePath`, `title` | **建稿**。写一份最小合法文档（`<article data-hr-id="root">` + `<h1>` + 一个 `<section>`），节点 id 交给 `injectNodeIds` 派生；已存在的文件不覆盖。 |
 | `hr_outline` | `filePath` | **~150 Tokens**。返回文档的 `<section>` / `<h1~h4>` 骨骼树、各节点 `data-hr-id`、字数统计、以及**所有未处理的 `pending_ai` 用户划词批注**。 |
 | `hr_read_node` | `filePath`, `nodeId` (或 CSS Selector) | **~200 Tokens**。仅提取目标节点及其子树的 HTML 源码与关联批注，避免读取整篇文件。 |
 | `hr_patch_node` | `filePath`, `nodeId`, `action` (`replace` \| `insert_after` \| `insert_before` \| `append` \| `delete`), `htmlContent` | **极速局部写入**。解析 HTML 片段，自动为新增块级元素注入 `data-hr-id`，校验标签闭合与禁用词，更新文件并触发 WebSocket 局部热更新。 |
 | `hr_apply_style` | `filePath`, `visualId?`, `toneId?` | 若仅切换 `visualId`，引擎直接替换 `<style id="hr-theme">`（**0 LLM Token**）；若切换 `toneId`，返回该语言风格的完整规约供 Agent 改写正文。 |
 | `hr_resolve_annotation` | `filePath`, `annotationId`, `resolutionNote?` | 将 `<script id="hr-meta">` 中对应的用户批注标记为 `resolved`，阅读器界面自动将该批注归档并高亮显示修改后的段落。 |
+| `hr_undo` | `filePath` | **一次调用回退一步**。取最近一份快照 → 校验**快照自身**的哈希与文件名一致（防截断/改写；不校验目标文件是否被人改过）→ 原子还原 → 删掉该快照；没有历史时返回 `nothing_to_undo`。快照链由 `patch` / 批注处理 / 新建文档共用，但 **`hr_apply_style` 不写快照**（`L-32`）：换过样式后的一次 undo 会把正文一起退，不要把“换样式”当成可单独撤销的一步。 |
 
 ---
 
@@ -335,7 +337,7 @@ flowchart LR
   - [x] **M3.1 `@hreader/mcp-server`**：实现标准 MCP Tools、语言风格 Prompts 注册，并兼容 `MCP-UI` 内联资源协议。
   - [x] **M3.2 Pi 插件 (`pi-hreader.ts`)**：编写单文件 TypeScript 扩展，实现 `/hreader`、`/hr-style` 命令及阅读器批注向 Pi `context.ui` 的自动投递。
   - [ ] **M3.3 DeepSeek Harness 插件 (`@hreader/dsh-bundle`)**：基于 Cordis 编写插件入口与 `cordis.patch.yml`，实现语言风格 Prompt Hook 动态织入、强类型事件触发 Agent Loop 局部修补、以及 `dsh-web-app` 内嵌阅读面板。
-  - [ ] **M3.4 `hr_undo` 工具**：给 MCP 层补撤销入口（前端与 HTTP 早已有 `undoPatch`，MCP 缺一个工具）。2026-11-15 用户裁定从 M3.1 拆出，避免撑爆单卡验收范围。
+  - [x] **M3.4 `hr_undo` 工具**：给 MCP 层补撤销入口（前端与 HTTP 早已有 `undoPatch`，MCP 缺一个工具）。2026-11-15 用户裁定从 M3.1 拆出，避免撑爆单卡验收范围。**已完成**：`packages/mcp-server/src/tools/undo.ts`（走 `revertLast`，`nothing_to_undo` 不泄漏 `undo_unavailable`）；164 例 + 真起 daemon 的 MCP↔HTTP 差分；`L-32`（换样式不留快照）/`L-33`（快照无新鲜度校验）已登记。
 
 ### Milestone 4：Tauri v2 独立桌面端与“AI 风格萃取工坊”
 * **目标**：完善独立桌面软件体验，降低用户编写自定义语言风格的门槛。
