@@ -16,6 +16,13 @@ export type {
   ExtractStyleInput,
   ExtractStyleResult,
 } from "./contracts";
+export { PROMPT_MAX_CORPUS_BYTES } from "./llm/port";
+export type { LlmPort } from "./llm/port";
+export { corpusBlockOf, promptOf } from "./llm/prompt";
+export type { CorpusBlock, PromptInput } from "./llm/prompt";
+export { suggestionsOf } from "./llm/suggest";
+export type { Dropped, DroppedReason, Suggestions } from "./llm/suggest";
+export { mergeSuggestions } from "./llm/merge";
 
 /**
  * 产物必须能过 `parseStyleText`：用例里断言"提取出的 YAML 能被 `loadStyle` 读回"
