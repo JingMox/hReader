@@ -219,6 +219,18 @@ describe("hr style extract · 语料与 id 上限", () => {
     });
   });
 
+  it("should accept a corpus that is exactly 1 MiB", async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, "exact.md");
+      writeFileSync(path, Buffer.alloc(1024 * 1024, 0x61));
+
+      const result = await extract([path, "--json"], dir);
+
+      expect(result.code).toBe(0);
+      expect(jsonDataOf(result)).toMatchObject({ data: { stats: { paragraphs: 1 } } });
+    });
+  });
+
   it("should reject a style id that the strict parser refuses", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);

@@ -96,3 +96,8 @@
 **为什么不修**：这是 **TypeScript 静态边界**——`extractStyle` 的入参类型 `ExtractStyleInput` 只声明 `corpus`，写错键名在 `pnpm typecheck` 就红；运行期守卫（`assertCorpus`）需要构造一个 TS 不可能产生的对象才能触发，属于"不可由真实输入触发的守卫"，写它只能靠 `as unknown as` 的自造测试养活。取舍：宁可留裸异常，也不留养测试的假守卫。
 
 **若将来需要**：只有当 `extractStyle` 被 JS 宿主（无 TS）直接调用时才值得加守卫；届时在 `extract/index.ts` 入口做一次 `Array.isArray` + `typeof` 检查并抛 `invalid_input`。
+### L-34 · 多 `<article>` / 嵌套 `<article>` 在 extract 路径被拒（P2，F2 处理）
+`packages/core/src/style/extract/paragraphs.ts` 的 `withArticle` 只兜"零个 article"；多个或嵌套 article 会走到 `packages/core/src/html/derive.ts:70-79` 抛 `invalid_document`（"文档里有多个 <article>：模型只能有 1 个顶层 article"）。新闻列表页、评论嵌套页这两类真实"另存为"形态都落在这里。
+现状口径：`hr style extract` 的输入契约 = 单篇阅读页；多 article 直接拒是**可接受的最小行为**，但文案对"我把列表页存下来了"的读者不可操作（它说"模型只能有 1 个顶层 article"，没告诉他该存单篇）。
+F2 要做的：要么按"article 数量最多者 + 相邻"选主，要么把文案改成"这份 HTML 里有 N 个 article，请只保存单篇文章页"。
+
