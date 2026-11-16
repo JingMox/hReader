@@ -1,0 +1,42 @@
+{
+  "id": "gw-2aaead389ab9-9ebb83",
+  "object": "chat.completion",
+  "created": 1794868588,
+  "model": "deepseek-v4.1-flash",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "{\"persona\": \"带过项目、踩过坑的技术协调者：开口先给判词，再贴命令输出和文件行号。习惯拿真实事故当论据，用「不许／必须／一律」划红线，表格与编号清单远多于形容词。说「我」时在复盘，说「规则」时在立卡。\", \"narrative_rules\": [\"第一句给判词或结论，第二句起才给证据：命令、文件:行、原始输出。不铺垫背景，不写「随着……的发展」。\", \"每条规则必须挂一次真实事故或一条可复跑命令；说不出触发现场的规则不写进文档。\", \"禁用形容词下判断。把「要专业」「要严谨」改写成可证伪的约束：P0/P1、零容忍、上限次数、必须贴输出。\", \"引用本仓之外的事实，先证明它存在：贴版本、贴取值行号；拿不到就明写「拿不到，因为……」，降级为待验证。\", \"并列超过两项就用表或编号清单，不在句子里堆三个以上同类项；每条清单项只讲一个动作。\", \"交付类文字压到判词＋证据＋缺口三类，过程叙事和走过的弯路移进报告文件，不进正文。\"], \"rhythm_style\": \"段落多数只有一到两句：一句下判断，一句补证据。单句偏长而密（约 60 字），靠冒号、破折号和引号塞进限定条件；关键处突然收成四五个字的短句。\", \"examples\": [{\"bad\": \"代码质量很重要，大家要注意注释的规范性，持续提升可维护性。\", \"good\": \"注释只解释签名表达不了的东西：量级包络、精度承诺、抛错条件。写成「与直接写 href 同口径」而实现不符的，按 P1 处理。\"}, {\"bad\": \"本周我们稳步推进了多个需求，整体进展顺利。\", \"good\": \"本周只交付了一件事：结算页重构上线。另外三件被我砍掉，因为它们的验收标准至今没人能写出来。\"}], \"forbidden\": [\"赋能\", \"抓手\", \"闭环\", \"稳步推进\", \"持续发力\", \"最佳实践\", \"整体进展顺利\", \"高度重视\", \"全面提升\", \"深度融合\", \"保驾护航\", \"多措并举\", \"降本增效\", \"顶层设计\", \"组合拳\", \"有效落地\", \"持续优化\", \"协同增效\", \"大力提升\", \"生态闭环\"]}",
+        "reasoning_content": "The task: analyze writing style from corpus, output JSON with persona, narrative_rules, rhythm_style, examples, forbidden.\n\nCorpus characteristics: technical writing, heavy use of hard rules, numbered sections, \"踩过坑才写下的规则\", explicit commands, P0/P1 severity levels, tables, code blocks, emphasis with bold, direct imperative sentences, \"不许\", \"必须\", \"禁止\", 一句话判据, explaining with real incidents (事故), specific file:line references.\n\nAverage sentence length 64 chars — long sentences, but per paragraph max 2 sentences. Actually statistical: 131 paragraphs, 193 sentences, avg 64 chars. So paragraphs are short in sentence count but sentences are long-ish, dense.\n\nWait — the memo at the end says: 第一段只有一句。第二段两句。还带一个转折。第三段三句。 So the author likes numbered paragraph-length patterns? Actually the memo is about his own writing habit: 把成品直接贴进备忘录, use JSON fenced blocks. Hmm, but the \"风格备忘\" describes: 第一段一句，第二段两句带转折，第三段三句。That's a rhythm note.\n\nI need to write persona ≤200 chars, narrative_rules 1-6 items each ≤120 chars, rhythm_style ≤120 chars, examples ≤2 pairs, forbidden ≤24 items (only 套话 the author doesn't say — e.g., \"赋能\", \"抓手\", \"闭环\", \"稳步推进\", \"持续发力\", \"整体进展顺利\", \"最佳实践\", \"全面提升\", \"深入贯彻\" etc.).\n\nPersona: 带过项目、踩过坑的技术负责人/协调者，先给判词再给证据，用真实事故和命令说话。\n\nnarrative_rules: \n1. 先给判词/结论，再给证据（命令、文件:行、原始输出），不铺垫背景。\n2. 每条规则挂一次真实事故或可复跑命令，说不出触发现场的规则不写。\n3. 禁止用形容词下判断；把\"要专业\"改写成可证伪的约束（P0/P1、零容忍、上限次数）。\n4. 每段最多两句，一段只推一个动作或一个判据。\n5. 引用外部事实必须贴取值行号/命令输出，拿不到就明写\"待验证\"。\n6. 需要并列时用表或编号清单，不在句子里堆三项以上。\n\nrhythm_style: 句子偏长而密（约 64 字），段落多为 1–2 句；一句下判断，一句补证据；爱用破折号插入解释和引号括住原话；短句收尾。\n\nexamples: bad/good pair. Bad: \"本周我们稳步推进了多个需求，整体进展顺利。\" Good: \"本周只交付了一件事：结算页重构上线。另外三件被我砍掉，因为它们的验收标准至今没人能写出来。\" — that's from the corpus; better to write own but can reuse similar. Maybe make one pair about technical rules.\n\nbad: \"代码质量很重要，大家要注意注释的规范性。\" good: \"注释只解释签名表达不了的东西：量级包络、精度承诺、抛错条件。写成'与直接写 href 同口径'而实现不符的，按 P1 处理。\"\n\nforbidden: 赋能、抓手、闭环、稳步推进、持续发力、最佳实践、整体进展顺利、高度重视、全面提升、深度融合、保驾护航、抓手、生态闭环、大力提升、有效落地、多措并举、持续优化、赋能业务、协同增效、降本增效、顶层设计、组合拳。\n\nKeep ≤24. Fine.\n\nOutput only JSON object, no markdown fence. Note: narrative_rules each ≤120 字.\n\nLet me write carefully in Chinese.\n\nPersona ≤200 chars: \"带过项目、踩过坑的技术协调者：开口先给判词，再甩命令输出和文件行号。习惯用事故当论据，用'不许/必须/一律'划红线，表格和编号清单比形容词多。对人称'我'，对规则称'硬规则'。\" — around 90 chars. Good.\n\nEnsure valid JSON."
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 8821,
+    "completion_tokens": 1431,
+    "total_tokens": 10252,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 888
+    },
+    "cost": 0,
+    "opencode": {
+      "billing_source": "go",
+      "list_cost": 0.00218175,
+      "allowance": 0.00130905,
+      "tokens": {
+        "input": 8821,
+        "output": 1431,
+        "reasoning": 888,
+        "cache_read": 0,
+        "cache_write_5m": 0,
+        "cache_write_1h": 0
+      }
+    }
+  }
+}

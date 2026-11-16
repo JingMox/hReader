@@ -5,6 +5,7 @@
  * 放在这里也把 `fetch` 挡在 core 之外——本包是纯函数与数据，网络是适配层的职责。
  */
 export interface LlmPort {
+  /** 返回**整份响应体文本**（未裁剪的 body），解析归 `suggestionsOf`；port 不解释 content。 */
   readonly complete: (prompt: string) => Promise<string>;
 }
 

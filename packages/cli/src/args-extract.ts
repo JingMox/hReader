@@ -8,10 +8,12 @@ import { absoluteOf, commonOf, failure, unusedFlag, type ParsedArgs } from "./in
 import type { Raw } from "./tokens";
 
 const EXTRACT_FLAGS = [
+  "--base-url",
   "--force",
   "--id",
   "--inherits-visual",
   "--json",
+  "--model",
   "--name",
   "--no-llm",
   "--out",
@@ -50,6 +52,8 @@ export const extractIntent = (raw: Raw, rest: readonly string[], cwd: string): P
       out: out === undefined ? undefined : absoluteOf(out, cwd),
       inheritsVisual: raw.values.get("--inherits-visual") ?? DEFAULT_STYLE_ID,
       noLlm: raw.switches.has("--no-llm"),
+      model: raw.values.get("--model"),
+      baseUrl: raw.values.get("--base-url"),
       force: raw.switches.has("--force"),
       ...commonOf(raw, cwd),
     },

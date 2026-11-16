@@ -1,11 +1,23 @@
 // 这层管：`hr style extract` 的薄适配（读语料 → 统计层 → 写盘/打印）；不做统计、不做样式编译。
 
-import { extname } from "node:path";
+import { dirname, extname, resolve } from "node:path";
 
-import { HrError, extractStyle, nodeStyleDeps, saveStyleText } from "@hreader/core";
-import type { CorpusFormat, CorpusText, ExtractStyleResult } from "@hreader/core";
+import {
+  HrError,
+  extractStyle,
+  extractStyleWithLlm,
+  nodeStyleDeps,
+  saveStyleText,
+} from "@hreader/core";
+import type {
+  CorpusFormat,
+  CorpusText,
+  ExtractStyleLlmResult,
+  ExtractStyleResult,
+} from "@hreader/core";
 
-import { fileSizeOf, readTextFile } from "../input";
+import { existsOf, fileSizeOf, readTextFile } from "../input";
+import type { LlmPort } from "../llm/client";
 import { dataStyleExtract, humanStyleExtract, jsonOk } from "../output";
 
 /** D9：单篇 1 MiB、总量 4 MiB。先看字节数再解码，别让 CLI 替用户把超限语料读成字符串。 */
@@ -59,23 +71,87 @@ export interface StyleExtractInput {
   readonly out: string | undefined;
   readonly force: boolean;
   readonly json: boolean;
+  /** 有 key 且没给 `--no-llm` 时的传输层；`undefined` = 纯统计版（D2 的降级，不是错误）。 */
+  readonly llm: LlmPort | undefined;
 }
 
-export const styleExtractCommand = async (input: StyleExtractInput): Promise<string> => {
-  const result: ExtractStyleResult = extractStyle({
-    corpus: await corpusOf(input.files),
-    id: input.id,
-    name: input.name,
-    inheritsVisual: input.inheritsVisual,
-  });
+/**
+ * `llm_failure` 在这里补上 CLI 的出路：core 不认识 `--no-llm`（那是本进程的旗标）。
+ * D7 禁的是**自动**重试（写盘非幂等 + 费用不可控），不是禁止提示用户手动重跑一次。
+ */
+const withNoLlmHint = (error: unknown): unknown =>
+  error instanceof HrError && error.code === "llm_failure"
+    ? new HrError(
+        "llm_failure",
+        `${error.message}，可加 --no-llm 只用统计结果；若是网络抖动，重跑一次即可`,
+      )
+    : error;
+
+const llmResultOf = async (
+  input: StyleExtractInput,
+  corpus: readonly CorpusText[],
+  llm: LlmPort,
+): Promise<ExtractStyleLlmResult> => {
+  try {
+    return await extractStyleWithLlm({
+      corpus,
+      id: input.id,
+      name: input.name,
+      inheritsVisual: input.inheritsVisual,
+      llm,
+    });
+  } catch (error: unknown) {
+    throw withNoLlmHint(error);
+  }
+};
+
+const emitOf = async (
+  input: StyleExtractInput,
+  result: ExtractStyleResult,
+  dropped: readonly ExtractStyleLlmResult["dropped"][number][] | undefined,
+): Promise<string> => {
   if (input.out === undefined) {
-    return input.json ? jsonOk(dataStyleExtract(result, null)) : result.yaml;
+    return input.json ? jsonOk(dataStyleExtract(result, null, dropped)) : result.yaml;
   }
   await saveStyleText(
     { path: input.out, workspace: input.workspace, text: result.yaml, force: input.force },
     nodeStyleDeps(input.workspace),
   );
   return input.json
-    ? jsonOk(dataStyleExtract(result, input.out))
+    ? jsonOk(dataStyleExtract(result, input.out, dropped))
     : humanStyleExtract(result, input.out);
+};
+
+/**
+ * 花钱前的预检：覆盖守卫、父目录守卫、越界都是确定性失败，不该等模型返回才报（一次调用是真金白银）。
+ * `out` 已由 `run.ts` 归一到 workspace 相对路径，`..` 开头即越界；core 的 `saveStyleText` 写盘前会再查一遍。
+ */
+const assertOutWritable = async (input: StyleExtractInput): Promise<void> => {
+  const out = input.out;
+  if (out === undefined) return;
+  if (out.startsWith("..")) {
+    throw new HrError("path_outside_workspace", `风格只能写到 workspace 内：${out}`);
+  }
+  const target = resolve(input.workspace, out);
+  // `--force` 只放开"覆盖"这一件事：父目录依旧不自动建（AC-6）。
+  if (!input.force && (await existsOf(target))) {
+    throw new HrError("file_exists", `目标已存在：${target}（加 --force 覆盖）`);
+  }
+  if (!(await existsOf(dirname(target)))) {
+    throw new HrError("invalid_input", `父目录不存在：${dirname(target)}`);
+  }
+};
+
+export const styleExtractCommand = async (input: StyleExtractInput): Promise<string> => {
+  const corpus = await corpusOf(input.files);
+  await assertOutWritable(input);
+  const styleInput = {
+    corpus,
+    id: input.id,
+    name: input.name,
+    inheritsVisual: input.inheritsVisual,
+  };
+  if (input.llm === undefined) return emitOf(input, extractStyle(styleInput), undefined);
+  const merged = await llmResultOf(input, corpus, input.llm);
+  return emitOf(input, merged, merged.dropped);
 };

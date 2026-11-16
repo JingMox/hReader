@@ -66,6 +66,16 @@ export const fileSizeOf = async (path: string): Promise<number> => {
   return stats.size;
 };
 
+/** `--out` 预检用：不存在是常态，「写盘时再报错」也能兜住——这里只为不花钱地提前判定。 */
+export const existsOf = async (path: string): Promise<boolean> => {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const sourceText = async (
   source: HtmlSource,
   readStdin: () => Promise<Uint8Array>,
