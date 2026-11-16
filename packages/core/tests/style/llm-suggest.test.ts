@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { suggestionsOf } from "../../src/style/extract";
+import { llmUsableOf, suggestionsOf } from "../../src/style/extract";
 import type { Dropped, DroppedReason, LlmPort, Suggestions } from "../../src/style/extract";
 
 const responseOf = (content: string): string =>
@@ -72,6 +72,7 @@ describe("suggestionsOf · 坏响应不抛", () => {
       "{}",
       '{"choices":"nope"}',
       '{"choices":[{"message":"x"}]}',
+      '{"choices":[]}',
     ]) {
       const { suggestions, dropped } = suggestionsOf(raw);
 
@@ -88,6 +89,14 @@ describe("suggestionsOf · 坏响应不抛", () => {
     ]);
   });
 
+  it("should treat a content that is not a JSON object as unparsable", () => {
+    expect(suggestionsOf(responseOf("[1]")).dropped).toEqual([
+      { field: "content", reason: "unparsable" },
+    ]);
+  });
+});
+
+describe("suggestionsOf · 整字段类型错", () => {
   it("should drop fields of the wrong type one by one", () => {
     const { suggestions, dropped } = suggestionsOf(
       responseOf(
@@ -134,5 +143,133 @@ describe("suggestionsOf · 原型污染", () => {
     expect("polluted" in suggestions).toBe(false);
     expect(suggestions.persona).toBe("冷峻。");
     expect(dropped).toEqual([{ field: "__proto__", reason: "not_owned" }]);
+  });
+});
+
+describe("suggestionsOf · 逐字段失败臂", () => {
+  it("should drop a non-string persona and report the field", () => {
+    expect(suggestionsOf(responseOf(contentOf({ persona: 5 }))).dropped).toEqual([
+      { field: "persona", reason: "wrong_type" },
+    ]);
+    expect(suggestionsOf(responseOf(contentOf({ persona: "   " }))).dropped).toEqual([
+      { field: "persona", reason: "wrong_type" },
+    ]);
+  });
+});
+
+describe("suggestionsOf · 规则列表", () => {
+  it("should drop only the offending item of a rules list", () => {
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ narrative_rules: ["先结论", 7, "避免排比"] })),
+    );
+
+    expect(suggestions.narrativeRules).toEqual(["先结论", "避免排比"]);
+    expect(dropped).toEqual([{ field: "narrative_rules[1]", reason: "wrong_type" }]);
+  });
+
+  it("should drop an over-long rule item by index", () => {
+    const { dropped } = suggestionsOf(
+      responseOf(contentOf({ narrative_rules: ["短", "长".repeat(121)] })),
+    );
+
+    expect(dropped).toEqual([{ field: "narrative_rules[1]", reason: "too_long" }]);
+  });
+});
+
+describe("suggestionsOf · 例子", () => {
+  it("should drop an example whose side is blank", () => {
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ examples: [{ bad: "   ", good: "好" }] })),
+    );
+
+    expect(suggestions.examples).toEqual([]);
+    expect(dropped).toEqual([{ field: "examples[0]", reason: "wrong_type" }]);
+  });
+
+  it("should drop an example that misses a side or is not an object", () => {
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ examples: [{ bad: "很差" }, 5, { bad: "坏", good: "好" }] })),
+    );
+
+    expect(suggestions.examples).toEqual([{ bad: "坏", good: "好" }]);
+    expect(dropped).toEqual([
+      { field: "examples[0]", reason: "wrong_type" },
+      { field: "examples[1]", reason: "wrong_type" },
+    ]);
+  });
+
+  it("should keep the first two example pairs and report the overflow", () => {
+    const pair = (index: number) => ({ bad: `坏${String(index)}`, good: `好${String(index)}` });
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ examples: [pair(0), pair(1), pair(2)] })),
+    );
+
+    expect(suggestions.examples).toEqual([pair(0), pair(1)]);
+    expect(dropped).toEqual([{ field: "examples", reason: "too_long" }]);
+  });
+});
+
+describe("suggestionsOf · 列表上限", () => {
+  it("should keep six rules and report the seventh", () => {
+    const rules = ["一", "二", "三", "四", "五", "六", "七"];
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ narrative_rules: rules })),
+    );
+
+    expect(suggestions.narrativeRules).toEqual(rules.slice(0, 6));
+    expect(dropped).toEqual([{ field: "narrative_rules", reason: "too_long" }]);
+  });
+
+  it("should keep 24 appended forbidden words and report the 25th", () => {
+    const words = Array.from({ length: 25 }, (_, index) => `套话${String(index)}`);
+    const { suggestions, dropped } = suggestionsOf(responseOf(contentOf({ forbidden: words })));
+
+    expect(suggestions.forbidden).toHaveLength(24);
+    expect(dropped).toEqual([{ field: "forbidden", reason: "too_long" }]);
+  });
+});
+
+describe("suggestionsOf · rhythm 双键", () => {
+  it("should drop a rhythm that is not an object", () => {
+    expect(suggestionsOf(responseOf(contentOf({ rhythm: "紧凑" }))).dropped).toEqual([
+      { field: "rhythm", reason: "wrong_type" },
+    ]);
+  });
+
+  it("should drop rhythm.style of the wrong type and unknown rhythm keys", () => {
+    expect(suggestionsOf(responseOf(contentOf({ rhythm: { style: 5 } }))).dropped).toEqual([
+      { field: "rhythm.style", reason: "wrong_type" },
+    ]);
+    expect(suggestionsOf(responseOf(contentOf({ rhythm: { vibes: "x" } }))).dropped).toEqual([
+      { field: "rhythm.vibes", reason: "not_owned" },
+    ]);
+  });
+
+  it("should let the flat rhythm_style win and mark the nested rhythm as not owned", () => {
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ rhythm_style: "紧凑", rhythm: { style: "散漫" } })),
+    );
+
+    expect(suggestions.rhythmStyle).toBe("紧凑");
+    expect(dropped).toEqual([{ field: "rhythm", reason: "not_owned" }]);
+  });
+});
+
+describe("llmUsableOf · 判据", () => {
+  it("should reject an unparsable response", () => {
+    expect(llmUsableOf([{ field: "content", reason: "unparsable" }], { forbidden: [] })).toBe(
+      false,
+    );
+  });
+
+  it("should reject a suggestion set with all four owned fields empty", () => {
+    expect(llmUsableOf([], { forbidden: ["众所周知"] })).toBe(false);
+  });
+
+  it("should accept any single owned field", () => {
+    expect(llmUsableOf([], { forbidden: [], persona: "冷峻。" })).toBe(true);
+    expect(llmUsableOf([], { forbidden: [], narrativeRules: ["先结论"] })).toBe(true);
+    expect(llmUsableOf([], { forbidden: [], rhythmStyle: "短句" })).toBe(true);
+    expect(llmUsableOf([], { forbidden: [], examples: [{ bad: "坏", good: "好" }] })).toBe(true);
   });
 });

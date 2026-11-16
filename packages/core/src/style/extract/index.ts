@@ -20,7 +20,7 @@ export { PROMPT_MAX_CORPUS_BYTES } from "./llm/port";
 export type { LlmPort } from "./llm/port";
 export { corpusBlockOf, promptOf } from "./llm/prompt";
 export type { CorpusBlock, PromptInput } from "./llm/prompt";
-export { suggestionsOf } from "./llm/suggest";
+export { llmUsableOf, suggestionsOf } from "./llm/suggest";
 export type { Dropped, DroppedReason, Suggestions } from "./llm/suggest";
 export { mergeSuggestions } from "./llm/merge";
 
