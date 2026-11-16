@@ -1,90 +1,22 @@
 // argv → 意图的纯函数（不读 process、不做 IO、不抛异常）；CLI 用法错误（exit 2）全部在这里产生。
 import { resolve } from "node:path";
-import type { PatchAction } from "@hreader/core";
 
+import { type PatchAction } from "@hreader/core";
+
+import { extractIntent } from "./args-extract";
+import { absoluteOf, commonOf, failure, unusedFlag, type ParsedArgs } from "./intent";
+import type { HtmlSource, StyleMode } from "./intent";
 import { allowHostsOf, tokenize, type Raw } from "./tokens";
 import { isCommandName, type CommandName } from "./usage";
 
-export type HtmlSource =
-  | { readonly kind: "inline"; readonly text: string }
-  | { readonly kind: "file"; readonly path: string }
-  | { readonly kind: "stdin" };
-export type StyleMode =
-  | { readonly kind: "visual"; readonly id: string }
-  | { readonly kind: "tone"; readonly id: string }
-  | { readonly kind: "lint" };
-interface Common {
-  readonly json: boolean;
-  readonly workspace: string;
-}
-
-export type Intent =
-  | { readonly kind: "help"; readonly topic: CommandName | undefined }
-  | ({ readonly kind: "outline"; readonly path: string } & Common)
-  | ({
-      readonly kind: "read";
-      readonly path: string;
-      readonly target: string;
-      readonly maxBytes: number | undefined;
-    } & Common)
-  | ({
-      readonly kind: "patch";
-      readonly path: string;
-      readonly nodeId: string;
-      readonly action: PatchAction;
-      readonly html: HtmlSource | undefined;
-    } & Common)
-  | ({ readonly kind: "style"; readonly path: string; readonly mode: StyleMode } & Common)
-  | ({ readonly kind: "undo"; readonly path: string } & Common)
-  | ({
-      readonly kind: "serve";
-      readonly path: string;
-      readonly port: number;
-      readonly allowHosts: readonly string[] | undefined;
-      /** 构建产物目录（`index.html` + `assets/`）；缺省 `packages/app/dist`。 */
-      /** 显式 `--app-dir` 的绝对路径；未给就是 `undefined`（让 core 走 M2.1 的 200 兜底）。 */
-      readonly appDir: string | undefined;
-      /** 用户是否显式给了 `--app-dir`：`run.ts` 据此决定"目录不存在就 exit 2"。 */
-      readonly appDirGiven: boolean;
-    } & Common);
-
-export type ParsedArgs =
-  | { readonly ok: true; readonly intent: Intent }
-  | {
-      readonly ok: false;
-      readonly message: string;
-      readonly topic: CommandName | undefined;
-    };
+// `input.ts` / `run.ts` / `commands/*` 都从 `./args` 取这些名字：真正的定义在 `intent.ts`（避免循环 import）。
+export type { HtmlSource, Intent, ParsedArgs, StyleMode } from "./intent";
 
 const MAX_BYTES_CEILING = 10_000_000;
 
 const ACTIONS: readonly string[] = ["replace", "insert_before", "insert_after", "append", "delete"];
 
 const isAction = (value: string): value is PatchAction => ACTIONS.includes(value);
-
-const failure = (message: string, topic: CommandName | undefined): ParsedArgs => ({
-  ok: false,
-  message,
-  topic,
-});
-
-const unusedFlag = (raw: Raw, allowed: readonly string[]): string | undefined => {
-  for (const name of raw.values.keys()) {
-    if (!allowed.includes(name)) return name;
-  }
-  for (const name of raw.switches) {
-    if (!allowed.includes(name)) return name;
-  }
-  return undefined;
-};
-
-const commonOf = (raw: Raw, cwd: string): Common => ({
-  json: raw.switches.has("--json"),
-  workspace: resolve(cwd, raw.values.get("--workspace") ?? cwd),
-});
-
-/** 路径一律先按 cwd 解成绝对路径；写命令到 workspace 的相对换算在 `run.ts`（那里能取真实路径）。 */
-const absoluteOf = (file: string, cwd: string): string => resolve(cwd, file);
 
 const outlineIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
   const [file = "", ...extra] = rest;
@@ -202,6 +134,7 @@ const modeOf = (raw: Raw): StyleMode | undefined | "invalid" => {
 };
 
 const styleIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
+  if (rest[0] === "extract") return extractIntent(raw, rest.slice(1), cwd);
   const [file = "", ...extra] = rest;
   const message =
     extra.length > 0

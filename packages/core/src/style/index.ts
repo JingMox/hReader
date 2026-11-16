@@ -4,6 +4,14 @@ export { applyStyle } from "./applyFile";
 export { replaceTheme } from "./apply";
 export type { ReplaceThemeResult } from "./apply";
 export { assertThemeSafe } from "./css";
+export { extractStyle } from "./extract";
+export type {
+  CorpusFormat,
+  CorpusText,
+  ExtractStats,
+  ExtractStyleInput,
+  ExtractStyleResult,
+} from "./extract";
 export { compileTone } from "./tone";
 export { LINT_HIT_LIMIT, lintByStyle } from "./lint";
 export { discoverStyles, loadStyle } from "./load";
@@ -12,6 +20,8 @@ export { BUILTIN_STYLES, DEFAULT_STYLE_ID, findBuiltinStyle } from "./presets";
 export { readStyleSource } from "./source";
 export type { StyleSourceText } from "./source";
 export { loadThemeCss, resolveThemePath } from "./theme";
+export { saveStyleText } from "./save";
+export type { SavedStyle, SaveStyleTextInput } from "./save";
 export type {
   ApplyStyleInput,
   ApplyStyleResult,

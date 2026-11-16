@@ -41,6 +41,7 @@ const PUBLIC = [
   "compileTone",
   "diffText",
   "discoverStyles",
+  "extractStyle",
   "findBuiltinStyle",
   "injectNodeIds",
   "isInside",
@@ -63,6 +64,7 @@ const PUBLIC = [
   "resolveAnnotation",
   "resolveThemePath",
   "revertLast",
+  "saveStyleText",
   "serializeHtml",
   "startServer",
   "toDocumentModel",
@@ -72,7 +74,7 @@ const PUBLIC = [
 ];
 
 describe("core entry · 精确集", () => {
-  it("should not leak internal symbols onto the public surface（44 项精确集）", () => {
+  it("should not leak internal symbols onto the public surface（46 项精确集）", () => {
     // 精确集而不是"至少含有"：多一个内部符号也红，报错直接点名多出来的那个。
 
     expect(Object.keys(coreEntry).sort()).toEqual(PUBLIC);

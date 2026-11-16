@@ -37,6 +37,8 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   invalid_payload: true,
   nothing_to_undo: true,
   anchor_lost: true,
+  llm_failure: true,
+  file_exists: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {

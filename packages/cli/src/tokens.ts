@@ -15,14 +15,25 @@ const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--app-dir",
   "--html",
   "--html-file",
+  "--id",
+  "--inherits-visual",
   "--max-bytes",
+  "--name",
+  "--out",
   "--port",
   "--visual",
   "--tone",
   "--workspace",
 ]);
 
-const SWITCH_FLAGS: ReadonlySet<string> = new Set(["--html-stdin", "--json", "--lint", "--help"]);
+const SWITCH_FLAGS: ReadonlySet<string> = new Set([
+  "--force",
+  "--html-stdin",
+  "--json",
+  "--lint",
+  "--no-llm",
+  "--help",
+]);
 
 /** `--flag <value>` 用"待取值"状态配对，避免按下标取值的 `undefined` 分支。 */
 export const tokenize = (argv: readonly string[]): Tokenized => {
