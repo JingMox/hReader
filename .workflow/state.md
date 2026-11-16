@@ -1,6 +1,6 @@
 # WORKFLOW STATE
 
-- 当前里程碑: **M3 进行中**（M1 7 卡 / M2 3 卡 + C1 / M3.1 标准 MCP Server / M3.1.1 清两 L 级缺陷 / M3.2 Pi 扩展 `49d8cb1` / M3.4 `hr_undo` `ba9579a` 已结；在跑：**M3.3 `@hreader/dsh-bundle`（host-only）**；之后：M4.x）
+- 当前里程碑: **M3 全部结卡**（M1 7 卡 / M2 3 卡 + C1 / M3.1 `74781fc` / M3.1.1 `3134499` / M3.2 `49d8cb1` / M3.4 `ba9579a` / **M3.3 `165da68`**）；下一卡待用户指示（M4.1 风格萃取器 或 M4.2 Tauri / M4.x DSH Web 面板 / M4.3 导出链）
 - 用户指令（2026-11-16）: “按你的流程来，继续开发，**不要没开发完就问我一下**” → 每卡自主走完 写者 → 审计＋测试 → 返工 → 全量 CI → 提交 → 勾 `docs/02`，不经用户确认。
 - 写者并发: 最多 1 个。**测试用例是代码，归编写员写**（用户 2026-11-15 裁定，`docs/03` §1.2/§1.4）；审计员与测试员纯只读，不写仓库文件。
 - 门禁前置（2026-11-15 起）: 编写员每交一批，协调者先跑全量 `pnpm verify` 再派审计/测试（`docs/03` §3.5、`execution-manual` §10.9 第 7 条）。
@@ -25,7 +25,9 @@
 | 编写员 | `worker` | `c77149fd-10ba-4e2c-b1fc-3f5909705b72` | 2026-11-15 14:0x | M2.3 R1–R4、C1、M3.1 F1–F9、M3.1.1 F1–F4、**M3.2 F1–F6**、M3.4 F1–F3 | 已达 3 卡上限，M3.3 起由 `bbc1e2b7` 接替 |
 | 审计员 | `reviewer` | `e7ec0c5e-95b4-4390-a93b-0bf82f4f3615` | 2026-11-15 16:3x | M2.3、C1、M3.1 G2-R1…R5、M3.1.1 G2-R2、M3.2 G2-R1/R2/R3、M3.4 G2-R1 | 已达 6 卡上限，M3.3 起重建 |
 | 测试员 | `worker` | `0fd44fc1-3154-4573-8c47-e17bee195b50` | 2026-11-15 15:4x | M2.3、C1、M3.1 G3/G3-R2、M3.1.1 G3.1、M3.2 G3-R1…R4、M3.4 G3-R1/R2 | 已达 6 卡上限，M3.3 起重建 |
-| 编写员（M3.3 起） | `worker` | `bbc1e2b7-81b4-46eb-8d6c-f4ed18293863` | 2026-11-16 | — | 在用（M3.3 F1） |
+| 编写员（M3.3 起） | `worker` | `bbc1e2b7-81b4-46eb-8d6c-f4ed18293863` | 2026-11-16 | M3.3 F1–F2、F3 | 链尾 `abba30c7`（F6 注释），下卡可续接 |
+| 审计员（M3.3） | `reviewer` | `4ef1c5b2-742d-484e-8fc7-d194be0cdacc` | 2026-11-16 | M3.3 G2-R1/R3 | APPROVE WITH NOTES（无 P0/P1），下卡可续接 |
+| 测试员（M3.3） | `worker` | `28b76f02`（G3-R1） | 2026-11-16 | M3.3 G3-R1/R2 | 13 变异 11 有牙 1 survived 2 软；下卡续接需重建 |
 
 > M3.2 会话链（2026-11-15 结卡）：编写员 `c77149fd` →（resume）`e4ff84b3` → `648b635f` → `5814489f` → `b6a59718`；审计员 `e7ec0c5e`（G2-R3）；测试员 `0fd44fc1`（G3-R2）→ `1a56dfaa`（G3-R3）→ `5c6dcbf7`（G3-R4）→ `574f2e38`（F5 后签核）。
 > 三个角色的旧会话（`34a29f97`/`24bfa9ff`/`21773373`）在 M3.2 开工时重建，卡内容未变，可从新 runId 续接。
@@ -60,6 +62,7 @@
 | M2.3 | ✅ G1/R1–R4+实现3轮 | ✅ G2-R3 PASS | ✅ 1951 例 / 167 文件 / 四维 perFile 100% / `verify` EXIT=0（协调者复跑，53.7s） | ✅ | 划词批注持久化 + Visual Diff + 撤销（20 AC；16 条路由）；G2 首轮 FAIL(2×P0) 已修。**首次全链绿**；死字段清理 + `diffFlow` 权威 `nodeId` + `blockBasisOf` 丢块报“无变化” + reducer 穷尽性 + 三份 `ZERO_SPAN` 归一。新增 `L-01..L-05`（设计边界/死 seam/线上零消费字段） |
 | M3.1 | ✅ G1/F1–F9 | ✅ G2-R1…R5 PASS | ✅ G3 + G3-R2（含变异表） | ✅ | commit `74781fc`；39 文件 +2875/-303；标准 MCP Server + MCP-UI；**发现 `L-21`（产物离开仓库即失效）/`L-13`（路径判定两份）→ 开 M3.1.1** |
 | M3.1.1 | ✅ F1–F4 | ✅ G2-R2 PASS（+D13 三判定） | ✅ G3.1 签核（对照组实证） | ✅ | commit `3134499`；15 文件 +158/-76；191 文件 / 2102 例 / 四维 100% / `depcruise` 0 / `knip` 无 hint / `EXIT=0`。修 `L-21`+`L-13`+`L-26`；哨兵臂进用例；全量 CI 抓到公开面第二处拼写（`facade.test.ts:35`）→ 立"门禁前置"规则 |
+| M3.3 | ✅ F1–F6（含 F3b/F4b/F5/F6） | ✅ G2-R1 NOTES → **G2-R3 APPROVE WITH NOTES**（无 P0/P1，P2×3+P3×3 当轮修完） | ✅ G3-R1（12 变异+5 AV）→ G3-R2（13 变异：11 有牙 1 survived 2 软）；编排者复核 2 例 | ✅ | commit `165da68`；208 文件 / 2305 例 / 四维 100% / depcruise 457 模块 0 / knip 干净。**假绿两例**：`DEFAULT_STYLE_ID` 钉在 nil-deps 上的行为测（KILLED 后已换上界）+ `dist/styles` 的 `arrayContaining([])`（空集合恒真）。新增 `L-34`/`L-35`；烟测假绿作废重写（§11.22） |
 
 
 ## 消息流水
@@ -94,7 +97,7 @@
 ## 连续模式
 - 用户授权（2026-11-13）：M1.5–M1.9 端到端推进；**2026-11-13 追加**：M2–M4 全部本地推进，不发 npm、不建远端，~~不新增任何依赖~~（2026-11-14 已废止：改为按需引入成熟库，见上方"依赖策略"），`docs/` 由协调者维护。
 - 暂停条件（仅这三类）：未决 P0、契约冲突需用户裁定、范围变化。
-- 当前卡片：M2.3 **全链绿，待提交**。`verify` EXIT=0（1951 例/167 文件/四维 perFile 100%/depcruise 零违规/knip 干净/53.7s，协调者亲跑）。下一卡由用户指示启动（M2.4 起）。
+- 当前卡片：**M3.3 已结卡**（`165da68`，工作树干净）。下一卡候选见 `docs/02` M4 节：M4.1 风格萃取器 / M4.2 Tauri / M4.x DSH Web 面板 / M4.3 导出链。**M4.1 需用户先裁定“用哪个模型/是否允许联网”**（本仓至今零运行时模型依赖）。
 - 决策 D3（2026-11-13）：同步桥用 **SSE + POST** 而非 WebSocket——零依赖下自实现 RFC 6455 的掩码/分片/关闭握手是高风险面，SSE 只有行协议且 EventSource 自带重连。`docs/02` 对应措辞已改。
 - 决策 D11（2026-11-13，用户裁定）：**只走串行**，不开 worktree 并行、不做「包工厂」前置卡。理由：单写者 + 单审计 + 单测试的带宽才是真瓶颈，并行只会在共享配置与审查队列上互相咬。
 - 决策 D4–D10：见 `.workflow/cards/M2.1.md` §1（token→HttpOnly cookie、三点反 CSRF、realpath 守卫、事件环缓冲 256、单文档写串行、干净关闭）。
@@ -143,6 +146,15 @@
 - **M3.1.1 开工（2026-11-15，用户裁定后）**：用户批准①动 core（**只加导出、逻辑一行不改**）②`hr_undo` 另开 M3.4。卡 `.workflow/cards/M3.1.1.md`，写者 run `04307480`。范围：`L-21`（styles 随产物走 + 包内优先候选）、`L-13`（core barrel 导出 `isInsideOrSelf`，mcp 停抄）、`L-17`（knip entry 加 `src/main.ts`）、AC-1 假安装用例（dist+styles 拷到 `/tmp/install-sim/`，三预设逐个真握手）。
 - **M3.4（待开卡）**：`hr_undo`。前置 `L-25`；core 已有 `undoPatch`/快照链（`packages/core/src/index.ts` 已导出 `undoPatch`）。
 
+
+## 2026-11-16 · M3.3 结卡（`165da68`）
+
+- 交付：`packages/dsh-bundle/`（`src/index.ts` 177 行 + `src/events.ts` 类型契约镜像 + `cordis.patch.yml` + `tests/` 6 文件 + esbuild 构建）+ `scripts/smoke-dsh.ts` + 根/工具链配置（`eslint` 单文件豁免 `types.test-d.ts`、`knip` 两处 `ignoreDependencies`、depcruise `no-dev-dependency-from-src` 放行 `type-only` 边）。
+- 会话链（可 resume）：编写员 `bbc1e2b7` → `7e1a44c5`（F3b）→ `9e08843b`（F5 烟测）→ `abba30c7`（F6 注释）；审计员 `4ef1c5b2`（G2-R3 终审）；测试员 `28b76f02`（G3-R1）→ 变异复验（G3-R2，13 项）。
+- **两条假绿（测试员变异挖出）**：①`DEFAULT_STYLE_ID` 钉在 nil-deps 上的行为测——实测把 `?? DEFAULT_STYLE_ID` 改 `"atelier-editorial"` 仍绿；②`dist/styles` 循环靠 `visualIds` 驱动，推成空数组后整条只剥 `existsSync` 一个断言。
+- **一条我自己的事故**：`scripts/smoke-dsh.ts` 从交付起从未真跑过（每次 SKIP），我装真 `dsh 0.2.2-rc.1` 到 `/tmp` 才发现 `--profile` 收名字不收路径（`dsh-app-boot/lib/index.js:1365`）。→ `docs/03` §11.22。
+- 审计员判词（保留原话）：“本地结构镜像 + drift 双向赋值，改名/删字段/新增必填必红；新增可选字段不红，这是有意”——语义漂移（`order` 撞位、`name` 新约束）**只有烟测兜底**，已登记 `L-35`。
+- **不拆 `index.ts`**（审计员与编排者同判）：判据 = 行数 / 独立变化理由数 / 能否被第二调用方复用 / 包定位；触发条件写“`workspaceOf` 出现第二个调用方或超 ~250 行/3 个变化理由 → 先抽 `src/config.ts`”。
 
 ## 2026-11-15 · M3.2 开工：三会话重生（第 2 代）
 
