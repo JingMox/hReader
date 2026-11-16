@@ -8,7 +8,7 @@ import { HrError, isInside, isInsideOrSelf } from "@hreader/core";
 import { foldedOf } from "../errors";
 
 /**
- * 六个工具的 `filePath` 描述共用这一句：**"工作区"是什么必须写出来**。
+ * 七个工具的 `filePath` 描述共用这一句：**"工作区"是什么必须写出来**。
  * 本卡不提供 `--workspace`（`cli.ts` 用 `process.cwd()`），所以"工作区"就是启动时的 cwd；
  * 宿主 `cd /` 拉起时界内就是整个根，这不是 bug，但不能靠宿主自己猜（G3 P1-3）。
  */

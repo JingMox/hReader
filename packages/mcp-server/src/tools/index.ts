@@ -1,5 +1,5 @@
-// 这层管：六个工具的注册表（名字 → 入参 schema → core 原语调用）；工具实现各自一个文件。
-// 拆成两组只是为了让每个函数短到能一眼读完：读写（看清现状 + 开篇）与改动（落盘 + 结批注）。
+// 这层管：七个工具的注册表（名字 → 入参 schema → core 原语调用）；工具实现各自一个文件。
+// 拆成三组只是为了让每个函数短到能一眼读完：读写（看清现状 + 开篇）、改动（落盘 + 结批注）、撤销。
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -9,10 +9,12 @@ import { outlineCall, outlineShape } from "./outline";
 import { patchNodeCall, patchNodeShape } from "./patchNode";
 import { readNodeCall, readNodeShape } from "./readNode";
 import { resolveAnnotationCall, resolveAnnotationShape } from "./resolveAnnotation";
+import { undoCall, undoShape } from "./undo";
 
 export const registerTools = (server: McpServer): void => {
   registerReadingTools(server);
   registerEditingTools(server);
+  registerUndoTool(server);
 };
 
 const registerReadingTools = (server: McpServer): void => {
@@ -78,5 +80,19 @@ const registerEditingTools = (server: McpServer): void => {
       inputSchema: resolveAnnotationShape,
     },
     resolveAnnotationCall,
+  );
+};
+
+/** 撤销单独一组：它改的是"上一次写"，与 patch 共用同一条快照链（`revertLast` 是唯一入口）。 */
+const registerUndoTool = (server: McpServer): void => {
+  server.registerTool(
+    "hr_undo",
+    {
+      title: "撤销上一次写",
+      description:
+        "把最近一次写入**之前**的字节原样放回去（改错了用它，别再用 hr_patch_node 覆盖——覆盖会把写前字节彻底丢掉）；没有历史快照时返回 nothing_to_undo",
+      inputSchema: undoShape,
+    },
+    undoCall,
   );
 };
