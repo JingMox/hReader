@@ -67,6 +67,20 @@ node skills/hreader/scripts/hr.mjs style report.html --lint
 - 写完跑 `style --lint`：命中禁用词会给出 `offset`（块内字符偏移）和上下文，逐条改掉再说"完成"。
 - 默认风格 `atelier-editorial`：结论先行、每三段转一个视觉结构、每个论断挂数字或来源。自定义风格见 `references/style-authoring.md`。
 
+## 让宿主自己带着风格（不用每次取口吻）
+
+本仓有两个包把这个"取口吻"的步骤变成了宿主侧的常驻约束，效果和 `style --tone` 完全相同（同一份 `compileTone` 编译器）：
+
+- **DeepSeek Harness (`dsh`)**：`@hreader/dsh-bundle` 把语言规约织进 system prompt，会话一开就生效。装法（`--profile` 必填）：
+  ```bash
+  dsh plugin --profile <profile> add "$(pwd)/packages/dsh-bundle"
+  ```
+  `config.workspace` 不写就按宿主进程 cwd 找项目风格，并在 stderr 打一行 WARNING 说明用的是哪个目录；未知 `styleId` 会直接报错并列出可用 id。
+- **Pi**：`pi-hreader.ts` 扩展的 `/hr-style` 切换当前会话绑定的风格。
+- **MCP**：prompt `use-hreader-style`，由宿主按需拉取。
+
+换句话说：**当用户问"怎么让 AI 一直按这个风格写"，先看它跑在哪个宿主里**——`dsh`/Pi/MCP 都有现成通道，不要再让 Agent 每轮手工 `style --tone`。
+
 ## 常见错误对照
 
 | 报错 code                | 含义                     | 正确做法                           |

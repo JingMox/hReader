@@ -145,6 +145,22 @@ export default tseslint.config(
     },
   },
   {
+    // 卡 M3.3 AC-2：负例文件里的"期望此处类型报错"指令不是压制错误，而是把"这里必须报错"
+    // 写成可执行断言——期望落空时 tsc 报 TS2578。故只对这一个文件放开该指令（禁词表同步去掉），
+    // 压制型指令（忽略本行 / 忽略本文件）仍全禁；路径写死单文件，不做 glob，避免蔓延到正例测试。
+    files: ["packages/dsh-bundle/tests/types.test-d.ts"],
+    rules: {
+      "@typescript-eslint/ban-ts-comment": [
+        "error",
+        { "ts-expect-error": false, "ts-ignore": true, "ts-nocheck": true },
+      ],
+      "no-warning-comments": [
+        "error",
+        { terms: ["eslint-disable", "ts-ignore"], location: "anywhere" },
+      ],
+    },
+  },
+  {
     // 构建/测试配置必须 default export，白名单只覆盖这些文件。
     files: ["*.config.ts"],
     rules: { "import/no-default-export": "off" },

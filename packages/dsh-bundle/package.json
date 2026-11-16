@@ -1,0 +1,42 @@
+{
+  "name": "@hreader/dsh-bundle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js --sourcemap --sources-content=false --log-level=warning --banner:js='import { createRequire as __cr } from \"node:module\"; const require = __cr(import.meta.url);' && tsc -p tsconfig.build.json --noCheck && cp dist/.types/dsh-bundle/src/*.d.ts dist/ && rm -rf dist/.types && cp -R ../../styles dist/styles"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.2-rc.1+": "compatible"
+      }
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-package-manifest": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.1",
+    "@hreader/core": "workspace:*",
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "vitest": "3.2.4",
+    "yaml": "2.9.1"
+  }
+}
