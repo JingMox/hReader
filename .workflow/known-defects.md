@@ -88,3 +88,11 @@
 **修法（若将来做）**：快照名里带上"父快照哈希"形成链，或在 `.hreader/history/` 存一份 append-only 的单调序号 + 最后写入时间，`latestOf` 校验序号连续性。
 
 **M3.4 已登记的相邻缺陷**：`L-32`（`applyFile` 不写快照 + `revertOp.ts:2` 注释对 style 失实）。
+
+## L-38 · `extractStyle` 传错参数键名会抛裸 `TypeError`（M4.1 §11.10 裁定：不修）
+
+**现象**：`extractStyle({ corpora: [...] })`（正确键名 `corpus`）会在 `packages/core/src/style/extract/paragraphs.ts:123` 的 `flatMap` 上抛 `TypeError: Cannot read properties of undefined`，而不是 `HrError`。违反"裸异常即 P0"。
+
+**为什么不修**：这是 **TypeScript 静态边界**——`extractStyle` 的入参类型 `ExtractStyleInput` 只声明 `corpus`，写错键名在 `pnpm typecheck` 就红；运行期守卫（`assertCorpus`）需要构造一个 TS 不可能产生的对象才能触发，属于"不可由真实输入触发的守卫"，写它只能靠 `as unknown as` 的自造测试养活。取舍：宁可留裸异常，也不留养测试的假守卫。
+
+**若将来需要**：只有当 `extractStyle` 被 JS 宿主（无 TS）直接调用时才值得加守卫；届时在 `extract/index.ts` 入口做一次 `Array.isArray` + `typeof` 检查并抛 `invalid_input`。
