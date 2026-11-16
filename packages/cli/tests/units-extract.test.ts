@@ -230,6 +230,7 @@ describe("输出与读取的小工具", () => {
 
   it.skipIf(process.platform === "win32")("should refuse a character device", async () => {
     // `/dev/zero` 的 `size` 是 0：只比上限的实现会放行，然后无界读。
+    // 这里只测 `stat` 分支：若 `fileSizeOf` 改成先读再量长度，本进程会 OOM 而非断言红——设备路径的主证据是子进程用例。
     await expect(fileSizeOf("/dev/zero")).rejects.toThrow(/是.?非普通文件/u);
   });
 });

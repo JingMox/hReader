@@ -21,6 +21,8 @@ const expectRefusedFast = async (path: string, dir: string): Promise<void> => {
   const startedAt = Date.now();
   const result = await extract([path, "--json"], dir);
 
+  // 1s 是宽松上限：满负载实测最大 209ms（4.78× 余量）。变异体会以 vitest 的 5s testTimeout 变红，
+  // 不是这条断言兜底——所以它证明的是"没挂死"，不是"没超限"。
   expect(Date.now() - startedAt).toBeLessThan(1000);
   expect(result.code).toBe(1);
   expect(result.stdout).toContain('"code":"invalid_input"');
@@ -44,6 +46,7 @@ describe("hr style extract · 目录当语料", () => {
 });
 
 describe("hr style extract · 设备与管道", () => {
+  // 刻意接受的 Windows 空跑：本仓 CI 只跑 POSIX，`/dev/zero` 在 Windows 没有等价物。
   it.skipIf(process.platform === "win32")(
     "should refuse a corpus that is a symlink to /dev/zero",
     async () => {
@@ -56,6 +59,7 @@ describe("hr style extract · 设备与管道", () => {
     },
   );
 
+  // 刻意接受的 Windows 空跑：本仓 CI 只跑 POSIX，`mkfifo` 在 Windows 没有等价物。
   it.skipIf(process.platform === "win32")("should refuse a corpus that is a fifo", async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, "pipe.md");

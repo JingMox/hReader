@@ -51,6 +51,9 @@ const notRegularFileOf = (path: string, stats: Stats): HrError => {
  *
  * 先确认是普通文件：目录、字符设备（`/dev/zero` 报 size 0）与 FIFO（同样 size 0）会让上限
  * 检查直接放行，随后 `readFile` 要么无界读、要么永远等不到写入方。
+ *
+ * `stat` 会跟随符号链接：指向普通文件的链接按普通文件处理（与 `--out` 的守卫同一语义），
+ * 只有解析后仍不是普通文件才拒。
  */
 export const fileSizeOf = async (path: string): Promise<number> => {
   let stats: Stats;
