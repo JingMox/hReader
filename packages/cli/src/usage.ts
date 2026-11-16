@@ -64,6 +64,8 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "  --out <path>         写到文件（默认打印到 stdout）；已存在需 --force",
     "  --inherits-visual <id>  视觉继承的主题 id（默认内置风格）",
     "  --no-llm             强制纯统计版（无 key 时也自动走这里）",
+    "  --model <id>         覆盖模型（默认 deepseek-v4.1-flash）",
+    "  --base-url <url>     覆盖网关地址（默认 https://opencode.ai/zen/go/v1）",
   ],
   undo: [
     "用法：hr undo <file> [--json]",

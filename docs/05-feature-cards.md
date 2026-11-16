@@ -268,6 +268,6 @@ dsh plugin --profile <profile> add "$(pwd)/packages/dsh-bundle"
 - M3.1 MCP Server（7 tools + resources + prompts + MCP-UI）
 - M3.2 Pi 扩展单文件（`/hreader`、`/hr-style`、context.ui 注入）——使用节见上
 - M3.3 DSH Cordis 插件（host-only：`systemPrompt.section` 织入 + 强类型事件发送侧）——使用节见上；Web 面板移 M4.x
-- M4.1 `hr style extract` 风格萃取
+- M4.1 `hr style extract` 风格萃取——LLM 回放 fixture 依赖 model id（`fixtures/llm/README.md`），换模型或改 prompt 需重录
 - M4.2 Tauri v2 桌面端
 - M4.3 出版级 PDF/长图导出

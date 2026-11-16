@@ -50,6 +50,9 @@ export type Intent =
       readonly out: string | undefined;
       readonly inheritsVisual: string;
       readonly noLlm: boolean;
+      /** `--model` / `--base-url`：显式覆盖 env 的默认值；`undefined` = 没给，交给 `llm/session`。 */
+      readonly model: string | undefined;
+      readonly baseUrl: string | undefined;
       readonly force: boolean;
     } & Common)
   | ({ readonly kind: "undo"; readonly path: string } & Common)

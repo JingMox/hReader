@@ -60,7 +60,7 @@ describe("hr style extract · stdout", () => {
       expect(result.stdout).toContain('id: "demo"');
       expect(result.stdout).toContain("  sentence_rhythm:");
       expect(result.stdout).toContain("  examples: []");
-      expect(result.stderr).toContain("未检测到 OPENCODE_API_KEY");
+      expect(result.stderr).toContain("未设置 OPENCODE_API_KEY");
     });
   });
 
@@ -244,13 +244,14 @@ describe("hr style extract · 语料与 id 上限", () => {
 });
 
 describe("hr style extract · LLM 开关", () => {
-  it("should refuse to run the LLM path when a key is present, in this build", async () => {
+  it("should surface a transport failure when a key is present", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);
 
+      // 子进程里没有注入点，所以把请求指向一个必然连不上的地址：链路真跑，网络不出本机。
       const result = await runCli(["style", "extract", file, "--json"], {
         cwd: dir,
-        env: { OPENCODE_API_KEY: "sk-test-never-used" },
+        env: { OPENCODE_API_KEY: "sk-test-never-used", HR_LLM_BASE_URL: "http://127.0.0.1:9" },
       });
 
       expect(result.code).toBe(3);
@@ -273,7 +274,7 @@ describe("hr style extract · LLM 开关", () => {
       );
 
       expect(result.code).toBe(0);
-      expect(result.stderr).not.toContain("未检测到");
+      expect(result.stderr).not.toContain("未设置");
     });
   });
 });

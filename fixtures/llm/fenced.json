@@ -1,0 +1,42 @@
+{
+  "id": "gw-2bc4e6b84a45-ae1577",
+  "object": "chat.completion",
+  "created": 1794868353,
+  "model": "deepseek-v4.1-flash",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "```json\n{\"persona\":\"工程笔记口吻，像资深维护者写给接手的人：先给结论再给证据，句子里塞满路径、行号、版本号和测试文件名；爱用冒号和箭头推进因果，括号里补一句“为什么”；对“顺手改掉”和“没验证就当绿”毫不客气，宁可得罪人也不留下含糊。\",\"narrative_rules\":[\"每条断言后面紧跟证据：文件路径加行号、精确版本号、测试文件名，或一条能复制粘贴复现的命令。\",\"先给做法或结论，再用“所以/因为/否则”交代理由；不允许只下判断而不给出处。\",\"凡有取舍就显式写出被否决的方案与否决理由，句式如“不选 X：……”“别改成 Y——那是……”。\",\"关键否定、警告与结论用加粗，代码、路径、配置键一律行内代码，两者不混用。\",\"把坑写成可复现步骤加已知限制，并标明边界：“登记不修”“不许只改文案”“须随……一起改”。\",\"对容易被误改的地方直接下命令式警告，并说明改错的代价，而不是委婉建议。\"],\"rhythm_style\":\"长句为主，一句里常嵌多个分号、括号补充和箭头推导，靠冒号分层推进；一段一到两句压完一个论点，末尾偶尔甩一句短判断做落点。\",\"examples\":[{\"bad\":\"这个包的配置选项比较灵活，用户可以根据需要调整工作区路径，用起来很方便。\",\"good\":\"`config.workspace` 缺省 → 取宿主进程 `process.cwd()`，并往 stderr 打一行 `[hreader] config.workspace 未配置，使用宿主进程 cwd=<abs>`（用户有权知道 prompt 是按哪个目录的风格渲染的）。\"},{\"bad\":\"我们已经做了充分测试，确保插件在各种环境下都能正常工作，请放心使用。\",\"good\":\"**已用真 `@deepseek-ai/dsh@0.2.2-rc.1` 验过**：`dsh plugin --profile smoke add <包目录>` 退出码 0，`--dump-config` 的合成树里逐字出现 `- id: hreader`；旧版那条软断言已删——它扫描的目录在 `add` 非 0 时也可能已写进包名，是假绿来源。\"}],\"forbidden\":[\"赋能\",\"助力\",\"一站式解决方案\",\"极大提升开发效率\",\"众所周知\",\"综上所述\",\"总的来说\",\"值得注意的是\",\"简单来说\",\"不难发现\",\"显而易见\",\"我们相信\",\"业界领先\",\"优雅地实现\",\"无缝集成\",\"最佳实践\",\"敬请期待\",\"如有疑问欢迎交流\",\"感谢阅读\",\"在当今快速迭代的环境下\"]}\n```",
+        "reasoning_content": "The task: analyze writing style of this author, output JSON only.\n\nKey observations:\n- Long dense sentences, 141 chars avg, up to 2 sentences per paragraph.\n- Heavy use of bold for key terms, inline code, parenthetical asides with explanatory reasoning.\n- Technical, precise, evidence-based; cites file paths with line numbers, version numbers, test names.\n- Uses rhetorical \"why not X\" constructions: \"不选'退默认风格 + warn'：...\"; \"别当垃圾删掉\"; \"别'顺手改掉'\".\n- Emphatic negatives in bold: **没有**, **不改**, **已消解**.\n- Concrete failure modes, reproduction commands.\n- Colons as pivot: \"理由：\", \"所以：\", numbering 1. 2. 3. 4.\n- Avoids hedging, avoids marketing fluff; direct imperative warnings.\n- Rhythm: long run-on sentences with semicolons and parentheses; dense; occasional short punchy clause after long one.\n\nLet me write persona ≤200 chars (Chinese characters).\n\npersona: \"工程笔记口吻，像资深维护者写给继任者：先给结论再给证据，句子里塞满路径、行号、版本号和测试名；爱用冒号和破折号推进因果，括号里补一句为什么；对'顺手改掉'和'没验证就当绿'毫不客气。\"\n\nThat's about 100 chars. Good.\n\nnarrative_rules (1-6, each ≤120 chars):\n1. \"每条断言后面紧跟证据：文件路径加行号、版本号、测试文件名，或一条可复现的命令。\"\n2. \"先给结论或做法，再用'因为/所以/否则'交代理由；禁止只给结论不给出处。\"\n3. \"凡有取舍处，显式写出被否决的方案和否决理由（'不选X：……'）。\"\n4. \"关键名词、否定与警告用加粗标出，代码、路径、配置键用行内代码。\"\n5. \"把坑写成可复现步骤和已知限制，标明'登记不修'或'修法须……'的边界。\"\n6. \"对可能被误改的地方直接下 imperative 警告，并说明代价（'那是拿调试能力换 grep 干净'）。\"\n\nrhythm_style ≤120: \"长句为主，一句常带多个分号与括号补充，靠冒号分层；段内一到两句压完一个论点，收尾偶尔甩一句短判断制造落点。\"\n\nexamples：bad/good pairs。Bad = typical vague/fluffy writing. Good = author's style.\n\nbad: \"这个包的配置选项比较灵活，用户可以根据需要调整工作区路径，非常方便。\"\ngood: \"`config.workspace` 缺省 → 取 `process.cwd()`，并往 stderr 打一行 `[hreader] config.workspace 未配置`；用户有权知道 prompt 按哪个目录渲染。\"\n\nbad: \"我们已经做了充分测试，确保插件在各种环境下都能正常工作。\"\ngood: \"**已用真 `@deepseek-ai/dsh@0.2.2-rc.1` 验过**：`dsh plugin add` 退出码 0，`--dump-config` 合成树里逐字出现 `- id: hreader`；旧版那条软断言已删——它在 `add` 非 0 时也可能写进包名，是假绿来源。\"\n\nforbidden: 套话 this author doesn't say — e.g. \"赋能\", \"助力\", \"一站式\", \"极大提升\", \"众所周知\", \"综上所述\", \"值得注意的是\", \"简单来说\", \"在当今快速发展的...\", \"我们相信\", \"业界领先\", \"优雅地\", \"无缝集成\", \"开箱即用的最佳实践\", \"敬请期待\", \"如有疑问欢迎交流\", \"感谢阅读\", \"总的来说\", \"不难发现\", \"显而易见\".\n\nMax 24. Keep ~14-16.\n\nOutput JSON without markdown. Ensure valid JSON escaping.\n\nCount characters roughly ok."
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 2991,
+    "completion_tokens": 1441,
+    "total_tokens": 4432,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 859
+    },
+    "cost": 0,
+    "opencode": {
+      "billing_source": "go",
+      "list_cost": 0.00131325,
+      "allowance": 0.00078795,
+      "tokens": {
+        "input": 2991,
+        "output": 1441,
+        "reasoning": 859,
+        "cache_read": 0,
+        "cache_write_5m": 0,
+        "cache_write_1h": 0
+      }
+    }
+  }
+}

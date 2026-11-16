@@ -4,12 +4,14 @@ export { applyStyle } from "./applyFile";
 export { replaceTheme } from "./apply";
 export type { ReplaceThemeResult } from "./apply";
 export { assertThemeSafe } from "./css";
-export { extractStyle } from "./extract";
+export { extractStyle, extractStyleWithLlm } from "./extract";
 export type {
   CorpusFormat,
   CorpusText,
   ExtractStats,
   ExtractStyleInput,
+  ExtractStyleLlmInput,
+  ExtractStyleLlmResult,
   ExtractStyleResult,
 } from "./extract";
 export { compileTone } from "./tone";

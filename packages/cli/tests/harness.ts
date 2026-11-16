@@ -135,6 +135,18 @@ export const keysOf = (value: unknown): readonly string[] =>
 export const atOf = (value: unknown, index: number): unknown =>
   Reflect.get(Object(value), String(index));
 
+/** 假 fetch 拿到的第一个参数可能是字符串/URL/Request：一律折成 URL 文本，供 `toContain`/相等断言。 */
+export const fetchUrlOf = (input: Parameters<typeof globalThis.fetch>[0]): string => {
+  if (typeof input === "string") return input;
+  return input instanceof URL ? input.href : input.url;
+};
+
+/** 请求体原文（假 fetch 只写字符串体）；非字符串体折成空串，避免测试里做 `as` 断言。 */
+export const fetchBodyOf = (init: Parameters<typeof globalThis.fetch>[1]): string => {
+  const body: unknown = init?.body;
+  return typeof body === "string" ? body : "";
+};
+
 /** 只接受字符串的字段（其余一律序列化），让 `toContain` 不依赖断言。 */
 export const textOf = (value: unknown): string =>
   typeof value === "string" ? value : JSON.stringify(value);

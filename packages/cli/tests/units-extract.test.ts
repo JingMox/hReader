@@ -39,6 +39,7 @@ const inputOf = (
   out: undefined,
   force: false,
   json: false,
+  llm: undefined,
   ...overrides,
 });
 
@@ -48,7 +49,10 @@ interface Capture {
   readonly err: string[];
 }
 
-const capture = (env: Readonly<Record<string, string | undefined>> = {}): Capture => {
+const capture = (
+  env: Readonly<Record<string, string | undefined>> = {},
+  fetchImpl?: typeof globalThis.fetch,
+): Capture => {
   const out: string[] = [];
   const err: string[] = [];
   return {
@@ -61,6 +65,7 @@ const capture = (env: Readonly<Record<string, string | undefined>> = {}): Captur
       readStdin: () => Promise.resolve(new Uint8Array()),
       debug: false,
       env,
+      ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
     },
   };
 };
@@ -149,16 +154,19 @@ describe("run · style extract 的降级与报错", () => {
 
     expect(code).toBe(0);
     expect(out.join("")).toContain('id: "x"');
-    expect(err.join("")).toContain("未检测到 OPENCODE_API_KEY");
+    expect(err.join("")).toContain("未设置 OPENCODE_API_KEY，仅用统计结果");
   });
 
-  it("should refuse the LLM path when a key is present without --no-llm", async () => {
-    const { io, out, err } = capture({ OPENCODE_API_KEY: "sk-unit-test" });
+  it("should bubble the transport llm_failure when a key is present", async () => {
+    const { io, out, err } = capture({ OPENCODE_API_KEY: "sk-unit-test" }, () =>
+      Promise.resolve(new Response("boom", { status: 500 })),
+    );
 
     const code = await run(["style", "extract", corpusAt("r2.md"), "--json"], io);
 
     expect(code).toBe(3);
     expect(out.join("")).toContain('"code":"llm_failure"');
+    expect(out.join("")).toContain("可加 --no-llm 只用统计结果");
     expect(err.join("")).not.toContain("sk-unit-test");
     expect(out.join("")).not.toContain("sk-unit-test");
   });
@@ -169,7 +177,38 @@ describe("run · style extract 的降级与报错", () => {
     const code = await run(["style", "extract", corpusAt("r3.md"), "--no-llm", "--json"], io);
 
     expect(code).toBe(0);
-    expect(err.join("")).not.toContain("未检测到");
+    expect(err.join("")).not.toContain("未设置");
+  });
+});
+
+describe("run · style extract 的 fetch 兜底", () => {
+  it("should default to an empty env and the global fetch when neither is injected", async () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    // 不传 `env`：无 key → 纯统计版；这一条钉住 `io.env ?? {}` 的兜底。
+    const code = await run(["style", "extract", corpusAt("r2-nofetch.md"), "--json"], {
+      cwd: dir,
+      stdout: (text) => out.push(text),
+      stderr: (text) => err.push(text),
+      readStdin: () => Promise.resolve(new Uint8Array()),
+      debug: false,
+    });
+
+    expect(code).toBe(0);
+    expect(err.join("")).toContain("未设置 OPENCODE_API_KEY");
+  });
+
+  it("should fall back to the global fetch when the io has no injection point", async () => {
+    // 有 key 又不给 `io.fetch`：走真 `fetch`，但把地址指到必然拒绝的本机端口，不出网。
+    const { io, out } = capture({
+      OPENCODE_API_KEY: "sk-unit-test",
+      HR_LLM_BASE_URL: "http://127.0.0.1:9",
+    });
+
+    const code = await run(["style", "extract", corpusAt("r2-real-fetch.md"), "--json"], io);
+
+    expect(code).toBe(3);
+    expect(out.join("")).toContain('"code":"llm_failure"');
   });
 });
 

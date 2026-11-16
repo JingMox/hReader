@@ -28,6 +28,7 @@
         "src/exit-codes.ts",
         "src/commands/*.ts",
         "fixtures/*.mjs",
+        "scripts/*.ts",
         "tests/**/*.ts"
       ]
     },

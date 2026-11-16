@@ -5,6 +5,7 @@ import type {
   ApplyStyleResult,
   DaemonInfo,
   ExtractStats,
+  ExtractStyleLlmResult,
   ExtractStyleResult,
   HrErrorCode,
   LintHit,
@@ -23,6 +24,9 @@ interface DiagnosticShape {
   readonly severity: string;
   readonly message: string;
 }
+
+/** `Dropped` 没在 core 的公开面单列；用结果类型取它，免得为了一个字段再造一个导出。 */
+type DroppedItem = ExtractStyleLlmResult["dropped"][number];
 
 const quote = (value: string): string => JSON.stringify(value);
 
@@ -81,9 +85,20 @@ const statsJson = (stats: ExtractStats): string =>
   `"averageSentenceChars":${String(stats.averageSentenceChars)},` +
   `"maxParagraphSentences":${String(stats.maxParagraphSentences)}}`;
 
-/** `path` 为 `null` = 只打印没写盘；`yaml` 原样给（调用方可直接落盘或再改）。 */
-export const dataStyleExtract = (result: ExtractStyleResult, path: string | null): string =>
-  `{"path":${path === null ? "null" : quote(path)},"stats":${statsJson(result.stats)},"yaml":${quote(result.yaml)}}`;
+const droppedJson = (item: DroppedItem): string =>
+  `{"field":${quote(item.field)},"reason":${quote(item.reason)}}`;
+
+/**
+ * `path` 为 `null` = 只打印没写盘；`yaml` 原样给（调用方可直接落盘或再改）。
+ * `dropped` 只出现在走过 LLM 的结果上：纯统计版没有可丢的东西，凭空给空数组会暗示模型看过。
+ */
+export const dataStyleExtract = (
+  result: ExtractStyleResult,
+  path: string | null,
+  dropped?: readonly DroppedItem[],
+): string =>
+  `{"path":${path === null ? "null" : quote(path)},"stats":${statsJson(result.stats)},"yaml":${quote(result.yaml)}` +
+  (dropped === undefined ? "}" : `,"dropped":[${dropped.map(droppedJson).join(",")}]}`);
 
 const outlineLines = (nodes: readonly OutlineNode[], depth: number): readonly string[] =>
   nodes.flatMap((node) => [

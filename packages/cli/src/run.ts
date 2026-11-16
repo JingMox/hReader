@@ -18,6 +18,8 @@ import { styleExtractCommand } from "./commands/styleExtract";
 import { undoCommand } from "./commands/undo";
 import { EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./exit-codes";
 import { sourceText } from "./input";
+import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
+import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
 import { jsonError } from "./output";
 import { usageText, type CommandName } from "./usage";
 
@@ -29,6 +31,8 @@ export interface CliIo {
   readonly debug: boolean;
   /** env 快照：`process.env` 只在 `main.ts` 取一次（不传 = 无 key）；测试据此注入假 key。 */
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /** LLM 分支的网络注入点：不传 = 真 `fetch`；测试据此回放 `fixtures/llm/`。 */
+  readonly fetch?: typeof globalThis.fetch;
   /** serve 靠它感知 SIGTERM/SIGINT；其它命令不需要（测试里构造 io 时可省）。 */
   readonly stop?: Promise<void>;
 }
@@ -101,28 +105,33 @@ const never = new Promise<void>(() => undefined);
 
 const LLM_KEY_ENV = "OPENCODE_API_KEY";
 
-const llmKeyOf = (env: CliIo["env"]): string | undefined => {
-  const key = env?.[LLM_KEY_ENV]?.trim();
-  return key === undefined || key === "" ? undefined : key;
-};
-
-/** R4：有 key 默认走 LLM；F1 只交付统计路径，所以“有 key 但没接入”必须显式报错而不是静默降级。 */
-const refuseLlm = (key: string | undefined, noLlm: boolean): void => {
-  if (key === undefined) return;
-  if (!noLlm) {
-    throw new HrError("llm_failure", "本构建没有接入 LLM 提取层：请加 --no-llm 走纯统计版");
-  }
+/** 传输层只在这里构造：`commands/*` 不许碰 env，网络实现也不该知道 flag 从哪来。 */
+const llmOf = (
+  intent: Extract<Runnable, { kind: "styleExtract" }>,
+  io: CliIo,
+  env: Readonly<Record<string, string | undefined>>,
+  key: string,
+): LlmPort => {
+  return createLlmClient({
+    apiKey: key,
+    baseUrl: normalizeBaseUrl(intent.baseUrl ?? baseUrlOf(env)),
+    model: intent.model ?? modelOf(env),
+    sessionId: sessionIdOf(env),
+    timeoutMs: LLM_TIMEOUT_MS,
+    fetch: io.fetch ?? globalThis.fetch,
+  });
 };
 
 const runExtract = async (
   intent: Extract<Runnable, { kind: "styleExtract" }>,
   io: CliIo,
 ): Promise<string> => {
-  const key = llmKeyOf(io.env);
-  refuseLlm(key, intent.noLlm);
-  if (key === undefined) {
-    io.stderr(`未检测到 ${LLM_KEY_ENV}：已走纯统计版（与 --no-llm 等价）\n`);
-  }
+  // env 在这里取一次：`llmOf` 只该看到具体的 env，而不是"可能没有 env"的 io。
+  const env = io.env ?? {};
+  const key = apiKeyOf(env);
+  // D2：没 key 是正常路径，不是错误——只在 stderr 说明一句，产物与 --no-llm 完全一致。
+  if (key === undefined) io.stderr(`未设置 ${LLM_KEY_ENV}，仅用统计结果\n`);
+  const llm = key === undefined || intent.noLlm ? undefined : llmOf(intent, io, env, key);
   if (!intent.idGiven) io.stderr(`未给 --id，使用默认值：${intent.id}\n`);
   if (!intent.nameGiven) io.stderr(`未给 --name，使用默认值：${intent.name}\n`);
   if (intent.files.length === 1) io.stderr("单篇语料的规则会很窄：建议 3 篇以上\n");
@@ -139,6 +148,7 @@ const runExtract = async (
         : relative(workspace, realpathThroughAncestors(intent.out)),
     force: intent.force,
     json: intent.json,
+    llm,
   });
 };
 
