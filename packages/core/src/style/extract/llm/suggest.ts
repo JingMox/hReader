@@ -2,19 +2,16 @@
 
 import type { ExampleSpec } from "../../contracts";
 
-/** `persona` 上限（卡 §4）；超了整字段丢弃而不是截断——半截人格比没有人格更坏。 */
+/** 卡 §4 的字数上限：超限整条丢弃而不是截断——半截人格比没有人格更坏。 */
 const MAX_PERSONA_CHARS = 200;
-
-/** 单条叙事规则 / `rhythm.style` / 单条 `forbidden` 的上限（卡 §4）。 */
 const MAX_RULE_CHARS = 120;
-
-/** 叙事规则条数上限（卡 §4）。 */
 const MAX_RULES = 6;
-
-/** 正反例组数上限（卡 §4）。 */
 const MAX_EXAMPLES = 2;
 
-/** 追加 `forbidden` 的条数上限：与统计层合用 24 条的总上限，这里先按总量拦。 */
+/**
+ * 追加 `forbidden` 的条数上限：**追加侧独占 24**，不是与统计层共享的总额——统计层已有 k 条时，
+ * 合并阶段实际只留下 24-k 条，被压掉的建议聚合记一条 `forbidden`+`too_long`（见 `merge.ts`）。
+ */
 const MAX_APPENDED_FORBIDDEN = 24;
 
 /** 响应 `content` 的字节上限：超过就当整份不可解析，不再逐字段读一个几十 MB 的串。 */
@@ -30,8 +27,8 @@ const KNOWN_KEYS: readonly string[] = [
   "forbidden",
 ];
 
-/** `rhythm` 子对象里只认 `style`；`max_paragraph_sentences` 由统计层独断（D3），出现即 `not_owned`。 */
-const KNOWN_RHYTHM_KEYS: readonly string[] = ["style"];
+const KNOWN_EXAMPLE_KEYS: readonly string[] = ["bad", "good"]; // 多出的叶子键按整项记 not_owned（字段名 examples[i]）
+const KNOWN_RHYTHM_KEYS: readonly string[] = ["style"]; // max_paragraph_sentences 归统计层（D3），出现即 not_owned
 
 export type DroppedReason = "not_owned" | "wrong_type" | "too_long" | "unparsable";
 
@@ -53,10 +50,15 @@ export interface Suggestions {
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/**
+ * 真实模型常把 JSON 包在 ``` / ```json 围栏里，BOM 也见过：解析前剥掉，剥完仍非法才算不可解析
+ * ——否则 F3 会把这种常见写法报成 `llm_failure`（假故障）。
+ */
 const tryJson = (text: string): unknown => {
+  const stripped = text.trim().replace(/^\uFEFF/, "");
+  const fence = /^```[A-Za-z]*[ \t]*\r?\n([\s\S]*?)\r?\n```$/.exec(stripped);
   try {
-    const parsed: unknown = JSON.parse(text);
-    return parsed;
+    return JSON.parse((fence?.[1] ?? stripped).replace(/^\uFEFF/, ""));
   } catch {
     return undefined;
   }
@@ -97,9 +99,9 @@ const reportUnknown = (
 const trimmedOf = (value: unknown): string | undefined =>
   typeof value === "string" ? value.trim() : undefined;
 
-interface TextFieldSpec {
+/** `field` 是进 `dropped` 的字段名：子对象里的键要带上前缀（`rhythm.style`）；列表字段同样只认它。 */
+interface FieldSpec {
   readonly key: string;
-  /** 进 `dropped` 的字段名：子对象里的键要带上前缀（`rhythm.style`）。 */
   readonly field: string;
   readonly maxChars: number;
 }
@@ -107,7 +109,7 @@ interface TextFieldSpec {
 /** 单值文本字段：类型错 → `wrong_type`，超长 → `too_long`，都不抛。 */
 const textFieldOf = (
   body: Readonly<Record<string, unknown>>,
-  spec: TextFieldSpec,
+  spec: FieldSpec,
   dropped: Dropped[],
 ): string | undefined => {
   const value = body[spec.key];
@@ -124,7 +126,10 @@ const textFieldOf = (
   return text;
 };
 
-/** 逐项筛字符串列表：坏项按 `name[index]` 记一条并跳过，不因一项坏掉丢掉整个字段。 */
+/**
+ * 逐项筛字符串列表：坏项按 `name[index]` 记一条并跳过，不因一项坏掉丢掉整个字段。
+ * 数组项只能是字符串或非字符串（后者即 `wrong_type`），没有"叶子里还藏键"的形态。
+ */
 const itemsOf = (
   value: readonly unknown[],
   field: string,
@@ -146,33 +151,31 @@ const itemsOf = (
   return items;
 };
 
-interface ListFieldSpec {
-  readonly key: string;
-  readonly maxChars: number;
-  readonly maxItems: number;
-}
-
 const listFieldOf = (
   body: Readonly<Record<string, unknown>>,
-  spec: ListFieldSpec,
+  spec: FieldSpec,
+  maxItems: number,
   dropped: Dropped[],
 ): readonly string[] | undefined => {
   const value = body[spec.key];
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
-    dropped.push({ field: spec.key, reason: "wrong_type" });
+    dropped.push({ field: spec.field, reason: "wrong_type" });
     return undefined;
   }
-  const items = itemsOf(value, spec.key, spec.maxChars, dropped);
-  if (items.length <= spec.maxItems) return items;
-  dropped.push({ field: spec.key, reason: "too_long" });
-  return items.slice(0, spec.maxItems);
+  const items = itemsOf(value, spec.field, spec.maxChars, dropped);
+  if (items.length <= maxItems) return items;
+  dropped.push({ field: spec.field, reason: "too_long" });
+  return items.slice(0, maxItems);
 };
 
 const pairOf = (item: unknown, at: string, dropped: Dropped[]): ExampleSpec | undefined => {
   if (!isRecord(item)) {
     dropped.push({ field: at, reason: "wrong_type" });
     return undefined;
+  }
+  if (Object.keys(item).some((key) => !KNOWN_EXAMPLE_KEYS.includes(key))) {
+    dropped.push({ field: at, reason: "not_owned" });
   }
   const bad = trimmedOf(item["bad"]);
   const good = trimmedOf(item["good"]);
@@ -202,9 +205,8 @@ const examplesOf = (
 };
 
 /**
- * 节奏描述：扁平的 `rhythm_style` 是 prompt 要的键，**也是权威**——它出现时 `rhythm` 对象整体记
- * `not_owned` 后不再解析（避免两处各解析出一个值再比先后）；扁平键缺席时才收 `rhythm.style`，
- * 其中 `max_paragraph_sentences` 由统计层独断（D3），出现即 `not_owned`。
+ * 节奏描述：扁平的 `rhythm_style` 是 prompt 要的键，**也是权威**——它可用时 `rhythm` 对象整体记 `not_owned`
+ * 后不再解析；扁平键**缺席或不可用时都**用 `rhythm.style` 兜底，其中 `max_paragraph_sentences` 归统计层（D3）。
  */
 const rhythmStyleOf = (
   body: Readonly<Record<string, unknown>>,
@@ -234,18 +236,14 @@ const rhythmStyleOf = (
 };
 
 /**
- * "这份建议能不能用"（AC-3②，B 案判据）：整份不可解析，或四个"模型才有"的字段全空，都算用户要的
- * LLM 萃取没拿到——CLI 据此报 `llm_failure`；`forbidden` 只是追加项，不参与判断。
+ * "这份建议能不能用"（AC-3②，B 案判据）：四个"模型才有"的字段里有任意一个**非空**即可用。
+ * 整份不可解析时它们必然全空，所以不必另看 `dropped`；`forbidden` 只是追加项，不参与判断。
  */
-export const llmUsableOf = (dropped: readonly Dropped[], suggestions: Suggestions): boolean => {
-  if (dropped.some((item) => item.reason === "unparsable")) return false;
-  return (
-    suggestions.persona !== undefined ||
-    (suggestions.narrativeRules ?? []).length > 0 ||
-    suggestions.rhythmStyle !== undefined ||
-    (suggestions.examples ?? []).length > 0
-  );
-};
+export const llmUsableOf = (suggestions: Suggestions): boolean =>
+  (suggestions.persona ?? "").length > 0 ||
+  (suggestions.narrativeRules ?? []).length > 0 ||
+  (suggestions.rhythmStyle ?? "").length > 0 ||
+  (suggestions.examples ?? []).length > 0;
 
 /** 逐个字段读；每个字段的失败都只丢自己、记一条 `dropped`，不影响其它字段。 */
 const fieldsOf = (body: Readonly<Record<string, unknown>>, dropped: Dropped[]): Suggestions => {
@@ -257,7 +255,8 @@ const fieldsOf = (body: Readonly<Record<string, unknown>>, dropped: Dropped[]): 
   );
   const narrativeRules = listFieldOf(
     body,
-    { key: "narrative_rules", maxChars: MAX_RULE_CHARS, maxItems: MAX_RULES },
+    { key: "narrative_rules", field: "narrative_rules", maxChars: MAX_RULE_CHARS },
+    MAX_RULES,
     dropped,
   );
   const rhythmStyle = rhythmStyleOf(body, dropped);
@@ -265,23 +264,23 @@ const fieldsOf = (body: Readonly<Record<string, unknown>>, dropped: Dropped[]): 
   const forbidden =
     listFieldOf(
       body,
-      { key: "forbidden", maxChars: MAX_RULE_CHARS, maxItems: MAX_APPENDED_FORBIDDEN },
+      { key: "forbidden", field: "forbidden", maxChars: MAX_RULE_CHARS },
+      MAX_APPENDED_FORBIDDEN,
       dropped,
     ) ?? [];
   // `exactOptionalPropertyTypes`：缺省必须是"键不存在"，不能是"键为 undefined"。
-  const suggestions: Suggestions = {
+  return {
     forbidden,
     ...(persona === undefined ? {} : { persona }),
     ...(narrativeRules === undefined ? {} : { narrativeRules }),
     ...(rhythmStyle === undefined ? {} : { rhythmStyle }),
     ...(examples === undefined ? {} : { examples }),
   };
-  return suggestions;
 };
 
 /**
- * 模型响应 → 建议。**永不抛**：坏 JSON、形状不对、超长都退化成空建议 + `dropped`，
- * 是否"不可用"由 `llmUsableOf` 判定；本函数不造第二套校验。
+ * 模型响应 → 建议。**永不抛**：坏 JSON、形状不对、超长都退化成空建议 + `dropped`；是否可用由
+ * `llmUsableOf` 判定，本函数不造第二套校验。
  */
 export const suggestionsOf = (
   raw: string,

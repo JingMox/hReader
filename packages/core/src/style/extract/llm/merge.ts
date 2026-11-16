@@ -4,19 +4,23 @@ import type { LanguageSpec, StyleSpec } from "../../contracts";
 import { MAX_FORBIDDEN } from "../contracts";
 import type { Dropped, Suggestions } from "./suggest";
 
+/** 比较与入库统一 NFC，否则 `é` 的两种编码会并立两条，"去了重"其实没去；全角 `，` 与 ASCII `,` 不归一（语义不同）。 */
+const nfcOf = (text: string): string => text.normalize("NFC");
+
 /**
- * 统计命中表在前、追加按响应顺序、首次出现为准（卡 §10 R5/D3）。
- * 满 24 条后不再追加，并记一条 `too_long`——不静默截断，用户能从 `--json` 看见被压掉的建议。
+ * 统计命中表在前、追加按响应顺序、首次出现为准（卡 §10 R5/D3）。追加侧独占 24 条，
+ * 满额后不再追加并聚合记一条 `too_long`——不静默截断，用户能从 `--json` 看见被压掉的建议。
  */
 const forbiddenOf = (
   stat: readonly string[],
   extra: readonly string[],
   dropped: Dropped[],
 ): readonly string[] => {
-  const seen = new Set(stat);
-  const merged = [...stat];
+  const seen = new Set(stat.map(nfcOf));
+  const merged = stat.map(nfcOf);
   let overflowed = false;
-  for (const word of extra) {
+  for (const candidate of extra) {
+    const word = nfcOf(candidate);
     if (seen.has(word)) continue;
     seen.add(word);
     if (merged.length >= MAX_FORBIDDEN) {

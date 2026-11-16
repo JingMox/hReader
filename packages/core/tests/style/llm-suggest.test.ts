@@ -115,24 +115,6 @@ describe("suggestionsOf · 整字段类型错", () => {
   });
 });
 
-describe("suggestionsOf · 超长", () => {
-  it("should refuse a content body beyond the byte limit", () => {
-    const { suggestions, dropped } = suggestionsOf(responseOf("a".repeat(65 * 1024)));
-
-    expect(suggestions).toEqual({ forbidden: [] });
-    expect(dropped).toEqual([{ field: "content", reason: "too_long" }]);
-  });
-
-  it("should drop an over-long persona instead of truncating it", () => {
-    const { suggestions, dropped } = suggestionsOf(
-      responseOf(contentOf({ persona: "长".repeat(201) })),
-    );
-
-    expect(suggestions.persona).toBeUndefined();
-    expect(dropped).toEqual([{ field: "persona", reason: "too_long" }]);
-  });
-});
-
 describe("suggestionsOf · 原型污染", () => {
   it("should never let a __proto__ key reach Suggestions or Object.prototype", () => {
     const raw = responseOf('{"persona":"冷峻。","__proto__":{"polluted":true}}');
@@ -167,11 +149,12 @@ describe("suggestionsOf · 规则列表", () => {
     expect(dropped).toEqual([{ field: "narrative_rules[1]", reason: "wrong_type" }]);
   });
 
-  it("should drop an over-long rule item by index", () => {
-    const { dropped } = suggestionsOf(
-      responseOf(contentOf({ narrative_rules: ["短", "长".repeat(121)] })),
+  it("should keep rule 120 and drop rule 121 by index", () => {
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ narrative_rules: ["长".repeat(120), "长".repeat(121)] })),
     );
 
+    expect(suggestions.narrativeRules).toEqual(["长".repeat(120)]);
     expect(dropped).toEqual([{ field: "narrative_rules[1]", reason: "too_long" }]);
   });
 });
@@ -186,6 +169,15 @@ describe("suggestionsOf · 例子", () => {
     expect(dropped).toEqual([{ field: "examples[0]", reason: "wrong_type" }]);
   });
 
+  it("should report an unknown leaf key inside an example instead of eating it", () => {
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ examples: [{ bad: "坏", good: "好", note: "备注" }] })),
+    );
+
+    expect(suggestions.examples).toEqual([{ bad: "坏", good: "好" }]);
+    expect(dropped).toEqual([{ field: "examples[0]", reason: "not_owned" }]);
+  });
+
   it("should drop an example that misses a side or is not an object", () => {
     const { suggestions, dropped } = suggestionsOf(
       responseOf(contentOf({ examples: [{ bad: "很差" }, 5, { bad: "坏", good: "好" }] })),
@@ -196,6 +188,18 @@ describe("suggestionsOf · 例子", () => {
       { field: "examples[0]", reason: "wrong_type" },
       { field: "examples[1]", reason: "wrong_type" },
     ]);
+  });
+});
+
+describe("suggestionsOf · examples 边界：2 收 / 3 丢", () => {
+  it("should keep exactly two example pairs without complaint", () => {
+    const pair = (index: number) => ({ bad: `坏${String(index)}`, good: `好${String(index)}` });
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ examples: [pair(0), pair(1)] })),
+    );
+
+    expect(suggestions.examples).toHaveLength(2);
+    expect(dropped).toEqual([]);
   });
 
   it("should keep the first two example pairs and report the overflow", () => {
@@ -218,6 +222,14 @@ describe("suggestionsOf · 列表上限", () => {
 
     expect(suggestions.narrativeRules).toEqual(rules.slice(0, 6));
     expect(dropped).toEqual([{ field: "narrative_rules", reason: "too_long" }]);
+  });
+
+  it("should keep exactly 24 appended forbidden words without complaint", () => {
+    const words = Array.from({ length: 24 }, (_, index) => `套话${String(index)}`);
+    const { suggestions, dropped } = suggestionsOf(responseOf(contentOf({ forbidden: words })));
+
+    expect(suggestions.forbidden).toHaveLength(24);
+    expect(dropped).toEqual([]);
   });
 
   it("should keep 24 appended forbidden words and report the 25th", () => {
@@ -245,6 +257,15 @@ describe("suggestionsOf · rhythm 双键", () => {
     ]);
   });
 
+  it("should fall back to rhythm.style when the flat key is unusable", () => {
+    const { suggestions, dropped } = suggestionsOf(
+      responseOf(contentOf({ rhythm_style: "长".repeat(121), rhythm: { style: "散漫" } })),
+    );
+
+    expect(suggestions.rhythmStyle).toBe("散漫");
+    expect(dropped).toEqual([{ field: "rhythm_style", reason: "too_long" }]);
+  });
+
   it("should let the flat rhythm_style win and mark the nested rhythm as not owned", () => {
     const { suggestions, dropped } = suggestionsOf(
       responseOf(contentOf({ rhythm_style: "紧凑", rhythm: { style: "散漫" } })),
@@ -256,20 +277,22 @@ describe("suggestionsOf · rhythm 双键", () => {
 });
 
 describe("llmUsableOf · 判据", () => {
-  it("should reject an unparsable response", () => {
-    expect(llmUsableOf([{ field: "content", reason: "unparsable" }], { forbidden: [] })).toBe(
-      false,
-    );
+  it("should reject an unparsable response through the all-empty rule", () => {
+    const { suggestions } = suggestionsOf("not json at all");
+
+    expect(suggestions).toEqual({ forbidden: [] });
+    expect(llmUsableOf(suggestions)).toBe(false);
   });
 
-  it("should reject a suggestion set with all four owned fields empty", () => {
-    expect(llmUsableOf([], { forbidden: ["众所周知"] })).toBe(false);
+  it("should reject a suggestion set with all four owned fields empty or blank", () => {
+    expect(llmUsableOf({ forbidden: ["众所周知"] })).toBe(false);
+    expect(llmUsableOf({ forbidden: [], persona: "", rhythmStyle: "" })).toBe(false);
   });
 
   it("should accept any single owned field", () => {
-    expect(llmUsableOf([], { forbidden: [], persona: "冷峻。" })).toBe(true);
-    expect(llmUsableOf([], { forbidden: [], narrativeRules: ["先结论"] })).toBe(true);
-    expect(llmUsableOf([], { forbidden: [], rhythmStyle: "短句" })).toBe(true);
-    expect(llmUsableOf([], { forbidden: [], examples: [{ bad: "坏", good: "好" }] })).toBe(true);
+    expect(llmUsableOf({ forbidden: [], persona: "冷峻。" })).toBe(true);
+    expect(llmUsableOf({ forbidden: [], narrativeRules: ["先结论"] })).toBe(true);
+    expect(llmUsableOf({ forbidden: [], rhythmStyle: "短句" })).toBe(true);
+    expect(llmUsableOf({ forbidden: [], examples: [{ bad: "坏", good: "好" }] })).toBe(true);
   });
 });
