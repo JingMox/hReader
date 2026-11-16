@@ -1,0 +1,4 @@
+- insert:
+    - id: hreader
+      name: "@hreader/dsh-bundle"
+      config: {}

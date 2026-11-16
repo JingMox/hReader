@@ -81,9 +81,10 @@ module.exports = {
     {
       name: "no-dev-dependency-from-src",
       severity: "error",
-      comment: "运行时代码不得依赖 devDependencies，否则发布后必然崩。",
+      comment:
+        "运行时代码不得依赖 devDependencies，否则发布后必然崩；type-only 边不算运行时依赖（M3.3 D4：`@deepseek-ai/*` 只作 devDeps，源码里只 `import type`，否则两份 cordis 实例会让 Events 合并静默失效）。",
       from: { path: "^packages/[^/]+/src" },
-      to: { dependencyTypes: ["npm-dev"] },
+      to: { dependencyTypes: ["npm-dev"], dependencyTypesNot: ["type-only"] },
     },
   ],
   options: {

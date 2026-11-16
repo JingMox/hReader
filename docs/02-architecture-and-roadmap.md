@@ -27,7 +27,7 @@ flowchart TB
         Skill["Universal Skill\n• SKILL.md\n• hr-cli.mjs 脚本\n• 风格按需加载"]
         MCP["hReader MCP Server\n• DOM 增量读写 Tools\n• 语言风格 Prompts\n• MCP-UI 内联视图"]
         Pi["Pi Agent Extension\n• pi-hreader.ts 单文件\n• /hreader & /hr-style\n• context.ui 双向注入"]
-        DSH["DeepSeek Harness Bundle\n• Cordis 插件 (dsh.bundle)\n• Prompt Hook 动态织入\n• Web 分屏面板 & 强类型事件"]
+        DSH["DeepSeek Harness Bundle\n• Cordis 插件 (dsh.bundle)\n• systemPrompt.section 织入\n• 强类型事件 (发送侧)"]
     end
 
     subgraph Core["Layer 3: 核心引擎与同步守护进程 (@hreader/core & Daemon)"]
@@ -243,12 +243,12 @@ sequenceDiagram
   * **终端与阅读器联动**：订阅本地 Daemon 的 **SSE** 事件流（`GET /api/events`，`cookie` 认证 + `Last-Event-ID` 回填 + 心跳帧；M2.1 决定用 SSE 而非 WebSocket，见 `packages/core/src/server/event-ring.ts`）；事件到达后按需拉取批注（`GET /api/doc/:docId/annotations`），有新条目时调用 `ctx.ui.confirm` / `ctx.ui.notify` 提示用户，把节点源码与批注组装成消息注入 Pi 上下文（`pi.sendUserMessage` / `pi.sendMessage`）。
 
 #### ④ DeepSeek Harness 插件 (`packages/dsh-bundle`)
-* 深度适配 **DeepSeek Harness (`dsh`)** 的 **Cordis** 微内核架构：
-  * **插件清单 (`package.json` & `cordis.patch.yml`)**：声明 `dsh.bundle` 入口，支持通过 `dsh plugin add @hreader/dsh-bundle` 无侵入安装。
-  * **Cordis 服务注册**：在 `ctx.provide('hreader')` 中挂载核心引擎实例，利用 Cordis 的 `ctx.on('dispose', ...)` 实现优雅的可逆卸载（Reversible Effects）。
-  * **事件总线与自动接管**：
-    * 监听 DSH 的模型输出流或工具调用事件；当挂载了某款 `hreader` 语言风格 Profile 时，通过 Cordis 的 Prompt Interceptor 动态向 System Prompt 织入该风格的 `language_style` 规约。
-    * 提供 `dsh-web-app` 前端面板扩展：在 DSH 的 Web 工作台中直接增加一个 **hReader Tab**，用户在 Tab 内划词点击“AI 重写”时，派发强类型事件 `ctx.emit('hreader/patch-request', payload)`，直接触发 DSH Agent Loop 执行局部修补。
+* 深度适配 **DeepSeek Harness (`dsh`)** 的 **Cordis** 微内核架构（M3.3 只做 host 半边，见下"M4 候选"）：
+  * **插件清单：两份都要写**。`package.json` 的 `dsh.bundle.patch: "./cordis.patch.yml"` 指向随包的 patch 文件，该 yaml 里 `insert` 一条 `{ id: hreader, name: '@hreader/dsh-bundle', config: {} }`；`dsh.compatibility.dshReleases` 同样必填（不写 dsh 会拦）。安装命令是 `dsh plugin --profile <profile> add <包目录>`——`--profile` 是**必填**选项（M3.3 调研：漏了直接 usage 报错）。
+  * **Cordis 服务注册**：`ctx.provide('hreader', { styleId, prompt })` 暴露语言规约，同时用 `ctx.effect(...)` 注册并在清理函数里摘除 section 与服务（Reversible Effects），重复 `apply` 幂等。
+  * **语言规约织入：`ctx.systemPrompt.section({ name, order, text })`**。`text` 逐字节等于 `compileTone(loadStyle(...).spec)`——与 CLI `hr style --tone`、MCP prompt `use-hreader-style` 同一份编译器，本包不拼接任何文案。**上游没有 "Prompt Hook / Prompt Interceptor" 这套机制**（M3.3 调研：`grep -rni "interceptor\|prompt hook"` 零命中），旧版本这里写错了，故改成本条。
+  * **强类型事件**：`declare module '@deepseek-ai/cordis'` 里给 `Events` 补 `'hreader/patch-request'`，载荷是 `{ workspace, request: PatchRequest }`。本卡只交付**发送侧的类型契约**（`tsc` 编译期验证），接收方（谁把事件转成 Agent Loop 的一轮修补）在 dsh 侧，本仓无法单独验证。
+  * **`dsh-web-app` 内嵌阅读面板：移到 M4 候选，本卡不做。** 冲突理由：DSH client 侧要求 React + `window.__ModuleLoader__.load` + `ctx.slots.inject`，而本仓阅读器（`packages/app`）是"无 bundler、无框架"的纯 DOM（§5 的设计前提），两者互斥；强行做等于给阅读器引入构建链，破坏它"由 daemon 静态托管、单文件可开"的核心约束。
 
 ---
 
@@ -288,7 +288,7 @@ hReader/
 │   ├── desktop/                        # @hreader/desktop: Tauri v2 桌面端外壳 (后期按需开启)
 │   ├── mcp-server/                     # @hreader/mcp: 标准 MCP Server (含 MCP-UI)
 │   ├── pi-extension/                   # pi-hreader.ts: Pi Coding Agent 单文件扩展
-│   └── dsh-bundle/                     # @hreader/dsh-bundle: DeepSeek Harness Cordis 插件包
+│   └── dsh-bundle/                     # @hreader/dsh-bundle: DeepSeek Harness Cordis 插件包（host-only）
 └── skills/
     └── hreader/                        # Universal Skill (SKILL.md + references + scripts)
 ```
@@ -336,7 +336,7 @@ flowchart LR
 * **核心任务**：
   - [x] **M3.1 `@hreader/mcp-server`**：实现标准 MCP Tools、语言风格 Prompts 注册，并兼容 `MCP-UI` 内联资源协议。
   - [x] **M3.2 Pi 插件 (`pi-hreader.ts`)**：编写单文件 TypeScript 扩展，实现 `/hreader`、`/hr-style` 命令及阅读器批注向 Pi `context.ui` 的自动投递。
-  - [ ] **M3.3 DeepSeek Harness 插件 (`@hreader/dsh-bundle`)**：基于 Cordis 编写插件入口与 `cordis.patch.yml`，实现语言风格 Prompt Hook 动态织入、强类型事件触发 Agent Loop 局部修补、以及 `dsh-web-app` 内嵌阅读面板。
+  - [x] **M3.3 DeepSeek Harness 插件 (`@hreader/dsh-bundle`)**：host-only。插件的两份清单（`package.json` 的 `dsh.bundle.patch` + `cordis.patch.yml`）+ `dsh.compatibility.dshReleases`；用 `ctx.systemPrompt.section({ name, order: 100, text })` 织入 `compileTone` 的语言规约（与 CLI/MCP 同一编译器）；`ctx.provide('hreader')` 暴露 `{ styleId, prompt }` 并以 `ctx.effect` 保证可逆卸载；`declare module '@deepseek-ai/cordis'` 给出 `'hreader/patch-request'` 的强类型事件（发送侧）。`workspace` 缺省取宿主进程 cwd（带 stderr WARNING），相对路径按 cwd 解析，路径不存在 fail-fast。（原路线图的 "Prompt Hook" 概念不存在、"`dsh plugin add`" 缺 `--profile`、以及 `dsh-web-app` 面板三项已按调研更正，其中面板移 M4 候选。）
   - [x] **M3.4 `hr_undo` 工具**：给 MCP 层补撤销入口（前端与 HTTP 早已有 `undoPatch`，MCP 缺一个工具）。2026-11-15 用户裁定从 M3.1 拆出，避免撑爆单卡验收范围。**已完成**：`packages/mcp-server/src/tools/undo.ts`（走 `revertLast`，`nothing_to_undo` 不泄漏 `undo_unavailable`）；164 例 + 真起 daemon 的 MCP↔HTTP 差分；`L-32`（换样式不留快照）/`L-33`（快照无新鲜度校验）已登记。
 
 ### Milestone 4：Tauri v2 独立桌面端与“AI 风格萃取工坊”
@@ -344,6 +344,7 @@ flowchart LR
 * **核心任务**：
   - [ ] **M4.1 AI 语言风格萃取器 (`hr style extract`)**：用户只需丢入 3~5 篇自己喜欢的历史文章或博客，Agent 自动分析其句式节奏、常用转折词、叙事结构与高频词汇，一键生成专属的 `style.yaml`。
   - [ ] **M4.2 Tauri v2 跨平台桌面应用 (`@hreader/desktop`)**：打包 macOS / Windows / Linux 原生安装包，支持系统级全局快捷键呼出与 `.html` 文件关联打开。
+  - [ ] **M4.x DSH Web 面板 (`dsh-web-app` 内嵌 hReader Tab)**：从 M3.3 移出的 (c) 项。在 DSH Web 工作台里加一个 hReader Tab，划词后 `ctx.emit('hreader/patch-request', payload)` 触发修补。冲突：DSH client 插件要求 React + `window.__ModuleLoader__.load` + `ctx.slots.inject`，与本仓"无 bundler、无框架、daemon 静态托管"的阅读器设计互斥，需先决定是"给面板单独引一套构建链"还是"复用 daemon 的 iframe + postMessage"。发送侧类型契约已由 M3.3 的 `declare module '@deepseek-ai/cordis'` 备好。
   - [ ] **M4.3 出版级导出工具链**：优化 `@media print` 样式，支持一键导出带目录书签的精美 PDF 与社交媒体高清长图。
 
 ### 已知非目标：片段校验里"不拦"的两类输入（v3 裁定，2026-11-13）

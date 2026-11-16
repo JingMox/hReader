@@ -528,3 +528,58 @@ M3.2 的收尾轮出现一次：`packages/pi-extension/` 是**新目录、尚未
 1. 修任何关于**行为**的不实陈述前，先用该陈述里的关键名词 `grep -rn` 全仓（`docs/`、`skills/`、`packages/*/src`、`README.md`），列出所有拼写副本，一次全改。
 2. 行为类事实的**唯一权威**是代码；文档之间互为副本，谁都不是权威。所以改完要用一条命令回证（`sed -n '<line>p'`）。
 3. 反向也成立：**新增**行为说明时，只在**一个**地方写清事实，别处只写“见 `docs/05` 的 X 节”——副本越多，漂移越快。
+
+### 11.20 路线图不是事实：立卡前先证"卡里的外部依赖真实存在"（M3.3，2026-11-16）
+
+**事故**：`docs/02:245-251` 的 M3.3 要做一个 DSH(Cordis) 插件。立卡前我派了一路只读调研去证伪，结论是**半真半假**——生态真实存在，但三处细节是错的：
+
+| 路线图写的 | 真实 |
+| :--- | :--- |
+| `dsh plugin add @hreader/dsh-bundle` | `--profile` 是 requiredOption，漏了就 usage 报错 |
+| 插件入口 = `cordis.patch.yml` | 两份都要：`package.json` 的 `dsh.bundle.patch` + 该 yaml |
+| "Prompt Hook / Interceptor" | 该概念**不存在**；真机制是 `ctx.systemPrompt.section()` + `system-prompt/assemble` waterfall |
+
+另有两处更隐蔽的：`dsh@1.0.1` 是 2016 年的 JS shell（撞名）、`@deepseek/harness` 404，真实组织是 `@deepseek-ai/*`；`ctx.emit` 的类型合并必须写 `declare module '@deepseek-ai/cordis'` 而不是 `'cordis'`（写错**不报错**，只是校验静默失效）。
+
+**这是 §11.18 的推广**：注释不是备忘而是契约，那么**路线图不是事实而只是提案**。若按错字段名做完一卡，会在真宿主上一次性崩掉，而在此之前 CI 全绿。
+
+**规则**：立卡前，凡是卡里引用**本仓之外**的东西（包名、版本、入口字段名、API 名、CLI 用法），必须有一条可复跑的命令证明它的存在与形状：`npm view <pkg> version license`、`npm pack` 后读 `*.d.ts`、`grep` 官方模板。拿不到就写"拿不到，因为……"，然后把该条降级为"待验证"放进 §3 不在范围，不许当事实写进 AC。
+
+**补充（F1 阶段的反向更正，2026-11-16）**：卡里初稿写的 `order` 带位是 `-100` identity / `0` persona / `100-199` tool guidance——**这是更早版本的真值**，`@deepseek-ai/dsh-system-prompt@0.2.2-rc.1` 实际是 `HARNESS_IDENTITY: -1000` / `DEPLOYMENT_PERSONA_PREFIX: 0` / `PLAN_POLICY: 500` / `TOOL_BASH: 1000` 起为工具指引（`lib/types/index.d.ts:123-152`）。写者按真值取 `100` 并给出理由，反过来纠正了我的卡。
+
+**规则升级**：卡里凡引用**外部包内的常量/枚举/序号**，除了"证明它存在"，还要**贴出取值所在的行**（`sed -n '123,152p' <pkg>/lib/types/index.d.ts`）。"我记得是 100-199" 与 "路线图这么写的" 是同一类错误，只是一个记在自己脑子里、一个记在别人的文档里。
+
+**副产物**：这一卡还顺带证明了两件事——(a) 风格规约的**内容**半边早就在了（`hr style --tone` 与 MCP `use-hreader-style` 都走 `compileTone`），所以"缺这个能力"的判断也要先 grep；(c) 面板要求 React + `window.__ModuleLoader__.load`，与 `docs/02:255`「无框架阅读器」直接冲突，被移出本卡。
+
+### 11.21 派单里点名的符号，必须是 grep 得到的东西（M3.3 G3-R1，2026-11-16）
+
+**事故**：我给测试员写的第一份变异清单点名了 12 个待变异目标，其中 `resolvePatch`、`textOf`、`styleDeps`、`retag`、`hooks` **在本包里根本不存在**（我从上一张 `pi-extension` 卡的结构凭印象写的）。测试员只能把 4 条标 `N/A` 并说"`grep` 全仓无该符号"——好在他没有被"必须报 12 条"的格式逼着编结果。
+
+**代价是可测量的**：一整轮的 1/3 工力打在空气上，而且如果测试员不够硬，最可能的结局是给我一张"变异表全绿"的假报告——因为**变异一个不存在的函数，永远不会红**，写成 `N/A` 还是写成 `KILLED` 全靠自觉。
+
+**规则**：
+1. **派单前，每个点名的符号先 grep 一次**，把 `文件:行` 贴进派单正文（`grep -n "function resolvePatch\|styleDeps" packages/**/src`）。派单里出现 grep 不到的符号，是协调者的错误，不是执行者的。
+2. 测试员遇到不存在的目标，**必须报 `N/A` 并附 grep 证据**，不许翻译成 `KILLED`，也不许为了凑数找近似物替代（本轮它把 `workspaceOf` 当 `resolvePatch` 的等价物是**被允许**的，因为它明说了"等价物"并给出理由）。
+3. 变异表的格式要求里**显式包含 `N/A` 这一列值**，否则格式本身在制造假绿。
+
+**判断句式**（本轮测试员的正确写法，可复制）：「本包无 `resolvePatch`/`../` 检查；等价物 `workspaceOf` 删目录检查 → KILLED（等价物）」
+
+### 11.22 烟测脚本本身从未被烟测过（M3.3 F5，2026-11-16）
+
+**事故**：我为 M3.3 写的 `scripts/smoke-dsh.ts` 本轮每跑一次都打印 `SKIP 烟测：本机没有可用的 dsh`（EXIT=0），于是它从交付到终审**从未真跑过**。我自己去 `npm i -D @deepseek-ai/dsh@0.2.2-rc.1` 装到隔离目录后第一次打它，第一行就抛：
+
+```
+Error: dsh: invalid profile name "/var/folders/…/hreader-dsh-profile-HYrJIG"
+    at resolveProfileDir (…/dsh-app-boot/lib/index.js:1365)
+```
+
+`--profile` 收名字不收路径（`:1365` 抛 `name.includes("/")`）。**这个烟测从写完起就没有一次能通过**，而它不在 CI 里、SKIP 又记 EXIT=0，所以它是“永远绿”的完美形态——一个不受任何回归保护、却出现在交付物里的花瓶。
+
+更隐蔽的一层：它原本的判据是“profile 目录里出现 `@hreader/dsh-bundle`”，而我在退出码 1 的那次失败里看到 **profile 目录已经被写入了包名**——“日志/目录里出现某字符串”是能被失败副作用满足的**软断言**。
+
+**规则**：
+1. **任何 `scripts/smoke-*` 交付前必须有一次“真跑”记录**，且真跑必须由**不是写这段代码的人**在另一台/另一环境下复现（§11.13 的同一条原则推到脚本上）。`SKIP` 不算通过。
+2. `SKIP` 必须与 `FAIL` 在输出上可区分，且 SKIP 文案里要给出**可执行**的安装命令（本轮改为 `npm i -D @deepseek-ai/dsh@0.2.2-rc.1`）。文档要明写“这条能力目前无 CI 回归保护”——不许让读者以为它绿。
+3. **禁止软断言**：断言必须落在**产物结构**上。本轮换成 `dsh --profile <name> --dump-config`（help 原文 `print the composed profile tree and exit`）的合成树三行（`# == @hreader/dsh-bundle` / `- id: hreader` / `name: '@hreader/dsh-bundle'`），它不是“命令成功后的副作用”，而是“插件真的进了合成树”。
+4. **家目录必隔离**：会写 `~/.dsh` / `~/.hreader` 的烟测必须显式注入 `DSH_HOME`（`node_modules/@deepseek-ai/dsh-home-paths/lib/index.js:15` `DSH_HOME_ENV`，`:109` 优先级「显式 > $DSH_HOME > ~/.dsh」），并附“跑完 `ls ~/.dsh/profiles` 无新增”的验证方法（本轮实测跑前后都是 `desktop node_modules open-design web`）。
+5. 同理可用的一手价值：装真二进制只需要 2 分钟与一个隔离目录（`npm i -D` 到 `/tmp`），比在假身上猜 API 便宜得多——凡是“产出必须在宿主里生效”的能力，**优先装真的**。

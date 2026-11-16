@@ -203,7 +203,7 @@ packages/core            ← 依赖底座，不依赖任何其他 hreader 包
 packages/cli             → core
 packages/mcp-server      → core
 packages/pi-extension    → core
-packages/dsh-bundle      → core
+packages/dsh-bundle      → core（**构建期**：esbuild 把 core 打进 dist/index.js，运行时不算跨包依赖）
 packages/reader-ui       → core 的公开类型/协议，不 import 其实现
 packages/desktop         → reader-ui 的构建产物（Tauri 外壳，零业务逻辑）
 ```

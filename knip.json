@@ -44,6 +44,11 @@
     },
     "packages/pi-extension": {
       "entry": ["pi-hreader.ts", "tests/**/*.ts"]
+    },
+    "packages/dsh-bundle": {
+      "entry": ["tests/**/*.ts"],
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@deepseek-ai/dsh-attachment", "@deepseek-ai/dsh-package-manifest"]
     }
   },
   "ignoreIssues": {
