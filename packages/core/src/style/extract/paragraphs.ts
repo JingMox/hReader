@@ -1,20 +1,17 @@
 // 这层管：语料 → 纯文字段落 → 句数（Markdown 行块与 HTML 块元素两套切分）；不统计、不判定风格。
 
 import { injectNodeIds, parseHtml } from "../../html";
+import type { HtmlNode, ParsedHtml } from "../../html";
 import { toDocumentModel } from "../../model";
 import type { DocumentModel } from "../../model";
 
 import type { CorpusText } from "./contracts";
 
-/** HTML 侧算"叙述正文"的块元素：标题、代码、表格与 Markdown 侧同口径排除。 */
-const PARAGRAPH_TAGS: ReadonlySet<string> = new Set([
-  "p",
-  "li",
-  "blockquote",
-  "td",
-  "dd",
-  "figcaption",
-]);
+/**
+ * HTML 侧算"叙述正文"的块元素：标题、代码、表格与 Markdown 侧同口径排除。
+ * 只列 `BLOCK_TAGS` 里的标签——不在那里的元素永不成为模型节点，列进来是死条目。
+ */
+const PARAGRAPH_TAGS: ReadonlySet<string> = new Set(["p", "li", "blockquote"]);
 
 const ASCII_ALNUM = /[0-9A-Za-z]/u;
 
@@ -78,6 +75,7 @@ const frontMatterEnd = (lines: readonly string[]): number => {
   return 0;
 };
 
+/** @internal 仅供统计层的边界测试直接驱动行级切分；对外入口是 `paragraphTextsOf`。 */
 export const markdownParagraphsOf = (text: string): readonly string[] => {
   const lines = text.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n");
   const paragraphs: string[] = [];
@@ -111,12 +109,33 @@ const paragraphsOfModel = (node: DocumentModel): readonly string[] => [
   ...node.children.flatMap(paragraphsOfModel),
 ];
 
+const ARTICLE = "article";
+
+const childrenOf = (node: HtmlNode): readonly HtmlNode[] =>
+  node.kind === "element" || node.kind === "document" ? node.children : [];
+
+const hasArticle = (node: HtmlNode): boolean =>
+  (node.kind === "element" && node.tag === ARTICLE) || childrenOf(node).some(hasArticle);
+
+/**
+ * 另存下来的网页大多没有 `<article>`，而模型派生要求恰好一个。
+ * 只在这里补一层空壳：改阅读器的派生语义会让真实文档的 `invalid_document` 失去意义。
+ */
+const withArticle = (parsed: ParsedHtml): ParsedHtml =>
+  hasArticle(parsed.root)
+    ? parsed
+    : {
+        ...parsed,
+        root: { kind: "element", tag: ARTICLE, attrs: [], children: childrenOf(parsed.root) },
+      };
+
 /**
  * 文档模型只把带 `data-hr-id` 的块级元素算作节点，其余文本会被吸进最近的祖先：
- * 用户给的 HTML 语料通常没有 id，所以先注入（只补 id，不改文本）。
+ * 用户给的 HTML 语料通常没有 id，所以先注入——补全缺失 id；不合法 id 被改写并追加
+ * `invalid_hr_id` 诊断；文本节点原样透传。
  */
 const htmlParagraphsOf = (text: string): readonly string[] =>
-  paragraphsOfModel(toDocumentModel(injectNodeIds(parseHtml(text)).parsed));
+  paragraphsOfModel(toDocumentModel(injectNodeIds(withArticle(parseHtml(text))).parsed));
 
 export const paragraphTextsOf = (corpus: readonly CorpusText[]): readonly string[] =>
   corpus
@@ -135,7 +154,10 @@ const isAsciiPeriodEnd = (text: string, index: number): boolean => {
   return next === "" || SPACE.test(next);
 };
 
-/** 分号不算句末（卡 §10 R6）：`；` 连的是小句，`。！？!?…` 与行尾句点才结束一句。 */
+/** 分号不算句末（卡 §10 R6）：`；` 连的是小句，`。！？!?…` 与行尾句点才结束一句。
+ *
+ * @internal 仅供统计层与边界测试使用；对外只经 `statisticsOf` 露出汇总量。
+ */
 export const sentenceCountOf = (text: string): number => {
   let count = 0;
   let previousTerminator = false;

@@ -31,5 +31,5 @@ export const extractStyle = (input: ExtractStyleInput): ExtractStyleResult => {
   const forbidden = forbiddenPhrasesOf(corpusText);
   const recommended = recommendedWordsOf(corpusText);
   const yaml = styleYamlOf(styleSpecOf(input, stats, forbidden, recommended));
-  return { spec: parseStyleText(yaml, "提取产物"), yaml, stats };
+  return { spec: parseStyleText(yaml, input.id), yaml, stats };
 };

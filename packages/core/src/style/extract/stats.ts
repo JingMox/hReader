@@ -14,7 +14,10 @@ const CJK_CHAR = /[\u3400-\u4dbf\u4e00-\u9fff]/u;
 
 const P75 = 0.75;
 
-/** 线性插值分位数（未取整）：调用方负责 floor 与夹取。 */
+/** 线性插值分位数（未取整）：调用方负责 floor 与夹取。
+ *
+ * @internal 仅供统计层与边界测试使用（`[]` 与单元素两分支真实输入触不到）。
+ */
 export const percentileOf = (sorted: readonly number[], fraction: number): number => {
   const position = (sorted.length - 1) * fraction;
   const lower = Math.floor(position);
@@ -67,10 +70,20 @@ const bigramsOf = (corpusText: string): readonly string[] => {
   return bigrams;
 };
 
-const byFrequencyThenCodepoint = (
+/**
+ * 卡 §10 R5 的输出契约：频次降序、同频按 Unicode 码位升序。
+ *
+ * @internal 只给单测：`sort` 只会拿两个不同条目来问，`left === right` 那一支真实排序到不了，
+ * 而"同键回 0"是契约的一部分，所以导出后直接断言。
+ */
+export const byFrequencyThenCodepoint = (
   left: readonly [string, number],
   right: readonly [string, number],
-): number => (left[1] === right[1] ? (left[0] < right[0] ? -1 : 1) : right[1] - left[1]);
+): number => {
+  if (left[1] !== right[1]) return right[1] - left[1];
+  if (left[0] === right[0]) return 0;
+  return left[0] < right[0] ? -1 : 1;
+};
 
 /** 卡 §10 R5：频次降序、同频按 Unicode 码位升序——换台机器也必须是同一个 16 条。 */
 export const recommendedWordsOf = (corpusText: string): readonly string[] => {

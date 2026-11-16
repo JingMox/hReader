@@ -58,7 +58,37 @@ describe("paragraphTextsOf · HTML 语料", () => {
 
     expect(paragraphs).toEqual(["正文一", "列表项"]);
   });
+});
 
+describe("paragraphTextsOf · 浏览器另存页", () => {
+  it("should read a browser-saved page that has no article at all", () => {
+    // 浏览器"另存为"的形态：有 html/body/标题/正文，零 data-hr-id、零 <article>。
+    const saved = [
+      "<!doctype html>",
+      '<html lang="zh"><head><meta charset="utf-8"><title>一篇博客</title></head>',
+      "<body>",
+      "<h1>标题不算段落</h1>",
+      "<p>第一段正文。</p>",
+      "<div><p>第二段正文。</p></div>",
+      "</body></html>",
+    ].join("\n");
+
+    expect(paragraphTextsOf([{ format: "html", text: saved }])).toEqual([
+      "第一段正文。",
+      "第二段正文。",
+    ]);
+  });
+
+  it("should rewrite an illegal data-hr-id without touching the text", () => {
+    const paragraphs = paragraphTextsOf([
+      { format: "html", text: '<article data-hr-id="Bad Id"><p>正文</p></article>' },
+    ]);
+
+    expect(paragraphs).toEqual(["正文"]);
+  });
+});
+
+describe("paragraphTextsOf · 语料顺序", () => {
   it("should keep markdown and html corpora in argv order", () => {
     const paragraphs = paragraphTextsOf([
       { format: "markdown", text: "一。" },

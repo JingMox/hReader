@@ -1,6 +1,6 @@
 // 这层管：CLI 自己的字节 → 文本（严格 UTF-8、保留 BOM）与片段来源读取；不做 HTML/CSS/YAML 语义。
 
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 
 import { HrError } from "@hreader/core";
 
@@ -19,29 +19,36 @@ export const decodeStrict = (bytes: Uint8Array, label: string): string => {
   }
 };
 
+const readErrorOf = (error: unknown, path: string): HrError => {
+  const missing = codeOf(error) === "ENOENT";
+  return new HrError(
+    missing ? "not_a_file" : "io_failure",
+    missing ? `读取时路径不存在：${path}` : `读取失败：${path}`,
+    { cause: error },
+  );
+};
+
 const readFileOr = async (path: string): Promise<Uint8Array> => {
   try {
     return await readFile(path);
   } catch (error: unknown) {
-    if (codeOf(error) === "ENOENT") {
-      throw new HrError("not_a_file", `读取时路径不存在：${path}`, { cause: error });
-    }
-    throw new HrError("io_failure", `读取失败：${path}`, { cause: error });
+    throw readErrorOf(error, path);
   }
 };
 
 export const readTextFile = async (path: string): Promise<string> =>
   decodeStrict(await readFileOr(path), path);
 
-export interface SizedText {
-  readonly bytes: number;
-  readonly text: string;
-}
-
-/** 语料要的是字节数（上限按字节算）与文本（严格解码）两者：分开取就得读两遍文件。 */
-export const readTextFileSized = async (path: string): Promise<SizedText> => {
-  const bytes = await readFileOr(path);
-  return { bytes: bytes.length, text: decodeStrict(bytes, path) };
+/**
+ * 上限按字节算：`stat` 只读目录项，超限文件连一次解码器都不进（500 MiB 也不会被读成字符串）。
+ * 尺寸是无符号整数，与 `readFile` 读到的 `byteLength` 同一个量。
+ */
+export const fileSizeOf = async (path: string): Promise<number> => {
+  try {
+    return (await stat(path)).size;
+  } catch (error: unknown) {
+    throw readErrorOf(error, path);
+  }
 };
 
 export const sourceText = async (

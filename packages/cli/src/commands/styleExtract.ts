@@ -5,7 +5,7 @@ import { extname } from "node:path";
 import { HrError, extractStyle, nodeStyleDeps, saveStyleText } from "@hreader/core";
 import type { CorpusFormat, CorpusText, ExtractStyleResult } from "@hreader/core";
 
-import { readTextFileSized } from "../input";
+import { fileSizeOf, readTextFile } from "../input";
 import { dataStyleExtract, humanStyleExtract, jsonOk } from "../output";
 
 /** D9：单篇 1 MiB、总量 4 MiB。先看字节数再解码，别让 CLI 替用户把超限语料读成字符串。 */
@@ -34,18 +34,16 @@ const corpusOf = async (files: readonly string[]): Promise<readonly CorpusText[]
   for (const path of files) {
     // 先看后缀再读盘：后缀不合法的文件没必要整份读进来再拒。
     const format = formatOf(path);
-    const sized = await readTextFileSized(path);
-    if (sized.bytes > MAX_CORPUS_FILE_BYTES) {
-      throw new HrError(
-        "invalid_input",
-        `单篇语料超过 1 MiB：${path}（${String(sized.bytes)} 字节）`,
-      );
+    // 再看字节数（`stat`，不解码）：超限文件绝不能先被读成字符串再拒。
+    const bytes = await fileSizeOf(path);
+    if (bytes > MAX_CORPUS_FILE_BYTES) {
+      throw new HrError("invalid_input", `单篇语料超过 1 MiB：${path}（${String(bytes)} 字节）`);
     }
-    total += sized.bytes;
+    total += bytes;
     if (total > MAX_CORPUS_BYTES) {
       throw new HrError("invalid_input", `语料总量超过 4 MiB（${String(total)} 字节）`);
     }
-    corpus.push({ format, text: sized.text });
+    corpus.push({ format, text: await readTextFile(path) });
   }
   return corpus;
 };

@@ -1,5 +1,6 @@
 // 这层管：`hr style extract` 的真子进程行为（stdout YAML、写盘、错误码、无 key 降级）；不碰网络。
 
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -38,6 +39,9 @@ const extract = async (
   dir: string,
   env: Record<string, string> = NO_KEY,
 ): Promise<CliResult> => runCli(["style", "extract", "--no-llm", ...args], { cwd: dir, env });
+
+const sha256Of = (path: string): string =>
+  createHash("sha256").update(readFileSync(path)).digest("hex");
 
 const jsonDataOf = (result: CliResult): unknown => {
   const parsed = parseJsonLine(result.stdout);
@@ -107,29 +111,43 @@ describe("hr style extract · 写盘", () => {
 });
 
 describe("hr style extract · 覆盖守卫", () => {
-  it("should keep an existing file intact without --force, then overwrite with it", async () => {
+  it("should leave an existing file byte-identical without --force", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);
       mkdirSync(join(dir, "styles"));
       writeFileSync(join(dir, "styles/demo.yaml"), "旧内容");
+      const target = join(dir, "styles/demo.yaml");
+      const before = sha256Of(target);
 
       const refused = await extract(
         [file, "--id", "demo", "--out", "styles/demo.yaml", "--json"],
         dir,
       );
+
       expect(refused.code).toBe(1);
       expect(refused.stdout).toContain('"code":"file_exists"');
-      expect(readFileSync(join(dir, "styles/demo.yaml"), "utf8")).toBe("旧内容");
+      expect(sha256Of(target)).toBe(before);
+    });
+  });
+
+  it("should overwrite an existing file with --force", async () => {
+    await withTempDir(async (dir) => {
+      const file = seedCorpus(dir);
+      mkdirSync(join(dir, "styles"));
+      writeFileSync(join(dir, "styles/demo.yaml"), "旧内容");
 
       const forced = await extract(
         [file, "--id", "demo", "--out", "styles/demo.yaml", "--force"],
         dir,
       );
+
       expect(forced.code).toBe(0);
       expect(readFileSync(join(dir, "styles/demo.yaml"), "utf8")).toContain('id: "demo"');
     });
   });
+});
 
+describe("hr style extract · 父目录守卫", () => {
   it("should refuse a missing parent directory instead of creating it", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);
@@ -190,11 +208,13 @@ describe("hr style extract · 语料与 id 上限", () => {
   it("should reject a corpus file above 1 MiB before decoding it", async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, "big.md");
-      writeFileSync(path, "一".repeat(400_000));
+      // 超限 + 非法 UTF-8：先解码的实现会报 invalid_utf8（exit 3），先 stat 的实现报 1 MiB（exit 1）。
+      writeFileSync(path, Buffer.alloc(1024 * 1024 + 1, 0xff));
 
       const result = await extract([path, "--json"], dir);
 
       expect(result.code).toBe(1);
+      expect(result.stdout).toContain('"code":"invalid_input"');
       expect(result.stdout).toContain("单篇语料超过 1 MiB");
     });
   });

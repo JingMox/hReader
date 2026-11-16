@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { extractStyle, type ExtractStyleResult } from "@hreader/core";
 
-import { readTextFileSized } from "../src/input";
+import { fileSizeOf, readTextFile } from "../src/input";
 import { dataStyleExtract, humanStyleExtract } from "../src/output";
 import { run, type CliIo } from "../src/run";
 import { styleExtractCommand, type StyleExtractInput } from "../src/commands/styleExtract";
@@ -210,12 +210,15 @@ describe("run · style extract 的默认值提醒", () => {
 });
 
 describe("输出与读取的小工具", () => {
-  it("should count bytes and decode text in one read", async () => {
+  it("should stat the byte size without decoding the file", async () => {
     const path = corpusAt("sized.md", "一二。");
 
-    const sized = await readTextFileSized(path);
+    expect(await fileSizeOf(path)).toBe(Buffer.byteLength("一二。", "utf8"));
+    expect(await readTextFile(path)).toBe("一二。");
+  });
 
-    expect(sized).toEqual({ bytes: Buffer.byteLength("一二。", "utf8"), text: "一二。" });
+  it("should map a missing path to not_a_file from stat", async () => {
+    await expect(fileSizeOf(join(dir, "nope.md"))).rejects.toThrow(/路径不存在/u);
   });
 
   /** `ExtractStyleResult` 由 core 产出：这里只需要一个形状真实的对象来断言两种渲染。 */
