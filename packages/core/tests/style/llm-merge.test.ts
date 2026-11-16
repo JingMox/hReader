@@ -64,6 +64,47 @@ describe("mergeSuggestions · forbidden 并集", () => {
     ]);
     expect(merged.dropped).toEqual([]);
   });
+});
+
+describe("mergeSuggestions · forbidden 归一 NFC", () => {
+  it("should fold the two encodings of the same word into one and store NFC", () => {
+    const composed = "caf\u00e9";
+    const decomposed = "cafe\u0301";
+    // 统计侧给 NFC、模型给分解形（再重复一次 NFC）：两侧任一侧没归一，结果都会多出一条或存成分解形。
+    const merged = mergeSuggestions(
+      statOf({ vocabulary: { forbidden: [composed], recommended: [] } }),
+      suggestionsOf({ forbidden: [decomposed, composed, "话说"] }),
+      [],
+    );
+
+    expect(merged.spec.language.vocabulary.forbidden).toEqual([composed, "话说"]);
+    expect(merged.dropped).toEqual([]);
+  });
+
+  it("should fold when only the statistical side is decomposed", () => {
+    const composed = "caf\u00e9";
+    const decomposed = "cafe\u0301";
+    const merged = mergeSuggestions(
+      statOf({ vocabulary: { forbidden: [decomposed], recommended: [] } }),
+      suggestionsOf({ forbidden: [composed, "话说"] }),
+      [],
+    );
+
+    expect(merged.spec.language.vocabulary.forbidden).toEqual([composed, "话说"]);
+    expect(merged.dropped).toEqual([]);
+  });
+});
+
+describe("mergeSuggestions · forbidden 字面匹配与上限", () => {
+  it("should not fold a full-width comma onto an ASCII comma", () => {
+    const merged = mergeSuggestions(
+      statOf({ vocabulary: { forbidden: ["随便，说说"], recommended: [] } }),
+      suggestionsOf({ forbidden: ["随便,说说"] }),
+      [],
+    );
+
+    expect(merged.spec.language.vocabulary.forbidden).toEqual(["随便，说说", "随便,说说"]);
+  });
 
   it("should cap the union at 24 and report the overflow", () => {
     const full = Array.from({ length: MAX_FORBIDDEN }, (_, index) => `套话${String(index)}`);
