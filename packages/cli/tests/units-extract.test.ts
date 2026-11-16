@@ -221,6 +221,20 @@ describe("输出与读取的小工具", () => {
     await expect(fileSizeOf(join(dir, "nope.md"))).rejects.toThrow(/路径不存在/u);
   });
 
+  it("should refuse a directory and name it in the message", async () => {
+    const path = join(dir, "dir-corpus.md");
+    mkdirSync(path);
+
+    await expect(fileSizeOf(path)).rejects.toThrow(/只能是普通文件：.*是目录/u);
+  });
+
+  it.skipIf(process.platform === "win32")("should refuse a character device", async () => {
+    // `/dev/zero` 的 `size` 是 0：只比上限的实现会放行，然后无界读。
+    await expect(fileSizeOf("/dev/zero")).rejects.toThrow(/是.?非普通文件/u);
+  });
+});
+
+describe("输出的两种渲染", () => {
   /** `ExtractStyleResult` 由 core 产出：这里只需要一个形状真实的对象来断言两种渲染。 */
   const RESULT: ExtractStyleResult = extractStyle({
     corpus: [{ format: "markdown", text: "一。二。" }],
