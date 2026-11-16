@@ -7,6 +7,7 @@ import { MAX_FORBIDDEN, MAX_RECOMMENDED } from "../../src/style/extract/contract
 import { markdownParagraphsOf, sentenceCountOf } from "../../src/style/extract/paragraphs";
 import {
   averageSentenceCharsOf,
+  byFrequencyThenCodepoint,
   forbiddenPhrasesOf,
   maxParagraphSentencesOf,
   percentileOf,
@@ -39,6 +40,8 @@ describe("markdownParagraphsOf · 排除结构行", () => {
   });
 
   it("should drop lines that are nothing but an html tag", () => {
+    // 正则要求整行只有标签，所以语料取"整行标签 + 前后正文"：单行 `<div>噪声</div>` 配正文不成行，
+    // 打不中这条分支。
     const text = ['<div class="note">', "", "正文一段。", "", "</div>"].join("\n");
 
     expect(markdownParagraphsOf(text)).toEqual(["正文一段。"]);
@@ -211,6 +214,29 @@ describe("styleYamlOf · 形状", () => {
 
   it("should keep persona within the 200 character budget", () => {
     expect(RESULT.spec.language.persona.length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("byFrequencyThenCodepoint · 排序契约", () => {
+  type Entry = readonly [string, number];
+
+  const pair = (left: Entry, right: Entry): readonly [number, number] => [
+    byFrequencyThenCodepoint(left, right),
+    byFrequencyThenCodepoint(right, left),
+  ];
+
+  it("should put the more frequent entry first regardless of codepoint", () => {
+    // 比较器返回差值（`sort` 只要求正负），正好卡邻频时差为 1。
+    expect(pair(["最是", 2], ["是最", 3])).toEqual([1, -1]);
+  });
+
+  it("should order equal-frequency entries by codepoint", () => {
+    // "是" U+662F < "最" U+6700：与 `localeCompare` 在部分语言环境下给出的次序相反。
+    expect(pair(["最是", 3], ["是最", 3])).toEqual([1, -1]);
+  });
+
+  it("should return 0 for the same entry, so a stable sort keeps it in place", () => {
+    expect(byFrequencyThenCodepoint(["同一", 3], ["同一", 3])).toBe(0);
   });
 });
 
