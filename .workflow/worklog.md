@@ -202,3 +202,9 @@ Card v1 §8 already carries 7 rulings + AC5a/AC5b split (written before dispatch
 - **零消费字段的两种命运**（本卡最重要的判据）：`reason` **该删**（`degradedReason` 已把"降没降级、为什么"说完）；`revision` **该用/该留**（过期响应唯一判据）；`before`/`after` **该留**（core 侧 `rebuild(chunks) === after` 的交叉验证输入，删了 `chunks` 就成孤证）。留下来的必须在契约里写明"线上为什么有它"，且不许美化——`revision` 如实写"当前 app 尚未使用"。
 - **注释也是代码的一部分**：`annotation-basis.ts:60-66` 原写"前端按 `originNodeId` 标这条批注原本属于哪块"，而 wire 已无该字段、app 从不读它。**代码删干净了、注释还在替它作证**——测试员报出、本卡修掉。
 - **恒真断言比没断言更坏**：`boot.test.ts:97,116` 的 `not.toContain("focus")` 在 `focus` op 移除后结构上不可能失败。测试员删它之前先证明"原意图已由其它断言承接"（临时删 `boot.ts:273` 的副作用 → 用例变红 → 还原 sha256 一致），而不是删完就算。
+
+## 2026-11-17 M4.3 开卡（协调者自行裁定，用户授权 m04153「你自己定，自己安排」）
+
+- 选 M4.3 而非 M4.2/M4.x 的理由：纯前端、本卡自查不需要新依赖、产物是字符串可端到端断言；M4.2 要 Rust 工具链与签名，M4.x 要先裁定构建链。
+- 拆卡：M4.3 只做**单文件自包含可打印 HTML**；真 PDF/长图拆到 M4.4（待立卡、需渲染器调研）。docs/02 M4.3 行已按此改写。
+- 首次实践"卡片预审"：写者开工前先派审计员审卡片本身，抓到 7 条 P1（含 AC-4 计数与 `buildOutline` 语义不符、`empty_document` 是新码、`writeAtomic` 未导出、D7 绕过 `assertThemeSafe`、F3 缺解析层、D11/SKIP 自相矛盾、F4 脚本必须 `.ts`），卡升 v2。结论：**预审比事后审便宜一个数量级**。

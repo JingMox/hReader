@@ -19,6 +19,11 @@ writeFileSync(
   '<article data-hr-id="hr-a"><h2 data-hr-id="hr-b">标题</h2><p data-hr-id="hr-c">正文</p></article>',
 );
 
+writeFileSync(
+  join(dir, "img.html"),
+  '<article data-hr-id="hr-i"><h2 data-hr-id="hr-j">图</h2><p data-hr-id="hr-k">正文</p><img src="https://cdn.example/a.png" alt="外链"></article>',
+);
+
 interface Capture {
   readonly io: CliIo;
   readonly out: string[];
@@ -69,6 +74,30 @@ describe("run · 成功路径", () => {
       expect(code).toBe(0);
       expect(out.join("")).toContain(item.needle);
     }
+  });
+});
+
+describe("run · export 接线", () => {
+  it("should print the printable html to stdout", async () => {
+    const { io, out } = capture();
+    const code = await run(["export", "a.html"], io);
+    expect(code).toBe(0);
+    expect(out.join("")).toContain("<!DOCTYPE html>");
+  });
+
+  it("should write --out under the workspace and report the size line", async () => {
+    const { io, out } = capture();
+    const code = await run(["export", "a.html", "--out", "print-unit.html"], io);
+    expect(code).toBe(0);
+    expect(out.join("")).toMatch(/^exported .*print-unit\.html \(\d+ bytes\)/u);
+  });
+
+  it("should route the dropped-image warning to stderr", async () => {
+    const { io, out, err } = capture();
+    const code = await run(["export", "img.html"], io);
+    expect(code).toBe(0);
+    expect(out.join("")).toContain("<!DOCTYPE html>");
+    expect(err).toEqual(["已移除 1 个外部图片\n"]);
   });
 });
 

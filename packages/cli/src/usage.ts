@@ -1,6 +1,14 @@
 // 这层管：`--help` 文本的单一来源（根目录 + 每条命令一段）；不做解析、不格式化结果。
 
-export const COMMAND_NAMES = ["outline", "read", "patch", "style", "undo", "serve"] as const;
+export const COMMAND_NAMES = [
+  "outline",
+  "read",
+  "patch",
+  "style",
+  "undo",
+  "export",
+  "serve",
+] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
@@ -23,6 +31,7 @@ const SYNOPSIS = [
   "hr style <file> (--visual <id> | --tone <id> | --lint) [--json]",
   "hr style extract <file...> [--id <id>] [--name <名字>] [--out <path>] [--no-llm] [--json]",
   "hr undo <file> [--json]",
+  "hr export <file> [--visual <id>] [--out <path>] [--force] [--json]",
   "hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",
   "hr --help | hr <cmd> --help",
 ];
@@ -72,6 +81,17 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "",
     "  恢复到最近一份历史快照（与批注/样式/patch 共用同一条快照链）；",
     "  没有历史时报 nothing_to_undo（退出码非 0）。",
+  ],
+  export: [
+    "用法：hr export <file> [--visual <id>] [--out <path>] [--force] [--json]",
+    "",
+    "  --visual <id>  视觉主题（默认内置主题）；主题必须离线自足",
+    "  --out <path>   写单文件打印稿（默认打印到 stdout）；必须在 --workspace 内",
+    "  --force        --out 已存在时覆盖（缺省报 file_exists）",
+    "",
+    "  产物是自带 CSS 的单文件 HTML：封面 + 目录 + 正文；`--json` 时为",
+    "  { html, bytes, droppedImages, out }（无 --out 时 out 为 null）。",
+    "  被移除的外部图片数 > 0 时在 stderr 提示一行。",
   ],
   serve: [
     "用法：hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",

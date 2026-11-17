@@ -2,15 +2,15 @@
 
 import { describe, expect, it } from "vitest";
 
-import { CWD, expectFailure, parse } from "./args-helpers";
+import { COMMAND_LIST_HINT, CWD, expectFailure, parse } from "./args-helpers";
 
 describe("parseArgs · 顶层", () => {
   it("should reject an empty argv with the command list", () => {
-    expectFailure([], "缺少命令：outline | read | patch | style | undo | serve", undefined);
+    expectFailure([], COMMAND_LIST_HINT, undefined);
   });
 
   it("should not echo --json back in an args failure (run.ts owns that)", () => {
-    expectFailure(["--json"], "缺少命令：outline | read | patch | style | undo | serve", undefined);
+    expectFailure(["--json"], COMMAND_LIST_HINT, undefined);
   });
 
   it("should reject an unknown command", () => {

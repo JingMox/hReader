@@ -649,7 +649,7 @@ ERROR: Coverage for branches (96.87%) does not meet global threshold (100%) for 
 2. 写者的交付消息里必须有一行 **"本轮真实外部调用：N 次（累计 M/BUDGET）"**，N>0 必须给用途；没这一行不予受理。
 3. 泄漏类用例（AC-8）的哨兵值必须是**假 key**（`sk-test-LEAKCANARY`），不许拿真 key 的片段当哨兵——否则"测试通过"与"密钥进了日志"可能同时成立。
 
-### 11.21 跨文件"同口径"不变量，必须一维一条用例（M4.1，2026-11-17）
+### 11.29 跨文件"同口径"不变量，必须一维一条用例（M4.1，2026-11-17）
 
 **事故**：`packages/core/src/style/words.ts:34` 的 `foldWord` 做三件事——NFKC、小写、剥零宽——用来保证"词表里的禁词"和"正文里的词"是同一口径。`spec.ts` 去重时也调它。测试只钉了 NFC 那一维（`spec-forbidden-dedupe.test.ts` 的 `["école", "e\u0301cole"]`）。
 
@@ -657,14 +657,41 @@ ERROR: Coverage for branches (96.87%) does not meet global threshold (100%) for 
 
 **规矩**：一个"口径"函数有 k 个维度，就有 k 条用例，每条**只让其中一维起作用**的输入，并断言**输出值**（不是长度）。此处四维各一条：全角/半角（NFKC）、大小写、零宽、组合重音（NFC）。
 
-### 11.22 判定可以 canonical，展示必须是用户输入（M4.1，2026-11-17）
+### 11.30 判定可以 canonical，展示必须是用户输入（M4.1，2026-11-17）
 
 **事故**：`--out` 的"不在风格发现路径里"提示，为了判定正确做了 realpath，然后把**同一个 canonical 串**既用于判定又用于打印。用户敲 `--out styles/x.yaml`，提示里打的是 `/private/var/.../styles/x.yaml`——提示在说一件用户没输入过的事，macOS 上还带上 `/private` 前缀。
 
 **规矩**：canonicalize 只进判定路径；打印一律用 `intent`（用户输入的原样，必要时按 `io.cwd` 相对化）。两件事分开做，中间那层用 `displayedOutOf(intent.out, io.cwd)` 这样的纯函数，别让判定函数顺手返回值给人看。
 
-### 11.23 真实文件系统里的软链，mock 复现不出来（M4.1，2026-11-17）
+### 11.31 真实文件系统里的软链，mock 复现不出来（M4.1，2026-11-17）
 
 **事故**：`HOME` 落在软链根下时（macOS `/tmp` → `/private/tmp`），写 `~/.hreader/styles/a/style.yaml` **成功**且 `--tone` 能用，却报"不在风格发现路径里"——因为判定侧对 `out` 做了 realpath，对 `deps.home` 只做了 `resolve`。这个 bug 的全部内容就是"真实路径里存在一条软链"，任何 mock 掉文件系统的测试都构造不出来。
 
 **规矩**：凡涉及"两个绝对路径是否同一"的判定，用例必须用**真的** `ln -s`（`symlinkSync`）+ 真的临时根，并保留一条"把实现退回 `resolve()` 版就红"的变异自证。同一原则见 §11.13（门禁只信自己跑的那次）。
+
+### 11.32 子代理载体有三条硬约束：看门狗 30 分钟、代理由内置列表、`resume` 续接（M4.3 F1，2026-11-17）
+
+**事故**：M4.3 F1 第一次派单把「骨架 + 5 个源文件 + 4 个测试文件 + fixtures + core 错误码联动」压成一句"完成 F1"，写者跑到第 30 分钟被**看门狗直接掐死**（`Subagent timed out after 1800000ms`）——代码写到一半、测试刚绿、还没报告。同一轮还发现：仓库自建的 `auditor`/`tester` 代理定义**已不存在**，派单直接 `Unknown agent: auditor`。
+
+**规矩**：
+1. 单个子代理任务**按 30 分钟内可完成为尺度切分**，宁可多切一轮；被掐不是失败，是派单粒度错了。
+2. 被掐先用 `subagent({action:"resume", id})` **复活原会话**（持久化在磁盘，代码与思考都在），别重开一轮从零复述；复活后第一件事是**报告已完成到哪一步**，我给的是"收口清单"而不是"重做清单"。
+3. 三角色的 agent 只用内置：编写员/测试员 `worker`、审计员 `reviewer`。角色边界写在**派单提示词**里（只读/只写），不写进代理定义文件——那层不在本仓库里，会丢。
+4. 由我（协调者）代跑一次定向测试再派单，能省掉子代理 5–10 分钟的环境摸索；但**全量 `pnpm verify` 仍然只由我在收口跑**（§10.12）。
+
+### 11.33 里程碑卡里的"交付物清单"必须区分「谁交」（M4.3 F1，2026-11-17）
+
+**事故**：M4.3 卡 §7 写「`docs/05` 错误表随 F1 一起」，而写者被明令禁止碰 `docs/`——这条交付物**永远不可能被写者满足**，于是审计员只能报 BLOCKER，往返一轮。
+
+**规矩**：卡面的交付物逐项标注 **谁交**（写者 / 审计员 / 测试员 / 协调者）。凡落在 `docs/`、`.workflow/` 的，一律由协调者交；卡面写「随 Fx 一起」时必须写明"由协调者在 Fx 收口时补"，否则就是给自己挖坑。
+
+### 11.34 写者自报"全量 verify 绿"必须由协调者复跑；守卫顺序是契约（M4.3 R4→R6，2026-11-17）
+
+**事故**：R4 收尾时写者报 `pnpm verify EXIT=0`，我照例复跑，实得 `2 failed | 2668 passed`。根因不是"测试少"，而是**守卫顺序**：`exportPrint.ts` 把「目标已存在（`file_exists`/exit 1）」判在「越界（`path_outside_workspace`/exit 3）」之前，于是 `--out ../escape.html` 先落到 exit 1，**还真的把 11243 字节产物写到了 workspace 外面**（`$TMPDIR/escape.html`）。这个脏文件又让一条毫不相干的旧用例（`cli-exit-codes.test.ts`「should exit 3 for ../x.html」）变红——因为两条用例都把落点取成 `$TMPDIR` 下的同名文件。修完后测试员又验出第三个缝隙：把 `isInside` 换成 `path.startsWith(workspace)` 全绿存活（共享前缀兄弟目录 `<base>/w` vs `<base>/w-evil/x.html` 正是 `startsWith` 的经典漏点）。
+
+**规矩**：
+1. **写者自报的全量绿只当线索**。收口前由协调者在仓库根亲跑 `pnpm verify`（§10.12 的延伸：不采信"我跑过了"）；写者被要求报 `Test Files`/`Tests`/`All files` 三行原始数字，而不是 `EXIT=0` 四个字符。
+2. **守卫顺序本身就是契约**：前置守卫（越界/权限/stdout 冲突）必须排在状态守卫（`file_exists`）之前——退出码由**第一个**触发的守卫决定，顺序错了就把 3 折成 1，配再多的用例也测不出来（除非用例构造出"外面已存在"的形状）。
+3. **用例只许在自己的临时目录内落盘**，落点用**唯一名**（pid/时间戳/`mkdtemp`）+ `finally rmSync`，并且断言"没落盘"（`readFileSync` 抛 `ENOENT`）而不只断退出码。跨用例共享落点是假绿的第二来源：一个用例写脏了，红的是另一个用例。
+4. **路径判定用 core `isInside`（归一 + realpath 两段），不用 `startsWith`**；`startsWith` 必须有一条"共享前缀兄弟目录"用例钉死（`<base>/w` workspace / `<base>/w-evil/x.html` 目标，且目标**已存在**才杀得死变异）。
+5. `$TMPDIR` 里 949 条长期泄漏（`hr-watch`/`hreader-undo-home`/`hr-docid`/`hreader-style-*` 等，来自 watch/docid/undo/style/dist 套件）是**既有技术债**，与 M4.3 无关，登记在卡 §14 未修项里，别在里程碑收口时顺手改。

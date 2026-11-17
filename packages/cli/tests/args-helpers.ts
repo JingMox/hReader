@@ -6,6 +6,9 @@ import { parseArgs } from "../src/args";
 
 export const CWD = "/repo";
 
+/** 顶层缺命令时的清单串：`export` 的加入让它长到会被 prettier 折行，抽出来免得把用例撑爆限行。 */
+export const COMMAND_LIST_HINT = "缺少命令：outline | read | patch | style | undo | export | serve";
+
 export const parse = (argv: readonly string[], cwd: string = CWD) => parseArgs(argv, cwd);
 
 /**

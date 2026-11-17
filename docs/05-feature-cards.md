@@ -299,6 +299,70 @@ hr style extract fixtures/extract/*.md --id my-voice --json | jq -r .data.yaml
 
 ---
 
+## M4.3 `hr export` 使用节（打印稿）
+
+```bash
+hr export notes/perf.html --visual atelier-editorial --out notes/perf-print.html
+hr export notes/perf.html --workspace /tmp --out /tmp/perf-print.html
+hr export notes/perf.html --json | jq -r .data.html > notes/perf-print.html
+```
+
+`hr export` 把一篇已解析的文档排成**单文件、离线、可打印**的 HTML（封面 + 目录 + 编号 + 印刷骨架），交给浏览器或后续 PDF 渲染器出纸。管线全程纯函数：CLI 读文件 → `injectNodeIds` → `buildOutline` → `loadThemeCss`（core，带 `assertThemeSafe`）→ `printHtmlOf({ documentHtml, outline, themeCss, … })`（单对象入参，`print-html.ts:238`）→ `writeAtomic` 写盘。
+
+| 旗标 | 行为 |
+| :--- | :--- |
+| `--visual <theme-id>` | 视觉主题 id，默认 `atelier-editorial`；非法 id 走 `invalid_theme` / `unknown_style` 既有口径 |
+| `--out <path>` | 写单文件打印稿，必须在 `--workspace` 内（越界 `path_outside_workspace` / exit 3）；已存在需 `--force`（缺省 `file_exists`）；父目录不自动建，缺失报 `io_failure`（exit 3，与 `hr style extract --out` 缺父目录报 `invalid_input` 不同码，但“不自动建/`--force`/`file_exists`”同口径） |
+| `--workspace <dir>` | workspace 根，决定 `--out` 的边界；默认进程 cwd |
+| `--json` | 成功 `{ok:true,data:{html,bytes,droppedImages,out}}`；失败 `{"ok":false,"code":…,"message":…}` 单行。键集固定（含 `out:null`、`droppedImages:0` 时不省键） |
+
+**`dropped_images` 口径**：只统计被删的 `<img>` 与 SVG `<image>`；`<video>`/`<audio>`/`<svg>`/`<iframe>` 是**整删不计数**。原因：前两者删掉会直接少一张图（用户看得见），后者整块删是结构决策、不是丢图。有图被删时 stderr 另给一行“已移除 N 个外部图片”。
+
+**印刷骨架与主题的关系**：`PRINT_CSS`（骨架）拼在主题 `<style>` **之后**，因此骨架压主题；`themeCss` 里任何 `</style` 先转成 `<\/style`（纯字符串兜底，最后一道物理防线），合法性判定仍由 core 的 `assertThemeSafe` 在 `loadThemeCss` 里做——打印层**不重复实现**该校验。产物里 `@media print` 之外的 `.print-*` 别名只有四个：`.print-cover`/`.print-toc`/`.print-chapter`/`.print-cover__title`，**不补齐**旧骨架类名（别名是迁移期内给旧样式表的短路，不是 API）。
+
+**已知行为（有意为之，不是缺陷）**：源文档自身重复的 `id` **不修复**。生成锚只保证“不与任何既有 `id` 冲突”（冲突加 `-2`/`-3` 后缀）；改写用户 `id` 会打断 `<a href="#sec-1">` 的内部链接语义，而重复 `id` 本身已是非法 HTML，该由源文档修。用例 `source-duplicate-ids-are-preserved` 把这条固化成契约。
+
+**端到端**：`pnpm test:e2e` 调 `scripts/print-e2e.ts`，用真 Chrome（`--headless=new --print-to-pdf`）出 PDF；无 Chrome 或 `HREADER_SKIP_CHROME=1` 时打印 `SKIPPED: <原因>` 并退出 0（不静默）。AC-6 的“分页规则层生效”用**差分**证明：同文同主题断开 `break-*` 规则后页数必须变化——本机缺 `pdftotext`，故不依赖文本抽取。
+
+---
+
+## 错误码表（`HrError.code` → 退出码）
+
+本表是 §2 对外错误契约的**唯一文字版**，由 `packages/core/src/hr-error.ts` 的联合类型与 `packages/cli/src/exit-codes.ts` 的 `satisfies` 表派生：**新增 code 必须同步三处（两文件 + 本表）**，`satisfies` 只能保证前两处不脱节。退出码语义：`0` 成功 / `1` 业务拒绝 / `2` 用法错误 / `3` IO / `70` 内部错误。
+
+| code | 退出码 | 何时出现（用户视角） |
+| --- | --- | --- |
+| `invalid_html` | 1 | 传进来的不是字符串 / 不是完整文档 |
+| `no_article` | 1 | **源文档里没有 `<article>`**，无从导出 |
+| `empty_document` | 1 | **`<article>` 在，但裁掉交互 UI 后没有可读文本**（与 `no_article` 不许合并）；判定前先剥零宽字符 `U+200B`/`U+FEFF`/`U+180E`，否则只含零宽的文档会排出空白页 |
+| `node_not_found` | 1 | `data-hr-id` 匹配不到节点 |
+| `node_not_allowed` | 1 | 目标是页面外壳锚点，不可读 |
+| `invalid_selector` | 1 | 选择器非法 |
+| `invalid_document` | 1 | `hr-meta` 等伴随文件不是合法 JSON |
+| `invalid_fragment` | 1 | 片段标签不配平 |
+| `invalid_max_bytes` | 1 | `maxBytes` 超出 `(0, MAX_BYTES_LIMIT]` |
+| `invalid_input` | 1 | 参数/配置/输入超出契约（含 `hr export` 产物 **> 4 MiB**；按拼接后的 UTF-8 字节**精确**判定，不是估算，故 4 MiB±1 不会走错分支） |
+| `locked` | 1 | 并发写锁被抢/被接管 |
+| `forbidden_content` | 1 | 待写入内容含禁止项（脚本、外部资源等） |
+| `undo_unavailable` / `nothing_to_undo` | 1 | 没有可回滚/可撤销的快照 |
+| `invalid_style` / `unknown_style` | 1 | 风格文件非法 / 查不到该 `styleId` |
+| `invalid_theme` | 1 | 主题 CSS 非法（含 `</style>`、外部 `url()`） |
+| `anchor_lost` | 1 | 批注锚点失效（那段文字被改过） |
+| `file_exists` | 1 | 目标已存在且没加 `--force` |
+| `not_found` | 1 | 批注等实体不存在 |
+| `invalid_request` / `invalid_payload` | 1 | HTTP 请求体不是 JSON 对象 / 载荷自相矛盾 |
+| `busy` | 1 | 文档正被另一个写请求占用 |
+| `too_many_clients` | 1 | SSE 客户端已满 |
+| `unauthorized` / `forbidden_origin` | 1 | 缺凭据 / `Origin` 不在白名单 |
+| `path_outside_workspace` | 3 | 目标逃出工作区 |
+| `not_a_file` | 3 | 路径不存在或不是普通文件 |
+| `io_failure` / `style_io_failure` | 3 | 读写失败（磁盘、权限） |
+| `invalid_utf8` | 3 | 文件不是合法 UTF-8 |
+| `llm_failure` | 3 | 风格建议层调用失败（message 里不许出现 key/prompt/响应原文） |
+| `daemon_already_running` | 2 | 已有 daemon 占着端口 |
+
+---
+
 ## 横切口径：`data-hr-id` 与批注锚点的生命周期
 
 `data-hr-id` 由内容派生（详见 `.workflow/cards/M2.3.md` §8）：同一份字节两次注入 id 稳定，编辑则会让 id 漂移。批注的 `nodeId` **不做落盘迁移**，锚点失效由读时重识别兜底（三档：命中 / `block_reidentified` / `block_missing`）。**发布前**若更换 id 方案，必须先交付 `nodeId` 迁移脚本，否则既有批注全部失效；当前未发布，无迁移义务（`L-02`，重构卡 R-6）。

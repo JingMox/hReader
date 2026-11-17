@@ -9,6 +9,7 @@
   },
   "devDependencies": {
     "@hreader/core": "workspace:*",
+    "@hreader/renderer-html": "workspace:*",
     "vitest": "3.2.4"
   }
 }

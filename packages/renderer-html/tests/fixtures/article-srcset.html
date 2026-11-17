@@ -1,0 +1,17 @@
+<article data-hr-id="srcset-doc">
+  <h1>srcset 多候选</h1>
+  <section data-hr-id="s1">
+    <h2>候选清单</h2>
+    <p>下面两张图分别只有内联候选、内联混外链候选。</p>
+    <img
+      alt="全内联候选"
+      src="data:image/png;base64,AAAA"
+      srcset="data:image/png;base64,AAAA 1x, data:image/png;base64,BBBB 2x"
+    />
+    <img
+      alt="混外链候选"
+      src="data:image/png;base64,CCCC"
+      srcset="data:image/png;base64,CCCC 1x, https://cdn.example/b.png 2x"
+    />
+  </section>
+</article>

@@ -346,6 +346,8 @@ flowchart LR
   - [ ] **M4.2 Tauri v2 跨平台桌面应用 (`@hreader/desktop`)**：打包 macOS / Windows / Linux 原生安装包，支持系统级全局快捷键呼出与 `.html` 文件关联打开。
   - [ ] **M4.x DSH Web 面板 (`dsh-web-app` 内嵌 hReader Tab)**：从 M3.3 移出的 (c) 项。在 DSH Web 工作台里加一个 hReader Tab，划词后 `ctx.emit('hreader/patch-request', payload)` 触发修补。冲突：DSH client 插件要求 React + `window.__ModuleLoader__.load` + `ctx.slots.inject`，与本仓"无 bundler、无框架、daemon 静态托管"的阅读器设计互斥，需先决定是"给面板单独引一套构建链"还是"复用 daemon 的 iframe + postMessage"。发送侧类型契约已由 M3.3 的 `declare module '@deepseek-ai/cordis'` 备好。
   - [ ] **M4.3 出版级导出工具链**：优化 `@media print` 样式，支持一键导出带目录书签的精美 PDF 与社交媒体高清长图。
+    - [x] **M4.3（已完成）**：`hr export` 产出**单文件自包含 HTML**（内联主题 CSS + 出版级打印规则集，零 `<script>`、零外部引用），用户 `⌘P` 即得 PDF；封面/目录（`1`/`1.1` 编号）/正文三段结构；`--json` 返回 `{html,bytes,droppedImages,out}`；产物 **> 4 MiB** 拦截（`invalid_input`，UTF-8 字节精确判定）；`--out` 越界 `path_outside_workspace`/exit 3（词法 `isInside` + realpath 两段复核，落盘前先判）；`pnpm test:e2e` 用真 Chrome 出 PDF 并以“抽掉分页规则后页数必须变”差分证明规则层生效。卡片见 `.workflow/cards/M4.3.md`，使用节见 `docs/05`。
+    - **M4.4（待立卡，需调研）**：真 PDF 二进制与长图导出。前置是裁定渲染器：headless Chrome / Playwright（重依赖）、WeasyPrint（Python 工具链）或 Tauri webview 打印（与 M4.2 耦合）。“带目录书签的 PDF”在浏览器打印下**不可实现**（无 paged-media 计数器与 PDF outline 控制），故从 M4.3 拆出。
 
 ### 已知非目标：片段校验里"不拦"的两类输入（v3 裁定，2026-11-13）
 

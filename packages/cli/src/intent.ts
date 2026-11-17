@@ -55,6 +55,15 @@ export type Intent =
       readonly baseUrl: string | undefined;
       readonly force: boolean;
     } & Common)
+  | ({
+      readonly kind: "export";
+      readonly path: string;
+      readonly visual: string;
+      /** 打印稿落盘位置（绝对路径）；`undefined` = 打 stdout。 */
+      readonly out: string | undefined;
+      /** `--out` 已存在时是否覆盖（缺省 `file_exists`）。 */
+      readonly force: boolean;
+    } & Common)
   | ({ readonly kind: "undo"; readonly path: string } & Common)
   | ({
       readonly kind: "serve";

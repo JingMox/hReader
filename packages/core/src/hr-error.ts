@@ -35,7 +35,9 @@ export type HrErrorCode =
   | "anchor_lost"
   // M4.1：风格提取（`llm_failure` 的 message 里不许出现 key、prompt 或响应体原文）
   | "llm_failure"
-  | "file_exists";
+  | "file_exists"
+  // M4.3：打印导出——`no_article` 指源文档里没有 `<article>`，本码指 `<article>` 在但裁完无文本，两者不许合并
+  | "empty_document";
 
 /**
  * 唯一对外错误类型。跨包用 `instanceof HrError` 判定，按 `code` 分支；

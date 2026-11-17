@@ -3,14 +3,20 @@
 import type { HrErrorCode } from "../hr-error";
 
 /** 服务端**会抛**的码；`anchor_lost` 是客户端的"锚点失效"reason，服务端永不抛（裁定 #14）。
- *  `llm_failure` / `file_exists` 只由 CLI 侧的风格提取抛出（提取不经 HTTP），同样不进本表。 */
-export type ServerCode = Exclude<HrErrorCode, "anchor_lost" | "llm_failure" | "file_exists">;
+ *  `llm_failure` / `file_exists` 只由 CLI 侧的风格提取抛出（提取不经 HTTP），同样不进本表；
+ *  `empty_document` 同理只由 `hr export print` 在本地渲染层抛出。
+ */
+export type ServerCode = Exclude<
+  HrErrorCode,
+  "anchor_lost" | "llm_failure" | "file_exists" | "empty_document"
+>;
 
 /** 客户端专用的码：HTTP 层永不抛它们，也不会为它们分配状态码。 */
 const CLIENT_ONLY_CODES: ReadonlySet<HrErrorCode> = new Set<HrErrorCode>([
   "anchor_lost",
   "llm_failure",
   "file_exists",
+  "empty_document",
 ]);
 
 /** 类型守卫：`Set.has` 不缩窄联合类型，而 `statusOf` / 响应体都要缩窄后的码。 */

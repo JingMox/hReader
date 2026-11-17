@@ -1,0 +1,264 @@
+// 这层管：把源文档与 outline 渲染成单文件可打印 HTML（封面 / 目录 / 正文三段）；不读盘、不碰进程。
+
+import { HrError, injectNodeIds, parseHtml, serializeHtml } from "@hreader/core";
+import type { HtmlElementNode, HtmlNode, OutlineNode } from "@hreader/core";
+
+import { attributeStringOf, utf8LengthOf } from "./markup";
+import { numberingOf } from "./numbering";
+import type { Numbering } from "./numbering";
+import { printSheetOf } from "./print-page";
+import type { TocItem } from "./print-page";
+import {
+  attributeOf,
+  hasExternalResource,
+  isCountedImage,
+  isDroppedNode,
+  sanitizedAttributesOf,
+} from "./sanitize";
+import type { Attribute } from "./sanitize";
+
+/**
+ * 印什么、用哪个主题、正文是什么，全部由调用方给出：包内不找文件、不读环境（D3/D7），
+ * 同输入必然同字节（D2）。
+ */
+export interface PrintHtmlInput {
+  /** 不传则回落：`<title>` → 首个 `h1` → `docId`（§11 之前按 §4 的优先级）。 */
+  readonly title?: string;
+  /** 稳定文档标识（源文件 basename 去扩展名）：只进 `<meta name="hr-doc-id">`，不参与排版。 */
+  readonly docId: string;
+  readonly visualId: string;
+  /** `<body>` 的类名原样输出；不传或空串表示不加类。 */
+  readonly bodyClass?: string;
+  /** 源文档全文 HTML；本层取最外层 `<article>`，裁掉 UI 后再排。 */
+  readonly documentHtml: string;
+  readonly outline: readonly OutlineNode[];
+  /** 主题 CSS 全文（`styles/<visual>/theme.css`），内联进产物且排在最前。 */
+  readonly themeCss: string;
+}
+
+export interface PrintHtmlResult {
+  readonly html: string;
+  /**
+   * `html` 的 UTF-8 字节数，精确值：`productOf` 在拼接前算的就是它（同一个数），调用方拿它与
+   * 4 MiB 对表，并保证 `--json.bytes` 与 `statSync(out).size` 相等（§11.4）。
+   */
+  readonly bytes: number;
+  /**
+   * 口径只算图片：被删的 `<img>` 与 SVG `<image>`。`<video>`/`<audio>`/`<svg>`/`<iframe>` 是整删，
+   * 不计数——它们不是"图片"，算进来会让那句"已移除 N 个外部图片"说谎（§13.3）。
+   */
+  readonly droppedImages: number;
+}
+
+const DOC_ID_ATTRIBUTE = "data-hr-id";
+
+const textOf = (node: HtmlNode): string => {
+  if (node.kind === "text") {
+    return node.value;
+  }
+  if (node.kind === "element" || node.kind === "document") {
+    return node.children.map((child) => textOf(child)).join("");
+  }
+  return "";
+};
+
+const findElement = (node: HtmlNode, tag: string): HtmlElementNode | undefined => {
+  if (node.kind === "element" && node.tag === tag) {
+    return node;
+  }
+  if (node.kind !== "element" && node.kind !== "document") {
+    return undefined;
+  }
+  for (const child of node.children) {
+    const found = findElement(child, tag);
+    if (found !== undefined) {
+      return found;
+    }
+  }
+  return undefined;
+};
+
+const textOfTag = (node: HtmlNode, tag: string): string => {
+  const element = findElement(node, tag);
+  return element === undefined ? "" : textOf(element).trim();
+};
+
+const coverTitleOf = (input: PrintHtmlInput, root: HtmlNode, article: HtmlElementNode): string => {
+  const candidates = [
+    input.title?.trim() ?? "",
+    textOfTag(root, "title"),
+    textOfTag(article, "h1"),
+    input.docId,
+  ];
+  return candidates.find((text) => text !== "") ?? input.docId;
+};
+
+interface RewriteState {
+  readonly numbering: Numbering;
+  /** `data-hr-id` → 文档内唯一的锚名；在全树占位后一次性分配，写树时只查表（§13.1）。 */
+  readonly anchorById: ReadonlyMap<string, string>;
+  droppedImages: number;
+}
+
+/**
+ * 生成锚：只保证"不与任何既有 `id` 冲突"，**不**保证全树唯一。源文档自带的重复 `id` 原样保留
+ * （改写它会打断 `<a href="#x">` 的内部链接语义，而重复 `id` 本身就是非法 HTML——该修的是源文档）。
+ * 后到者让位：`sec-1` 被占了就 `sec-1-2`、`sec-1-3`…按分配顺序取第一个空位。
+ */
+const anchorOf = (base: string, used: Set<string>): string => {
+  let candidate = base;
+  let suffix = 2;
+  while (used.has(candidate)) {
+    candidate = `${base}-${String(suffix)}`;
+    suffix += 1;
+  }
+  used.add(candidate);
+  return candidate;
+};
+
+/** 会被原样保留的 `id`（非标题/非容器的）先占位；等会儿生成的 `sec-…` 绕开它们走。 */
+const reservedIdsOf = (node: HtmlElementNode, numbering: Numbering, used: Set<string>): void => {
+  if (isDroppedNode(node) || hasExternalResource(node)) {
+    return;
+  }
+  const sectionId = attributeOf(node, DOC_ID_ATTRIBUTE);
+  const id = attributeOf(node, "id");
+  if (id !== undefined && !numbering.numberById.has(sectionId ?? "")) {
+    used.add(id);
+  }
+  for (const child of node.children) {
+    if (child.kind === "element") {
+      reservedIdsOf(child, numbering, used);
+    }
+  }
+};
+
+const chapterClassOf = (node: HtmlElementNode): Attribute => {
+  const existing = attributeOf(node, "class") ?? "";
+  return ["class", existing === "" ? "chapter" : `${existing} chapter`];
+};
+
+/** 同名属性不重复：加了 `id="sec-…"` 就摘掉源 `id`，加了 `chapter` 就摘掉源 `class`。 */
+const attributesOf = (
+  node: HtmlElementNode,
+  chapter: boolean,
+  anchor: string | undefined,
+): readonly Attribute[] => {
+  const kept = sanitizedAttributesOf(node).filter(
+    ([name]) => !(anchor !== undefined && name === "id") && !(chapter && name === "class"),
+  );
+  const idAttribute: readonly Attribute[] = anchor === undefined ? [] : [["id", anchor]];
+  return chapter ? [...kept, chapterClassOf(node), ...idAttribute] : [...kept, ...idAttribute];
+};
+
+const numberSpanOf = (number: string): HtmlElementNode => ({
+  kind: "element",
+  tag: "span",
+  attrs: [["class", "secnum"]],
+  children: [{ kind: "text", value: `${number} ` }],
+});
+
+const rewrittenElementOf = (
+  node: HtmlElementNode,
+  state: RewriteState,
+): HtmlElementNode | undefined => {
+  if (isDroppedNode(node)) {
+    if (isCountedImage(node)) {
+      state.droppedImages += 1;
+    }
+    return undefined;
+  }
+  if (hasExternalResource(node)) {
+    if (isCountedImage(node)) {
+      state.droppedImages += 1;
+    }
+    return undefined;
+  }
+  const sectionId = attributeOf(node, DOC_ID_ATTRIBUTE);
+  const number = sectionId === undefined ? undefined : state.numbering.numberById.get(sectionId);
+  const chapter = sectionId !== undefined && state.numbering.chapterIds.has(sectionId);
+  const anchor = sectionId === undefined ? undefined : state.anchorById.get(sectionId);
+  const children = rewrittenChildrenOf(node.children, state);
+  return {
+    kind: "element",
+    // §11.2：嵌套 `<article>` 降级为 `div`（属性原样留），产物里只许有一个 `<article>`。
+    tag: node.tag === "article" ? "div" : node.tag,
+    attrs: attributesOf(node, chapter, anchor),
+    children: number === undefined ? children : [numberSpanOf(number), ...children],
+  };
+};
+
+const rewrittenChildrenOf = (
+  children: readonly HtmlNode[],
+  state: RewriteState,
+): readonly HtmlNode[] => {
+  const rewritten: HtmlNode[] = [];
+  for (const child of children) {
+    const kept = child.kind === "element" ? rewrittenElementOf(child, state) : child;
+    if (kept !== undefined) {
+      rewritten.push(kept);
+    }
+  }
+  return rewritten;
+};
+
+/**
+ * 空稿判据是**文本级**而非标记级（§12.1）：`<section></section>` 序列化后非空，但纸面上什么都没有，
+ * 放了它就等于用一个空 chapter 蒙过校验。用 parseHtml 走一遍文本节点，不用正则剥标签。
+ * 零宽字符（`U+200B`/`U+FEFF`/`U+180E`）在纸面上不占位，`trim()` 又不认它们，故先剥再判（§13.2）。
+ */
+const ZERO_WIDTH = /[\u200B\uFEFF\u180E]/gu;
+const hasText = (html: string): boolean =>
+  textOf(parseHtml(html).root).replaceAll(ZERO_WIDTH, "").trim() !== "";
+
+const articleBodyOf = (article: HtmlElementNode, state: RewriteState): string => {
+  const body = serializeHtml({
+    root: { kind: "document", children: rewrittenChildrenOf(article.children, state) },
+    diagnostics: [],
+  });
+  if (!hasText(body)) {
+    throw new HrError(
+      "empty_document",
+      "裁掉交互 UI 与外部资源后正文没有任何文字，拒绝产出空白打印稿",
+    );
+  }
+  return body;
+};
+
+export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
+  const parsed = injectNodeIds(parseHtml(input.documentHtml)).parsed;
+  const article = findElement(parsed.root, "article");
+  if (article === undefined) {
+    throw new HrError("no_article", "源文档里没有 <article>，无法导出打印稿");
+  }
+  const numbering = numberingOf(input.outline);
+  const usedIds = new Set<string>();
+  reservedIdsOf(article, numbering, usedIds);
+  // 条目与编号同源（都来自 outline 的顺序），故锚也只按条目分配一次。
+  const tocItems: readonly TocItem[] = numbering.entries.map((entry) => ({
+    entry,
+    anchor: anchorOf(`sec-${entry.number}`, usedIds),
+  }));
+  const anchorById = new Map(tocItems.map((item) => [item.entry.id, item.anchor]));
+  const state: RewriteState = { numbering, anchorById, droppedImages: 0 };
+  const body = articleBodyOf(article, state);
+  const title = coverTitleOf(input, parsed.root, article);
+  const tocIds = {
+    nav: anchorOf("hr-toc", usedIds),
+    title: anchorOf("hr-toc-title", usedIds),
+  };
+  const html = printSheetOf({
+    title,
+    docId: input.docId,
+    visualId: input.visualId,
+    themeCss: input.themeCss,
+    bodyClass: input.bodyClass,
+    tocItems,
+    tocIds,
+    articleOpen: `<article${attributeStringOf(sanitizedAttributesOf(article))}>`,
+    body,
+  });
+  return { html, bytes: utf8LengthOf(html), droppedImages: state.droppedImages };
+};
+
+export const printHtmlOf = (input: PrintHtmlInput): string => printHtmlReportOf(input).html;

@@ -1,6 +1,6 @@
 // 这层管：真子进程的 CLI 契约（退出码、JSON、管道、编码、无 ANSI）；不 mock 进程。
 
-import { closeSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -153,14 +153,21 @@ describe("退出码 3 · IO 与路径", () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
       seed(dir);
-      const outside = join(dir, "..", "escape.html");
-      const result = checked(
-        await runCli(["patch", "../escape.html", "hr-c", "--action", "delete"], { cwd: dir }),
-      );
+      // 唯一名：`escape.html` 是多个测试文件共用的固定名，别的用例写歪一次就会把这条带红。
+      const name = `hr-escape-patch-${String(process.pid)}-${String(Date.now())}.html`;
+      const outside = join(dir, "..", name);
+      try {
+        const result = checked(
+          await runCli(["patch", `../${name}`, "hr-c", "--action", "delete"], { cwd: dir }),
+        );
 
-      expect(result.code).toBe(3);
-      expect(result.stderr).toContain("逃出了 workspace");
-      expect(() => readFileSync(outside)).toThrow(/ENOENT/u);
+        expect(result.code).toBe(3);
+        expect(result.stderr).toContain("逃出了 workspace");
+        expect(existsSync(outside)).toBe(false);
+        expect(() => readFileSync(outside)).toThrow(/ENOENT/u);
+      } finally {
+        rmSync(outside, { force: true });
+      }
     });
   });
 });
