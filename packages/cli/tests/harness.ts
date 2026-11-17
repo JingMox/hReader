@@ -4,7 +4,7 @@
 // 否则子进程等 stdin、父进程等子进程，会静默挂死整棵套件。
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,11 +92,15 @@ export const expectNoAnsi = (result: CliResult): void => {
   }
 };
 
+/**
+ * 临时工作区统一 `realpathSync`：macOS 的 `$TMPDIR` 是 `/var/...` 而内核返回 `/private/var/...`，
+ * 不归一就会让合法路径被判成 `path_outside_workspace`（§17.2）。
+ */
 export const withTempDir = async <T>(
   run: (dir: string) => Promise<T>,
   timeoutMs = 10_000,
 ): Promise<T> => {
-  const dir = mkdtempSync(join(tmpdir(), "hr-cli-"));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "hr-cli-")));
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([

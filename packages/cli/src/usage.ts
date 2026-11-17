@@ -7,6 +7,8 @@ export const COMMAND_NAMES = [
   "style",
   "undo",
   "export",
+  "pdf",
+  "png",
   "serve",
 ] as const;
 
@@ -32,6 +34,8 @@ const SYNOPSIS = [
   "hr style extract <file...> [--id <id>] [--name <名字>] [--out <path>] [--no-llm] [--json]",
   "hr undo <file> [--json]",
   "hr export <file> [--visual <id>] [--out <path>] [--force] [--json]",
+  "hr pdf <file> --out <path> [--page-size a4|letter|a5] [--timeout <1..600>] [--force] [--json]",
+  "hr png <file> --out <path> [--width 256..4096] [--scale 1..3] [--max-height 1000..50000] [--json]",
   "hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",
   "hr --help | hr <cmd> --help",
 ];
@@ -92,6 +96,29 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "  产物是自带 CSS 的单文件 HTML：封面 + 目录 + 正文；`--json` 时为",
     "  { html, bytes, droppedImages, out }（无 --out 时 out 为 null）。",
     "  被移除的外部图片数 > 0 时在 stderr 提示一行。",
+  ],
+  pdf: [
+    "用法：hr pdf <file> --out <path> [--page-size a4|letter|a5] [--timeout <1..600>] [--force] [--json]",
+    "",
+    "  --out <path>         写 PDF（必填；必须在 --workspace 内）；已存在需 --force",
+    "  --page-size <size>   a4 | letter | a5（默认 a4）",
+    "  --timeout <sec>      渲染上限 1..600 秒（默认 60；到点先 SIGTERM，2s 后 SIGKILL）",
+    "",
+    "  走本机 Chrome（HREADER_CHROME 可覆盖，缺省探测三个标准路径）；`--json` 时为",
+    "  { pdf, bytes, pages, out }（pdf 为 base64）。Chrome 缺失/起不来/渲染报错/超时/空产物分别报",
+    "  chrome_missing / chrome_failed / render_timeout / render_empty（均 exit 3）。",
+  ],
+  png: [
+    "用法：hr png <file> --out <path> [--width 256..4096] [--scale 1..3] [--max-height 1000..50000] [--timeout <1..600>] [--force] [--json]",
+    "",
+    "  --out <path>         写 PNG（必填；必须在 --workspace 内）；已存在需 --force",
+    "  --width <px>         CSS 像素宽 256..4096（默认 1200）",
+    "  --scale <n>          设备像素倍率 1..3（默认 2）；产物宽高 = CSS 尺寸 × n",
+    "  --max-height <px>    整页高度上限 1000..50000（默认 20000；超出先裁不缩，结果置 clipped）",
+    "  --timeout <sec>      渲染上限 1..600 秒（默认 60）",
+    "",
+    "  按整页高截一张长图（同一套 Chrome 生命周期与 --out 规矩）；`--json` 时为",
+    "  { png, bytes, width, height, clipped, out }（png 为 base64，宽高是设备像素）。",
   ],
   serve: [
     "用法：hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",

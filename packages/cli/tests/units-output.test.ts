@@ -174,8 +174,18 @@ describe("output · 人读文本", () => {
 });
 
 describe("usage · 单一事实源", () => {
-  it("should name all seven commands", () => {
-    expect(COMMAND_NAMES).toEqual(["outline", "read", "patch", "style", "undo", "export", "serve"]);
+  it("should name all eight commands", () => {
+    expect(COMMAND_NAMES).toEqual([
+      "outline",
+      "read",
+      "patch",
+      "style",
+      "undo",
+      "export",
+      "pdf",
+      "png",
+      "serve",
+    ]);
     expect(isCommandName("patch")).toBe(true);
     expect(isCommandName("nope")).toBe(false);
     expect(isCommandName(undefined)).toBe(false);
@@ -250,6 +260,10 @@ describe("exit-codes · AC2 冻结表", () => {
     ["io_failure", 3],
     ["style_io_failure", 3],
     ["invalid_utf8", 3],
+    ["chrome_missing", 3],
+    ["chrome_failed", 3],
+    ["render_timeout", 3],
+    ["render_empty", 3],
   ] as const)("should map %s to exit %d", (code, expected) => {
     expect(exitCodeOf(code)).toBe(expected);
   });

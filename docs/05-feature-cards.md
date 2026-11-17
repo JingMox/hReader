@@ -326,6 +326,47 @@ hr export notes/perf.html --json | jq -r .data.html > notes/perf-print.html
 
 ---
 
+## M4.4 `hr pdf` / `hr png` 使用节（二进制产物）
+
+```bash
+hr pdf notes/perf.html --out notes/perf.pdf
+hr pdf notes/perf.html --page-size a5 --out notes/perf-a5.pdf --json | jq -r .data.pages
+hr png notes/perf.html --out notes/perf.png --width 1200 --scale 2
+hr png notes/perf.html --out notes/huge.png --max-height 50000 --scale 1
+```
+
+`hr pdf`/`hr png` 把 M4.3 的打印稿交给**本机 Chrome** 渲染成真二进制。CLI 不引任何运行时依赖：Chrome 交互只用 `child_process` + `globalThis.WebSocket`（Node 22+ 内置），协议手工构造 CDP 报文。路径契约与 `hr export` 同口径（`assertOutInsideOf` + `writeAtomic` + `--force`/`file_exists`），**不允许**第二套判定。
+
+| 旗标 | 适用 | 行为 |
+| :--- | :--- | :--- |
+| `--out <path>` | 两者 | **必填**；必须在 `--workspace` 内（越界 `path_outside_workspace`/exit 3）；已存在需 `--force`（缺省 `file_exists`） |
+| `--page-size a4\|letter\|a5` | `pdf` | 默认 `a4`；非法值 `invalid_input`/exit 1。**同时改纸张与 `@page`**（只换纸不改版心会让 a5 被硬切，见下） |
+| `--width 256..4096` | `png` | CSS 像素宽，默认 `1200` |
+| `--scale 1..3` | `png` | 设备像素倍率，默认 `2`；产物宽高 = CSS 尺寸 × n |
+| `--max-height 1000..50000` | `png` | 整页高上限，默认 `20000`；**超出先裁不缩**，`clipped:true` |
+| `--timeout 1..600` | 两者 | 渲染上限秒数，默认 60；到点先 `SIGTERM`，2s 后 `SIGKILL` |
+| `--json` | 两者 | `pdf` → `{pdf,bytes,pages,out}`；`png` → `{png,bytes,width,height,clipped,out}`（二进制字段是 base64，宽高是**设备像素**，键集固定不省键） |
+
+**Chrome 从哪来**：`HREADER_CHROME` 环境变量优先，缺省探测三个标准路径（macOS/Homebrew/Linux 各一）；全都没有 → `chrome_missing`（exit 3），message 点名 `HREADER_CHROME` 与三个候选路径。**Chrome 的原始 stderr 永不整段进 envelope**（会泄路径、撑爆输出）：最多留首个错误行并截断 200 字。
+
+**四层结构与可测性**：`packages/cli/src/chrome/` 分「协议（CDP 报文纯构造/解析，零 I/O）/ 传输（`send`+`onMessage`+`close` 接口：真实现是 WebSocket，测试实现是内存假双工）/ 会话（spawn、抓 `DevTools listening on ws://…`、超时、杀进程组、清临时目录）/ 命令（`pdf.ts`/`png.ts` 只做参数 → 会话 → 校验 → 落盘）」。因此单元测试**不需要 Chrome**，全链路真假边界只在 `pnpm test:e2e`。
+
+**长图是整页不是首屏**：高度取 `Page.getLayoutMetrics` 的 `cssContentSize.height`，再 `Emulation.setDeviceMetricsOverride` + `Page.captureScreenshot{captureBeyondViewport:true}`。`--max-height` 是**截断**（先裁不缩），不是缩放。短文档（`cssContentSize.height ≤ 1000`）会以 100px 视口**重量一次**，否则视口地板会把几百像素的文档撑成 1000px 白边。
+
+**像素闸（两个，顺序有讲究）**：单边闸 `PIXEL_EDGE_LIMIT = 65535`、总像素闸 `PIXEL_AREA_LIMIT = 2.5e8`。65535 是**保守**单边闸（真机 `1200×76663` 也能出图，此处留余量），不是光栅层天花板；窄档（默认 1200 CSS 宽）先撞高边闸，宽档（`--width 4096 --scale 3`）先撞面积闸。预检只在用户**显式**传 `--max-height` 时查面积（否则默认 20000 会把 `--width 4096 --scale 3` 的短文档误拒），量到真实内容高后的**终检永远查**。
+
+**`--page-size` 为何要动 CSS**：`printToPDF` 固定 `preferCSSPageSize:false`（否则 `print-css` 的 `@page{size:A4}` 永远压过 `--page-size`），但只换纸张不改版心——实测 letter/a5 的版心仍是 A4 的 658 CSS px，a5 右侧被纸边硬切。所以 `@page` 也参数化（`printCssOf(paper)`），三档版心宽必须各不相同：`a4 658px`｜`letter 680px`｜`a5 423px`（@96dpi，容差 ±6px）。
+
+**确定性边界**：PDF/PNG 字节含时间戳与内核版本，**不断言字节相等**。断言点：PDF 的 `/MediaBox`（按纸型，容差 1.5pt）、`/Type /Page` 计数（正则 `/\/Type\s*\/Page\b(?!s)/gu`）、字体内嵌 `/FontFile`；PNG 直接读 IHDR（字节 8..24）取宽高与位深。同一输入两次渲染的**页数/宽高**必须相等（真 Chrome，只在 e2e）。
+
+**进程卫生**：Chrome 带 `--user-data-dir=$TMPDIR/hr-chrome-XXXX`（否则污染用户 profile、单例冲突）；`--headless=new` 会 fork 渲染子进程，故 `spawn(..., {detached:true})` 后 `process.kill(-pid,'SIGTERM')` 杀**整个进程组**；任何退出路径（成功/超时/异常/信号）都在 `finally` 里 kill + `rmSync`。自检：`pgrep -fl 'hr-chrome-' | grep -v pgrep`（应为空）与 `ls -d $TMPDIR/hr-chrome-*`（应为空）。
+
+**端到端**：`pnpm test:e2e` 在真 Chrome 下各出一份 PDF/PNG；无 Chrome 或 `HREADER_SKIP_CHROME=1` 时打印 `SKIPPED: <原因>` 并退出 0（不静默）。
+
+**已知限制**：PDF 大纲/书签（浏览器打印无 outline 控制）拆到 **M4.5**；不做 PDF 合并/签名/加密、不做并发渲染池。
+
+---
+
 ## 错误码表（`HrError.code` → 退出码）
 
 本表是 §2 对外错误契约的**唯一文字版**，由 `packages/core/src/hr-error.ts` 的联合类型与 `packages/cli/src/exit-codes.ts` 的 `satisfies` 表派生：**新增 code 必须同步三处（两文件 + 本表）**，`satisfies` 只能保证前两处不脱节。退出码语义：`0` 成功 / `1` 业务拒绝 / `2` 用法错误 / `3` IO / `70` 内部错误。
@@ -354,6 +395,10 @@ hr export notes/perf.html --json | jq -r .data.html > notes/perf-print.html
 | `busy` | 1 | 文档正被另一个写请求占用 |
 | `too_many_clients` | 1 | SSE 客户端已满 |
 | `unauthorized` / `forbidden_origin` | 1 | 缺凭据 / `Origin` 不在白名单 |
+| `chrome_missing` | 3 | 找不到本机 Chrome（`HREADER_CHROME` 与三个候选路径都不存在）；message 点名变量与路径 |
+| `chrome_failed` | 3 | Chrome 起不来/握手失败/渲染报错，**或 Chrome 自报的产物尺寸与请求不自洽**（宽度寄生自算值，脚手架内部不一致也算失败，不报用户请求错） |
+| `render_timeout` | 3 | 渲染超过 `--timeout`（早退先 `SIGTERM`，2s 后 `SIGKILL`；退出后无孤儿进程） |
+| `render_empty` | 3 | 产物 0 字节或结构不合法（PDF 无 `%PDF-` 头 / PNG 无 IHDR） |
 | `path_outside_workspace` | 3 | 目标逃出工作区 |
 | `not_a_file` | 3 | 路径不存在或不是普通文件 |
 | `io_failure` / `style_io_failure` | 3 | 读写失败（磁盘、权限） |
@@ -377,4 +422,5 @@ hr export notes/perf.html --json | jq -r .data.html > notes/perf-print.html
 - M3.3 DSH Cordis 插件（host-only：`systemPrompt.section` 织入 + 强类型事件发送侧）——使用节见上；Web 面板移 M4.x
 - M4.1 `hr style extract` 风格萃取——LLM 回放 fixture 依赖 model id（`fixtures/llm/README.md`），换模型或改 prompt 需重录
 - M4.2 Tauri v2 桌面端
-- M4.3 出版级 PDF/长图导出
+- M4.3 出版级 PDF/长图导出——`hr export` 打印稿使用节见上；真二进制拆到 M4.4
+- M4.4 `hr pdf` / `hr png`（本机 Chrome + CDP，零运行时依赖）——使用节见上；PDF 大纲拆到 M4.5

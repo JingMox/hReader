@@ -3,7 +3,8 @@
 import { HrError } from "@hreader/core";
 
 import { escapeAttribute, escapeText, utf8LengthOf } from "./markup";
-import { PRINT_CSS } from "./print-css";
+import { printCssOf } from "./print-css";
+import type { PaperSize } from "./print-css";
 import type { TocEntry } from "./numbering";
 
 const TOC_TITLE = "目录";
@@ -16,6 +17,7 @@ export interface TocItem {
 
 /** 只在本模块内用：调用方按结构传字面量，导出反成一个没人 import 的名字（knip）。 */
 interface PrintSheet {
+  readonly paper: PaperSize;
   readonly title: string;
   readonly docId: string;
   readonly visualId: string;
@@ -72,7 +74,7 @@ const headOf = (sheet: PrintSheet): readonly string[] => [
   `<title>${escapeText(sheet.title)}</title>`,
   // 主题在前、骨架在后：两者特异度相同时**印刷骨架压主题**（物理层优先，§13.4）。
   `<style class="hr-theme">${escapedThemeCssOf(sheet.themeCss)}</style>`,
-  `<style class="hr-print">${PRINT_CSS}</style>`,
+  `<style class="hr-print">${printCssOf(sheet.paper)}</style>`,
   "</head>",
 ];
 

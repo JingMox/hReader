@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { type PatchAction } from "@hreader/core";
 
 import { extractIntent } from "./args-extract";
+import { pdfIntent } from "./args-pdf";
+import { pngIntent } from "./args-png";
 import { exportIntent } from "./args-export";
 import { absoluteOf, commonOf, failure, unusedFlag, type ParsedArgs } from "./intent";
 import type { HtmlSource, StyleMode } from "./intent";
@@ -204,19 +206,31 @@ const plainIntent = (raw: Raw, rest: readonly string[], cwd: string, kind: "undo
   return { ok: true, intent: { kind, path: absoluteOf(file, cwd), ...commonOf(raw, cwd) } };
 };
 
+type IntentBuilder = (raw: Raw, rest: readonly string[], cwd: string) => ParsedArgs;
+
+/** 一张表代替 if 链：每加一个命令只多一行，`build` 的圈复杂度不随之长。 */
+const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
+  outline: outlineIntent,
+  read: readIntent,
+  patch: patchIntent,
+  style: styleIntent,
+  undo: (raw, rest, cwd) => plainIntent(raw, rest, cwd, "undo"),
+  export: exportIntent,
+  pdf: pdfIntent,
+  png: pngIntent,
+  serve: serveIntent,
+};
+
 const build = (raw: Raw, cwd: string): ParsedArgs => {
   const [name, ...rest] = raw.positionals;
   if (name === undefined) {
-    return failure("缺少命令：outline | read | patch | style | undo | export | serve", undefined);
+    return failure(
+      "缺少命令：outline | read | patch | style | undo | export | pdf | png | serve",
+      undefined,
+    );
   }
   if (!isCommandName(name)) return failure(`未知命令：${name}`, undefined);
-  if (name === "outline") return outlineIntent(raw, rest, cwd);
-  if (name === "read") return readIntent(raw, rest, cwd);
-  if (name === "patch") return patchIntent(raw, rest, cwd);
-  if (name === "serve") return serveIntent(raw, rest, cwd);
-  if (name === "export") return exportIntent(raw, rest, cwd);
-  if (name === "undo") return plainIntent(raw, rest, cwd, "undo");
-  return styleIntent(raw, rest, cwd);
+  return BUILDERS[name](raw, rest, cwd);
 };
 
 export const parseArgs = (argv: readonly string[], cwd: string): ParsedArgs => {

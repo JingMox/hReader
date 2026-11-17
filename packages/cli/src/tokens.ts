@@ -19,12 +19,17 @@ const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--id",
   "--inherits-visual",
   "--max-bytes",
+  "--max-height",
   "--model",
   "--name",
   "--out",
+  "--page-size",
+  "--scale",
   "--port",
   "--visual",
   "--tone",
+  "--timeout",
+  "--width",
   "--workspace",
 ]);
 

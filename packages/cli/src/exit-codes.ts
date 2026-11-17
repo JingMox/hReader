@@ -43,6 +43,10 @@ const EXIT_CODES = {
   llm_failure: EXIT_IO,
   file_exists: EXIT_FAILURE,
   empty_document: EXIT_FAILURE,
+  chrome_missing: EXIT_IO,
+  chrome_failed: EXIT_IO,
+  render_timeout: EXIT_IO,
+  render_empty: EXIT_IO,
 } satisfies Record<HrErrorCode, number>;
 
 /** `satisfies` 已保证表内穷尽：CLI 与 core 同仓同版本，不存在"新 core 配旧 CLI"的运行时分支。 */

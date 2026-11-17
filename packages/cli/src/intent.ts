@@ -64,6 +64,30 @@ export type Intent =
       /** `--out` 已存在时是否覆盖（缺省 `file_exists`）。 */
       readonly force: boolean;
     } & Common)
+  | ({
+      readonly kind: "pdf";
+      readonly path: string;
+      /** 原样保留：合法性在命令层判（非法值是 `invalid_input` exit 1，不是用法错误 exit 2）。 */
+      readonly pageSize: string;
+      readonly timeoutMs: number;
+      /** `--out` 必填（写文件是这条命令的唯一产物）。 */
+      readonly out: string;
+      readonly force: boolean;
+    } & Common)
+  | ({
+      readonly kind: "png";
+      readonly path: string;
+      /** 三处尺寸都是原样字符串：合法性在命令层判（`invalid_input` exit 1）。 */
+      readonly width: string;
+      readonly scale: string;
+      /** CSS 像素上限：超出先裁（不缩），并在结果里置 `clipped`。 */
+      readonly maxHeight: string;
+      /** 用户是否显式传了 `--max-height`：没传就不拿默认值做最坏面积预检。 */
+      readonly maxHeightExplicit: boolean;
+      readonly timeoutMs: number;
+      readonly out: string;
+      readonly force: boolean;
+    } & Common)
   | ({ readonly kind: "undo"; readonly path: string } & Common)
   | ({
       readonly kind: "serve";

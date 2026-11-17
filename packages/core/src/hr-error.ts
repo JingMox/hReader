@@ -37,7 +37,12 @@ export type HrErrorCode =
   | "llm_failure"
   | "file_exists"
   // M4.3：打印导出——`no_article` 指源文档里没有 `<article>`，本码指 `<article>` 在但裁完无文本，两者不许合并
-  | "empty_document";
+  | "empty_document"
+  // M4.4：真 Chrome 渲染——四个码共用 exit 3（进程/环境问题，不是用户输入问题）
+  | "chrome_missing"
+  | "chrome_failed"
+  | "render_timeout"
+  | "render_empty";
 
 /**
  * 唯一对外错误类型。跨包用 `instanceof HrError` 判定，按 `code` 分支；

@@ -424,6 +424,10 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   file_exists: "目标文件已存在（要覆盖请显式加 --force）",
   llm_failure: "风格建议层调用失败（检查 key / 网络，或用 --no-llm 走纯统计版）",
   empty_document: "文档正文裁掉交互 UI 后为空，没有可印的内容",
+  chrome_missing: "找不到本机 Chrome（可用 HREADER_CHROME 指定）",
+  chrome_failed: "Chrome 起不来或渲染失败",
+  render_timeout: "渲染超时（Chrome 未在期限内完成）",
+  render_empty: "Chrome 没有返回可用的 PDF/PNG",
 };
 
 export const errorTextOf = (code: string, detail?: string): string => {
@@ -888,12 +892,9 @@ interface ToolContext {
   readonly docId: string;
 }
 
-/**
- * 三工具共同的壳：daemon 缺失/路径越界都变成**文本**，绝不抛裸异常（AC-6）。
- * 这里没有 `try/catch`：三个 IO 缝（`readDaemonOf`/`documentOf`/`apiOf`）各自内部就把异常收成了
- * `undefined` / `ok: false`，所以 `work` 只剩不抛的纯计算。往 `work` 里加 IO 前，先把那个缝 total 化，
- * 否则工具的"永不抛"承诺会在这里破掉。
- */
+/** 三工具共同的壳：daemon 缺失/路径越界都变成**文本**，绝不抛裸异常（AC-6）。
+ * 这里没有 `try/catch`：三个 IO 缝各自内部就把异常收成 `undefined` / `ok: false`，所以 `work` 只剩
+ * 不抛的纯计算。往 `work` 里加 IO 前，先把那个缝 total 化，否则工具的"永不抛"承诺会在这里破掉。 */
 const runToolOf = async (
   deps: HreaderDeps,
   path: string,
@@ -1108,11 +1109,8 @@ const styleDoneTextOf = (_changed: boolean, docId: string, requested: string): s
     ? `已把 ${safeTextOf(docId)} 换成 ${safeTextOf(requested)}`
     : `${safeTextOf(requested)} 与当前视觉相同，文档没变`;
 
-/**
- * AC-5/D7/D10：`/hr-style <id>` 的唯一语义是**换视觉**。
- * id 只从 `GET /api/theme` 来（扩展不扫主题目录，那不是它的知识）；语气规约是 MCP 侧的读能力，这里不做。
- * G4：入场先取号，带号码回写——先发慢响一律静默丢弃，不 notify也不改状态（“后发起的命令赢”）。
- */
+/** AC-5/D7/D10：`/hr-style <id>` 的唯一语义是**换视觉**；id 只从 `GET /api/theme` 来（扩展不扫主题目录）。
+ * G4：入场先取号，带号码回写——先发慢响一律静默丢弃，不 notify 也不改状态（“后发起的命令赢”）。 */
 const styleCommandOf =
   (deps: HreaderDeps, session: HreaderSession) =>
   async (args: string, ctx: HreaderContext): Promise<void> => {

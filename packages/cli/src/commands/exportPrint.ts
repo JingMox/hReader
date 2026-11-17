@@ -1,4 +1,5 @@
 // 这层管：`hr export`（读文档 → 注入 id → 大纲 → 主题 → 打印稿 → stdout 或原子写）；不判参数、不定退出码。
+// `hr pdf` 复用同一份打印稿与同一套 `--out` 规矩，避免第二套路径判定（D5）。
 
 import { basename, dirname, extname, resolve } from "node:path";
 
@@ -11,11 +12,11 @@ import {
   nodePatchDeps,
   nodeStyleDeps,
   parseHtml,
-  type PatchDeps,
   serializeHtml,
   writeAtomic,
+  type PatchDeps,
 } from "@hreader/core";
-import { printHtmlReportOf } from "@hreader/renderer-html";
+import { printHtmlReportOf, type PaperSize, type PrintHtmlResult } from "@hreader/renderer-html";
 
 import { readTextFile } from "../input";
 import { dataExport, humanExport, humanExportWritten, jsonOk } from "../output";
@@ -45,7 +46,7 @@ export const ioFailureOf = (error: unknown, what: string, path: string): HrError
  * 父目录不存在/不是目录/不可读都算 io：`writeAtomic` 会把 `ENOENT` 当逃逸（fail-closed），这里先判清楚。
  * 用 `readdir` 而不是 `stat`：端口里没有 `isDirectory`，而"能列出来"正好等价于"是个可进的目录"。
  */
-const assertWritableDirOf = async (dir: string, deps: PatchDeps): Promise<void> => {
+export const assertWritableDirOf = async (dir: string, deps: PatchDeps): Promise<void> => {
   try {
     await deps.fs.readdir(dir);
   } catch (error: unknown) {
@@ -58,13 +59,17 @@ const assertWritableDirOf = async (dir: string, deps: PatchDeps): Promise<void> 
  * 还顺带探一次外面那个路径（脏文件就是这么留下的）。这里只做词法那道（`run.ts` 已把两侧换成真实路径），
  * 符号链接逃逸交给 `writeAtomic` 落盘前的 realpath 复核（P0-1），不在这里再写一份。
  */
-const assertOutInsideOf = (path: string, workspace: string): void => {
+export const assertOutInsideOf = (path: string, workspace: string): void => {
   if (!isInside(workspace, resolve(path))) {
     throw new HrError("path_outside_workspace", `--out 只能写到 workspace 内：${path}`);
   }
 };
 
-const assertTargetFreeOf = async (path: string, force: boolean, deps: PatchDeps): Promise<void> => {
+export const assertTargetFreeOf = async (
+  path: string,
+  force: boolean,
+  deps: PatchDeps,
+): Promise<void> => {
   if (force) return;
   try {
     await deps.fs.lstat(path);
@@ -74,12 +79,23 @@ const assertTargetFreeOf = async (path: string, force: boolean, deps: PatchDeps)
   throw new HrError("file_exists", `目标已存在：${path}（加 --force 覆盖）`);
 };
 
-export const exportPrintCommand = async (input: ExportPrintInput): Promise<string> => {
+export interface PrintSourceInput {
+  readonly path: string;
+  readonly visual: string;
+  /** 纸张必填：`hr export`/`hr png` 固定 a4，`hr pdf` 传 `--page-size`（§15.1）。 */
+  readonly paper: PaperSize;
+  readonly workspace: string;
+  readonly warn: (message: string) => void;
+}
+
+/** 打印稿的单一来源：`hr export` 落 HTML、`hr pdf` 把同一份 HTML 交给 Chrome。 */
+export const printProductOf = async (input: PrintSourceInput): Promise<PrintHtmlResult> => {
   const injected = injectNodeIds(parseHtml(await readTextFile(input.path)));
   // 主题走 core：`loadThemeCss` 内部已过 `assertThemeSafe`，这一层不重复实现闸门（裁定 A）。
   const report = printHtmlReportOf({
     docId: basename(input.path, extname(input.path)),
     visualId: input.visual,
+    paper: input.paper,
     bodyClass: `hr-visual-${input.visual}`,
     documentHtml: serializeHtml(injected.parsed),
     outline: buildOutline(injected.parsed).nodes,
@@ -91,6 +107,30 @@ export const exportPrintCommand = async (input: ExportPrintInput): Promise<strin
   if (report.droppedImages > 0) {
     input.warn(`已移除 ${String(report.droppedImages)} 个外部图片\n`);
   }
+  return report;
+};
+
+export interface WriteOutInput {
+  readonly path: string;
+  readonly workspace: string;
+  readonly data: Uint8Array;
+  readonly what: string;
+}
+
+export const writeOutOf = async (input: WriteOutInput): Promise<void> => {
+  try {
+    await writeAtomic(
+      { path: input.path, workspace: input.workspace, data: input.data },
+      nodePatchDeps,
+    );
+  } catch (error: unknown) {
+    throw ioFailureOf(error, input.what, input.path);
+  }
+};
+
+export const exportPrintCommand = async (input: ExportPrintInput): Promise<string> => {
+  // `hr export` 的纸固定 a4：它是 M4.3 的产物契约，换纸只能走 `hr pdf --page-size`。
+  const report = await printProductOf({ ...input, paper: "a4" });
   if (input.out === undefined) {
     return input.json ? jsonOk(dataExport(report, null)) : humanExport(report);
   }
@@ -98,14 +138,12 @@ export const exportPrintCommand = async (input: ExportPrintInput): Promise<strin
   // 顺序是契约的一部分：io（父目录不可写）→ 越界 → 已存在，退出码才能稳定是 3/3/1。
   assertOutInsideOf(input.out, input.workspace);
   await assertTargetFreeOf(input.out, input.force, nodePatchDeps);
-  try {
-    await writeAtomic(
-      { path: input.out, workspace: input.workspace, data: encoder.encode(report.html) },
-      nodePatchDeps,
-    );
-  } catch (error: unknown) {
-    throw ioFailureOf(error, "写入打印稿", input.out);
-  }
+  await writeOutOf({
+    path: input.out,
+    workspace: input.workspace,
+    data: encoder.encode(report.html),
+    what: "写入打印稿",
+  });
   return input.json
     ? jsonOk(dataExport(report, input.out))
     : humanExportWritten(input.out, report.bytes);

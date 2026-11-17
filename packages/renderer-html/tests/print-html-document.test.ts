@@ -170,6 +170,7 @@ describe("零宽字符与边界", () => {
     const input: PrintHtmlInput = {
       docId: "x",
       visualId: "v",
+      paper: "a4",
       documentHtml: "<p>没有正文容器</p>",
       themeCss: "",
       outline: [],
