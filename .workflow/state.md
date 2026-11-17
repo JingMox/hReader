@@ -1,6 +1,6 @@
 # WORKFLOW STATE
 
-- 当前里程碑: **M4.5 开工**（M4.4 已于 `53e456a` 结卡：真 `hr pdf`/`hr png`，257 文件 / 2857 例 / 四维 100%，真 Chrome 证据齐全）。M4.5「PDF 大纲/书签」卡 = `.workflow/cards/M4.5.md`（v1，2026-11-17 立）。侦察结论：CDP `generateDocumentOutline: true` **直接可用**（Chrome 157 实测：`/Outlines` 根 `/Count 9`、标题含编号、层级成树、`/Dest [pageObj /XYZ …]` 页码全对、无 heading 时不出键），所以本卡**不引依赖、不写 PDF 解析器**，只是“一个参数 + 两个旗标 + 测试侧扫描器”。分工：测试员 G0 先出 AC 矩阵 → 写者 F1 → 审计+测试并行 → 返工 → 全量 CI → 我写 `docs/05` 使用节与 `docs/02` M4.5 行。
+- 当前里程碑: **M4.5 已结卡（`1dcfcba`）**。260 文件 / 2896 例 / 四维 perFile 100%，`pnpm verify` 连跑两遍 EXIT=0。M4.5「PDF 大纲/书签」= Chrome 原生 `generateDocumentOutline`（侦察翻案：路线图原写"浏览器打印不可实现"是错的）；零新增依赖、src 无 PDF 解析器；`--outline`(默认开)/`--no-outline`，png 上双向 `invalid_input`；`--json {pdf,bytes,pages,outline,out}`。已知限制 `L-40`（`display:none` 标题仍被计数）/`L-41`（Chrome 截超长标题约 1KB）。过程：G0 矩阵（测试员）→ F1 超时中断后 resume → 审计 `PASS WITH NOTES` + 真机 21 变异 → R1 补夹具与树内 e2e → 全量 CI → 结卡。下一步候选：M4.2 Tauri（本机有 cargo 1.98，但跨平台打包不可验证）/ M4.x DSH 面板（需用户裁定构建链）/ 或回到 M1–M3 的加固卡。
 - 角色载体（2026-11-17 起）: 仓库内自建的 `auditor`/`tester` 代理定义**已消失**（`Unknown agent: auditor`），从现在起审计员一律用内置 **`reviewer`**、测试员用内置 **`worker`**、编写员用内置 **`worker`**，角色由派单提示词定义，不依赖代理定义文件。
 - 当前里程碑（旧）: **M3 全部结卡**（M1 7 卡 / M2 3 卡 + C1 / M3.1 `74781fc` / M3.1.1 `3134499` / M3.2 `49d8cb1` / M3.4 `ba9579a` / **M3.3 `165da68`**）；下一卡待用户指示（M4.1 风格萃取器 或 M4.2 Tauri / M4.x DSH Web 面板 / M4.3 导出链）
 - 用户指令（2026-11-16）: “按你的流程来，继续开发，**不要没开发完就问我一下**” → 每卡自主走完 写者 → 审计＋测试 → 返工 → 全量 CI → 提交 → 勾 `docs/02`，不经用户确认。
