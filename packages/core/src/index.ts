@@ -27,10 +27,13 @@ export {
   loadStyle,
   loadThemeCss,
   nodeStyleDeps,
+  projectStylePath,
   readStyleSource,
   replaceTheme,
   resolveThemePath,
   saveStyleText,
+  STYLE_FILE,
+  userStyleDir,
 } from "./style";
 export type {
   ApplyStyleInput,

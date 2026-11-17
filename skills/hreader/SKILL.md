@@ -67,6 +67,21 @@ node skills/hreader/scripts/hr.mjs style report.html --lint
 - 写完跑 `style --lint`：命中禁用词会给出 `offset`（块内字符偏移）和上下文，逐条改掉再说"完成"。
 - 默认风格 `atelier-editorial`：结论先行、每三段转一个视觉结构、每个论断挂数字或来源。自定义风格见 `references/style-authoring.md`。
 
+### 从 1..N 篇语料摸出自己的风格（`style extract`）
+
+```bash
+# 离线：不开 key，只跑统计层（开发机 shell 里常有真 key，照抄带 key 的版本会花真调用）
+mkdir -p .hreader
+env -u OPENCODE_API_KEY node skills/hreader/scripts/hr.mjs style extract 文1.md 文2.md \
+  --id my-voice --name "我的口吻" --out .hreader/style.yaml
+```
+
+- **没 key 不报错**：没设 `OPENCODE_API_KEY` 或加了 `--no-llm`，走纯统计版（节奏 + 词表定值），stderr 一行提示“仅用统计结果”——两条路径的 `style.yaml` 都能直接被 `style --tone` 用。
+- **`--out` 必须落在发现路径上**，否则 `style --tone my-voice` 找不到它：项目级 `<workspace>/.hreader/style.yaml`，或用户级 `~/.hreader/styles/my-voice/style.yaml`。写到别处也合法（导出/归档），但 `--tone` 只认 id、没有路径入口——要让 `--tone` 用上它，就得写到上面两条路径之一；写别处时 stderr 会给一行提示。
+- `--out` 指向已存在的文件时必须加 `--force`，否则 `file_exists`；父目录不自动建。
+- 模型/网关可用 `--model`、`--base-url` 覆盖；`--json` 输出 `{ok,data:{path,stats,yaml,dropped}}`（`dropped` 仅 LLM 路径出现），错误也是单行 JSON。
+- fixture 与模型换代（换 `--model` 或改 prompt）后须重录 `fixtures/llm/`，否则回放证明的不再是今天的模型输出（`L-36`）。
+
 ## 让宿主自己带着风格（不用每次取口吻）
 
 本仓有两个包把这个"取口吻"的步骤变成了宿主侧的常驻约束，效果和 `style --tone` 完全相同（同一份 `compileTone` 编译器）：

@@ -22,6 +22,7 @@ export { BUILTIN_STYLES, DEFAULT_STYLE_ID, findBuiltinStyle } from "./presets";
 export { readStyleSource } from "./source";
 export type { StyleSourceText } from "./source";
 export { loadThemeCss, resolveThemePath } from "./theme";
+export { projectStylePath, STYLE_FILE, userStyleDir } from "./resource";
 export { saveStyleText } from "./save";
 export type { SavedStyle, SaveStyleTextInput } from "./save";
 export type {

@@ -4,6 +4,7 @@ import { parseDocument } from "yaml";
 
 import { HrError } from "../hr-error";
 import type { ExampleSpec, LanguageSpec, SentenceRhythmSpec, StyleSpec } from "./contracts";
+import { foldWord } from "./words";
 
 /** 裁定 #5：`sentence_rhythm` 缺省时按"三段一视觉法则"取 3，"不约束"用空串表示。 */
 const DEFAULT_MAX_SENTENCES = 3;
@@ -206,8 +207,24 @@ const rhythmOf = (mapping: Readonly<Record<string, unknown>>, at: string): Sente
   style: scalarAt(mapping, "style", at, ""),
 });
 
+/**
+ * 同一禁词写两遍会让 lint 对每处命中报两遍（用户看到的是重复项，不是加强警告）。
+ * 与匹配同口径：折叠后去重保序，落盘值取 NFC——`e` + 组合重音与 `é` 是同一个词。
+ */
+const uniqueWordsOf = (words: readonly string[]): readonly string[] => {
+  const seen = new Set<string>();
+  return words
+    .map((word) => word.normalize("NFC"))
+    .filter((word) => {
+      const folded = foldWord(word);
+      const first = !seen.has(folded);
+      seen.add(folded);
+      return first;
+    });
+};
+
 const vocabularyOf = (mapping: Readonly<Record<string, unknown>>, at: string) => ({
-  forbidden: stringsOf(mapping, "forbidden", at),
+  forbidden: uniqueWordsOf(stringsOf(mapping, "forbidden", at)),
   recommended: stringsOf(mapping, "recommended", at),
 });
 

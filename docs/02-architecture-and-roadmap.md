@@ -342,7 +342,7 @@ flowchart LR
 ### Milestone 4：Tauri v2 独立桌面端与“AI 风格萃取工坊”
 * **目标**：完善独立桌面软件体验，降低用户编写自定义语言风格的门槛。
 * **核心任务**：
-  - [ ] **M4.1 AI 语言风格萃取器 (`hr style extract`)**：用户只需丢入 3~5 篇自己喜欢的历史文章或博客，Agent 自动分析其句式节奏、常用转折词、叙事结构与高频词汇，一键生成专属的 `style.yaml`。
+  - [x] **M4.1 AI 语言风格萃取器 (`hr style extract`)**：用户只需丢入 3~5 篇自己喜欢的历史文章或博客，Agent 自动分析其句式节奏、常用转折词、叙事结构与高频词汇，一键生成专属的 `style.yaml`。**已完成（2026-11-17）**：纯统计层（`packages/core/src/style/extract/`，十组 `EXTRACT_FLAGS` 可关）+ LLM 层（`LlmPort` 可注入、合并建议不覆盖统计权威值）+ cli（`--out`/`--force`/`--json`/`--no-llm`/`--tone` 发现提示）；229 文件 2527 例、四维 perFile 100%；`L-36`–`L-39` 已登记。
   - [ ] **M4.2 Tauri v2 跨平台桌面应用 (`@hreader/desktop`)**：打包 macOS / Windows / Linux 原生安装包，支持系统级全局快捷键呼出与 `.html` 文件关联打开。
   - [ ] **M4.x DSH Web 面板 (`dsh-web-app` 内嵌 hReader Tab)**：从 M3.3 移出的 (c) 项。在 DSH Web 工作台里加一个 hReader Tab，划词后 `ctx.emit('hreader/patch-request', payload)` 触发修补。冲突：DSH client 插件要求 React + `window.__ModuleLoader__.load` + `ctx.slots.inject`，与本仓"无 bundler、无框架、daemon 静态托管"的阅读器设计互斥，需先决定是"给面板单独引一套构建链"还是"复用 daemon 的 iframe + postMessage"。发送侧类型契约已由 M3.3 的 `declare module '@deepseek-ai/cordis'` 备好。
   - [ ] **M4.3 出版级导出工具链**：优化 `@media print` 样式，支持一键导出带目录书签的精美 PDF 与社交媒体高清长图。

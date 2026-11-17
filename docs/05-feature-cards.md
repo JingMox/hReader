@@ -256,6 +256,49 @@ dsh plugin --profile <profile> add "$(pwd)/packages/dsh-bundle"
 
 ---
 
+## M4.1 hr style extract 使用节
+
+把一个作者的 1..N 篇 `.md`/`.html` 语料摸成一份 `style.yaml`：统计层定节奏与词表，LLM 层只提“人设/叙事规则/句式”建议。产出的 `style.yaml` 就是 `hr style --tone` 的全部输入——**但只有写在发现路径上才找得到**（见下）。
+
+**三个例子**：
+
+```bash
+# 纯统计版：不需要 key，0 次网络。CI 默认就跑这条（父目录不自动建，先 mkdir -p）。
+mkdir -p .hreader
+hr style extract fixtures/extract/*.md --id my-voice --out .hreader/style.yaml --no-llm
+
+# 带 key：人设与叙事规则交给模型，统计值仍是权威（节奏/词表不许模型改）。
+mkdir -p "$HOME/.hreader/styles/my-voice"
+OPENCODE_API_KEY=… hr style extract fixtures/extract/*.md --id my-voice \
+  --out "$HOME/.hreader/styles/my-voice/style.yaml" --force
+
+# --json：给脚本/Agent 用；错误也是单行 JSON（不是人类可读文案）。
+hr style extract fixtures/extract/*.md --id my-voice --json | jq -r .data.yaml
+```
+
+`--out` 写别处也能用（导出/入库都合法），只是 `hr style doc.md --tone my-voice` 找不到它；此时 stderr 会给一行“不在风格发现路径里”的提示。发现路径只有两条：项目的 `<workspace>/.hreader/style.yaml`、用户的 `~/.hreader/styles/<id>/style.yaml`。
+
+| 旗标                    | 行为                                                                                                                                       |
+| :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------- |
+| `--out <path>`          | 写到 workspace 内路径；不传就打印到 stdout。已存在需 `--force`（`file_exists`）；父目录不自动建；越界 `path_outside_workspace`             |
+| `--id <style-id>`       | 风格 id，必须匹配 `STYLE_ID` 正则（否则 `invalid_style`）；缺省用首篇文件名 slug，并在 stderr 说明用了默认值                            |
+| `--name <显示名>`       | 显示名；缺省等于 `--id`，同样在 stderr 说明                                                                                              |
+| `--inherits-visual <t>` | 继承的视觉主题，默认 `atelier-editorial`；风格自己的 `theme.css` 优先                                                                    |
+| `--workspace <dir>`     | workspace 根，决定 `--out` 的边界与项目级风格路径；默认进程 cwd                                                                         |
+| `--force`               | 只放开“覆盖”这一件事，不连带放开目录创建与越界                                                                                           |
+| `--no-llm`              | 强制纯统计版；有 key 也不联网                                                                                                            |
+| `--model <id>`          | 覆盖模型 id（默认 `deepseek-v4.1-flash`，端点上只这一个可用）                                                                            |
+| `--base-url <u>`        | 覆盖网关（默认 `https://opencode.ai/zen/go/v1`）；只收 http(s) 绝对地址，`v1`/`ftp://…` 直接 `invalid_input` 且零请求                    |
+| `--json`                | 成功 `{ok:true,data:{path,stats,yaml,dropped?}}`（`dropped` 仅 LLM 路径出现）；失败 `{"ok":false,"code":…,"message":…}` 单行                |
+
+**降级是默认路径**：没设 `OPENCODE_API_KEY` 就自动走纯统计版（stderr 一行“未设置 OPENCODE_API_KEY，仅用统计结果”），`--no-llm` 是显式版同一条路。两条路径的产物都能被 `loadStyle`/`compileTone`/`lintByStyle` 消费（`packages/cli/tests/style-extract-e2e.test.ts` 各跑一遍）。
+
+**真调用账（D12）**：录制期共 **8 次**（预算 10），逐次明细见 `fixtures/llm/README.md` 的“调用账”；复验期另有约 5 次误用真 key，记在卡 §9。`pnpm verify` 里全是回放，零真实调用。
+
+**已知限制**：`L-36`——模型输出非确定，CI 只有 fixture 回放，真模型换代或改 prompt 先红的是 `extract-llm` 回放用例；`L-37`——统计层的句数判定有两头偏差：**多计**（`packages/core/src/style/extract/paragraphs.ts:148-153` 的 `isAsciiPeriodEnd` 把“`.` 后跟空白”算句末，于是 `e.g. `、`Dr. `、`3. 5` 这类都被切开）与**少计**（`；` 连写的长句、无标点的长段只算一句），短文本（<3 段）上更明显，`max_paragraph_sentences` 因此可能偏高或偏低。
+
+---
+
 ## 横切口径：`data-hr-id` 与批注锚点的生命周期
 
 `data-hr-id` 由内容派生（详见 `.workflow/cards/M2.3.md` §8）：同一份字节两次注入 id 稳定，编辑则会让 id 漂移。批注的 `nodeId` **不做落盘迁移**，锚点失效由读时重识别兜底（三档：命中 / `block_reidentified` / `block_missing`）。**发布前**若更换 id 方案，必须先交付 `nodeId` 迁移脚本，否则既有批注全部失效；当前未发布，无迁移义务（`L-02`，重构卡 R-6）。

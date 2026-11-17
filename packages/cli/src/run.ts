@@ -2,13 +2,14 @@
 // 用法错误是 CLI 自己的事：只走 stderr（卡片 §3 的 JSON 形状只描述 `HrError`），退出码 2；`--help` 一律 0。
 // 进程相关的 io 在 `main.ts`：那里不可单测，逻辑全部留在本文件。
 
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { relative } from "node:path";
 
-import { HrError } from "@hreader/core";
+import { HrError, nodeStyleDeps } from "@hreader/core";
 
 import { parseArgs, type Intent } from "./args";
+import { attemptRealpath, realpathThroughAncestors } from "./canonical";
 import { outlineCommand } from "./commands/outline";
 import { patchCommand } from "./commands/patch";
 import { readCommand } from "./commands/read";
@@ -21,6 +22,7 @@ import { sourceText } from "./input";
 import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
 import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
 import { jsonError } from "./output";
+import { isDiscoveredStylePath, undiscoveredHint } from "./style-out";
 import { usageText, type CommandName } from "./usage";
 
 export interface CliIo {
@@ -41,22 +43,6 @@ export interface CliIo {
 class UsageError extends Error {}
 
 type Runnable = Exclude<Intent, { readonly kind: "help" }>;
-
-const attemptRealpath = (path: string): string | undefined => {
-  try {
-    return realpathSync(path);
-  } catch {
-    return undefined;
-  }
-};
-
-/** 目标可能尚不存在（patch 允许新建）：缺失后缀由最深的已存在祖先补全。 */
-const realpathThroughAncestors = (path: string): string => {
-  const real = attemptRealpath(path);
-  if (real !== undefined) return real;
-  const parent = dirname(path);
-  return join(realpathThroughAncestors(parent), path.slice(parent.length + 1));
-};
 
 /** 写命令入参：workspace 与目标两侧都取真实路径再算相对路径（R1-P1-2）。
  * workspace 不存在时同走一条基准——`ENOENT` 由 core 报，不在这里被 realpath 吞掉。 */
@@ -122,6 +108,22 @@ const llmOf = (
   });
 };
 
+/** 写别处是合法用法（导出到任意目录），但那样 `--tone <id>` 找不到它：提示，不是错误。 */
+const hintIfUndiscovered = (
+  out: string | undefined,
+  id: string,
+  workspace: string,
+  io: CliIo,
+): void => {
+  if (out === undefined) return;
+  const deps = nodeStyleDeps(workspace);
+  if (!isDiscoveredStylePath(out, id, deps)) io.stderr(undiscoveredHint(out, id, deps));
+};
+
+/** 提示按用户视角（相对 cwd）展示；判定仍拿 canonical 串自己做，展示与判定互不影响。 */
+const displayedOutOf = (out: string | undefined, cwd: string): string | undefined =>
+  out === undefined ? undefined : relative(cwd, out);
+
 const runExtract = async (
   intent: Extract<Runnable, { kind: "styleExtract" }>,
   io: CliIo,
@@ -136,20 +138,21 @@ const runExtract = async (
   if (!intent.nameGiven) io.stderr(`未给 --name，使用默认值：${intent.name}\n`);
   if (intent.files.length === 1) io.stderr("单篇语料的规则会很窄：建议 3 篇以上\n");
   const workspace = workspaceRealpathOf(intent.workspace);
-  return styleExtractCommand({
+  const out = intent.out === undefined ? undefined : realpathThroughAncestors(intent.out);
+  // 写成功之后才提示：被 `--out` 占用/语料超限/LLM 失败挡下时什么都没写，提前提示读起来像"已经写了"。
+  const written = await styleExtractCommand({
     files: intent.files,
     workspace,
     id: intent.id,
     name: intent.name,
     inheritsVisual: intent.inheritsVisual,
-    out:
-      intent.out === undefined
-        ? undefined
-        : relative(workspace, realpathThroughAncestors(intent.out)),
+    out: out === undefined ? undefined : relative(workspace, out),
     force: intent.force,
     json: intent.json,
     llm,
   });
+  hintIfUndiscovered(displayedOutOf(intent.out, io.cwd), intent.id, workspace, io);
+  return written;
 };
 
 const runServe = async (

@@ -78,6 +78,8 @@
 | L-32 | **样式变更不进撤销栈：`packages/core/src/style/applyFile.ts` 全文没有任何 `writeSnapshot` 调用**（`writeSnapshot` 只在 `packages/core/src/io/patchFile.ts:36` 与 `packages/core/src/ops/annotationOps.ts` 两处），所以 `hr_patch_node` → `hr_apply_style` → 一次 undo 会**把正文和样式一起回退**（快照是 patch 前的写前字节），第二次才是 `nothing_to_undo`。同时 `packages/core/src/ops/revertOp.ts:2` 的注释「patch / style / 批注共用同一条快照链」**对 style 是失实的**（对批注属实）——这是 `L-13` 判据（同一事实是否只拼写一处）的第十例：注释宣称了一条代码没有兑现的保证。M3.4 交付时按真实语义钉了用例，并在 `docs/05` M3.4 使用建议里警示。 | P2（`undo` 仍能把文件还原到合法状态，只是粒度比注释宣称的粗；不会丢用户数据——`revertLast` 走的是写前字节，不是猜测） | 不修（M3.4 的 D6 禁止改 core）。**修法（须同一条 commit 一起做，不许只改注释）**：`applyFile` 在替换 `<style id="hr-theme">` 前 `writeSnapshot`，并把 `revertOp.ts:2` 注释改成实况；同时定案产品语义——「换样式是否该占一个撤销台阶」。**硬触发条件**：①任何卡要动 `applyFile` 或撤销链；②用户报「换完样式撤销一次把正文也撤了」；③M4.1 style 萃取器写 `style.yaml` 若复用 `applyFile`。 |
 | L-34 | **`dist/styles` 缺失时错误文案不提 `dist/styles`。** `stylesRootOf`（`packages/dsh-bundle/src/index.ts`）在 `dist/styles` 不在时回落到仓库 `styles/`；两者都没了（打包安装后是常态）就只剩内置 `BUILTIN_STYLES` 与用户/项目风格可查，而 `unknown_style` 的文案只列「内置预设、`<workspace>` 的项目风格、`~/.hreader/styles`」——用户照文案排查会一无所获。M3.3 G3-R1（测试员，2026-11-16）发现。 | P2（失败是显式的：必报 `unknown_style`，不静默错数据；只是不可操作、误导排查） | 不修（M3.3 卡不许改 core，且改文案须与资源回落链同源）。**复现**：`rm -rf packages/dsh-bundle/dist/styles && mv styles /tmp/styles.bak && node -e 'import("./packages/dsh-bundle/dist/index.js").then(m=>m.apply(fakeCtx,{styleId:"atelier-editorial"}))'`（用完 `mv /tmp/styles.bak styles`）。**修法（须同一条 commit 一起做）**：把两级回落（`dist/styles` → 仓库 `styles/`）写进错误消息，并给 `tests/dist.test.ts` 补一条"两级都缺时文案点名 `dist/styles`"的用例。**硬触发条件**：①任何卡要动 `stylesRootOf` 或 `promptOf` 的错误文案；②出现"装完插件所有 styleId 都未知"的用户报告；③发布流程改 `files` 字段。
 | L-35 | **`tests/drift.test-d.ts` 只挡类型层漂移，挡不住语义漂移。** 改名 / 删字段 / 新增必填字段会红，但 `order` 撞位（与宿主侧其它 section 同值）、`name` 新约束这类**语义**漂移对双向赋值不可见；它们只有 `scripts/smoke-dsh.ts` 兜底，而它不进 CI。M3.3 终审（2026-11-16）发现。 | P3（本包只传静态串，`order` 只与自身 renderer 比较；宿主侧 order 冲突时才致命） | 不修。**消除条件**：宿主侧出现 `order` 冲突的真实案例时，把 `smoke-dsh.ts` 的 `order` 断言搬进 CI（或在 `drift.test-d.ts` 补与 `SECTION_ORDERS` 的数值比对）。 |
+| L-36 | **LLM 输出非确定性 → CI 里没有真回归保护**，只有 `fixtures/llm/*.json` 的回放；真模型换代（或改 `prompt.ts` 的 prompt）后回放不再代表今天的输出，而 CI 仍会绿。M4.1 F4（2026-11-17）登记。 | P2（回放失真时失败是静默的：测试仍通过，只是不再证明模型行为） | 不修（属 D12 的成本取舍：真调用预算 ≤10 次/卡）。**硬触发条件**：①换 `--model` 默认值或网关；②改 `packages/core/src/style/extract/llm/prompt.ts` 的提示词；③出现“模型明明返回了建议但 dropped 全空/全丢”的报告。**修法**：按 `fixtures/llm/README.md` 重录，并让先红的 `packages/cli/tests/style-extract-llm.test.ts`（`extract-llm` 回放用例）与 `fixtures/llm/*.json` 同一次 commit 落地。 |
+| L-37 | **统计层的句数判定有两头偏差。** 判定在 `packages/core/src/style/extract/paragraphs.ts:148-153` 的 `isAsciiPeriodEnd`（`.` 后跟空白或行尾算句末）与 `:155` 的 `TERMINATORS`（`。！？!?…`，`；` 不算）。**多计**：英文缩写（`e.g. `、`Dr. `）、点后带空格的编号（`3. 5`、`1. ` 列表序）都被切开。**少计**：`；` 连写的长句、无标点的长段各只算一句。短文本（<3 段）上两头偏差都更明显，`max_paragraph_sentences` 因此可能偏高也可能偏低。M4.1 F4（2026-11-17）登记。 | P3（偏差方向不定但可复现，且用户可手工改 `style.yaml` 的 `rhythm`） | 不修（本卡定的是“单篇中文阅读页”语料契约）。**消除条件**：出现非中文/新闻短讯语料的用户报告，或 `rhythm.maxParagraphSentences` 被指“太松/太紧”的真实案例；届时把判定换成 `Intl.Segmenter` 的 `sentence` 粒度，并补英文缩写与分号长句两条用例。 |
 
 ### L-33 · undo 的快照无新鲜度校验（可被"自洽旧快照"回滚）
 
@@ -101,3 +103,11 @@
 现状口径：`hr style extract` 的输入契约 = 单篇阅读页；多 article 直接拒是**可接受的最小行为**，但文案对"我把列表页存下来了"的读者不可操作（它说"模型只能有 1 个顶层 article"，没告诉他该存单篇）。
 F2 要做的：要么按"article 数量最多者 + 相邻"选主，要么把文案改成"这份 HTML 里有 N 个 article，请只保存单篇文章页"。
 
+
+## L-39 · 禁词表已 NFC，正文没有（命中会漏，不会误报；M4.1 F4 登记，P2，不修）
+
+**现象**：`packages/core/src/style/words.ts` 的 `foldOf` 逐码元做 `NFKC` + 小写，但 NFKC 不把"`e` + 组合重音 U+0301"合成为 `é`——它只在**已有预组合字符**时才动。`packages/core/src/style/spec.ts:214` 的 `uniqueWordsOf` 已把**词表**归一为 NFC，正文没走这一步。于是从 PDF / 某些 macOS 复制来的分解形正文（`e`+U+0301）匹配 `é` 这类禁词时**整条漏掉**：只漏报，不会误报（不会把正常文本判成命中）。
+
+**为什么不修**：修它要给 `Folded.source` 提供"归一后下标 → 原文下标"的映射，而 NFC 合成会**改变长度**（2 个码元 → 1 个），逐码元记的 `source` 表与 `lint` 的 `offset`（块内字符偏移，用户拿去改的位置）会整体错位。正确做法是先按 NFC 分片再构造分段映射，属于重写 `words.ts` 偏移层的活，超出本卡（M4.1 定的是"单篇中文阅读页"语料契约）。
+
+**若将来需要**：把 `foldOf` 改成"按 `Intl.Segmenter` 的 grapheme 切分后逐段 NFC"，`source` 改成区间表（每段记 `[原文起, 原文止)`），`lint.ts:60` 的 `offsetsOf` 取段起点；补用例：正文 `e`+U+0301 命中 `é` 一条、命中 `offset` 落在原文字符位置。

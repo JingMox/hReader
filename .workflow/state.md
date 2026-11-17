@@ -196,3 +196,14 @@ M3.1.1 结卡（`c3fc6d8`）后三会话上下文各 15–47K，按阈值重生�
 - 门禁基线：205 文件 / **2263 例** / depcruise 446 模块 0 违规 / knip 静默 / `undo.ts` 四维 100%。
 - 新增缺陷：`L-32`（`applyFile` 不写快照 + `revertOp.ts:2` 注释对 style 失实）、`L-33`（`history.ts:38-40` 只按文件名排序，快照无新鲜度校验 → 可被"自洽旧快照"回滚）。
 - 新增课程：`docs/03` §11.18（注释是契约）、§11.19（修不实陈述先 grep 副本）。
+
+## M4.1（2026-11-17 结卡）
+
+- 状态：**已结卡**。提交见下。产物：`packages/core/src/style/{extract/,llm/,words.ts,lint.ts,spec.ts,suggest.ts,merge.ts}`、`packages/cli/src/{commands/styleExtract.ts,style-out.ts,canonical.ts}`。
+- 三个会话 runId 链（可 resume）：
+  - 编写员（主链）：`b127f5b6` 主链 → `13e737b0`（R29 六条）→ `bcba430d`（R30 两条）→ `36321ca7`（R31 一条）
+  - 审计员：`34c31fa1`（F1）→ `8e6e6cf5`（F2）→ `f5e8b0f2`（F3）→ `1a08a25b`（R28 终审）→ `1058e107`（R30 附注签核）
+  - 测试员：`955b5e2f`（F1）→ `6e70266e`（F2）→ `4ad0d3a2`（F3）→ `cf883cb6`（R29 终轮 10 变异，判"不签核"触发 R30）
+- 门禁基线：229 文件 / **2527 例** / depcruise 499 模块 2079 依赖 0 违规 / knip 静默 / 四维 perFile 100%。
+- 新增缺陷：`L-36`（`--no-llm` 与 `llm.failure` 改文本不可区分）、`L-37`（段落计数口径）、`L-38`（`matchLlm` 状态码归一）、`L-39`（词表已 NFC、正文未 NFC）。
+- 新增课程：`docs/03` §11.21（"同口径"一维一条用例）、§11.22（展示层与判定层分开 canonicalize）、§11.23（真实软链不可 mock）。

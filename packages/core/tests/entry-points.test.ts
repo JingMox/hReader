@@ -32,6 +32,7 @@ const PUBLIC = [
   "HrError",
   "LINT_HIT_LIMIT",
   "NOTE_LIMIT",
+  "STYLE_FILE",
   "addAnnotation",
   "annotationIdOf",
   "applyPatch",
@@ -56,6 +57,7 @@ const PUBLIC = [
   "parseFragment",
   "parseHtml",
   "patchFile",
+  "projectStylePath",
   "readAnnotations",
   "readNode",
   "readStyleSource",
@@ -70,12 +72,13 @@ const PUBLIC = [
   "startServer",
   "toDocumentModel",
   "undoPatch",
+  "userStyleDir",
   "validateDocument",
   "writeAnnotations",
 ];
 
 describe("core entry · 精确集", () => {
-  it("should not leak internal symbols onto the public surface（47 项精确集）", () => {
+  it("should not leak internal symbols onto the public surface（50 项精确集）", () => {
     // 精确集而不是"至少含有"：多一个内部符号也红，报错直接点名多出来的那个。
 
     expect(Object.keys(coreEntry).sort()).toEqual(PUBLIC);
