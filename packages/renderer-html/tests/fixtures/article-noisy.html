@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <title>噪声样本</title>
+  </head>
+  <body>
+    <div class="hr-sidebar">侧栏导航</div>
+    <div data-hr-ui="toolbar">工具栏</div>
+    <article data-hr-id="keep-article">
+      <h1>噪声样本</h1>
+      <p onclick="steal()">
+        正文 <a href="javascript:alert(1)">坏链接</a> <a href="https://example.com/x">好链接</a>
+      </p>
+      <p contenteditable="true">可编辑段落</p>
+      <p style="background: url(http://evil.example/bg.png)">带外链样式的段落</p>
+      <p>伪协议链接 <a href="data:text/html;base64,PHNjcmlwdD4=">数据链接</a></p>
+      <button type="button">按钮</button>
+      <div class="hr-sidebar">内层侧栏</div>
+      <div data-hr-ui="toolbar">内层工具栏</div>
+      <script>
+        alert(1);
+      </script>
+      <style>
+        .x {
+          color: red;
+        }
+      </style>
+      <link rel="stylesheet" href="http://evil.example/x.css" />
+      <iframe src="http://evil.example/frame"></iframe>
+      <video src="http://evil.example/v.mp4"></video>
+      <audio src="http://evil.example/a.mp3"></audio>
+      <embed src="http://evil.example/e.swf" />
+      <object data="http://evil.example/o.html"></object>
+      <form action="/submit">
+        <input value="1" />
+        <select>
+          <option>选项</option>
+        </select>
+        <textarea>文本域</textarea>
+      </form>
+      <img src="x.png" alt="相对路径图" onerror="alert(1)" />
+      <img src="data:image/png;base64,iVBORw0KGgo=" alt="内联图" />
+      <svg onload="alert(1)" width="10" height="10">
+        <image href="http://evil.example/svg.png" width="10" height="10"></image>
+        <use href="http://evil.example/sprite.svg#icon"></use>
+        <feImage href="x.png"></feImage>
+        <circle r="4"></circle>
+      </svg>
+      <article class="inner" data-hr-id="inner-article">
+        <h2>内层小节</h2>
+        <p>内层正文。</p>
+        <button type="button">内层按钮</button>
+      </article>
+      <p>保留的正文段落。</p>
+    </article>
+  </body>
+</html>

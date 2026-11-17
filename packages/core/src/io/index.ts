@@ -7,6 +7,7 @@ export type {
   PatchTargetInput,
   UndoResult,
 } from "./contracts";
+export { writeAtomic } from "./atomic";
 export { isInside, isInsideOrSelf } from "./paths";
 export { nodePatchDeps } from "./node-fs";
 export { patchFile } from "./patchFile";

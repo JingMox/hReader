@@ -423,6 +423,7 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   anchor_lost: "批注锚点已失效（那段文字被改过了）",
   file_exists: "目标文件已存在（要覆盖请显式加 --force）",
   llm_failure: "风格建议层调用失败（检查 key / 网络，或用 --no-llm 走纯统计版）",
+  empty_document: "文档正文裁掉交互 UI 后为空，没有可印的内容",
 };
 
 export const errorTextOf = (code: string, detail?: string): string => {

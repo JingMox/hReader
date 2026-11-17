@@ -1,6 +1,7 @@
 // 这层管：结果 → 人读文本 / 单行 JSON（键序手写固定）；不做 IO、不判断退出码。
 // `--json` 契约：恰好一个 `\n`、无缩进、无尾随空格；错误 JSON 也是单行。
 
+import type { PrintHtmlResult } from "@hreader/renderer-html";
 import type {
   ApplyStyleResult,
   DaemonInfo,
@@ -99,6 +100,16 @@ export const dataStyleExtract = (
 ): string =>
   `{"path":${path === null ? "null" : quote(path)},"stats":${statsJson(result.stats)},"yaml":${quote(result.yaml)}` +
   (dropped === undefined ? "}" : `,"dropped":[${dropped.map(droppedJson).join(",")}]}`);
+
+/** `out` 为 `null` = 只打 stdout；`bytes` 与落盘文件大小相等（用 `statSync` 复核过，§11.4）。 */
+export const dataExport = (report: PrintHtmlResult, out: string | null): string =>
+  `{"html":${quote(report.html)},"bytes":${String(report.bytes)},` +
+  `"droppedImages":${String(report.droppedImages)},"out":${out === null ? "null" : quote(out)}}`;
+
+export const humanExport = (report: PrintHtmlResult): string => report.html;
+
+export const humanExportWritten = (out: string, bytes: number): string =>
+  `exported ${out} (${String(bytes)} bytes)\n`;
 
 const outlineLines = (nodes: readonly OutlineNode[], depth: number): readonly string[] =>
   nodes.flatMap((node) => [

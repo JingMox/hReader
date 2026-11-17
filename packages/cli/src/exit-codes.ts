@@ -42,6 +42,7 @@ const EXIT_CODES = {
   anchor_lost: EXIT_FAILURE,
   llm_failure: EXIT_IO,
   file_exists: EXIT_FAILURE,
+  empty_document: EXIT_FAILURE,
 } satisfies Record<HrErrorCode, number>;
 
 /** `satisfies` 已保证表内穷尽：CLI 与 core 同仓同版本，不存在"新 core 配旧 CLI"的运行时分支。 */

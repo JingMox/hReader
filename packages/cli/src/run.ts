@@ -4,12 +4,13 @@
 
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { relative } from "node:path";
+import { join, relative } from "node:path";
 
 import { HrError, nodeStyleDeps } from "@hreader/core";
 
 import { parseArgs, type Intent } from "./args";
 import { attemptRealpath, realpathThroughAncestors } from "./canonical";
+import { exportPrintCommand } from "./commands/exportPrint";
 import { outlineCommand } from "./commands/outline";
 import { patchCommand } from "./commands/patch";
 import { readCommand } from "./commands/read";
@@ -155,6 +156,27 @@ const runExtract = async (
   return written;
 };
 
+const runExport = async (
+  intent: Extract<Runnable, { kind: "export" }>,
+  io: CliIo,
+): Promise<string> => {
+  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+  // 落盘目标也先真实化：`writeAtomic` 的 workspace 判定与提示展示都该拿同一条路径。
+  const out = intent.out === undefined ? undefined : realpathThroughAncestors(intent.out);
+  return exportPrintCommand({
+    // 命令层只收绝对路径（它要读文件、也要算 docId），workspace 内的相对换算留在这一层。
+    path: join(paths.workspace, paths.file),
+    visual: intent.visual,
+    out,
+    force: intent.force,
+    workspace: paths.workspace,
+    json: intent.json,
+    warn: (message) => {
+      io.stderr(message);
+    },
+  });
+};
+
 const runServe = async (
   intent: Extract<Runnable, { kind: "serve" }>,
   io: CliIo,
@@ -180,6 +202,7 @@ const runServe = async (
 const runIntent = async (intent: Runnable, io: CliIo): Promise<string> => {
   if (intent.kind === "outline") return outlineCommand(intent);
   if (intent.kind === "read") return readCommand(intent);
+  if (intent.kind === "export") return runExport(intent, io);
   if (intent.kind === "serve") return runServe(intent, io);
   if (intent.kind === "undo") return runUndo(intent);
   if (intent.kind === "styleExtract") return runExtract(intent, io);

@@ -39,6 +39,7 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   anchor_lost: true,
   llm_failure: true,
   file_exists: true,
+  empty_document: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {

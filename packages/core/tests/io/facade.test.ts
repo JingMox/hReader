@@ -40,6 +40,7 @@ describe("门面导出面", () => {
       "nodePatchDeps",
       "patchFile",
       "undoPatch",
+      "writeAtomic",
     ]);
   });
 

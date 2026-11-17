@@ -38,6 +38,14 @@ module.exports = {
       to: { path: "^packages/(chrome-extension|app)/" },
     },
     {
+      name: "renderer-html-src-stays-pure",
+      severity: "error",
+      comment:
+        "@hreader/renderer-html 的 src 是纯函数层（D3）：不得碰 node: 内置模块，也不得反向依赖宿主包（cli/mcp-server）。",
+      from: { path: "^packages/renderer-html/src" },
+      to: { path: "^(node:|packages/(cli|mcp-server)/)" },
+    },
+    {
       name: "cli-is-a-thin-adapter",
       severity: "error",
       comment: "CLI 是薄适配层（M1.8 §0）：HTML/CSS/YAML 逻辑只能在 core，CLI 不得引入处理库。",
