@@ -36,6 +36,9 @@ interface Overrides {
   readonly path?: string;
   readonly pageSize?: string;
   readonly timeoutMs?: number;
+  /** 默认跟 CLI 一致：`--outline` 缺省就是开。 */
+  readonly outline?: boolean;
+  readonly outlineConflict?: boolean;
   readonly out?: string;
   readonly force?: boolean;
   readonly json?: boolean;
@@ -43,15 +46,18 @@ interface Overrides {
 }
 
 const inputOf = (dir: string, overrides: Overrides = {}): PdfCommandInput => ({
-  path: overrides.path ?? join(dir, "doc.html"),
-  pageSize: overrides.pageSize ?? "a4",
-  timeoutMs: overrides.timeoutMs ?? 60_000,
-  out: overrides.out ?? join(dir, "out.pdf"),
-  force: overrides.force ?? false,
-  workspace: dir,
-  json: overrides.json ?? false,
+  path: join(dir, "doc.html"),
+  pageSize: "a4",
+  timeoutMs: 60_000,
+  outline: true,
+  outlineConflict: false,
+  out: join(dir, "out.pdf"),
+  force: false,
+  json: false,
   warn: () => undefined,
-  render: overrides.render ?? (() => Promise.resolve({ bytes: Buffer.from(pdfOf(3)) })),
+  render: () => Promise.resolve({ bytes: Buffer.from(pdfOf(3)) }),
+  workspace: dir,
+  ...overrides,
 });
 
 const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
@@ -71,7 +77,7 @@ const fieldOfDataOf = (text: string): ((key: string) => unknown) => {
 };
 
 describe("pdfCommand · --json 键集", () => {
-  it("只含 pdf/bytes/pages/out 四个键", async () => {
+  it("只含 pdf/bytes/pages/outline/out 五个键", async () => {
     await withDocOf(async (dir) => {
       const text = await pdfCommand(inputOf(dir, { json: true }));
       const envelope: unknown = JSON.parse(text);
@@ -80,6 +86,7 @@ describe("pdfCommand · --json 键集", () => {
         "pdf",
         "bytes",
         "pages",
+        "outline",
         "out",
       ]);
     });

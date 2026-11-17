@@ -2,12 +2,12 @@
 //
 // 关键点：`--workspace` / 目标都可能尚不存在，路径换算必须退到最深的已存在祖先，且绝不创建目录。
 
-import { mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { EXIT_IO, EXIT_OK, EXIT_USAGE } from "../src/exit-codes";
+import { EXIT_FAILURE, EXIT_IO, EXIT_OK, EXIT_USAGE } from "../src/exit-codes";
 import { run, type CliIo } from "../src/run";
 
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "hr-runpaths-")));
@@ -59,6 +59,31 @@ describe("run · 缺失目标/缺失 workspace 的路径换算", () => {
     expect(code).toBe(EXIT_USAGE);
     expect(err()).toContain(`--workspace 不存在：${ghost}`);
     expect(readdirSync(dir).includes("ghost-workspace")).toBe(false);
+  });
+});
+
+describe("run · 大纲旗标（AC-3：exit 1 且不落盘）", () => {
+  it("should reject --outline with --no-outline as invalid_input without writing", async () => {
+    writeFileSync(join(dir, "conflict.html"), DOC);
+    const { io, err } = ioAt();
+    const code = await run(
+      ["pdf", "conflict.html", "--out", "conflict.pdf", "--outline", "--no-outline"],
+      io,
+    );
+
+    expect(code).toBe(EXIT_FAILURE);
+    expect(err()).toContain("--outline 与 --no-outline 不能同时使用");
+    expect(existsSync(join(dir, "conflict.pdf"))).toBe(false);
+  });
+
+  it("should reject --no-outline on hr png as invalid_input without writing", async () => {
+    writeFileSync(join(dir, "noline.html"), DOC);
+    const { io, err } = ioAt();
+    const code = await run(["png", "noline.html", "--out", "noline.png", "--no-outline"], io);
+
+    expect(code).toBe(EXIT_FAILURE);
+    expect(err()).toContain("hr png 不支持 --no-outline");
+    expect(existsSync(join(dir, "noline.png"))).toBe(false);
   });
 });
 

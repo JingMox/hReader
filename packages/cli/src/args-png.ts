@@ -1,6 +1,7 @@
 // 这层管：`hr png` 的 argv 切片 → intent（长图尺寸三参数 / 超时 / 落盘位置）；不读盘、不开 Chrome。
 // 尺寸只透传原文（`--page-size` 同一口径）：合法区间属于语义，退出码是 1 而不是 2。
 // 与 `args-pdf.ts` 同一套写法：位置参数一个文件、`--out` 必填、其它 flag 出现即报未用。
+// 例外是 `--outline`/`--no-outline`：本子命令不支持，但它们是**已知**旗标，放行到意图里由命令层报 `invalid_input`。
 
 import { absoluteOf, commonOf, failure, unusedFlag, type ParsedArgs } from "./intent";
 import type { Raw } from "./tokens";
@@ -9,7 +10,9 @@ const PNG_FLAGS = [
   "--force",
   "--json",
   "--max-height",
+  "--no-outline",
   "--out",
+  "--outline",
   "--scale",
   "--timeout",
   "--width",
@@ -30,6 +33,12 @@ const DEFAULT_WIDTH = "1200";
 const DEFAULT_SCALE = "2";
 
 const DEFAULT_MAX_HEIGHT = "20000";
+
+const OUTLINE_FLAGS: readonly string[] = ["--outline", "--no-outline"];
+
+/** 大纲旗标在 png 上是“已知旗标放错子命令”：放行到意图里，由命令层报 `invalid_input` exit 1。 */
+const outlineFlagOf = (raw: Raw): string | undefined =>
+  OUTLINE_FLAGS.find((flag) => raw.switches.has(flag));
 
 /** 越界不夹紧、不四舍五入：解析不出整数就整条拒绝，错误文案里带合法区间。 */
 const numberOf = (raw: Raw, range: Range): number | "invalid" => {
@@ -71,6 +80,7 @@ export const pngIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
       maxHeight: raw.values.get("--max-height") ?? DEFAULT_MAX_HEIGHT,
       // 裸布尔而不是 `undefined` 哨兵：命令层只关心“用户到底给没给”，默认值的来源不参与判断。
       maxHeightExplicit: raw.values.has("--max-height"),
+      outlineFlag: outlineFlagOf(raw),
       timeoutMs: timeoutSec * 1000,
       force: raw.switches.has("--force"),
       ...commonOf(raw, cwd),

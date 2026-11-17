@@ -111,16 +111,19 @@ export const humanExport = (report: PrintHtmlResult): string => report.html;
 export const humanExportWritten = (out: string, bytes: number): string =>
   `exported ${out} (${String(bytes)} bytes)\n`;
 
-/** `pdf` 是产物的 base64：`--json` 要么给全部字节，要么不给（与 `dataExport` 的 `html` 同一取舍）。 */
+/** `pdf` 是产物的 base64：`--json` 要么给全部字节，要么不给（与 `dataExport` 的 `html` 同一取舍）。
+ * `outline` 是**本次打印稿的 heading 数（h1–h6）**，不是从产物里数出来的：`--no-outline` 或无 heading 时为 0。 */
 export interface PdfReport {
   readonly base64: string;
   readonly bytes: number;
   readonly pages: number;
+  readonly outline: number;
   readonly out: string;
 }
 
 export const dataPdf = (report: PdfReport): string =>
-  `{"pdf":${quote(report.base64)},"bytes":${String(report.bytes)},"pages":${String(report.pages)},"out":${quote(report.out)}}`;
+  `{"pdf":${quote(report.base64)},"bytes":${String(report.bytes)},"pages":${String(report.pages)},` +
+  `"outline":${String(report.outline)},"out":${quote(report.out)}}`;
 
 export const humanPdf = (report: PdfReport): string =>
   `exported ${report.out} (${String(report.bytes)} bytes, ${String(report.pages)} pages)\n`;

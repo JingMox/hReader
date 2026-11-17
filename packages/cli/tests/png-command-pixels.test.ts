@@ -33,6 +33,7 @@ const inputOf = (dir: string, overrides: Partial<PngCommandInput> = {}): PngComm
   scale: "2",
   maxHeight: "20000",
   maxHeightExplicit: false,
+  outlineFlag: undefined,
   timeoutMs: 60_000,
   out: join(dir, "out.png"),
   force: false,

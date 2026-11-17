@@ -128,6 +128,7 @@ interface ChromeRenderInput {
 
 interface RenderPdfInput extends ChromeRenderInput {
   readonly pageSize: PdfPageSize;
+  readonly outline: boolean;
 }
 
 interface RenderPngInput extends ChromeRenderInput {
@@ -253,6 +254,7 @@ const sessionPdfOf = async (input: RenderPdfInput, run: ChromeRun): Promise<Uint
     html: input.html,
     dir: run.dir,
     pageSize: input.pageSize,
+    outline: input.outline,
   });
 
 const sessionPngOf = async (input: RenderPngInput, run: ChromeRun): Promise<LongImage> =>

@@ -39,6 +39,8 @@ const SWITCH_FLAGS: ReadonlySet<string> = new Set([
   "--json",
   "--lint",
   "--no-llm",
+  "--no-outline",
+  "--outline",
   "--help",
 ]);
 

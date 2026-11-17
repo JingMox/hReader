@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { renderPdfOf } from "../src/chrome/session";
 import { VERSION_TEXT, depsWithOf, fakeChromeOf, responderOf } from "./chrome-helpers";
-import { DEVTOOLS_LINE, NEVER, renderSetupOf, type SessionSetup } from "./chrome-session-setup";
+import { DEVTOOLS_LINE, inputOf, renderSetupOf, type SessionSetup } from "./chrome-session-setup";
 
 const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
   try {
@@ -30,9 +30,7 @@ const sleepOf = (ms: number): Promise<void> =>
   });
 
 const renderWithOf = (setup: SessionSetup, timeoutMs = 1000): Promise<Uint8Array> =>
-  renderPdfOf({ html: "<p>hi</p>", pageSize: "a4", stop: NEVER, timeoutMs, deps: setup.deps }).then(
-    (result) => result.bytes,
-  );
+  renderPdfOf(inputOf(setup.deps, { html: "<p>hi</p>", timeoutMs })).then((result) => result.bytes);
 
 describe("renderPdfOf · chrome_missing", () => {
   it("HREADER_CHROME 不存在时直接报 chrome_missing", async () => {
@@ -44,9 +42,7 @@ describe("renderPdfOf · chrome_missing", () => {
       env: { HREADER_CHROME: "/nope/chrome" },
       exists: () => false,
     });
-    const error = await failureOf(
-      renderPdfOf({ html: "x", pageSize: "a4", stop: NEVER, timeoutMs: 1000, deps }),
-    );
+    const error = await failureOf(renderPdfOf(inputOf(deps)));
     expect(error.code).toBe("chrome_missing");
     expect(error.message).toContain("HREADER_CHROME=/nope/chrome 不存在");
     expect(dirs).toEqual([]);
@@ -60,9 +56,7 @@ describe("renderPdfOf · chrome_missing", () => {
       env: {},
       exists: () => false,
     });
-    const error = await failureOf(
-      renderPdfOf({ html: "x", pageSize: "a4", stop: NEVER, timeoutMs: 1000, deps }),
-    );
+    const error = await failureOf(renderPdfOf(inputOf(deps)));
     expect(error.code).toBe("chrome_missing");
     expect(error.message).toContain("未设置 HREADER_CHROME");
   });
@@ -82,7 +76,7 @@ describe("renderPdfOf · 系统 Chrome 候选", () => {
         spawns += 1;
       },
     });
-    const pending = renderPdfOf({ html: "x", pageSize: "a4", stop: NEVER, timeoutMs: 1000, deps });
+    const pending = renderPdfOf(inputOf(deps));
     fake.stderr(DEVTOOLS_LINE);
     await pending;
     expect(spawns).toBe(1);
@@ -99,9 +93,7 @@ describe("renderPdfOf · 启动失败", () => {
       env: { HREADER_CHROME: "/nope/chrome" },
       exists: (path) => path === "/usr/bin/google-chrome",
     });
-    const error = await failureOf(
-      renderPdfOf({ html: "<p>x</p>", pageSize: "a4", stop: NEVER, timeoutMs: 1000, deps }),
-    );
+    const error = await failureOf(renderPdfOf(inputOf(deps, { html: "<p>x</p>" })));
     expect(error.code).toBe("chrome_missing");
     expect(fake.signals).toEqual([]);
   });
@@ -115,9 +107,7 @@ describe("renderPdfOf · 启动失败", () => {
       connect: () => responderOf({}).transport,
       spawnError: "spawn EACCES",
     });
-    const error = await failureOf(
-      renderPdfOf({ html: "x", pageSize: "a4", stop: NEVER, timeoutMs: 1000, deps }),
-    );
+    const error = await failureOf(renderPdfOf(inputOf(deps)));
     expect(error.code).toBe("chrome_failed");
     expect(error.message).toContain("启动 Chrome 失败：spawn EACCES");
     expect(dirs.length).toBe(1);
@@ -166,7 +156,7 @@ describe("renderPdfOf · 版本端点", () => {
       connect: () => responderOf({}).transport,
       fetchText: () => Promise.reject(new Error("ECONNREFUSED")),
     });
-    const pending = renderPdfOf({ html: "x", pageSize: "a4", stop: NEVER, timeoutMs: 1000, deps });
+    const pending = renderPdfOf(inputOf(deps));
     fake.stderr(DEVTOOLS_LINE);
     const error = await failureOf(pending);
     expect(error.message).toContain("读取 /json/version 失败：ECONNREFUSED");
@@ -181,7 +171,7 @@ describe("renderPdfOf · 版本端点", () => {
       connect: () => responderOf({}).transport,
       fetchText: () => Promise.resolve(JSON.stringify({ Browser: "Fake" })),
     });
-    const pending = renderPdfOf({ html: "x", pageSize: "a4", stop: NEVER, timeoutMs: 1000, deps });
+    const pending = renderPdfOf(inputOf(deps));
     fake.stderr(DEVTOOLS_LINE);
     const error = await failureOf(pending);
     expect(error.message).toContain("没有 webSocketDebuggerUrl");
@@ -197,7 +187,7 @@ describe("renderPdfOf · 非 Error 的拒绝值", () => {
       connect: () => responderOf({}).transport,
       fetchText: () => rejectionOf("plain-string"),
     });
-    const pending = renderPdfOf({ html: "x", pageSize: "a4", stop: NEVER, timeoutMs: 1000, deps });
+    const pending = renderPdfOf(inputOf(deps));
     fake.stderr(DEVTOOLS_LINE);
     const error = await failureOf(pending);
     expect(error.message).toContain("读取 /json/version 失败：plain-string");
@@ -244,13 +234,7 @@ describe("renderPdfOf · 中断", () => {
     const stopping = new Promise<void>((resolve) => {
       stop = resolve;
     });
-    const pending = renderPdfOf({
-      html: "<p>x</p>",
-      pageSize: "a4",
-      stop: stopping,
-      timeoutMs: 1000,
-      deps: setup.deps,
-    });
+    const pending = renderPdfOf(inputOf(setup.deps, { html: "<p>x</p>", stop: stopping }));
     setup.fake.stderr(DEVTOOLS_LINE);
     await sleepOf(10);
     stop();
@@ -286,7 +270,7 @@ describe("renderPdfOf · 晚绑定 transport", () => {
           release = resolve;
         }),
     });
-    const pending = renderPdfOf({ html: "x", pageSize: "a4", stop: NEVER, timeoutMs: 20, deps });
+    const pending = renderPdfOf(inputOf(deps, { timeoutMs: 20 }));
     fake.stderr(DEVTOOLS_LINE);
     const error = await failureOf(pending);
     expect(error.code).toBe("render_timeout");

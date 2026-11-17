@@ -187,14 +187,12 @@ const runPdf = async (
   io: ResolvedIo,
 ): Promise<string> => {
   const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+  // 页宽/超时/大纲这类字段意图层与命令层同名：整体透传，只换算路径相关的三项。
   return pdfCommand({
+    ...intent,
     path: join(paths.workspace, paths.file),
-    pageSize: intent.pageSize,
-    timeoutMs: intent.timeoutMs,
     out: realpathThroughAncestors(intent.out),
-    force: intent.force,
     workspace: paths.workspace,
-    json: intent.json,
     warn: io.stderr,
     render: (renderInput) =>
       renderPdfOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),
@@ -208,16 +206,10 @@ const runPng = async (
 ): Promise<string> => {
   const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
   return pngCommand({
+    ...intent,
     path: join(paths.workspace, paths.file),
-    width: intent.width,
-    scale: intent.scale,
-    maxHeight: intent.maxHeight,
-    maxHeightExplicit: intent.maxHeightExplicit,
-    timeoutMs: intent.timeoutMs,
     out: realpathThroughAncestors(intent.out),
-    force: intent.force,
     workspace: paths.workspace,
-    json: intent.json,
     warn: io.stderr,
     render: (renderInput) =>
       renderPngOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),

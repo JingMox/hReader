@@ -44,6 +44,7 @@ const defaultsOf = (dir: string): PngCommandInput => ({
   scale: "2",
   maxHeight: "20000",
   maxHeightExplicit: false,
+  outlineFlag: undefined,
   timeoutMs: 60_000,
   out: join(dir, "out.png"),
   force: false,
@@ -188,6 +189,29 @@ describe("pngCommand · 尺寸越界（exit 1）", () => {
       expect(rendered).toBe(false);
     });
   });
+});
+
+describe("pngCommand · 大纲旗标", () => {
+  it.each(["--outline", "--no-outline"])(
+    "%s 报 invalid_input（PNG 没有大纲），不渲染不落盘",
+    (flag) =>
+      withDocOf(async (dir) => {
+        const out = join(dir, "out.png");
+        const error = await failureOf(
+          pngCommand(
+            inputOf(dir, {
+              out,
+              outlineFlag: flag,
+              // 真去渲染就会以别的错误码红掉：这行既是“不许渲染”，也保证落盘闸门没走到。
+              render: () => Promise.reject(new Error("PNG 不该渲染")),
+            }),
+          ),
+        );
+        expect(error.code).toBe("invalid_input");
+        expect(error.message).toContain(`hr png 不支持 ${flag}`);
+        expect(existsSync(out)).toBe(false);
+      }),
+  );
 });
 
 describe("pngCommand · 产物校验", () => {
