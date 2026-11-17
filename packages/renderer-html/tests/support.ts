@@ -5,11 +5,12 @@ import { readFileSync } from "node:fs";
 import { buildOutline, injectNodeIds, parseHtml, serializeHtml } from "@hreader/core";
 import type { HtmlElementNode, HtmlNode, OutlineNode } from "@hreader/core";
 
-import type { PrintHtmlInput } from "../src/index";
+import type { PaperSize, PrintHtmlInput } from "../src/index";
 
 const FIXTURE_DIR = new URL("./fixtures/", import.meta.url);
 
 interface InputOverrides {
+  readonly paper?: PaperSize;
   readonly title?: string;
   readonly docId?: string;
   readonly visualId?: string;
@@ -25,6 +26,7 @@ export const inputOf = (documentHtml: string, overrides: InputOverrides = {}): P
   return {
     docId: overrides.docId ?? "sample-doc",
     visualId: overrides.visualId ?? "atelier-editorial",
+    paper: overrides.paper ?? "a4",
     documentHtml: serializeHtml(parsed),
     themeCss: overrides.themeCss ?? "",
     outline: buildOutline(parsed).nodes,

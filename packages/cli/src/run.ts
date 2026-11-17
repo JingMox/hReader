@@ -1,6 +1,5 @@
-// 这层管：argv → 意图 → 命令 → 退出码（CLI 的 io 契约与错误归口）；不做解析、不做格式化。
-// 用法错误是 CLI 自己的事：只走 stderr（卡片 §3 的 JSON 形状只描述 `HrError`），退出码 2；`--help` 一律 0。
-// 进程相关的 io 在 `main.ts`：那里不可单测，逻辑全部留在本文件。
+// 这层管：argv → 意图 → 命令 → 退出码（CLI 的 io 契约与错误归口）；用法错误只走 stderr、退出码 2，`--help` 一律 0。
+// 不做解析、不做格式化；进程相关的 io 在不可单测的 `main.ts`，逻辑全部留在本文件。
 
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -9,10 +8,13 @@ import { join, relative } from "node:path";
 import { HrError, nodeStyleDeps } from "@hreader/core";
 
 import { parseArgs, type Intent } from "./args";
+import { renderPdfOf, renderPngOf, chromeDepsOf } from "./chrome/session";
 import { attemptRealpath, realpathThroughAncestors } from "./canonical";
 import { exportPrintCommand } from "./commands/exportPrint";
 import { outlineCommand } from "./commands/outline";
 import { patchCommand } from "./commands/patch";
+import { pdfCommand } from "./commands/pdf";
+import { pngCommand } from "./commands/png";
 import { readCommand } from "./commands/read";
 import { serveCommand } from "./commands/serve";
 import { styleCommand } from "./commands/style";
@@ -45,8 +47,7 @@ class UsageError extends Error {}
 
 type Runnable = Exclude<Intent, { readonly kind: "help" }>;
 
-/** 写命令入参：workspace 与目标两侧都取真实路径再算相对路径（R1-P1-2）。
- * workspace 不存在时同走一条基准——`ENOENT` 由 core 报，不在这里被 realpath 吞掉。 */
+/** 写命令入参：两边都取真实路径再算相对（R1-P1-2）；workspace 不存在时同走一条基准，`ENOENT` 交给 core。 */
 const workspaceRealpathOf = (workspace: string): string => {
   const real = attemptRealpath(workspace);
   if (real === undefined) throw new UsageError(`--workspace 不存在：${workspace}`);
@@ -88,8 +89,6 @@ const runUndo = async (intent: Extract<Runnable, { kind: "undo" }>): Promise<str
   return undoCommand({ path: paths.file, workspace: paths.workspace, json: intent.json });
 };
 
-const never = new Promise<void>(() => undefined);
-
 const LLM_KEY_ENV = "OPENCODE_API_KEY";
 
 /** 传输层只在这里构造：`commands/*` 不许碰 env，网络实现也不该知道 flag 从哪来。 */
@@ -127,15 +126,14 @@ const displayedOutOf = (out: string | undefined, cwd: string): string | undefine
 
 const runExtract = async (
   intent: Extract<Runnable, { kind: "styleExtract" }>,
-  io: CliIo,
+  io: ResolvedIo,
 ): Promise<string> => {
-  // env 在这里取一次：`llmOf` 只该看到具体的 env，而不是"可能没有 env"的 io。
-  const env = io.env ?? {};
+  const env = io.env;
   const key = apiKeyOf(env);
   // D2：没 key 是正常路径，不是错误——只在 stderr 说明一句，产物与 --no-llm 完全一致。
   if (key === undefined) io.stderr(`未设置 ${LLM_KEY_ENV}，仅用统计结果\n`);
   const llm = key === undefined || intent.noLlm ? undefined : llmOf(intent, io, env, key);
-  if (!intent.idGiven) io.stderr(`未给 --id，使用默认值：${intent.id}\n`);
+  if (!intent.idGiven) io.stderr(`未给 --id，使用默认值：${intent.id}\n`); // 默认值只提示，不拦
   if (!intent.nameGiven) io.stderr(`未给 --name，使用默认值：${intent.name}\n`);
   if (intent.files.length === 1) io.stderr("单篇语料的规则会很窄：建议 3 篇以上\n");
   const workspace = workspaceRealpathOf(intent.workspace);
@@ -171,18 +169,66 @@ const runExport = async (
     force: intent.force,
     workspace: paths.workspace,
     json: intent.json,
-    warn: (message) => {
-      io.stderr(message);
-    },
+    warn: io.stderr,
+  });
+};
+
+/** `env`/`stop` 在 `CliIo` 里可省；归一到 `ResolvedIo`，下游命令才不必判空（`stop` 的永不兑现是故意的）。 */
+type ResolvedIo = CliIo & Required<Pick<CliIo, "env" | "stop">>;
+const resolvedIoOf = (io: CliIo): ResolvedIo => ({
+  ...io,
+  env: io.env ?? {},
+  stop: io.stop ?? new Promise<void>(() => undefined),
+});
+
+/** 纸张/超时在会话层定；这里只把"哪份 HTML 交给哪个 Chrome"接起来（D1 命令层不碰进程）。 */
+const runPdf = async (
+  intent: Extract<Runnable, { kind: "pdf" }>,
+  io: ResolvedIo,
+): Promise<string> => {
+  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+  return pdfCommand({
+    path: join(paths.workspace, paths.file),
+    pageSize: intent.pageSize,
+    timeoutMs: intent.timeoutMs,
+    out: realpathThroughAncestors(intent.out),
+    force: intent.force,
+    workspace: paths.workspace,
+    json: intent.json,
+    warn: io.stderr,
+    render: (renderInput) =>
+      renderPdfOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),
+  });
+};
+
+/** 长图尺寸在会话层定；这里只把视口参数与停止口接上（D1 命令层不碰进程）。 */
+const runPng = async (
+  intent: Extract<Runnable, { kind: "png" }>,
+  io: ResolvedIo,
+): Promise<string> => {
+  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+  return pngCommand({
+    path: join(paths.workspace, paths.file),
+    width: intent.width,
+    scale: intent.scale,
+    maxHeight: intent.maxHeight,
+    maxHeightExplicit: intent.maxHeightExplicit,
+    timeoutMs: intent.timeoutMs,
+    out: realpathThroughAncestors(intent.out),
+    force: intent.force,
+    workspace: paths.workspace,
+    json: intent.json,
+    warn: io.stderr,
+    render: (renderInput) =>
+      renderPngOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),
   });
 };
 
 const runServe = async (
   intent: Extract<Runnable, { kind: "serve" }>,
-  io: CliIo,
+  io: ResolvedIo,
 ): Promise<string> => {
-  // 显式 `--app-dir` 必须真实存在（exit 2）；缺省值不存在仍交给 core 的 200 兜底（M2.1 冻结契约）。
-  // 校验放在 run.ts 而不是 commands/serve.ts：depcruise 的 cli-parse-and-commands-stay-pure 禁止 commands/* 碰 fs。
+  // 显式 `--app-dir` 必须真实存在（exit 2）；校验留在这里：depcruise 禁止 commands/* 碰 fs（M2.1 缺省值仍由 core 兜底）。
   if (intent.appDirGiven && intent.appDir !== undefined && !existsSync(intent.appDir)) {
     throw new HrError("invalid_input", `--app-dir 目录不存在：${intent.appDir}`);
   }
@@ -195,14 +241,16 @@ const runServe = async (
     ...(intent.appDir === undefined ? {} : { appDir: intent.appDir }),
     json: intent.json,
     allowHosts: intent.allowHosts,
-    stop: io.stop ?? never,
+    stop: io.stop,
   });
 };
 
-const runIntent = async (intent: Runnable, io: CliIo): Promise<string> => {
+const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
   if (intent.kind === "outline") return outlineCommand(intent);
   if (intent.kind === "read") return readCommand(intent);
   if (intent.kind === "export") return runExport(intent, io);
+  if (intent.kind === "pdf") return runPdf(intent, io);
+  if (intent.kind === "png") return runPng(intent, io);
   if (intent.kind === "serve") return runServe(intent, io);
   if (intent.kind === "undo") return runUndo(intent);
   if (intent.kind === "styleExtract") return runExtract(intent, io);
@@ -224,9 +272,8 @@ const topicOf = (kind: Runnable["kind"]): CommandName => (kind === "styleExtract
 const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
   if (!(error instanceof HrError)) {
     io.stderr(`${messageOf(error)}\n`);
-    if (io.debug && error instanceof Error && typeof error.stack === "string") {
+    if (io.debug && error instanceof Error && typeof error.stack === "string")
       io.stderr(`${error.stack}\n`);
-    }
     return EXIT_INTERNAL;
   }
   if (json) io.stdout(jsonError(error.code, error.message));
@@ -244,7 +291,7 @@ export const run = async (argv: readonly string[], io: CliIo): Promise<number> =
   const { json } = parsed.intent;
   const topic = topicOf(parsed.intent.kind);
   try {
-    io.stdout(await runIntent(parsed.intent, io));
+    io.stdout(await runIntent(parsed.intent, resolvedIoOf(io)));
     return EXIT_OK;
   } catch (error: unknown) {
     if (error instanceof UsageError) return usageFailure(error.message, topic, io);

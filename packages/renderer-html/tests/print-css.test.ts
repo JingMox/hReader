@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { HrError } from "@hreader/core";
+
 import { PRINT_CSS } from "../src/index";
+import { printCssOf } from "../src/print-css";
 
 /** 空白归一化后再比对规则体：格式化改动（缩行、换行）不该弄红规则级测试。 */
 const flat = PRINT_CSS.replaceAll(/\s+/gu, " ");
@@ -111,5 +114,37 @@ describe("AC-2 / §4 约束", () => {
   it("两套类名成对生效（产物用 .cover/.toc，模板用 .print-*）", () => {
     expect(has([".cover", ".print-cover"])).toBe(true);
     expect(has([".toc", ".print-toc"])).toBe(true);
+  });
+});
+
+describe("printCssOf · 纸张守卫（§17.1）", () => {
+  /** 类型层已收窄，只有在运行期绕过它才能复现"CLI 传了个字典外的纸型"：`Reflect.apply` 不写 `as`。 */
+  const failureOf = (paper: string): unknown => {
+    try {
+      Reflect.apply(printCssOf, undefined, [paper]);
+    } catch (error: unknown) {
+      return error;
+    }
+    throw new Error(`预期抛出 HrError：${paper}`);
+  };
+
+  const codeOf = (error: unknown): string => (error instanceof HrError ? error.code : "非 HrError");
+
+  it("字典外的纸型抛 invalid_input，且把原值带进 message", () => {
+    const error = failureOf("b5");
+    expect(error).toBeInstanceOf(HrError);
+    expect(codeOf(error)).toBe("invalid_input");
+    expect(error instanceof HrError ? error.message : "").toContain("b5");
+  });
+
+  it("空字符串也不再静默产出 `size: ;`", () => {
+    expect(codeOf(failureOf(""))).toBe("invalid_input");
+  });
+
+  it("三档合法纸张照旧各给一个关键字", () => {
+    const sizes = (["a4", "letter", "a5"] as const).map(
+      (paper) => /size: ([^;]+);/u.exec(printCssOf(paper))?.[1],
+    );
+    expect(sizes).toEqual(["A4", "letter", "A5"]);
   });
 });

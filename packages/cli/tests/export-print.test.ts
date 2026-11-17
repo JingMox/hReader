@@ -69,6 +69,18 @@ describe("hr export · stdout", () => {
   });
 });
 
+describe("hr export · 纸张", () => {
+  it("should always print on a4 regardless of any pdf page-size flag", async () => {
+    await withTempDir(async (dir) => {
+      seed(dir);
+      const result = await runCli(["export", "doc.html", "--workspace", dir], { cwd: dir });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("size: A4;");
+      expect(result.stdout).not.toContain("size: A5;");
+    });
+  });
+});
+
 describe("hr export · --json", () => {
   it("should report bytes equal to the html's byte length", async () => {
     await withTempDir(async (dir) => {

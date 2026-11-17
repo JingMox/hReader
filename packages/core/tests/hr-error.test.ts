@@ -40,6 +40,10 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   llm_failure: true,
   file_exists: true,
   empty_document: true,
+  chrome_missing: true,
+  chrome_failed: true,
+  render_timeout: true,
+  render_empty: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {

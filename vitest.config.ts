@@ -36,6 +36,10 @@ export default defineConfig({
       // 覆盖率就变成了对"零行文件"的 100%，是假绿。
       include: ["packages/*/src/**/*.ts", "packages/*/pi-hreader.ts"],
       reporter: ["text", "json-summary"],
+      // 任何一条用例失败时，默认的 `onTestFailure` 会先 `rm -rf` 掉 `coverage/.tmp`，而在途的
+      // `writeFile(coverage-N.json)` 还在排着 —— 于是真正的失败被 `ENOENT coverage/.tmp/coverage-N.json`
+      // 的 unhandled rejection 顶掉（§16.5）。保留临时目录，让失败以它本来的样子呈现。
+      reportOnFailure: true,
       thresholds: {
         perFile: true,
         lines: 100,

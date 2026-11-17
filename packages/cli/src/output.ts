@@ -111,6 +111,37 @@ export const humanExport = (report: PrintHtmlResult): string => report.html;
 export const humanExportWritten = (out: string, bytes: number): string =>
   `exported ${out} (${String(bytes)} bytes)\n`;
 
+/** `pdf` 是产物的 base64：`--json` 要么给全部字节，要么不给（与 `dataExport` 的 `html` 同一取舍）。 */
+export interface PdfReport {
+  readonly base64: string;
+  readonly bytes: number;
+  readonly pages: number;
+  readonly out: string;
+}
+
+export const dataPdf = (report: PdfReport): string =>
+  `{"pdf":${quote(report.base64)},"bytes":${String(report.bytes)},"pages":${String(report.pages)},"out":${quote(report.out)}}`;
+
+export const humanPdf = (report: PdfReport): string =>
+  `exported ${report.out} (${String(report.bytes)} bytes, ${String(report.pages)} pages)\n`;
+
+/** `png` 与 `pdf` 同一取舍：`--json` 给整张图的 base64；`width`/`height` 是反读 IHDR 的设备像素
+（已乘 `--scale`，与 `--width`/`--max-height` 的 CSS 像素不是一套口径，别直接对比）。 */
+export interface PngReport {
+  readonly base64: string;
+  readonly bytes: number;
+  readonly width: number;
+  readonly height: number;
+  readonly clipped: boolean;
+  readonly out: string;
+}
+
+export const dataPng = (report: PngReport): string =>
+  `{"png":${quote(report.base64)},"bytes":${String(report.bytes)},"width":${String(report.width)},"height":${String(report.height)},"clipped":${String(report.clipped)},"out":${quote(report.out)}}`;
+
+export const humanPng = (report: PngReport): string =>
+  `exported ${report.out} (${String(report.bytes)} bytes, ${String(report.width)}×${String(report.height)}${report.clipped ? ", clipped" : ""})\n`;
+
 const outlineLines = (nodes: readonly OutlineNode[], depth: number): readonly string[] =>
   nodes.flatMap((node) => [
     `${"  ".repeat(depth)}- ${node.id}  ${node.text}  (${String(node.wordCount)}w)`,

@@ -1,6 +1,6 @@
 // 这层管：`run()` 的归口逻辑（argv → 退出码 / stdout / stderr），用假 io；真 fs 只为成功路径。
 
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -247,4 +247,25 @@ describe("run · serve 的 stop 注入", () => {
     expect(await running).toBe(0);
     expect(out.join("")).toContain('"port"');
   }, 20_000);
+});
+
+describe("run · pdf/png 的 Chrome 接线", () => {
+  // 只走到"选 Chrome 二进制"这一步就失败：命令层到会话层的整条接线被执行到，但不真的起进程。
+  const noChrome = { env: { HREADER_CHROME: join(dir, "no-chrome") } };
+
+  // 用 `img.html`：`printProductOf` 在渲染之前就发警告，顺带把 stderr 的 warn 接线也走一遍。
+  it.each([
+    ["pdf", ["img.html", "--out", join(dir, "a.pdf")], join(dir, "a.pdf")],
+    ["png", ["img.html", "--out", join(dir, "a.png"), "--width", "800"], join(dir, "a.png")],
+  ])("%s 找不到 Chrome 时 exit 3、警告已出、不落盘", async (kind, argv, out) => {
+    // `stop` 给上：pdf/png 也必须把它接进渲染层（不传就等满 --timeout，Ctrl-C 会白等）。
+    const stop = new Promise<void>(() => undefined);
+    const { io, out: stdout, err } = capture({ ...noChrome, stop });
+    expect(await run([kind, ...argv], io)).toBe(3);
+    expect(err.join("")).toContain("已移除 1 个外部图片");
+    expect(err.join("")).toContain("找不到 Chrome");
+    expect(err.join("")).toContain("候选路径：");
+    expect(stdout.join("")).toBe("");
+    expect(existsSync(out)).toBe(false);
+  });
 });

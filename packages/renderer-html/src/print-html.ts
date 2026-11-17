@@ -6,6 +6,7 @@ import type { HtmlElementNode, HtmlNode, OutlineNode } from "@hreader/core";
 import { attributeStringOf, utf8LengthOf } from "./markup";
 import { numberingOf } from "./numbering";
 import type { Numbering } from "./numbering";
+import type { PaperSize } from "./print-css";
 import { printSheetOf } from "./print-page";
 import type { TocItem } from "./print-page";
 import {
@@ -27,6 +28,8 @@ export interface PrintHtmlInput {
   /** 稳定文档标识（源文件 basename 去扩展名）：只进 `<meta name="hr-doc-id">`，不参与排版。 */
   readonly docId: string;
   readonly visualId: string;
+  /** 纸张：必填（D7）。它直接进 `@page{size:…}`，选错纸就是版心被纸边切掉（§15.1）。 */
+  readonly paper: PaperSize;
   /** `<body>` 的类名原样输出；不传或空串表示不加类。 */
   readonly bodyClass?: string;
   /** 源文档全文 HTML；本层取最外层 `<article>`，裁掉 UI 后再排。 */
@@ -248,6 +251,7 @@ export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
     title: anchorOf("hr-toc-title", usedIds),
   };
   const html = printSheetOf({
+    paper: input.paper,
     title,
     docId: input.docId,
     visualId: input.visualId,
