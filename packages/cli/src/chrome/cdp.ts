@@ -31,8 +31,9 @@ export const isPdfPageSize = (value: string): value is PdfPageSize =>
 
 const MM_PER_INCH = 25.4;
 
-/** 纸张与余白都换算成英寸：`printToPDF` 的 `paperWidth`/`marginTop` 只认英寸。 */
-export const printParamsOf = (pageSize: PdfPageSize): CdpParams => ({
+/** 纸张与余白都换算成英寸：`printToPDF` 的 `paperWidth`/`marginTop` 只认英寸。
+ * `generateDocumentOutline` 由调用方显式给（无默认值）：忘了传就编译不过，不靠“缺省 true”。 */
+export const printParamsOf = (pageSize: PdfPageSize, outline: boolean): CdpParams => ({
   printBackground: true,
   // print-css.ts 的 `@page{size:A4}` 是硬编码的：`true` 会让 CSS 永远赢，`--page-size` 直接失效。
   preferCSSPageSize: false,
@@ -43,6 +44,8 @@ export const printParamsOf = (pageSize: PdfPageSize): CdpParams => ({
   marginBottom: 20 / MM_PER_INCH,
   marginLeft: 18 / MM_PER_INCH,
   marginRight: 18 / MM_PER_INCH,
+  // 有 heading 才产出：`true` 且文档没有 h1–h6 时，Chrome 不写 `/Outlines` 也不报错。
+  generateDocumentOutline: outline,
 });
 
 interface CdpConnection {
@@ -180,10 +183,14 @@ const bytesOf = (result: CdpParams, what: string): Uint8Array => {
   return Uint8Array.from(Buffer.from(data, "base64"));
 };
 
-const printPdfOf = async (page: PageSession, pageSize: PdfPageSize): Promise<Uint8Array> => {
+const printPdfOf = async (
+  page: PageSession,
+  pageSize: PdfPageSize,
+  outline: boolean,
+): Promise<Uint8Array> => {
   const result = await page.connection.call(
     "Page.printToPDF",
-    printParamsOf(pageSize),
+    printParamsOf(pageSize, outline),
     page.sessionId,
   );
   return bytesOf(result, "Page.printToPDF");
@@ -194,11 +201,12 @@ interface CdpPrintInput {
   readonly html: string;
   readonly dir: string;
   readonly pageSize: PdfPageSize;
+  readonly outline: boolean;
 }
 
 export const renderPdfOverCdpOf = async (input: CdpPrintInput): Promise<Uint8Array> => {
   const page = await openPageOf(input.transport, input.html, input.dir);
-  return printPdfOf(page, input.pageSize);
+  return printPdfOf(page, input.pageSize, input.outline);
 };
 
 /** 长图请求：`width`/`maxHeight` 是 CSS 像素，`scale` 是设备像素倍率（超出 `maxHeight` 先裁不缩）。 */

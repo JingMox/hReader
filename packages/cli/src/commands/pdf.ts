@@ -2,7 +2,7 @@
 
 import { dirname } from "node:path";
 
-import { DEFAULT_STYLE_ID, HrError, nodePatchDeps } from "@hreader/core";
+import { DEFAULT_STYLE_ID, HrError, nodePatchDeps, parseHtml } from "@hreader/core";
 
 import { isPdfPageSize, type PdfPageSize } from "../chrome/cdp";
 import { dataPdf, humanPdf, jsonOk, type PdfReport } from "../output";
@@ -18,6 +18,8 @@ export type RenderPdf = (input: {
   readonly html: string;
   readonly pageSize: PdfPageSize;
   readonly timeoutMs: number;
+  /** 开工前就要定下来：它是 `Page.printToPDF` 的 `generateDocumentOutline`，协议层不给默认值。 */
+  readonly outline: boolean;
 }) => Promise<{ bytes: Uint8Array }>;
 
 export interface PdfCommandInput {
@@ -26,6 +28,10 @@ export interface PdfCommandInput {
   /** 原样的 `--page-size`：非法值属于语义错误（`invalid_input` exit 1），不是用法错误。 */
   readonly pageSize: string;
   readonly timeoutMs: number;
+  /** 大纲开关（缺省开）。`--no-outline` 时为 false：请求里就是 `generateDocumentOutline: false`。 */
+  readonly outline: boolean;
+  /** `--outline` 与 `--no-outline` 同传：语义错误，开工前报 `invalid_input`。 */
+  readonly outlineConflict: boolean;
   /** 绝对路径（`run.ts` 已真实化）。 */
   readonly out: string;
   readonly force: boolean;
@@ -41,10 +47,30 @@ const PDF_PAGE = /\/Type\s*\/Page\b(?!s)/gu;
 
 const PDF_MAGIC = "%PDF-";
 
+/** 打印稿的 heading 数（h1–h6）：M4.3 保证产物里 `<h1..h6>` 元素总数 == 大纲条目数（AC-4）。 */
+const HEADING_TAGS: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
+
+type HtmlNode = ReturnType<typeof parseHtml>["root"];
+
 const decoder = new TextDecoder("latin1");
 
 export const pdfPagesOf = (bytes: Uint8Array): number =>
   decoder.decode(bytes).match(PDF_PAGE)?.length ?? 0;
+
+const headingsOf = (node: HtmlNode): number => {
+  if (node.kind !== "element" && node.kind !== "document") return 0;
+  const self = node.kind === "element" && HEADING_TAGS.has(node.tag) ? 1 : 0;
+  return self + node.children.reduce((sum, child) => sum + headingsOf(child), 0);
+};
+
+/**
+ * 数 `parseHtml` 树上的 heading **元素**，不数字典里的 `buildOutline().nodes`：
+ * 后者会因 `OUTLINE_DEPTH_LIMIT` 与缺 `data-hr-id` 省略而比产物少，报告值就跟着小了。
+ *
+ * 这个数是"打印稿里 `h1–h6` 元素的个数"，是个**近似值而非产物真值**：`display: none` 的标题
+ * 仍会被计入，而 Chrome 不会为它生成书签（真机测到的唯一不一致点）。
+ */
+export const pdfHeadingsOf = (html: string): number => headingsOf(parseHtml(html).root);
 
 const pageSizeOf = (value: string): PdfPageSize => {
   if (!isPdfPageSize(value)) {
@@ -71,7 +97,7 @@ const assertPdfOutOf = async (input: PdfCommandInput): Promise<void> => {
 const productPdfOf = async (
   input: PdfCommandInput,
   pageSize: PdfPageSize,
-): Promise<{ bytes: Uint8Array }> => {
+): Promise<{ bytes: Uint8Array; outline: number }> => {
   const product = await printProductOf({
     path: input.path,
     visual: DEFAULT_STYLE_ID,
@@ -79,13 +105,23 @@ const productPdfOf = async (
     workspace: input.workspace,
     warn: input.warn,
   });
-  return input.render({ html: product.html, pageSize, timeoutMs: input.timeoutMs });
+  const { bytes } = await input.render({
+    html: product.html,
+    pageSize,
+    timeoutMs: input.timeoutMs,
+    outline: input.outline,
+  });
+  // `--no-outline` 时产物里不会有书目，报告值必须跟请求一致，不能报“文档本来有几个 heading”。
+  return { bytes, outline: input.outline ? pdfHeadingsOf(product.html) : 0 };
 };
 
 export const pdfCommand = async (input: PdfCommandInput): Promise<string> => {
   const pageSize = pageSizeOf(input.pageSize);
+  if (input.outlineConflict) {
+    throw new HrError("invalid_input", "--outline 与 --no-outline 不能同时使用");
+  }
   await assertPdfOutOf(input);
-  const { bytes } = await productPdfOf(input, pageSize);
+  const { bytes, outline } = await productPdfOf(input, pageSize);
   const pages = pdfPagesOf(bytes);
   assertPdfOf(bytes, pages);
   await writeOutOf({
@@ -98,6 +134,7 @@ export const pdfCommand = async (input: PdfCommandInput): Promise<string> => {
     base64: Buffer.from(bytes).toString("base64"),
     bytes: bytes.length,
     pages,
+    outline,
     out: input.out,
   };
   return input.json ? jsonOk(dataPdf(report)) : humanPdf(report);

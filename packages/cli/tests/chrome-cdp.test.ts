@@ -33,6 +33,7 @@ const renderOf = (options: ResponderOptions, dir: string): Promise<Uint8Array> =
     html: "<p>hi</p>",
     dir,
     pageSize: "a4",
+    outline: true,
   });
 };
 
@@ -67,10 +68,12 @@ describe("printParamsOf", () => {
   });
 
   it.each<PdfPageSize>(["a4", "letter", "a5"])("%s 的纸张（英寸）与 CSS 余白一致", (pageSize) => {
-    const params = printParamsOf(pageSize);
+    const params = printParamsOf(pageSize, true);
     expect(params["printBackground"]).toBe(true);
     // 钉死 false：print-css 的 `@page{size:A4}` 会让 --page-size 失效。
     expect(params["preferCSSPageSize"]).toBe(false);
+    // D3：这个键必须由调用方给，协议层不许有默认值。
+    expect(params["generateDocumentOutline"]).toBe(true);
     const widthIn = Number(params["paperWidth"]);
     const heightIn = Number(params["paperHeight"]);
     expect(Math.abs(widthIn * 72 - PAGE_SIZES[pageSize].widthPt)).toBeLessThanOrEqual(1.5);
@@ -85,6 +88,59 @@ describe("printParamsOf", () => {
     expect(["a4", "letter", "a5"].every((value) => isPdfPageSize(value))).toBe(true);
     expect(isPdfPageSize("A4")).toBe(false);
     expect(isPdfPageSize("b5")).toBe(false);
+  });
+});
+
+describe("printParamsOf · 大纲参数（D3）", () => {
+  it("generateDocumentOutline 就是调用方给的那个布尔值，不多不少", () => {
+    expect(printParamsOf("a4", true)["generateDocumentOutline"]).toBe(true);
+    expect(printParamsOf("a4", false)["generateDocumentOutline"]).toBe(false);
+  });
+
+  it("false 时键也必须存在（A9：缺省值只属于命令层，协议层不省键）", () => {
+    expect(Object.hasOwn(printParamsOf("a5", false), "generateDocumentOutline")).toBe(true);
+  });
+
+  it("没有默认值可依赖：形参必填（漏传就编译不过）", () => {
+    // 运行时看不出“必填”，但签名长度能：`printParamsOf.length === 2`。
+    expect(printParamsOf.length).toBe(2);
+  });
+});
+
+describe("renderPdfOverCdpOf · 大纲参数进到 Page.printToPDF 的 params", () => {
+  const printParamsSentOf = (sent: readonly string[]): unknown => {
+    const message = sent
+      .map((text: string): unknown => JSON.parse(text))
+      .find((item) => fieldOf(item, "method") === "Page.printToPDF");
+    return fieldOf(fieldOf(message, "params"), "generateDocumentOutline");
+  };
+
+  it("outline: true 时请求里是 true", async () => {
+    await withDir(async (dir) => {
+      const responder = responderOf({ pages: 1 });
+      await renderPdfOverCdpOf({
+        transport: responder.transport,
+        html: "<p>hi</p>",
+        dir,
+        pageSize: "a4",
+        outline: true,
+      });
+      expect(printParamsSentOf(responder.sent)).toBe(true);
+    });
+  });
+
+  it("outline: false 时请求里是 false（不是缺键）", async () => {
+    await withDir(async (dir) => {
+      const responder = responderOf({ pages: 1 });
+      await renderPdfOverCdpOf({
+        transport: responder.transport,
+        html: "<p>hi</p>",
+        dir,
+        pageSize: "a4",
+        outline: false,
+      });
+      expect(printParamsSentOf(responder.sent)).toBe(false);
+    });
   });
 });
 
@@ -170,6 +226,7 @@ describe("renderPdfOverCdpOf · 等 load 事件（M17）", () => {
         html: "<p>hi</p>",
         dir,
         pageSize: "a4",
+        outline: true,
       });
       await waitForOf(() => responder.sent.some((text) => text.includes("Page.navigate")));
       expect(responder.sent.some((text) => text.includes("Page.printToPDF"))).toBe(false);
@@ -189,6 +246,7 @@ describe("renderPdfOverCdpOf · 断开与扁平报文", () => {
         html: pdfOf(1),
         dir,
         pageSize: "a4",
+        outline: true,
       });
       await waitForOf(() => responder.sent.some((text) => text.includes("Page.printToPDF")));
       responder.inject("not json");
@@ -210,6 +268,7 @@ describe("renderPdfOverCdpOf · 扁平报文", () => {
         html: pdfOf(1),
         dir,
         pageSize: "a4",
+        outline: true,
       });
       const pageMessages = responder.sent
         .map((text: string): unknown => JSON.parse(text))
@@ -227,6 +286,7 @@ describe("renderPdfOverCdpOf · 扁平报文", () => {
         html: pdfOf(1),
         dir,
         pageSize: "a5",
+        outline: true,
       });
       responder.drop();
       expect(bytes.length).toBeGreaterThan(0);

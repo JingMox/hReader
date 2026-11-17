@@ -34,6 +34,8 @@ export interface PngCommandInput {
   readonly maxHeight: string;
   /** 用户是否显式传了 `--max-height`：没传就不拿默认值做面积预检（短文档会被误拒）。 */
   readonly maxHeightExplicit: boolean;
+  /** 命中的大纲旗标（`--outline`/`--no-outline`）：PNG 没有大纲，给了就是 `invalid_input`。 */
+  readonly outlineFlag: string | undefined;
   readonly timeoutMs: number;
   /** 绝对路径（`run.ts` 已真实化）。 */
   readonly out: string;
@@ -87,6 +89,10 @@ const reportOf = (image: LongImage, out: string): PngReport => {
 };
 
 export const pngCommand = async (input: PngCommandInput): Promise<string> => {
+  // 已知旗标放错子命令属于用户输入错（同 `--page-size` 越界）：一落盘都不落，先拦。
+  if (input.outlineFlag !== undefined) {
+    throw new HrError("invalid_input", `hr png 不支持 ${input.outlineFlag}（PNG 没有大纲）`);
+  }
   const width = sizeOf(input.width, WIDTH);
   const scale = sizeOf(input.scale, SCALE);
   const maxHeight = sizeOf(input.maxHeight, MAX_HEIGHT);

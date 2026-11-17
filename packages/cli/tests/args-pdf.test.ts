@@ -51,6 +51,31 @@ describe("parseArgs · hr pdf 默认值", () => {
   });
 });
 
+describe("parseArgs · hr pdf 大纲旗标", () => {
+  it("不传任何大纲旗标时默认开（--outline 是这个旗标的开态缺省）", () => {
+    const intent = okOf(["pdf", "a.html", "--out", "a.pdf"]);
+    expect(intent.outline).toBe(true);
+    expect(intent.outlineConflict).toBe(false);
+  });
+
+  it("--outline 显式给也是开，且不标冲突", () => {
+    const intent = okOf(["pdf", "a.html", "--out", "a.pdf", "--outline"]);
+    expect(intent.outline).toBe(true);
+    expect(intent.outlineConflict).toBe(false);
+  });
+
+  it("--no-outline 关掉大纲", () => {
+    const intent = okOf(["pdf", "a.html", "--out", "a.pdf", "--no-outline"]);
+    expect(intent.outline).toBe(false);
+    expect(intent.outlineConflict).toBe(false);
+  });
+
+  it("两个同传只在意图里标 conflict（`invalid_input` exit 1 归命令层）", () => {
+    const intent = okOf(["pdf", "a.html", "--out", "a.pdf", "--outline", "--no-outline"]);
+    expect(intent.outlineConflict).toBe(true);
+  });
+});
+
 describe("parseArgs · hr pdf 用法错误", () => {
   it("缺 file", () => {
     expectFailure(["pdf", "--out", "a.pdf"], "pdf 缺少 <file>", "pdf");

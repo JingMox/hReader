@@ -29,6 +29,17 @@ describe("parseArgs · hr png 默认值", () => {
   });
 });
 
+describe("parseArgs · hr png 大纲旗标", () => {
+  it("两个大纲旗标都是已知旗标：放行到意图里，不在这里报未用", () => {
+    // png 没有大纲：真正的拒绝是命令层的 `invalid_input` exit 1（不是用法错误 exit 2）。
+    expect(okOf(["png", "a.html", "--out", "a.png", "--no-outline"]).outlineFlag).toBe(
+      "--no-outline",
+    );
+    expect(okOf(["png", "a.html", "--out", "a.png", "--outline"]).outlineFlag).toBe("--outline");
+    expect(okOf(["png", "a.html", "--out", "a.png"]).outlineFlag).toBeUndefined();
+  });
+});
+
 describe("parseArgs · hr png 透传", () => {
   it("四个取值与两个开关都透传", () => {
     const intent = okOf([

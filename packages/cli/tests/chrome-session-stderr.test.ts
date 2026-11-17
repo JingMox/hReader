@@ -42,6 +42,7 @@ describe("renderPdfOf · stderr 洪流", () => {
     const result = await renderPdfOf({
       html: "<p>x</p>",
       pageSize: "a4",
+      outline: true,
       stop: NEVER,
       timeoutMs: 5000,
       deps,

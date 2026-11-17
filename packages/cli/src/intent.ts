@@ -70,6 +70,10 @@ export type Intent =
       /** 原样保留：合法性在命令层判（非法值是 `invalid_input` exit 1，不是用法错误 exit 2）。 */
       readonly pageSize: string;
       readonly timeoutMs: number;
+      /** 大纲默认开（`--outline` 缺省即开），`--no-outline` 置 false。 */
+      readonly outline: boolean;
+      /** 两个大纲旗标同传：用法层只分得清“给没给”，互斥是语义错误（命令层报 `invalid_input`）。 */
+      readonly outlineConflict: boolean;
       /** `--out` 必填（写文件是这条命令的唯一产物）。 */
       readonly out: string;
       readonly force: boolean;
@@ -84,6 +88,8 @@ export type Intent =
       readonly maxHeight: string;
       /** 用户是否显式传了 `--max-height`：没传就不拿默认值做最坏面积预检。 */
       readonly maxHeightExplicit: boolean;
+      /** 命中的大纲旗标原文（`--outline`/`--no-outline`）：PNG 没有大纲，命令层据此报 `invalid_input`。 */
+      readonly outlineFlag: string | undefined;
       readonly timeoutMs: number;
       readonly out: string;
       readonly force: boolean;

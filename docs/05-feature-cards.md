@@ -363,9 +363,24 @@ hr png notes/perf.html --out notes/huge.png --max-height 50000 --scale 1
 
 **端到端**：`pnpm test:e2e` 在真 Chrome 下各出一份 PDF/PNG；无 Chrome 或 `HREADER_SKIP_CHROME=1` 时打印 `SKIPPED: <原因>` 并退出 0（不静默）。
 
-**已知限制**：PDF 大纲/书签（浏览器打印无 outline 控制）拆到 **M4.5**；不做 PDF 合并/签名/加密、不做并发渲染池。
+**已知限制**：PDF 大纲/书签已由 **M4.5** 用 Chrome 原生 `generateDocumentOutline` 实现（使用节见下）；不做 PDF 合并/签名/加密、不做并发渲染池。
 
 ---
+
+## M4.5 `hr pdf --outline` 使用节（PDF 大纲/书签）
+
+`hr pdf` 默认给产物带**大纲（书签）**：由 Chrome 的 `generateDocumentOutline` 从**打印稿 DOM** 生成，标题文本与打印稿 `<h1..h6>` 的 `textContent` 一致（含打印层注入的 `1` / `1.1` 编号，封面与目录标题刻意用 `<p>` 所以不进货签）。
+
+```bash
+hr pdf a.hreader --out a.pdf              # 默认带大纲
+hr pdf a.hreader --out a.pdf --no-outline # 不要大纲
+hr pdf a.hreader --out a.pdf --json       # {"pdf":…,"bytes":…,"pages":…,"outline":…,"out":…}
+```
+
+- `--outline`（默认开）/ `--no-outline`：同传 → `invalid_input` exit 1；`hr png` 上出现任一个 → 同样 exit 1（PNG 没有大纲概念）。两种拒绝都**不落盘**。
+- `--json.outline`：本次打印稿里 `<h1..h6>` **元素的个数**（`--no-outline` 或无标题时为数字 `0`，键不省略、不是 `null`）。h1–h6 全收（h4/h5/h6 已真机实测确认 Chrome 会收录）。
+- **已知限制（`L-40`）**：`--no-visible` 之外的隐藏方式里，`display: none` 子树中的标题**仍被 `outline` 计数**，而 Chrome 不会为它生成书签 —— 即 `outline` 是**近似值**而非产物真值。要精确匹配需要 Chrome 的布局结果（另卡成本），常规打印稿（正文 `h1–h6` 可见）不触发。同理 Chrome 对超长标题会截断到约 1 KB（`L-41`）。
+- **不引依赖、不自写 PDF 增量更新**：全部交给 Chrome，`packages/cli/src` 里没有 PDF 解析器；测试侧的扫描器只在 `packages/cli/tests/helpers/pdf-scan.ts`（跟 `/Root`→`/Pages`→`/Kids` 算页序、沿 `/First`/`/Next`/`/Parent` 还原标题树、解 `<FEFF…>` UTF-16BE）。
 
 ## 错误码表（`HrError.code` → 退出码）
 
@@ -423,4 +438,5 @@ hr png notes/perf.html --out notes/huge.png --max-height 50000 --scale 1
 - M4.1 `hr style extract` 风格萃取——LLM 回放 fixture 依赖 model id（`fixtures/llm/README.md`），换模型或改 prompt 需重录
 - M4.2 Tauri v2 桌面端
 - M4.3 出版级 PDF/长图导出——`hr export` 打印稿使用节见上；真二进制拆到 M4.4
-- M4.4 `hr pdf` / `hr png`（本机 Chrome + CDP，零运行时依赖）——使用节见上；PDF 大纲拆到 M4.5
+- M4.4 `hr pdf` / `hr png`（本机 Chrome + CDP，零运行时依赖）——使用节见上
+- M4.5 `hr pdf --outline`（PDF 大纲/书签，Chrome 原生 `generateDocumentOutline`）——使用节见上；`L-40`/`L-41` 为已知限制
