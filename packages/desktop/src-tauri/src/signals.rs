@@ -35,58 +35,85 @@ mod platform {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
-    static STOPPED: AtomicBool = AtomicBool::new(false);
-    static WATCHED: AtomicBool = AtomicBool::new(false);
-    /// 注册失败过：之后不再重试（重试只会每个调用点再失败一次）。
-    static FAILED: AtomicBool = AtomicBool::new(false);
-    /// 告警已经喊过：`--hold` 下三个调用点都会调 `watch()`，不能各喊一遍。
-    static ANNOUNCED: AtomicBool = AtomicBool::new(false);
+    /// 信号收尾的全部可变状态。生产代码用 `GLOBAL` 单例；测试各自造一份独占夹具，
+    /// 于是用例之间不再共享 `WATCHED`/`FAILED`，也就不需要"跑完再 reset 回去"
+    /// （那正是并行用例互踩、`r1_watch_with_reports_each_signal_it_registers` 偶发红的根因）。
+    pub(super) struct Hub {
+        stopped: AtomicBool,
+        watched: AtomicBool,
+        failed: AtomicBool,
+        announced: AtomicBool,
+    }
+
+    impl Hub {
+        pub(super) const fn new() -> Self {
+            Self {
+                stopped: AtomicBool::new(false),
+                watched: AtomicBool::new(false),
+                failed: AtomicBool::new(false),
+                announced: AtomicBool::new(false),
+            }
+        }
+
+        pub fn stopped(&self) -> bool {
+            self.stopped.load(Ordering::Relaxed)
+        }
+
+        /// 幂等：`run()` 与 `window::run()` 都会调，重复注册只会把同一处原子写装两遍。
+        pub fn watch(&self) -> super::SignalSubscription {
+            match self.watch_with(&register) {
+                Ok(subscription) => subscription,
+                Err(reason) => {
+                    // 不阻断启动：没有信号收尾时，退出兜底还有 `--exit-with-parent` 的父进程看门狗。
+                    // 只喊一次：失败已经记在 `failed` 上，每个调用点再喊一遍只会把日志刷成噪音。
+                    if !self.announced.swap(true, Ordering::SeqCst) {
+                        eprintln!(
+                            "装不上信号处理器（{reason}）：退出收尾交给 --exit-with-parent 看门狗"
+                        );
+                    }
+                    super::SignalSubscription::new(false)
+                }
+            }
+        }
+
+        /// 装了哪些、装没装上都要能说清楚：注册失败必须回滚，且不再重试——
+        /// 回滚 + 重试会让每个调用点各失败一次、各告警一次，而注册器那边并没有"再试就好"的理由。
+        pub fn watch_with(
+            &self,
+            registrar: &super::Registrar,
+        ) -> Result<super::SignalSubscription, String> {
+            if self.failed.load(Ordering::SeqCst) {
+                return Err("信号处理器此前已注册失败，不再重试".to_string());
+            }
+            if self.watched.swap(true, Ordering::SeqCst) {
+                return Ok(super::SignalSubscription::new(true));
+            }
+            for signal in [libc::SIGTERM, libc::SIGINT] {
+                if let Err(reason) = registrar(signal, mark_stopped) {
+                    self.watched.store(false, Ordering::SeqCst);
+                    self.failed.store(true, Ordering::SeqCst);
+                    return Err(reason);
+                }
+            }
+            Ok(super::SignalSubscription::new(true))
+        }
+    }
+
+    impl Default for Hub {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    /// 生产单例：真的接操作系统信号的那一份。
+    pub(super) static GLOBAL: Hub = Hub::new();
 
     const POLL: Duration = Duration::from_millis(50);
 
-    pub fn stopped() -> bool {
-        STOPPED.load(Ordering::Relaxed)
-    }
-
     /// 信号处理器只有一次原子写，因此对"任意线程、任意时刻"都是异步信号安全的。
+    /// 它写生产单例——测试夹具从不接收真实信号，所以不需要（也不该）可携带的处理器。
     fn mark_stopped() {
-        STOPPED.store(true, Ordering::Relaxed);
-    }
-
-    /// 幂等：`run()` 与 `window::run()` 都会调，重复注册只会把同一处原子写装两遍。
-    pub fn watch() -> super::SignalSubscription {
-        match watch_with(&register) {
-            Ok(subscription) => subscription,
-            Err(reason) => {
-                // 不阻断启动：没有信号收尾时，退出兜底还有 `--exit-with-parent` 的父进程看门狗。
-                // 只喊一次：失败已经记在 `FAILED` 上，每个调用点再喊一遍只会把日志刷成噪音。
-                if !ANNOUNCED.swap(true, Ordering::SeqCst) {
-                    eprintln!(
-                        "装不上信号处理器（{reason}）：退出收尾交给 --exit-with-parent 看门狗"
-                    );
-                }
-                super::SignalSubscription::new(false)
-            }
-        }
-    }
-
-    /// 装了哪些、装没装上都要能说清楚：注册失败必须回滚，且不再重试——
-    /// 回滚 + 重试会让每个调用点各失败一次、各告警一次，而注册器那边并没有"再试就好"的理由。
-    pub fn watch_with(registrar: &super::Registrar) -> Result<super::SignalSubscription, String> {
-        if FAILED.load(Ordering::SeqCst) {
-            return Err("信号处理器此前已注册失败，不再重试".to_string());
-        }
-        if WATCHED.swap(true, Ordering::SeqCst) {
-            return Ok(super::SignalSubscription::new(true));
-        }
-        for signal in [libc::SIGTERM, libc::SIGINT] {
-            if let Err(reason) = registrar(signal, mark_stopped) {
-                WATCHED.store(false, Ordering::SeqCst);
-                FAILED.store(true, Ordering::SeqCst);
-                return Err(reason);
-            }
-        }
-        Ok(super::SignalSubscription::new(true))
+        GLOBAL.stopped.store(true, Ordering::Relaxed);
     }
 
     fn register(signal: i32, handler: fn()) -> Result<(), String> {
@@ -94,6 +121,18 @@ mod platform {
         unsafe { signal_hook_registry::register(signal, handler) }
             .map(|_id| ())
             .map_err(|error| error.to_string())
+    }
+
+    pub fn stopped() -> bool {
+        GLOBAL.stopped()
+    }
+
+    pub fn watch() -> super::SignalSubscription {
+        GLOBAL.watch()
+    }
+
+    pub fn watch_with(registrar: &super::Registrar) -> Result<super::SignalSubscription, String> {
+        GLOBAL.watch_with(registrar)
     }
 
     /// 收到信号后调一次 `on_stop`（在普通线程里跑，所以可以安全地碰 tauri 事件循环）。
@@ -113,14 +152,6 @@ mod platform {
             std::thread::sleep(POLL);
         }
     }
-
-    #[cfg(test)]
-    pub(super) fn reset_for_test() {
-        STOPPED.store(false, Ordering::SeqCst);
-        WATCHED.store(false, Ordering::SeqCst);
-        FAILED.store(false, Ordering::SeqCst);
-        ANNOUNCED.store(false, Ordering::SeqCst);
-    }
 }
 
 /// Windows：没有可移植的 SIGTERM 收尾，一律空操作。调用点不需要 `cfg`（签名与 Unix 版一致）。
@@ -128,18 +159,48 @@ mod platform {
 mod platform {
     use std::time::Duration;
 
+    /// Windows 上没有信号状态；这个类型只为让测试与 Unix 版共用一套"每用例独占夹具"的写法。
+    pub(super) struct Hub;
+
+    impl Hub {
+        pub(super) const fn new() -> Self {
+            Self
+        }
+
+        pub fn stopped(&self) -> bool {
+            false
+        }
+
+        pub fn watch(&self) -> super::SignalSubscription {
+            super::SignalSubscription::new(false)
+        }
+
+        pub fn watch_with(
+            &self,
+            _registrar: &super::Registrar,
+        ) -> Result<super::SignalSubscription, String> {
+            Ok(super::SignalSubscription::new(false))
+        }
+    }
+
+    impl Default for Hub {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    pub(super) static GLOBAL: Hub = Hub;
+
     pub fn stopped() -> bool {
-        false
+        GLOBAL.stopped()
     }
 
-    /// Windows 上不会收到 SIGTERM/SIGINT：这里故意什么都不做，`installed()` 如实报 false。
     pub fn watch() -> super::SignalSubscription {
-        super::SignalSubscription::new(false)
+        GLOBAL.watch()
     }
 
-    /// Windows 上没有可注册的信号，注册器不会被调用（`Err` 分支也就不存在）。
-    pub fn watch_with(_registrar: &super::Registrar) -> Result<super::SignalSubscription, String> {
-        Ok(super::SignalSubscription::new(false))
+    pub fn watch_with(registrar: &super::Registrar) -> Result<super::SignalSubscription, String> {
+        GLOBAL.watch_with(registrar)
     }
 
     pub fn on_stop(_on_stop: impl FnOnce() + Send + 'static) {}
@@ -148,9 +209,6 @@ mod platform {
     pub fn wait_or_timeout(timeout: Duration) {
         std::thread::sleep(timeout);
     }
-
-    #[cfg(test)]
-    pub(super) fn reset_for_test() {}
 }
 
 pub use platform::{on_stop, stopped, wait_or_timeout, watch, watch_with};
@@ -163,69 +221,63 @@ mod tests {
     #[test]
     fn ac14_watching_twice_is_idempotent() {
         // `run()` 和 `window::run()` 都会装一遍：装两次既不能 panic 也不能把标志弄反。
-        platform::reset_for_test();
-        watch();
-        watch();
-        assert!(!stopped(), "还没收到信号就报停下");
-        platform::reset_for_test();
+        // 每个用例一份独占 hub：不再共享全局 `WATCHED`，也就不必"跑完再 reset"。
+        let hub = platform::Hub::new();
+        hub.watch();
+        hub.watch();
+        assert!(!hub.stopped(), "还没收到信号就报停下");
     }
 
     #[cfg(unix)]
     #[test]
     fn r3_register_failure_rolls_back_and_is_not_retried() {
-        // 注册失败还留着 WATCHED=true 的话，后面再调会以为"已经装好了"，信号就永远收不到；
-        // 但"回滚 + 重试"会让 `--hold` 的三个调用点各失败、各告警一次，所以失败要记在 FAILED 上不再重试。
-        platform::reset_for_test();
+        // 注册失败还留着 watched=true 的话，后面再调会以为"已经装好了"，信号就永远收不到；
+        // 但"回滚 + 重试"会让 `--hold` 的三个调用点各失败、各告警一次，所以失败要记在 failed 上不再重试。
+        let hub = platform::Hub::new();
         let failing =
             |_signal: i32, _handler: fn()| -> Result<(), String> { Err("boom".to_string()) };
-        match platform::watch_with(&failing) {
+        match hub.watch_with(&failing) {
             Ok(_) => panic!("注册失败必须冒泡"),
             Err(error) => assert!(error.contains("boom"), "原因要原样带出来：{error}"),
         }
         let never = |_signal: i32, _handler: fn()| -> Result<(), String> {
             panic!("失败之后不该再碰注册器")
         };
-        match platform::watch_with(&never) {
+        match hub.watch_with(&never) {
             Ok(_) => panic!("失败之后不该再给出订阅"),
             Err(error) => assert!(error.contains("不再重试"), "要说清是不再重试：{error}"),
         }
-        platform::reset_for_test();
     }
 
     #[cfg(unix)]
     #[test]
     fn r3_installed_reports_a_handler_that_is_really_registered() {
-        // W1 的证据要能断言"信号真装上了"，而不是靠注释。
-        platform::reset_for_test();
+        // W1 的证据要能断言"信号真装上了"，而不是靠注释。真注册走生产单例（只此一处当真），
+        // 布尔路径用独占 hub——原先全局 `WATCHED` 被并发用例抢先置位，这条会误报 true。
         assert!(watch().installed(), "本机应当装得上 SIGTERM/SIGINT");
-        platform::reset_for_test();
+        let hub = platform::Hub::new();
         let accepting = |_signal: i32, _handler: fn()| -> Result<(), String> { Ok(()) };
-        assert!(platform::watch_with(&accepting)
-            .expect("应当装上")
-            .installed());
-        platform::reset_for_test();
+        assert!(hub.watch_with(&accepting).expect("应当装上").installed());
     }
 
     #[cfg(unix)]
     #[test]
     fn r1_watch_with_reports_each_signal_it_registers() {
-        platform::reset_for_test();
+        let hub = platform::Hub::new();
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let recorded = seen.clone();
         let registrar = move |signal: i32, _handler: fn()| -> Result<(), String> {
             recorded.lock().expect("锁没中毒").push(signal);
             Ok(())
         };
-        platform::watch_with(&registrar).expect("应当装上");
+        hub.watch_with(&registrar).expect("应当装上");
         let mut signals = seen.lock().expect("锁没中毒").clone();
         signals.sort_unstable();
         assert_eq!(signals, vec![libc::SIGINT, libc::SIGTERM]);
-        platform::reset_for_test();
     }
 
     #[test]
     fn ac14_waiting_returns_after_the_timeout() {
-        platform::reset_for_test();
         let started = std::time::Instant::now();
         wait_or_timeout(Duration::from_millis(120));
         assert!(started.elapsed() >= Duration::from_millis(120));

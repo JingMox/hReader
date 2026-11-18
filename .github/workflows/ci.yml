@@ -1,5 +1,5 @@
 name: CI
-# 与 pnpm verify 的八步一一对应：少一步就是"本地绿、CI 不查"
+# 与 pnpm verify 的十步一一对应：少一步就是"本地绿、CI 不查"
 
 on:
   push:
@@ -22,8 +22,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
+      - run: pnpm check-ci-parity
       - run: pnpm lint
       - run: pnpm lint:sh
+      - run: pnpm lint-sh-selftest
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:coverage

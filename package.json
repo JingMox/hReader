@@ -9,13 +9,15 @@
   },
   "scripts": {
     "build": "pnpm -C packages/app build && pnpm -C packages/mcp-server build && pnpm -C packages/dsh-bundle build",
+    "check-ci-parity": "node scripts/check-ci-parity.mjs",
     "depcruise": "depcruise --config .dependency-cruiser.cjs packages",
     "desktop:build": "pnpm --dir packages/desktop run build",
     "desktop:check": "bash packages/desktop/scripts/check.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "knip": "knip",
-    "lint:sh": "test -n \"$(find scripts/gui -name '*.sh' -print -quit)\" && find scripts/gui -name '*.sh' -print0 | xargs -0 -n1 bash -n",
+    "lint:sh": "root=scripts; [ -d \"$root\" ] || { echo \"lint:sh: 目录不存在：$root\" >&2; exit 1; }; test -n \"$(find \"$root\" -name '*.sh' -print -quit)\" || { echo \"lint:sh: 没有可检查的 *.sh 脚本：$root\" >&2; exit 1; }; find \"$root\" -name '*.sh' -print0 | xargs -0 -n1 bash -n",
+    "lint-sh-selftest": "bash scripts/lint-sh-selftest.sh",
     "lint": "eslint . --max-warnings=0 --report-unused-disable-directives",
     "smoke:dsh": "node scripts/smoke-dsh.ts",
     "smoke:pi": "node scripts/smoke-pi-extension.ts",
@@ -23,7 +25,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "node scripts/print-e2e.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json --pretty false",
-    "verify": "pnpm format:check && pnpm lint && pnpm lint:sh && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm depcruise && pnpm knip"
+    "verify": "pnpm format:check && pnpm check-ci-parity && pnpm lint && pnpm lint:sh && pnpm lint-sh-selftest && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm depcruise && pnpm knip"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
