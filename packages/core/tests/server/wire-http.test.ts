@@ -1,10 +1,43 @@
 // 这层管：HTTP 解析边界——全部用 `node:net` 手写原文请求，不经 fetch；断言原始状态行/头/连接行为。
 
+import { connect, type Socket } from "node:net";
 import { describe, expect, it } from "vitest";
 
 import { cookieOf, httpCall, rawExchange, withServer, type TestServer } from "./harness";
 
 const statusLineOf = (raw: string): string => raw.split("\r\n")[0] ?? "";
+
+/** 写完半截请求后**半关**写端（`end()` 而非 `destroy()`：只发 FIN，仍能读响应）。 */
+const halfClosedExchange = (port: number, text: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const raw = (): string => Buffer.concat(chunks).toString("latin1");
+    const socket: Socket = connect({ host: "127.0.0.1", port });
+    const settle = (action: () => void): void => {
+      clearTimeout(timer);
+      action();
+    };
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error(`半截请求 1500ms 内没有任何响应字节；raw=${JSON.stringify(raw())}`));
+    }, 1500);
+    socket.on("connect", () => socket.end(text, "latin1"));
+    socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+    socket.on("end", () => {
+      settle(() => {
+        resolve(raw());
+      });
+    });
+    socket.on("error", (error: Error) => {
+      settle(() => {
+        // 服务端写完 400 就 `destroy()`，接收缓冲里剩的请求体可能触发 RST：状态行已经在手就该按「半截响应」收尾，
+        // 否则把裸 `ECONNRESET` 当结果，失败文本说不出机制。
+        if (/^HTTP\/1\.[01] /u.test(raw())) resolve(raw());
+        else
+          reject(new Error(`半截请求：socket 错误 ${error.message}；raw=${JSON.stringify(raw())}`));
+      });
+    });
+  });
 
 const exchange = async (ctx: TestServer, request: string, until = "\r\n\r\n"): Promise<string> =>
   await rawExchange(ctx.port, request, until);
@@ -58,20 +91,27 @@ describe("wire · 体大小与半截请求", () => {
       expect(await import("node:fs").then((fs) => fs.readFileSync(before, "utf8"))).toBeTruthy();
     });
   });
+});
 
-  // 真 bug：`http-io.chunksOf` 只监听 data/end，客户端中途销毁后 Promise 永不落地，
-  // 连接与闭包夹着 body 一直挂着（fd/内存泄漏）；正确做法是监听 `aborted`/`close` 并以 invalid_request 结束。
-  // KD-07
-  it.fails("should answer a truncated (EOF) request close, not hang", async () => {
+describe("wire · 半截请求（KD-07 记账）", () => {
+  // KD-07 记账（旧注释「只监听 data/end、Promise 永不落地」已过期）：线上真行为是**裸 400，不是 408**——
+  // ① 客户端半关（FIN）后，Node 内置 parser 先报 `HPE_INVALID_EOF_STATE`（`clientError` 的 Parse Error），
+  //    默认 clientError 直接把 `HTTP/1.1 400 Bad Request` 写死并 destroy socket；`server.ts` 没有
+  //    `clientError` 监听，所以 `chunksOf` 的 `aborted` ⇒ `HttpFault(408, "连接在请求体读完前断开")` 抢不到响应。
+  // ② 所以那条 10s 的 `408 请求体读取超时` 只对「客户端保持连接不发 FIN」成立，和本用例不是一条路径。
+  // ③ 断言只锚「400 + 快」：它测的是「不挂死」；将来若把 `clientError` 映射成 JSON 错误体，本用例仍应绿。
+  it("should answer a truncated (EOF) request close fast instead of hanging", async () => {
     await withServer(async (ctx) => {
-      const raw = await exchange(
-        ctx,
+      const started = Date.now();
+      const raw = await halfClosedExchange(
+        ctx.port,
         `POST /api/patch HTTP/1.1\r\nHost: 127.0.0.1:${String(ctx.port)}\r\nCookie: ${cookieOf(ctx.token)}\r\nX-HR-CSRF: 1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"docId"`,
-        "HTTP/1.1",
       );
+      const elapsed = Date.now() - started;
 
-      // 半截体不能变成 200：要么明确 4xx，要么连接直接关掉（没有响应行）。
-      expect(raw === "" || /^HTTP\/1\.[01] 4/u.test(raw)).toBe(true);
+      expect(statusLineOf(raw)).toMatch(/^HTTP\/1\.1 400/u);
+      // 耗时才是杀「用 10s/4s 墙钟冒充判据」的真判据：实测 ~3ms。
+      expect(elapsed).toBeLessThan(1000);
     });
   });
 });

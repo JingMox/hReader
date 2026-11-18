@@ -1,6 +1,7 @@
 # WORKFLOW STATE
 
-- 当前里程碑: **M4.6 已结卡（2026-11-18，`d5fa538`）**。M4.6 = 门禁自我证明：`scripts/lint-sh-selftest.sh`（坏脚本/空集/缺目录/干净四类夹具 + 末尾自调用）与 `scripts/check-ci-parity.mjs`（verify 十步 vs `ci.yml` checks 同序同集 + 拒绕步骤级 `continue-on-error`/`if`/`shell`/`working-directory`/`env` 与作业级 `if:`）双双入 `verify`，步骤数仍 10、代价 0.53%；parity 自证改为父存期望、子进程判决，`exit(1)->exit(0)` 已实测会红。终测 31/31 AC、变异 11 KILLED / 5 SURVIVED。新登记 `L-43`（`packages/core/tests/server/sse-v4.test.ts > v4#1b` 全量并发偶发 5s 超时，下卡处理）/`L-44`（M4.2 G-3 的"无竞态"只能靠结构论证，40 连跑 0 红证明不了）。265 文件 2971 例、四维 100%、`pnpm verify` EXIT=0 + `pnpm desktop:check` EXIT=0 + `cargo test` 10 连跑 0 失败。教训 §11.52–§11.53。下一卡候选：M4.7（SSE flake + M1–M3 加固）/ M4.3 导出链 / M4.x DSH 面板（需用户裁定构建链）。
+- 当前里程碑: **M4.7 已结卡（2026-11-18）**。M4.7 = 收掉 `L-43`（SSE 偶发超时），**修的是夹具不是服务端**。三件：① SSE 客户端从 `harness.ts` 拆到 `packages/core/tests/server/sse-client.ts`，三时钟分层且写死注释（`SSE_DEADLINE_MS = 3000 < vitest 5000`、`HTTP_DEADLINE_MS = 4000`、`SOCKET_LIFE_MS = 60_000 >` 任何 per-test 预算 30_000），超时改抛错并自述（帧清单 + 订阅时刻 + 换名提示），断连经幂等 `shutdown()` 唤醒 waiter；② 三层假绿逐层去掉（`clearTimeout` 不再只靠 grep，改 `vi.getTimerCount()` delta；KD-07 的 `it.fails` 从“靠 harness 4000ms 静默 resolve 空串”改成真断言 `400 + elapsed < 1000`（实测 3.5ms）并**退表** `CAP 10 → 9`，理由是“前提过期”而非“修好了”；删两条恒真断言）；③ 两条不修只登记（见文末待办）。审/测四轮：变异合计 KILLED 16 / SURVIVED 3（幸存者含 `SOCKET_LIFE_MS=30_000` 无用例活到 30s——“约束不可观测≠缺断言”，接受）。`pnpm verify` 十步 EXIT=0（265 文件 2974 例、四维 100%）+ `pnpm desktop:check` EXIT=0。教训入 `docs/03` §11.54。下一卡候选：`docs/02` 的 M4.8（M1–M3 加固 / 导出链 / DSH 面板待用户裁定）。
+- 当前里程碑（上一卡）: **M4.6 已结卡（2026-11-18，`d5fa538`）**。M4.6 = 门禁自我证明：`scripts/lint-sh-selftest.sh`（坏脚本/空集/缺目录/干净四类夹具 + 末尾自调用）与 `scripts/check-ci-parity.mjs`（verify 十步 vs `ci.yml` checks 同序同集 + 拒绕步骤级 `continue-on-error`/`if`/`shell`/`working-directory`/`env` 与作业级 `if:`）双双入 `verify`，步骤数仍 10、代价 0.53%；parity 自证改为父存期望、子进程判决，`exit(1)->exit(0)` 已实测会红。终测 31/31 AC、变异 11 KILLED / 5 SURVIVED。新登记 `L-43`（`packages/core/tests/server/sse-v4.test.ts > v4#1b` 全量并发偶发 5s 超时，下卡处理）/`L-44`（M4.2 G-3 的“无竞态”只能靠结构论证，40 连跑 0 红证明不了）。265 文件 2971 例、四维 100%、`pnpm verify` EXIT=0 + `pnpm desktop:check` EXIT=0 + `cargo test` 10 连跑 0 失败。教训 §11.52–§11.53。下一卡候选：M4.7（SSE flake + M1–M3 加固）/ M4.3 导出链 / M4.x DSH 面板（需用户裁定构建链）。
 - 当前里程碑: **M4.2 已结卡（2026-11-18，`d736a4b`）**。M4.2 = Tauri v2 桌面壳（`@hreader/desktop`）：壳不托管阅读器，只做「定位 `hr` → 读/复用/拉起 daemon → webview 导航」；三条硬不变量（父 pid 只采一次 / 看门狗可撤 + `unref` 兜底 / 信号装配类型强制）。结卡证据：265 文件 2971 例、四维 perFile 100%，`pnpm verify` 八步 EXIT=0 + `pnpm desktop:check` EXIT=0（cargo 80 例）；**`ci.yml` 首次与 `verify` 八步一一对应**（此前少 `lint:sh` 与 `build`，见 `docs/03` §11.49）。过程 8 轮返工，教训 §11.45–§11.50。下一卡候选：M4.3 导出链 / M4.x DSH Web 面板（需用户裁定构建链）/ 回 M1–M3 加固。
 - 当前里程碑（上一卡）: **M4.5.1 已结卡（`02f2649`）**；M4.2 于 2026-11-18 立卡开工，现已结卡（见上）
 - 当前里程碑（旧）: **M4.5 已结卡（`1dcfcba`）**。260 文件 / 2896 例 / 四维 perFile 100%，`pnpm verify` 连跑两遍 EXIT=0。M4.5「PDF 大纲/书签」= Chrome 原生 `generateDocumentOutline`（侦察翻案：路线图原写"浏览器打印不可实现"是错的）；零新增依赖、src 无 PDF 解析器；`--outline`(默认开)/`--no-outline`，png 上双向 `invalid_input`；`--json {pdf,bytes,pages,outline,out}`。已知限制 `L-40`（`display:none` 标题仍被计数）/`L-41`（Chrome 截超长标题约 1KB）。过程：G0 矩阵（测试员）→ F1 超时中断后 resume → 审计 `PASS WITH NOTES` + 真机 21 变异 → R1 补夹具与树内 e2e → 全量 CI → 结卡。下一步候选：M4.2 Tauri（本机有 cargo 1.98，但跨平台打包不可验证）/ M4.x DSH 面板（需用户裁定构建链）/ 或回到 M1–M3 的加固卡。
@@ -137,6 +138,10 @@
 
 ## 待用户决策
 - 无。
+
+## 待办（另立卡候选，M4.7 R4 登记，**均未修**）
+- `rawExchange`/`httpCall` 超时**静默 resolve 部分文本**（`packages/core/tests/server/harness.ts`）⇒ 待立卡：D8「超时必须自述」对 HTTP 路径的延伸，~15 个调用点的失败文本仍可能是无解释的空串。
+- `packages/core/src/server/server.ts` 无 `clientError` 监听 ⇒ 半截/坏请求只有裸 `400`、无 JSON 错误体（可能违 `docs/` 的 `{ code, message }` 错误约定）⇒ 待立卡；任何卡动 `server.ts` 请求入口前必须先补。
 
 ## 连续模式
 - 用户授权（2026-11-13）：M1.5–M1.9 端到端推进；**2026-11-13 追加**：M2–M4 全部本地推进，不发 npm、不建远端，~~不新增任何依赖~~（2026-11-14 已废止：改为按需引入成熟库，见上方"依赖策略"），`docs/` 由协调者维护。
