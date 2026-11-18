@@ -536,6 +536,35 @@ mod tests {
     }
 
     #[test]
+    fn r7_ico_rejects_png_under_45_bytes() {
+        // 签名 8 + 合法 IHDR 块 25 + IEND 序列 8 = 41 字节：IHDR 与 IEND 两侧都过
+        // （IEND 判据只看 8 字节序列、不看 4 字节长度前缀），只有"至少 45 字节"能拒它。
+        // 45 = 签名 8 + IHDR 块 25 + **完整 IEND 块** 12，所以这条断言判的是块结构完整。
+        let mut payload = PNG_SIGNATURE.to_vec();
+        payload.extend_from_slice(&[0, 0, 0, 13]); // IHDR 长度
+        payload.extend_from_slice(b"IHDR");
+        payload.extend_from_slice(&[0, 0, 0, 16, 0, 0, 0, 16, 8, 6, 0, 0, 0]); // 16x16 / 8bpp / RGBA
+        payload.extend_from_slice(&[0, 0, 0, 0]); // IHDR CRC 占位：判据不看 CRC
+        payload.extend_from_slice(&PNG_IEND);
+        assert_eq!(
+            payload.len(),
+            41,
+            "样本必须 41 字节：一侧过 IHDR/IEND，一侧过不了 45"
+        );
+        let bytes = fake_ico(&[(16, 16, 41, 22)], &payload);
+
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_valid_ico(&bytes, &[(16, 16)]);
+        }))
+        .expect_err("41 字节的 PNG 样本必须被拒");
+        let message = panic_message(&*panic);
+        assert!(
+            message.contains("至少 45 字节"),
+            "应被长度断言拒（不是 IHDR/IEND 兜住），实际：{message}"
+        );
+    }
+
+    #[test]
     fn ac11_shell_home_is_app_scoped_and_never_the_user_home() {
         let user_home = Path::new("/Users/x");
         let shell_home = default_home_for(user_home);
