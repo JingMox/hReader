@@ -75,6 +75,7 @@ const capture = async (
     stderr: (text) => err.push(text),
     readStdin: () => Promise.resolve(new Uint8Array()),
     debug: false,
+    launchParentPid: process.ppid,
     env: options.env ?? {},
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   };

@@ -42,6 +42,9 @@ const capture = (overrides: Partial<CliIo> = {}): Capture => {
       stderr: (text) => err.push(text),
       readStdin: () => Promise.resolve(new Uint8Array()),
       debug: false,
+      launchParentPid: process.ppid,
+      // `home` 必须注入：`run(["serve", …])` 不带 `--home` 时落 `homedir()`，即覆盖真实 `~/.hreader/daemon.json`。
+      home: dir,
       ...overrides,
     },
   };

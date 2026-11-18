@@ -10,6 +10,7 @@ describe("parseArgs · serve 的默认值与 --allow-host", () => {
       ok: true,
       intent: {
         kind: "serve",
+        exitWithParent: false,
         path: "/repo/doc.html",
         port: 0,
         json: false,
@@ -27,6 +28,7 @@ describe("parseArgs · serve 的 --app-dir", () => {
       ok: true,
       intent: {
         kind: "serve",
+        exitWithParent: false,
         path: "/repo/doc.html",
         port: 0,
         json: false,
@@ -44,6 +46,7 @@ describe("parseArgs · serve 的 --allow-host 列表", () => {
       ok: true,
       intent: {
         kind: "serve",
+        exitWithParent: false,
         path: "/repo/doc.html",
         port: 0,
         json: false,
@@ -57,12 +60,32 @@ describe("parseArgs · serve 的 --allow-host 列表", () => {
       ok: true,
       intent: {
         kind: "serve",
+        exitWithParent: false,
         path: "/repo/doc.html",
         port: 0,
         json: false,
         workspace: "/repo",
         appDir: undefined,
         appDirGiven: false,
+      },
+    });
+  });
+});
+
+describe("parseArgs · serve 的 --home", () => {
+  it("should resolve an explicit --home against cwd and reject nothing else", () => {
+    expect(parse(["serve", "doc.html", "--home", "state"])).toEqual({
+      ok: true,
+      intent: {
+        kind: "serve",
+        exitWithParent: false,
+        path: "/repo/doc.html",
+        port: 0,
+        json: false,
+        workspace: "/repo",
+        appDir: undefined,
+        appDirGiven: false,
+        home: "/repo/state",
       },
     });
   });

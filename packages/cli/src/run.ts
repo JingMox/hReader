@@ -1,7 +1,6 @@
 // 这层管：argv → 意图 → 命令 → 退出码（CLI 的 io 契约与错误归口）；用法错误只走 stderr、退出码 2，`--help` 一律 0。
 // 不做解析、不做格式化；进程相关的 io 在不可单测的 `main.ts`，逻辑全部留在本文件。
 
-import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 
@@ -16,7 +15,6 @@ import { patchCommand } from "./commands/patch";
 import { pdfCommand } from "./commands/pdf";
 import { pngCommand } from "./commands/png";
 import { readCommand } from "./commands/read";
-import { serveCommand } from "./commands/serve";
 import { styleCommand } from "./commands/style";
 import { styleExtractCommand } from "./commands/styleExtract";
 import { undoCommand } from "./commands/undo";
@@ -25,6 +23,7 @@ import { sourceText } from "./input";
 import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
 import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
 import { jsonError } from "./output";
+import { serveCommandOf } from "./run-serve";
 import { isDiscoveredStylePath, undiscoveredHint } from "./style-out";
 import { usageText, type CommandName } from "./usage";
 
@@ -40,17 +39,28 @@ export interface CliIo {
   readonly fetch?: typeof globalThis.fetch;
   /** serve 靠它感知 SIGTERM/SIGINT；其它命令不需要（测试里构造 io 时可省）。 */
   readonly stop?: Promise<void>;
+  /**
+   * 启动时父进程的 pid：**必填**，只有 `main.ts` 能在首个 `await` 之前采集它。
+   * 留一个 `?? process.ppid` 兜底就是重开 W2 的洞：新的 io 构造点会在 await 之后读到已经被 re-parent 的 ppid。
+   */
+  readonly launchParentPid: number;
+  readonly home?: string;
 }
 
 /** stdin 解码成功但为空：卡片 §7.4 定为用法错误（而不是 core 的 `invalid_fragment`）。 */
 class UsageError extends Error {}
 
 type Runnable = Exclude<Intent, { readonly kind: "help" }>;
-
 /** 写命令入参：两边都取真实路径再算相对（R1-P1-2）；workspace 不存在时同走一条基准，`ENOENT` 交给 core。 */
 const workspaceRealpathOf = (workspace: string): string => {
   const real = attemptRealpath(workspace);
   if (real === undefined) throw new UsageError(`--workspace 不存在：${workspace}`);
+  return real;
+};
+/** `--home` 与 `--workspace` 同一口径：存在才收（`.hreader/` 由 core 建，home 本身不代建）。 */
+const homeRealpathOf = (home: string): string => {
+  const real = attemptRealpath(home);
+  if (real === undefined) throw new UsageError(`--home 目录不存在：${home}`);
   return real;
 };
 
@@ -61,9 +71,6 @@ const withinWorkspace = (input: {
   workspace: workspaceRealpathOf(input.workspace),
   file: relative(workspaceRealpathOf(input.workspace), realpathThroughAncestors(input.absolute)),
 });
-
-const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 const runPatch = async (
   intent: Extract<Runnable, { kind: "patch" }>,
@@ -173,12 +180,13 @@ const runExport = async (
   });
 };
 
-/** `env`/`stop` 在 `CliIo` 里可省；归一到 `ResolvedIo`，下游命令才不必判空（`stop` 的永不兑现是故意的）。 */
-type ResolvedIo = CliIo & Required<Pick<CliIo, "env" | "stop">>;
+/** `env`/`stop`/`home` 在 `CliIo` 里可省；归一到 `ResolvedIo`，下游命令才不必判空（`stop` 的永不兑现是故意的）。 */
+type ResolvedIo = CliIo & Required<Pick<CliIo, "env" | "stop" | "home">>;
 const resolvedIoOf = (io: CliIo): ResolvedIo => ({
   ...io,
   env: io.env ?? {},
   stop: io.stop ?? new Promise<void>(() => undefined),
+  home: io.home ?? homedir(),
 });
 
 /** 纸张/超时在会话层定；这里只把"哪份 HTML 交给哪个 Chrome"接起来（D1 命令层不碰进程）。 */
@@ -216,26 +224,16 @@ const runPng = async (
   });
 };
 
+/** `--home` 只有 serve 会用到；缺省落点已经由 `resolvedIoOf` 归一。 */
 const runServe = async (
   intent: Extract<Runnable, { kind: "serve" }>,
   io: ResolvedIo,
-): Promise<string> => {
-  // 显式 `--app-dir` 必须真实存在（exit 2）；校验留在这里：depcruise 禁止 commands/* 碰 fs（M2.1 缺省值仍由 core 兜底）。
-  if (intent.appDirGiven && intent.appDir !== undefined && !existsSync(intent.appDir)) {
-    throw new HrError("invalid_input", `--app-dir 目录不存在：${intent.appDir}`);
-  }
-  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
-  return serveCommand({
-    file: paths.file,
-    workspace: paths.workspace,
-    port: intent.port,
-    home: homedir(),
-    ...(intent.appDir === undefined ? {} : { appDir: intent.appDir }),
-    json: intent.json,
-    allowHosts: intent.allowHosts,
+): Promise<string> =>
+  serveCommandOf(intent, withinWorkspace({ workspace: intent.workspace, absolute: intent.path }), {
+    home: intent.home === undefined ? io.home : homeRealpathOf(intent.home),
     stop: io.stop,
+    launchParentPid: io.launchParentPid,
   });
-};
 
 const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
   if (intent.kind === "outline") return outlineCommand(intent);
@@ -263,7 +261,7 @@ const topicOf = (kind: Runnable["kind"]): CommandName => (kind === "styleExtract
 
 const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
   if (!(error instanceof HrError)) {
-    io.stderr(`${messageOf(error)}\n`);
+    io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     if (io.debug && error instanceof Error && typeof error.stack === "string")
       io.stderr(`${error.stack}\n`);
     return EXIT_INTERNAL;

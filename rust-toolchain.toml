@@ -1,0 +1,4 @@
+# 固定工具链：M4.2 的 clippy/fmt 门禁在 1.98.0 上验证过，别让"本地能过、CI 换版本就红"。
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]

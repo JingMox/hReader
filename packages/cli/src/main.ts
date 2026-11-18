@@ -7,6 +7,10 @@ import { resolveFallback } from "./resolve-hook.ts";
 
 registerHooks({ resolve: resolveFallback });
 
+// 必须在任何 `await` 之前读：壳可能在 spawn 之后立刻死掉，一旦被 re-parent 到 1 再读，
+// "原来的父进程"和"init"就分不出来了（`--exit-with-parent` 的 B5 就是这么漏的）。
+const launchParentPid = process.ppid;
+
 const { run } = await import("./run");
 
 const readStdin = async () => {
@@ -40,6 +44,7 @@ const code = await run(process.argv.slice(2), {
   debug: process.env["HR_DEBUG"] === "1",
   env: process.env,
   stop,
+  launchParentPid,
 });
 
 process.exitCode = code;

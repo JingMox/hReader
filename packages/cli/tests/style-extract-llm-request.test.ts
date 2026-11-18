@@ -49,6 +49,7 @@ const llmRun = async (files: readonly string[], fetch: typeof globalThis.fetch):
     stderr: (text) => err.push(text),
     readStdin: () => Promise.resolve(new Uint8Array()),
     debug: false,
+    launchParentPid: process.ppid,
     env: { OPENCODE_API_KEY: KEY },
     fetch,
   };

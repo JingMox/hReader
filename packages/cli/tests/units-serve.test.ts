@@ -1,66 +1,54 @@
 // 这层管：`serveCommand` 的进程内行为（子进程案只验生命周期，覆盖率要靠这条）。
 
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { serveCommand } from "../src/commands/serve";
-import { EXIT_FAILURE } from "../src/exit-codes";
+import { EXIT_FAILURE, EXIT_USAGE } from "../src/exit-codes";
 import { run } from "../src/run";
-
-const DOC =
-  '<!doctype html><html><body><article data-hr-id="hr-a"><p>x</p></article></body></html>';
-
-const dirs = (): {
-  readonly workspace: string;
-  readonly home: string;
-  readonly drop: () => void;
-} => {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "hr-serve-ws-")));
-  const home = realpathSync(mkdtempSync(join(tmpdir(), "hr-serve-home-")));
-  writeFileSync(join(workspace, "doc.html"), DOC, "utf8");
-  return {
-    workspace,
-    home,
-    drop: () => {
-      rmSync(workspace, { recursive: true, force: true });
-      rmSync(home, { recursive: true, force: true });
-    },
-  };
-};
-
-const inputOf = (
-  dir: { readonly workspace: string; readonly home: string },
-  json: boolean,
-  stop: Promise<void>,
-): Parameters<typeof serveCommand>[0] => ({
-  file: "doc.html",
-  workspace: dir.workspace,
-  home: dir.home,
-  port: 0,
-  json,
-  stop,
-});
+import { serveDirs as dirs, serveInputOf as inputOf, settle, stopHandle } from "./serve-helpers";
 
 describe("serveCommand", () => {
-  it("should print the json envelope and stay up until stop resolves", async () => {
+  it("should print the json envelope", async () => {
     const dir = dirs();
-    let stop: () => void = () => undefined;
-    const stopped = new Promise<void>((resolve) => {
-      stop = resolve;
-    });
+    const { stop, stopped } = stopHandle();
     try {
       const text = await serveCommand(inputOf(dir, true, stopped));
 
       expect(text).toMatch(/^\{.*\}\n$/u);
       expect(text).toContain('"port":');
       expect(text).toContain('"token":"');
+      stop();
+    } finally {
+      dir.drop();
+    }
+  });
+
+  it("should write daemon.json while serving", async () => {
+    const dir = dirs();
+    const { stop, stopped } = stopHandle();
+    try {
+      await serveCommand(inputOf(dir, true, stopped));
+
       expect(existsSync(join(dir.home, ".hreader", "daemon.json"))).toBe(true);
       stop();
-      await new Promise((resolve) => {
-        setTimeout(resolve, 50);
-      });
+    } finally {
+      dir.drop();
+    }
+  });
+});
+
+describe("serveCommand · 结束后", () => {
+  it("should remove daemon.json once stop resolves", async () => {
+    const dir = dirs();
+    const { stop, stopped } = stopHandle();
+    try {
+      await serveCommand(inputOf(dir, true, stopped));
+      stop();
+      await settle();
+
       expect(existsSync(join(dir.home, ".hreader", "daemon.json"))).toBe(false);
     } finally {
       dir.drop();
@@ -70,10 +58,7 @@ describe("serveCommand", () => {
   it("should print the human line when --json is off", async () => {
     const dir = dirs();
     try {
-      let stop: () => void = () => undefined;
-      const stopped = new Promise<void>((resolve) => {
-        stop = resolve;
-      });
+      const { stop, stopped } = stopHandle();
       const text = await serveCommand(inputOf(dir, false, stopped));
       stop();
 
@@ -95,6 +80,7 @@ const runServeJson = async (
     stderr: () => undefined,
     readStdin: () => Promise.resolve(new Uint8Array()),
     debug: false,
+    launchParentPid: process.ppid,
     stop: stopped,
   });
   return out;
@@ -103,10 +89,7 @@ const runServeJson = async (
 describe("serveCommand · allowHosts 与 run 分发", () => {
   it("should pass an explicit allowHosts list through to startServer", async () => {
     const dir = dirs();
-    let stop: () => void = () => undefined;
-    const stopped = new Promise<void>((resolve) => {
-      stop = resolve;
-    });
+    const { stop, stopped } = stopHandle();
     try {
       const text = await serveCommand({
         ...inputOf(dir, true, stopped),
@@ -124,10 +107,7 @@ describe("serveCommand · allowHosts 与 run 分发", () => {
     const dir = dirs();
     const previous = process.env["HOME"];
     process.env["HOME"] = dir.home;
-    let stop: () => void = () => undefined;
-    const stopped = new Promise<void>((resolve) => {
-      stop = resolve;
-    });
+    const { stop, stopped } = stopHandle();
     try {
       const out = await runServeJson(dir, stopped);
       stop();
@@ -153,6 +133,7 @@ const runServeWith = async (
       stderr: (text) => err.push(text),
       readStdin: () => Promise.resolve(new Uint8Array()),
       debug: false,
+      launchParentPid: process.ppid,
     },
   );
   return { code, err: err.join("") };
@@ -163,10 +144,7 @@ describe("run · --app-dir 的端到端透传", () => {
     const dir = dirs();
     const previous = process.env["HOME"];
     process.env["HOME"] = dir.home;
-    let stop: () => void = () => undefined;
-    const stopped = new Promise<void>((resolve) => {
-      stop = resolve;
-    });
+    const { stop, stopped } = stopHandle();
     try {
       const out: string[] = [];
       const code = await run(
@@ -185,6 +163,7 @@ describe("run · --app-dir 的端到端透传", () => {
           stderr: () => undefined,
           readStdin: () => Promise.resolve(new Uint8Array()),
           debug: false,
+          launchParentPid: process.ppid,
           stop: stopped,
         },
       );
@@ -202,10 +181,7 @@ describe("run · --app-dir 的端到端透传", () => {
 describe("serveCommand · --app-dir 的两条分支", () => {
   it("should pass an existing appDir through to startServer", async () => {
     const dir = dirs();
-    let stop: () => void = () => undefined;
-    const stopped = new Promise<void>((resolve) => {
-      stop = resolve;
-    });
+    const { stop, stopped } = stopHandle();
     try {
       const text = await serveCommand({ ...inputOf(dir, true, stopped), appDir: dir.workspace });
       stop();
@@ -226,6 +202,65 @@ describe("serveCommand · --app-dir 的两条分支", () => {
       expect(code).toBe(EXIT_FAILURE);
       expect(err).toContain("--app-dir 目录不存在");
       expect(existsSync(join(dir.home, ".hreader", "daemon.json"))).toBe(false);
+    } finally {
+      dir.drop();
+    }
+  });
+});
+
+const runServeHome = async (
+  dir: ReturnType<typeof dirs>,
+  home: string,
+  stop: Promise<void>,
+): Promise<{ readonly code: number; readonly out: string; readonly err: string }> => {
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await run(
+    ["serve", join(dir.workspace, "doc.html"), "--port", "0", "--json", "--home", home],
+    {
+      cwd: dir.workspace,
+      stdout: (text) => out.push(text),
+      stderr: (text) => err.push(text),
+      readStdin: () => Promise.resolve(new Uint8Array()),
+      debug: false,
+      launchParentPid: process.ppid,
+      stop,
+    },
+  );
+  return { code, out: out.join(""), err: err.join("") };
+};
+
+describe("run · serve 的 --home", () => {
+  it("should write daemon.json under --home and never under $HOME", async () => {
+    const dir = dirs();
+    const other = realpathSync(mkdtempSync(join(tmpdir(), "hr-serve-other-home-")));
+    const previous = process.env["HOME"];
+    process.env["HOME"] = other;
+    const { stop, stopped } = stopHandle();
+    try {
+      const { code, out } = await runServeHome(dir, dir.home, stopped);
+      stop();
+      await stopped;
+
+      expect(code).toBe(0);
+      expect(out).toContain('"port":');
+      expect(existsSync(join(dir.home, ".hreader", "daemon.json"))).toBe(true);
+      expect(existsSync(join(other, ".hreader", "daemon.json"))).toBe(false);
+    } finally {
+      process.env["HOME"] = previous;
+      rmSync(other, { recursive: true, force: true });
+      dir.drop();
+    }
+  });
+
+  it("should reject a --home that does not exist with a usage error", async () => {
+    const dir = dirs();
+    try {
+      const ghost = join(dir.workspace, "no-such-home");
+      const { code, err } = await runServeHome(dir, ghost, Promise.resolve());
+
+      expect(code).toBe(EXIT_USAGE);
+      expect(err).toContain(`--home 目录不存在：${ghost}`);
     } finally {
       dir.drop();
     }

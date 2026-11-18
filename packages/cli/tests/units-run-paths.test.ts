@@ -32,6 +32,7 @@ const ioAt = (): { io: CliIo; out: () => string; err: () => string } => {
       },
       readStdin: () => Promise.resolve(new Uint8Array()),
       debug: false,
+      launchParentPid: process.ppid,
     },
     out: () => out.join(""),
     err: () => err.join(""),
