@@ -1,5 +1,6 @@
 # WORKFLOW STATE
 
+- 当前里程碑: **M4.6 已结卡（2026-11-18，`d5fa538`）**。M4.6 = 门禁自我证明：`scripts/lint-sh-selftest.sh`（坏脚本/空集/缺目录/干净四类夹具 + 末尾自调用）与 `scripts/check-ci-parity.mjs`（verify 十步 vs `ci.yml` checks 同序同集 + 拒绕步骤级 `continue-on-error`/`if`/`shell`/`working-directory`/`env` 与作业级 `if:`）双双入 `verify`，步骤数仍 10、代价 0.53%；parity 自证改为父存期望、子进程判决，`exit(1)->exit(0)` 已实测会红。终测 31/31 AC、变异 11 KILLED / 5 SURVIVED。新登记 `L-43`（`packages/core/tests/server/sse-v4.test.ts > v4#1b` 全量并发偶发 5s 超时，下卡处理）/`L-44`（M4.2 G-3 的"无竞态"只能靠结构论证，40 连跑 0 红证明不了）。265 文件 2971 例、四维 100%、`pnpm verify` EXIT=0 + `pnpm desktop:check` EXIT=0 + `cargo test` 10 连跑 0 失败。教训 §11.52–§11.53。下一卡候选：M4.7（SSE flake + M1–M3 加固）/ M4.3 导出链 / M4.x DSH 面板（需用户裁定构建链）。
 - 当前里程碑: **M4.2 已结卡（2026-11-18，`d736a4b`）**。M4.2 = Tauri v2 桌面壳（`@hreader/desktop`）：壳不托管阅读器，只做「定位 `hr` → 读/复用/拉起 daemon → webview 导航」；三条硬不变量（父 pid 只采一次 / 看门狗可撤 + `unref` 兜底 / 信号装配类型强制）。结卡证据：265 文件 2971 例、四维 perFile 100%，`pnpm verify` 八步 EXIT=0 + `pnpm desktop:check` EXIT=0（cargo 80 例）；**`ci.yml` 首次与 `verify` 八步一一对应**（此前少 `lint:sh` 与 `build`，见 `docs/03` §11.49）。过程 8 轮返工，教训 §11.45–§11.50。下一卡候选：M4.3 导出链 / M4.x DSH Web 面板（需用户裁定构建链）/ 回 M1–M3 加固。
 - 当前里程碑（上一卡）: **M4.5.1 已结卡（`02f2649`）**；M4.2 于 2026-11-18 立卡开工，现已结卡（见上）
 - 当前里程碑（旧）: **M4.5 已结卡（`1dcfcba`）**。260 文件 / 2896 例 / 四维 perFile 100%，`pnpm verify` 连跑两遍 EXIT=0。M4.5「PDF 大纲/书签」= Chrome 原生 `generateDocumentOutline`（侦察翻案：路线图原写"浏览器打印不可实现"是错的）；零新增依赖、src 无 PDF 解析器；`--outline`(默认开)/`--no-outline`，png 上双向 `invalid_input`；`--json {pdf,bytes,pages,outline,out}`。已知限制 `L-40`（`display:none` 标题仍被计数）/`L-41`（Chrome 截超长标题约 1KB）。过程：G0 矩阵（测试员）→ F1 超时中断后 resume → 审计 `PASS WITH NOTES` + 真机 21 变异 → R1 补夹具与树内 e2e → 全量 CI → 结卡。下一步候选：M4.2 Tauri（本机有 cargo 1.98，但跨平台打包不可验证）/ M4.x DSH 面板（需用户裁定构建链）/ 或回到 M1–M3 的加固卡。
@@ -37,6 +38,9 @@
 | 测试员（M4.1） | `worker` | `9d3347b3-80a8-4b89-90cd-d09d862de85e` | 2026-11-16 23:0x | M4.1 F3 G3-R3 | 16 变异 KILLED、12 组 URL 矩阵；**F3 签核** |
 | 编写员（M4.3） | `worker` | `f1cc98fa-c70b-409e-ae7f-c065c63fc29d` → `84efc85f-1445-48e3-99d4-b82d6e589871` → `ac1fb9d2-edf6-4194-8b1b-f3b25adfac1f` | 2026-11-17 | M4.3 F1 | 链尾 R2（F1 三项修正 + F2）；**30 分钟看门狗会掐，派单要切小** |
 | 审计员（M4.3） | `reviewer` | `95b930c1-199e-49ed-8890-355bcf5ff62e` | 2026-11-17 | M4.3 G2（F1） | F1 判 `CHANGES-NEEDED`（1 BLOCKER：docs/05 错误码表，已由协调者补）；下轮可续接 |
+| 编写员（M4.6） | `worker` | `18744017-17f8-4ffe-84e2-ec38bee43de4`（R2）→ `7a47343e-c7eb-4c3e-84da-d4296e97855f`（R3） | 2026-11-18 | M4.6 R2 / R3 | R3 为终轮，下卡可续接（注意：R1/F1 的 runId 已被压缩，需从 `.workflow/reports/impl-M4.6.md` 追） |
+| 审计员（M4.6） | `reviewer` | 见 `.workflow/reports/audit-M4.6.md`（本次以只读静态判定交付，无 shell/写工具） | 2026-11-18 | M4.6 G2 | 判 `OK with notes`（1×P1 + 3×P2，实跑项由协调者补证） |
+| 测试员（M4.6） | `worker` | `fe91057f-385e-46d2-97ac-8cfb621c1c45` | 2026-11-18 | M4.6 G3 | 31/31 AC、变异 11 KILLED / 5 SURVIVED；此 run 已超长，下卡建议重建 |
 | 测试员（M4.3） | `worker` | `44c87d00-6809-4c0b-b5be-810b4d7cee05` | 2026-11-17 | M4.3 G3（前置） | 第 7 代 AC 矩阵 + 6 处歧义，落盘 `.workflow/reports/spec-M4.3.md`；下轮可续接 |
 | 编写员（M4.4） | `worker` | `4d74ddd4` → `f49be24c` → `0556ff56` → `39aa038b` → `8dfff8d3`（均为 resume 链，同一磁盘会话） | 2026-11-17 | M4.4 F1–F2、R1–R8 | **已结卡（`53e456a`）**；链尾 R8。已积累 8 轮，下卡建议重建会话 |
 | 审计员（M4.4） | `reviewer` | `20cd424b-ec6f-4b19-9453-743a7ea6a636` | 2026-11-17 | M4.4 G2 终审 | `PASS WITH NOTES`（4 个 P2，已入 R8）；下卡可续接 |
