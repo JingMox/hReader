@@ -1,6 +1,8 @@
 // 这层管：M2.1 的服务器测试装置——真 `startServer` + 真 socket（`node:net` 原文）+ 真子进程外的 HTTP 客户端。
 //
 // 规矩：每个 socket 都有硬超时（挂住比失败更糟）；服务器一律 `finally` 关闭并删掉临时 home/workspace。
+//
+// SSE 等待的两个入口分工（`waitFor` 帧数 / `waitForEvent` 事件名）：见 `./sse-client`。
 
 import { connect, type Socket } from "node:net";
 import { request as httpRequest } from "node:http";
@@ -80,12 +82,15 @@ export const defaultSeed = (workspace: string): void => {
   writeFileSync(join(workspace, "other.html"), DOC, "utf8");
 };
 
+/** HTTP 请求硬超时：必须 < vitest 默认 5000ms，否则断言文本出不来，vitest 先报 `Test timed out`。 */
+const HTTP_DEADLINE_MS = 4000;
+
 /** 原文请求：写到 `until` 出现（或 socket 关闭）为止，带硬超时。 */
 export const rawExchange = (
   port: number,
   text: string,
   until?: string,
-  timeoutMs = 5000,
+  timeoutMs = HTTP_DEADLINE_MS,
 ): Promise<string> =>
   new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -142,7 +147,7 @@ export const httpCall = (port: number, options: HttpOptions): Promise<HttpRespon
           ? options.path
           : `http://127.0.0.1:${String(port)}${options.path}`,
         headers: options.headers ?? {},
-        timeout: options.listen ?? 5000,
+        timeout: options.listen ?? HTTP_DEADLINE_MS,
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -166,96 +171,8 @@ export const httpCall = (port: number, options: HttpOptions): Promise<HttpRespon
 
 export const jsonBodyOf = (response: HttpResponse): unknown => JSON.parse(response.body);
 
-export interface SseFrame {
-  readonly id: number | undefined;
-  readonly event: string;
-  readonly data: string;
-}
-
-const connectSse = (
-  port: number,
-  path: string,
-  headers: Readonly<Record<string, string>>,
-  timeoutMs: number,
-): Socket => {
-  const socket = connect({ host: "127.0.0.1", port });
-  setTimeout(() => socket.destroy(), timeoutMs);
-  socket.setEncoding("utf8");
-  const extra = Object.entries(headers)
-    .map(([key, value]) => `${key}: ${value}\r\n`)
-    .join("");
-  socket.write(
-    `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1:${String(port)}\r\nAccept: text/event-stream\r\n${extra}Connection: keep-alive\r\n\r\n`,
-  );
-  return socket;
-};
-
-/** 把缓冲区里所有完整帧吃掉，返回剩余的半帧（注释帧不是事件，不计数）。 */
-const pumpSse = (input: string, frames: SseFrame[]): string => {
-  let buffer = input;
-  let end = buffer.indexOf("\n\n");
-  while (end >= 0) {
-    const block = buffer.slice(0, end);
-    if (block.includes("data:")) frames.push(frameOfRaw(block));
-    buffer = buffer.slice(end + 2);
-    end = buffer.indexOf("\n\n");
-  }
-  return buffer;
-};
-
-/** 一条 SSE 连接：按空行切帧；`close()` 后不再收。 */
-const frameOfRaw = (raw: string): SseFrame => {
-  const lines = raw.split("\n");
-  const idLine = lines.find((line) => line.startsWith("id: "));
-  return {
-    id: idLine === undefined ? undefined : Number(idLine.slice(4)),
-    event: eventOf(lines),
-    data: lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "",
-  };
-};
-
-/** 一条 SSE 连接：按空行切帧；`close()` 后不再收。 */
-export const openSse = (
-  port: number,
-  path: string,
-  headers: Readonly<Record<string, string>> = {},
-  timeoutMs = 5000,
-): {
-  readonly frames: SseFrame[];
-  readonly waitFor: (count: number) => Promise<SseFrame[]>;
-  readonly close: () => void;
-} => {
-  const frames: SseFrame[] = [];
-  let buffer = "";
-  let closed = false;
-  const socket = connectSse(port, path, headers, timeoutMs);
-  socket.on("data", (chunk: string) => {
-    buffer = pumpSse(buffer + chunk, frames);
-  });
-  const waitFor = async (count: number): Promise<SseFrame[]> => {
-    const started = Date.now();
-    while (frames.length < count && Date.now() - started < timeoutMs && !closed) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    return frames;
-  };
-  return {
-    frames,
-    waitFor,
-    close: () => {
-      closed = true;
-      socket.destroy();
-    },
-  };
-};
-
-/** 帧里没有 `event:` 头时，类型在 `data:` 的 JSON `type` 字段（见 event-ring.frameOf）。 */
-const eventOf = (lines: readonly string[]): string => {
-  const explicit = lines.find((line) => line.startsWith("event: "))?.slice(7);
-  if (explicit !== undefined) return explicit;
-  const data = lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "";
-  return /"type":"([^"]+)"/u.exec(data)?.[1] ?? "message";
-};
+// SSE 连接拆在同目录 `sse-client.ts`（文件长度门禁），对外仍从 harness 取，保持既有调用点不变。
+export { openSse, SSE_DEADLINE_MS, type SseFrame } from "./sse-client";
 
 export const cookieOf = (token: string): string => `hr=${token}`;
 

@@ -1,9 +1,10 @@
 // 这层管：v4#1 的三条 SSE 防线——首帧注释、429 自带重试间隔并关连接、5xx 广播成 error 事件。
 
 import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { startServer } from "../../src/server/server";
 import { createHub } from "../../src/server/hub";
@@ -113,11 +114,13 @@ describe("v4#1b · 5xx 广播成 error 事件", () => {
         path: "/s/doc.html",
         headers: { cookie: cookieOf(boot.token) },
       });
-      const frames = await sse.waitFor(3);
-      const errorFrame = frames.find((frame) => frame.event === "error");
+      // 5xx 由 fs.chmod 触发，watcher 可能额外插 `doc.error` / `library.changed`：只等 `error` 事件，不数帧。
+      const errorFrame = await sse.waitForEvent("error");
+      const errorFrames = sse.frames.filter((frame) => frame.event === "error");
 
       expect(failed.status).toBe(500);
-      expect(errorFrame?.data).toContain('"io_failure"');
+      expect(errorFrames).toHaveLength(1);
+      expect(errorFrame.data).toContain('"io_failure"');
     } finally {
       sse.close();
       await boot.close();
@@ -158,5 +161,87 @@ describe("v4#1b · 事件类型里的换行（反向变异的靶子）", () => {
         .split("\n")
         .some((line) => line.startsWith("evil: ")),
     ).toBe(false);
+  });
+});
+
+const listenOn = (server: Server): Promise<void> =>
+  new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve();
+    });
+  });
+
+const portOf = (server: Server): number => {
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("没有监听端口");
+  return address.port;
+};
+
+describe("R2 · 兜底定时器与断连自证", () => {
+  it("should clear one socket life timer per connection on close", async () => {
+    const boot = await bootOf();
+    // 只 fake 定时器：socket 的真实事件不受影响，本用例也不靠真实时钟等帧。
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const baseline = vi.getTimerCount();
+      const clients = Array.from({ length: 3 }, () =>
+        openSse(boot.port, "/api/events", { Cookie: cookieOf(boot.token) }),
+      );
+      // 每条连接一个 `SOCKET_LIFE_MS` 兜底定时器；deadline 定时器只在 `waitFor` 里建，这里不 waitFor。
+      expect(vi.getTimerCount() - baseline).toBe(3);
+      for (const client of clients) client.close();
+      // 看的是**效果**不是调用：`close()` 里没 clearTimeout 的话，三条 60s 兜底定时器还挂着，计数回不到基线。
+      expect(vi.getTimerCount()).toBe(baseline);
+    } finally {
+      vi.useRealTimers();
+      await boot.close();
+    }
+  });
+});
+
+/** 服务端收到首帧请求就关流：制造「服务端先断连」的确定性场景（两条断连用例共用）。 */
+const withEndingServer = async (run: (port: number) => Promise<void>): Promise<void> => {
+  const server = createServer((socket) => {
+    socket.once("data", () => socket.end());
+  });
+  await listenOn(server);
+  try {
+    await run(portOf(server));
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
+  }
+};
+
+describe("R2 · 断连自证", () => {
+  it("should reject with the socket error instead of waiting out the deadline", async () => {
+    // 连保留端口 1：内核不会把 1 分给临时 server，比「bind 后立即 close」少一个复用窗口。
+    const sse = openSse(1, "/api/events");
+    try {
+      // 不锚死 `ECONNREFUSED`：具体 errno 随内核/平台不同，但都走同一条 `error` 分支。
+      await expect(sse.waitFor(1)).rejects.toThrow(/连接已关闭（socket 错误：/u);
+    } finally {
+      sse.close();
+    }
+  });
+
+  it("should reject when the server ends the stream, then stay idempotent on repeated close", async () => {
+    await withEndingServer(async (port) => {
+      const sse = openSse(port, "/api/events");
+      try {
+        await expect(sse.waitFor(1)).rejects.toThrow("连接已关闭（socket 已关闭）");
+        // 幂等：服务端已关，`close()` 连调两次不把第一次的原因覆盖成显式关闭（`""`）。
+        sse.close();
+        sse.close();
+        // 这里只有一条断言：幂等性由下面这条 `waitFor` 的状态断言覆盖；`not.toThrow()` 恒真（`close()` 只做
+        // `shutdown("")` + `socket.destroy()`，两者都不抛）、`frames` 长度也恒为 0（该场景服务端从不下发帧），故都不写。
+        await expect(sse.waitFor(1)).rejects.toThrow("连接已关闭（socket 已关闭）");
+      } finally {
+        sse.close();
+      }
+    });
   });
 });
