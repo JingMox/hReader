@@ -1,7 +1,14 @@
 // 这层管：从 PDF 字节里读页序与大纲树（**仅测试用**，不进 `src`）；不写 PDF、不导出运行时依赖。
 //
+// 它是 `src/pdf/bookmarks.ts` 的**独立 oracle**：两处刻意不共用代码，否则"src 读错"与"oracle 读错"
+// 会一起错、一起绿；任何一边改动都不许把另一边抄过去。
+//
 // 只应付 Chrome 的产物形态：经典 xref 表 + trailer（`/Size … /Root … 0 R`）、页对象直接可寻、
 // 无 ObjStm / 无 XRef 流。扫法是"找 `N 0 obj … endobj` 字典 + 跟 `/Kids`"，不是通用 PDF 解析器。
+//
+// 已知盲点（**刻意不跟 `src` 一起修**，否则两边会一起错）：这里是按 `endobj` 正则切对象、在对象体
+// 原文上 grep `/Key`，所以标题字面量里出现 `endobj` / `/Next` 的产物（`OUTLINE_HOSTILE_TITLES`）
+// 这份 oracle 读不动。那类产物只由 `pdf-bookmarks.test.ts` 与真机 e2e 钉，不拿本文件交叉。
 
 /** 一个对象号的全部字节（`endobj` 之前的字典/流原文），latin1 解码：PDF 结构层是单字节的。 */
 type PdfObjects = ReadonlyMap<number, string>;
@@ -18,6 +25,8 @@ export interface PdfScan {
   readonly pages: readonly number[];
   /** Catalog 里没有 `/Outlines` 键时是 `undefined`（无 heading 的文档就是这样）。 */
   readonly outline: readonly PdfOutlineNode[] | undefined;
+  /** 大纲根对象自报的 `/Count`（可为负）：供 e2e 做"实走 == `/Count` == 打印稿 heading 数"三方对照。 */
+  readonly outlineCount: number | undefined;
 }
 
 const OBJECT = /(\d+) 0 obj\b([\s\S]*?)endobj/gu;
@@ -150,7 +159,13 @@ const itemsOf = (
   return nodes;
 };
 
-/** 从产物字节读出页序与大纲树；无 `/Outlines` 键时 `outline` 为 `undefined`。 */
+/** 大纲根对象自报的 `/Count`：没有这个键时 `undefined`（root 上它是可选的）。 */
+const countOf = (body: string): number | undefined => {
+  const match = /\/Count\s+(-?\d+)/u.exec(body);
+  return match?.[1] === undefined ? undefined : Number(match[1]);
+};
+
+/** 从产物字节读出页序与大纲树；无 `/Outlines` 键时 `outline` 与 `outlineCount` 都是 `undefined`。 */
 export const pdfScanOf = (bytes: Uint8Array): PdfScan => {
   const text = textOf(bytes);
   const objects = objectsFromTextOf(text);
@@ -159,7 +174,11 @@ export const pdfScanOf = (bytes: Uint8Array): PdfScan => {
   if (pagesId === undefined) throw new Error("PDF 的 Catalog 里没有 /Pages");
   const pages = pageOrderOf(objects, pagesId);
   const outlineId = REF(catalog, "Outlines");
-  if (outlineId === undefined) return { pages, outline: undefined };
+  if (outlineId === undefined) return { pages, outline: undefined, outlineCount: undefined };
   const root = requireOf(objects, outlineId, "/Outlines");
-  return { pages, outline: itemsOf({ objects, pages }, REF(root, "First"), outlineId) };
+  return {
+    pages,
+    outline: itemsOf({ objects, pages }, REF(root, "First"), outlineId),
+    outlineCount: countOf(root),
+  };
 };

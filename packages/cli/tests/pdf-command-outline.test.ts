@@ -5,17 +5,19 @@ import { join } from "node:path";
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-import {
-  pdfCommand,
-  pdfHeadingsOf,
-  type PdfCommandInput,
-  type RenderPdf,
-} from "../src/commands/pdf";
+import { pdfCommand, type PdfCommandInput, type RenderPdf } from "../src/commands/pdf";
 import { fieldOf } from "../src/chrome/protocol";
 import { pdfOf } from "./chrome-helpers";
+import {
+  bytesOf,
+  OUTLINE_COUNT_LIE,
+  pagesOf,
+  pdfWithBookmarksOf,
+  withOutlinesOf,
+} from "./helpers/pdf-fixtures";
 import { withTempDir } from "./harness";
 
-/** h5/h6 进不进 Chrome 的大纲是**未实测项**（留给 e2e 观察）；这里只钉计数含它们。 */
+/** 打印稿里的 heading 数（4）与产物书签数刻意不等：报告值只许来自产物。 */
 const HEADINGS =
   "<html><body><article><h1>一</h1><p>x</p><h2>二</h2><h5>五</h5>" +
   "<h6>六</h6></article></body></html>";
@@ -42,7 +44,7 @@ const inputOf = (dir: string, overrides: Overrides = {}): PdfCommandInput => ({
   workspace: dir,
   json: false,
   warn: () => undefined,
-  render: () => Promise.resolve({ bytes: Buffer.from(pdfOf(2)) }),
+  render: (input) => Promise.resolve({ bytes: pdfWithBookmarksOf(input.outline ? 2 : 0) }),
   ...overrides,
 });
 
@@ -79,13 +81,31 @@ const outlineOf = async (html: string, overrides: Overrides = {}): Promise<unkno
 };
 
 describe("pdfCommand · outline 报告值", () => {
-  it("outline = 打印稿 heading 数（h1–h6 全算）", async () => {
-    expect(await outlineOf(HEADINGS)).toBe(4);
+  it("outline = 产物里的大纲条目数（不是打印稿的 heading 数）", async () => {
+    const render = (): Promise<{ bytes: Uint8Array }> =>
+      Promise.resolve({ bytes: pdfWithBookmarksOf(3) });
+    expect(await outlineOf(HEADINGS, { render })).toBe(3);
   });
 
-  it('无 heading 的文档：outline 是数字 0（不省键，不是 null / "0"）', async () => {
-    expect(await outlineOf(PLAIN)).toStrictEqual(0);
+  it('产物没有 /Outlines 时：outline 是数字 0（不省键，不是 null / "0"）', async () => {
+    expect(
+      await outlineOf(HEADINGS, {
+        render: () => Promise.resolve({ bytes: pdfWithBookmarksOf(0) }),
+      }),
+    ).toStrictEqual(0);
   });
+
+  it("产物大纲结构自相矛盾：render_empty，且不落盘", () =>
+    withDocOf(HEADINGS, async (dir) => {
+      const out = join(dir, "out.pdf");
+      // `/Count 3` 但只有 2 条：走的是 `bookmarkCountOf` 的交叉核对，不是命令层的任何判断。
+      const bytes = bytesOf(withOutlinesOf(pagesOf(1)) + OUTLINE_COUNT_LIE);
+      const error = await failureOf(
+        pdfCommand(inputOf(dir, { out, render: () => Promise.resolve({ bytes }) })),
+      );
+      expect(error.code).toBe("render_empty");
+      expect(existsSync(out)).toBe(false);
+    }));
 });
 
 describe("pdfCommand · 大纲开关进到渲染层", () => {
@@ -144,24 +164,27 @@ describe("pdfCommand · 旗标互斥", () => {
     }));
 });
 
-describe("pdfHeadingsOf", () => {
-  it("只数 h1–h6：h7 / h1x / 正文都不算", () => {
-    expect(pdfHeadingsOf("<h1>a</h1><h5>b</h5><h6>c</h6>")).toBe(3);
-    expect(pdfHeadingsOf("<h7>a</h7><h1x>b</h1x><p>c</p>")).toBe(0);
-    expect(pdfHeadingsOf('<h1 id="x">a</h1>')).toBe(1);
+describe("pdfCommand · 报告值只来自产物", () => {
+  it("`PLAIN` 文档配上带书签的产物：报的仍是产物数（打印稿不参与）", async () => {
+    expect(await outlineOf(PLAIN)).toBe(2);
   });
+});
 
-  it("数的是元素：注释里的 `<h1>`、文本里的 `<h1>` 都不算", () => {
-    expect(pdfHeadingsOf("<article><!-- <h1>x</h1> --><h1>a</h1></article>")).toBe(1);
-    expect(pdfHeadingsOf("<article><p>&lt;h1&gt;</p></article>")).toBe(0);
-  });
+describe("pdfCommand · 人读行", () => {
+  it("人读行是 `<path> (N 页, M 条书签)`，M 与 `--json.outline` 同值", () =>
+    withDocOf(HEADINGS, async (dir) => {
+      const out = join(dir, "out.pdf");
+      const human = await pdfCommand(inputOf(dir, { out, force: true }));
+      const json = await pdfCommand(inputOf(dir, { out, force: true, json: true }));
+      expect(human).toBe(`${out} (1 页, 2 条书签)\n`);
+      expect(fieldOfDataOf(json)("outline")).toBe(2);
+    }));
 
-  it("嵌套多深都算：不跟大纲的 `OUTLINE_DEPTH_LIMIT` 走（A14）", () => {
-    const nested = [1, 2, 3, 4, 5, 6].reduceRight(
-      (inner: string, level: number) =>
-        `<h${String(level)}>L${String(level)}</h${String(level)}>${inner}`,
-      "",
-    );
-    expect(pdfHeadingsOf(`<article>${nested}</article>`)).toBe(6);
-  });
+  it("--no-outline 的人读行仍然印 `0 条书签`（M 不省）", () =>
+    withDocOf(HEADINGS, async (dir) => {
+      const out = join(dir, "out.pdf");
+      expect(await pdfCommand(inputOf(dir, { out, outline: false }))).toBe(
+        `${out} (1 页, 0 条书签)\n`,
+      );
+    }));
 });
