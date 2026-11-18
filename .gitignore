@@ -15,3 +15,6 @@ coverage/
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map
 packages/*/src/**/*.d.ts.map
+# Tauri 桌面壳的构建产物与自动生成的 schema
+packages/desktop/src-tauri/target/
+packages/desktop/src-tauri/gen/schemas/

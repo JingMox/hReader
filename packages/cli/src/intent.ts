@@ -104,6 +104,10 @@ export type Intent =
       readonly appDir: string | undefined;
       /** 用户是否显式给了 `--app-dir`：`run.ts` 据此决定"目录不存在就 exit 2"。 */
       readonly appDirGiven: boolean;
+      /** `--home` 的绝对路径；`undefined` = 走 `homedir()`（默认行为不变）。 */
+      readonly home: string | undefined;
+      /** `--exit-with-parent`：父进程（壳）消失就自杀；默认 false，用户自己起的 daemon 行为不变。 */
+      readonly exitWithParent: boolean;
     } & Common);
 
 export type ParsedArgs =

@@ -174,11 +174,20 @@ const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
       ? `serve 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
       : file === ""
         ? "serve 缺少 <file>"
-        : unusedFlag(raw, ["--json", "--port", "--workspace", "--allow-host", "--app-dir"]);
+        : unusedFlag(raw, [
+            "--json",
+            "--port",
+            "--workspace",
+            "--allow-host",
+            "--app-dir",
+            "--home",
+            "--exit-with-parent",
+          ]);
   if (message !== undefined) return failure(message, "serve");
   const port = portOf(raw);
   if (port === "invalid") return failure(`--port 必须是 0..${String(MAX_PORT)} 的整数`, "serve");
   const appDirRaw = raw.values.get("--app-dir");
+  const homeRaw = raw.values.get("--home");
   return {
     ok: true,
     intent: {
@@ -189,6 +198,8 @@ const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
       // 缺省必须留 undefined：core 据此走 M2.1 的 200 兜底（裁定 R2-P0-2）。
       appDir: appDirRaw === undefined ? undefined : resolve(cwd, appDirRaw),
       appDirGiven: appDirRaw !== undefined,
+      home: homeRaw === undefined ? undefined : resolve(cwd, homeRaw),
+      exitWithParent: raw.switches.has("--exit-with-parent"),
       ...commonOf(raw, cwd),
     },
   };

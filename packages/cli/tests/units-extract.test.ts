@@ -64,6 +64,7 @@ const capture = (
       stderr: (text) => err.push(text),
       readStdin: () => Promise.resolve(new Uint8Array()),
       debug: false,
+      launchParentPid: process.ppid,
       env,
       ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
     },
@@ -192,6 +193,7 @@ describe("run · style extract 的 fetch 兜底", () => {
       stderr: (text) => err.push(text),
       readStdin: () => Promise.resolve(new Uint8Array()),
       debug: false,
+      launchParentPid: process.ppid,
     });
 
     expect(code).toBe(0);

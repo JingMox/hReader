@@ -329,7 +329,6 @@ mod tests {
     /// 一档图标数据只可能是 PNG（`PNG\r\n\x1a\n`）或 32bpp DIB（40 字节 `BITMAPINFOHEADER`）。
     const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
     const PNG_IEND: [u8; 8] = [b'I', b'E', b'N', b'D', 0xae, 0x42, 0x60, 0x82];
-    const DIB_HEADER_SIGNATURE: [u8; 4] = [0x28, 0x00, 0x00, 0x00];
 
     /// 假环境：只认给定的那几对，其余一律"没设"（真 `std::env` 在测试里改不得）。
     fn test_lookup(
@@ -368,15 +367,18 @@ mod tests {
         assert!(error.contains("USERPROFILE"), "错误里要说清差什么：{error}");
     }
 
-    #[test]
-    fn r1_bundle_icon_ico_is_a_valid_ico_with_four_sizes() {
-        // Windows 的 tauri-build 直接读 `icons/icon.ico`，本机没有 windows target：这条是唯一守门人。
-        // 判据要贵过空目录：70 字节的假目录（size/offset 全 0）过不了；再抽查 payload 首尾
-        // （PNG 签名 + IEND 收尾 / DIB biSize==40 + 32bpp），但仍不还原整张图。
-        let bytes = include_bytes!("../icons/icon.ico");
+    /// 校验一份 ICO：目录项、偏移、payload 结构。
+    /// 抽成函数是为了能被伪造样本反向打靶——判据只有在能红的时候才算判据。
+    fn assert_valid_ico(bytes: &[u8], expected_sizes: &[(u8, u8)]) {
+        assert!(bytes.len() >= 6, "ICO 头不足 6 字节：{}", bytes.len());
         assert_eq!(&bytes[..4], &[0, 0, 1, 0], "ICO 头必须是 00 00 01 00");
         let entries = usize::from(u16::from_le_bytes([bytes[4], bytes[5]]));
-        assert_eq!(entries, 4, "16/32/48/256 四档，多一档少一档都算坏");
+        assert_eq!(
+            entries,
+            expected_sizes.len(),
+            "目录项数 {entries} 与期望 {} 不符",
+            expected_sizes.len()
+        );
         let dir_end = 6 + entries * 16;
         assert!(
             dir_end <= bytes.len(),
@@ -387,39 +389,150 @@ mod tests {
         // 每项 16 字节：宽/高/调色板/保留/平面/位深/字节数/偏移；宽或高写 0 表示 256。
         // 偏移从目录区末尾起、逐档不回头：这样"数据真在文件里"而不是靠 offset+size<=len 的 0+0 恒真。
         let mut previous_end = dir_end;
-        for (index, (width, height)) in [(16_u8, 16_u8), (32, 32), (48, 48), (0, 0)]
-            .iter()
-            .enumerate()
-        {
+        for (index, (width, height)) in expected_sizes.iter().enumerate() {
             let entry = &bytes[6 + index * 16..6 + (index + 1) * 16];
             assert_eq!(entry[0], *width, "第 {index} 档宽度");
             assert_eq!(entry[1], *height, "第 {index} 档高度");
             let size = u32::from_le_bytes([entry[8], entry[9], entry[10], entry[11]]) as usize;
             let offset = u32::from_le_bytes([entry[12], entry[13], entry[14], entry[15]]) as usize;
-            assert!(size > 0, "第 {index} 档没有数据");
+            assert!(size > 0, "第 {index} 档没有数据（size={size}）");
             assert!(
                 offset >= previous_end,
                 "第 {index} 档起点 {offset} 压住了上一档（数据结束于 {previous_end}）"
             );
             let end = offset + size;
-            assert!(end <= bytes.len(), "第 {index} 档数据越界：{offset}+{size}");
-            let payload = &bytes[offset..end];
             assert!(
-                payload.starts_with(&PNG_SIGNATURE) || payload.starts_with(&DIB_HEADER_SIGNATURE),
-                "第 {index} 档 payload 既不是 PNG 也不是 32bpp DIB：{:02x?}",
-                &payload[..4.min(payload.len())]
+                end <= bytes.len(),
+                "第 {index} 档数据越界：{offset}+{size} > {}",
+                bytes.len()
             );
+            let payload = &bytes[offset..end];
             if payload.starts_with(&PNG_SIGNATURE) {
+                // PNG 必须以 IHDR 开头：`签名 + IEND` 16 字节伪造首尾都像，中间却没有 IHDR。
+                assert_eq!(
+                    payload.get(12..16),
+                    Some(&b"IHDR"[..]),
+                    "第 {index} 档 PNG 必须以 IHDR 开头，实际 {:02x?}",
+                    payload.get(12..16)
+                );
                 assert!(
                     payload.ends_with(&PNG_IEND),
                     "第 {index} 档 PNG 缺少 IEND 收尾"
                 );
+                assert!(
+                    payload.len() >= 45,
+                    "第 {index} 档 PNG 至少 45 字节，实际 {}",
+                    payload.len()
+                );
             } else {
-                let bit_count = u16::from_le_bytes([entry[6], entry[7]]);
-                assert_eq!(bit_count, 32, "第 {index} 档 DIB 必须是 32bpp");
+                // 位深从载荷的 `biBitCount` 读，不读目录项里的位域（目录项可以写 32 而载荷是 8bpp）。
+                assert!(
+                    payload.len() >= 40,
+                    "第 {index} 档 DIB 至少 40 字节（BITMAPINFOHEADER），实际 {}",
+                    payload.len()
+                );
+                assert_eq!(
+                    u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]),
+                    40,
+                    "第 {index} 档 DIB 的 biSize 必须是 40"
+                );
+                assert_eq!(
+                    u16::from_le_bytes([payload[14], payload[15]]),
+                    32,
+                    "第 {index} 档 DIB 的 biBitCount 必须是 32"
+                );
             }
             previous_end = end;
         }
+    }
+
+    /// 造一份假 ICO：每档 (宽, 高, size, offset)，目录后面跟整段 payload。
+    fn fake_ico(entries: &[(u8, u8, u32, u32)], payload: &[u8]) -> Vec<u8> {
+        let mut bytes = vec![0, 0, 1, 0];
+        bytes.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+        for (width, height, size, offset) in entries {
+            bytes.extend_from_slice(&[*width, *height, 0, 0, 1, 0, 32, 0]);
+            bytes.extend_from_slice(&size.to_le_bytes());
+            bytes.extend_from_slice(&offset.to_le_bytes());
+        }
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    /// 取 panic payload 的文本：`panic!` 的两种形态是 `&str` 与 `String`。
+    fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+        payload
+            .downcast_ref::<&str>()
+            .map(|text| (*text).to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<非字符串 panic payload>".to_string())
+    }
+
+    #[test]
+    fn r1_bundle_icon_ico_is_a_valid_ico_with_four_sizes() {
+        // Windows 的 tauri-build 直接读 `icons/icon.ico`，本机没有 windows target：这条是唯一守门人。
+        assert_valid_ico(
+            include_bytes!("../icons/icon.ico"),
+            &[(16, 16), (32, 32), (48, 48), (0, 0)],
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "第 0 档没有数据")]
+    fn r7_ico_rejects_empty_directory_with_zero_sizes() {
+        // 70 字节空目录：四档宽高都对，但 size/offset 全 0——旧判据靠 `offset+size<=len` 的 0+0 恒真放过它。
+        let bytes = fake_ico(
+            &[(16, 16, 0, 0), (32, 32, 0, 0), (48, 48, 0, 0), (0, 0, 0, 0)],
+            &[],
+        );
+        assert_eq!(bytes.len(), 70, "空目录样本必须正好 70 字节");
+        assert_valid_ico(&bytes, &[(16, 16), (32, 32), (48, 48), (0, 0)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "至少 40 字节")]
+    fn r7_ico_rejects_dib_without_payload() {
+        // 目录项自洽、位域写着 32bpp，payload 却只有 4 字节 DIB 签名：旧判据读 `entry[6..8]` 照样全过。
+        let bytes = fake_ico(&[(16, 16, 4, 22)], &[0x28, 0, 0, 0]);
+        assert_eq!(bytes.len(), 26);
+        assert_valid_ico(&bytes, &[(16, 16)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "必须以 IHDR 开头")]
+    fn r7_ico_rejects_png_marker_without_ihdr() {
+        // `PNG 签名 + IEND` 共 16 字节：签名与收尾都对，中间没有 IHDR——"判据吹得比实际贵"的样本。
+        let mut payload = PNG_SIGNATURE.to_vec();
+        payload.extend_from_slice(&PNG_IEND);
+        let bytes = fake_ico(&[(16, 16, 16, 22)], &payload);
+        assert_eq!(bytes.len(), 38);
+        assert_valid_ico(&bytes, &[(16, 16)]);
+    }
+
+    #[test]
+    fn r8b_ico_rejects_png_without_iend_tail() {
+        // 签名 8 + 合规 IHDR 块 25 + 假 IDAT 块 16 = 49 字节：IHDR 与长度门槛都过，
+        // 只有"以 IEND 收尾"能拒它——否则那行断言永远红不了，等于没有。
+        let mut payload = PNG_SIGNATURE.to_vec();
+        payload.extend_from_slice(&[0, 0, 0, 13]); // IHDR 长度
+        payload.extend_from_slice(b"IHDR");
+        payload.extend_from_slice(&[0, 0, 0, 16, 0, 0, 0, 16, 8, 6, 0, 0, 0]); // 16x16 / 8bpp / RGBA
+        payload.extend_from_slice(&[0, 0, 0, 0]); // IHDR CRC 占位：判据不看 CRC
+        payload.extend_from_slice(&[0, 0, 0, 8]); // 假 IDAT 长度
+        payload.extend_from_slice(b"IDAT");
+        payload.extend_from_slice(&[0x00; 8]);
+        assert_eq!(payload.len(), 49, "样本必须过 45 字节门槛");
+        let bytes = fake_ico(&[(16, 16, 49, 22)], &payload);
+
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_valid_ico(&bytes, &[(16, 16)]);
+        }))
+        .expect_err("IHDR 合规、长度 49 却缺 IEND 的样本必须被拒");
+        let message = panic_message(&*panic);
+        assert!(
+            message.contains("IEND"),
+            "应被 IEND 分支拒，实际：{message}"
+        );
     }
 
     #[test]

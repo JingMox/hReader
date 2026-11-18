@@ -67,6 +67,9 @@ describe("cli/run · 缺省 stop 的 serve 臂", () => {
       },
       readStdin: () => Promise.resolve(Buffer.alloc(0)),
       debug: false,
+      launchParentPid: process.ppid,
+      // 沙箱 home：这条跑真 `serve`，默认落 `homedir()` 会碰真实 `~/.hreader`。
+      home: tmp("hr-run-home-"),
     });
 
     expect(code).toBe(3);

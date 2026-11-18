@@ -8,3 +8,5 @@ pnpm-lock.yaml
 # 无法保证其格式；Prettier 只对可写范围负责。
 docs
 .workflow
+# 故意的坏 JSON：格式化器会把「坏」当成错
+packages/desktop/src-tauri/tests/fixtures/daemon/bad-json.json

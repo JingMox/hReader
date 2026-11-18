@@ -1,6 +1,8 @@
 # WORKFLOW STATE
 
-- 当前里程碑: **M4.5 已结卡（`1dcfcba`）**。260 文件 / 2896 例 / 四维 perFile 100%，`pnpm verify` 连跑两遍 EXIT=0。M4.5「PDF 大纲/书签」= Chrome 原生 `generateDocumentOutline`（侦察翻案：路线图原写"浏览器打印不可实现"是错的）；零新增依赖、src 无 PDF 解析器；`--outline`(默认开)/`--no-outline`，png 上双向 `invalid_input`；`--json {pdf,bytes,pages,outline,out}`。已知限制 `L-40`（`display:none` 标题仍被计数）/`L-41`（Chrome 截超长标题约 1KB）。过程：G0 矩阵（测试员）→ F1 超时中断后 resume → 审计 `PASS WITH NOTES` + 真机 21 变异 → R1 补夹具与树内 e2e → 全量 CI → 结卡。下一步候选：M4.2 Tauri（本机有 cargo 1.98，但跨平台打包不可验证）/ M4.x DSH 面板（需用户裁定构建链）/ 或回到 M1–M3 的加固卡。
+- 当前里程碑: **M4.2 已结卡（2026-11-18，`d736a4b`）**。M4.2 = Tauri v2 桌面壳（`@hreader/desktop`）：壳不托管阅读器，只做「定位 `hr` → 读/复用/拉起 daemon → webview 导航」；三条硬不变量（父 pid 只采一次 / 看门狗可撤 + `unref` 兜底 / 信号装配类型强制）。结卡证据：265 文件 2971 例、四维 perFile 100%，`pnpm verify` 八步 EXIT=0 + `pnpm desktop:check` EXIT=0（cargo 80 例）；**`ci.yml` 首次与 `verify` 八步一一对应**（此前少 `lint:sh` 与 `build`，见 `docs/03` §11.49）。过程 8 轮返工，教训 §11.45–§11.50。下一卡候选：M4.3 导出链 / M4.x DSH Web 面板（需用户裁定构建链）/ 回 M1–M3 加固。
+- 当前里程碑（上一卡）: **M4.5.1 已结卡（`02f2649`）**；M4.2 于 2026-11-18 立卡开工，现已结卡（见上）
+- 当前里程碑（旧）: **M4.5 已结卡（`1dcfcba`）**。260 文件 / 2896 例 / 四维 perFile 100%，`pnpm verify` 连跑两遍 EXIT=0。M4.5「PDF 大纲/书签」= Chrome 原生 `generateDocumentOutline`（侦察翻案：路线图原写"浏览器打印不可实现"是错的）；零新增依赖、src 无 PDF 解析器；`--outline`(默认开)/`--no-outline`，png 上双向 `invalid_input`；`--json {pdf,bytes,pages,outline,out}`。已知限制 `L-40`（`display:none` 标题仍被计数）/`L-41`（Chrome 截超长标题约 1KB）。过程：G0 矩阵（测试员）→ F1 超时中断后 resume → 审计 `PASS WITH NOTES` + 真机 21 变异 → R1 补夹具与树内 e2e → 全量 CI → 结卡。下一步候选：M4.2 Tauri（本机有 cargo 1.98，但跨平台打包不可验证）/ M4.x DSH 面板（需用户裁定构建链）/ 或回到 M1–M3 的加固卡。
 - 角色载体（2026-11-17 起）: 仓库内自建的 `auditor`/`tester` 代理定义**已消失**（`Unknown agent: auditor`），从现在起审计员一律用内置 **`reviewer`**、测试员用内置 **`worker`**、编写员用内置 **`worker`**，角色由派单提示词定义，不依赖代理定义文件。
 - 当前里程碑（旧）: **M3 全部结卡**（M1 7 卡 / M2 3 卡 + C1 / M3.1 `74781fc` / M3.1.1 `3134499` / M3.2 `49d8cb1` / M3.4 `ba9579a` / **M3.3 `165da68`**）；下一卡待用户指示（M4.1 风格萃取器 或 M4.2 Tauri / M4.x DSH Web 面板 / M4.3 导出链）
 - 用户指令（2026-11-16）: “按你的流程来，继续开发，**不要没开发完就问我一下**” → 每卡自主走完 写者 → 审计＋测试 → 返工 → 全量 CI → 提交 → 勾 `docs/02`，不经用户确认。
@@ -38,7 +40,23 @@
 | 测试员（M4.3） | `worker` | `44c87d00-6809-4c0b-b5be-810b4d7cee05` | 2026-11-17 | M4.3 G3（前置） | 第 7 代 AC 矩阵 + 6 处歧义，落盘 `.workflow/reports/spec-M4.3.md`；下轮可续接 |
 | 编写员（M4.4） | `worker` | `4d74ddd4` → `f49be24c` → `0556ff56` → `39aa038b` → `8dfff8d3`（均为 resume 链，同一磁盘会话） | 2026-11-17 | M4.4 F1–F2、R1–R8 | **已结卡（`53e456a`）**；链尾 R8。已积累 8 轮，下卡建议重建会话 |
 | 审计员（M4.4） | `reviewer` | `20cd424b-ec6f-4b19-9453-743a7ea6a636` | 2026-11-17 | M4.4 G2 终审 | `PASS WITH NOTES`（4 个 P2，已入 R8）；下卡可续接 |
+| 编写员（M4.2） | `worker` | `a0cdcd13` → `2cc73c53`（G1/r1 两跳）→ `a8750739`（R1 返工） | 2026-11-18 | M4.2 G1 + R1 | 链在同一磁盘会话；G1 曾因看门狗 30 分钟掐断一次后 resume 补齐 |
+| 审计员（M4.2） | `reviewer` | `e79a1d58` | 2026-11-18 | M4.2 G2′ | `PASS WITH NOTES`（1 P2 + 2 P3），落 `.workflow/reports/audit-M4.2-r1.md` |
+| 测试员（M4.2） | `worker` | `e2c209d2` → `ac4d9b6d`（ECONNRESET resume） | 2026-11-18 | M4.2 G3′ | 10 变异 + 8 真机案；2 洞 + 1 FAIL（B5 启动窗口），落 `.workflow/reports/test-M4.2-r1.md` |
 | 测试员（M4.4） | `worker` | `3e8bb6c6-9625-4d02-af5d-c711bcb1198d` | 2026-11-17 | M4.4 G3 终测 | `PASS WITH NOTES`（6 条真机 IHDR 证据）；下卡可续接 |
+| 编写员（M4.5） | `worker` | `55e5e0a8` | 2026-11-18 | M4.5 F1 | **已结卡 `1dcfcba`**；下卡重建 |
+| 审计员（M4.5） | `reviewer` | `6353d988` | 2026-11-18 | M4.5 G2 | `PASS WITH NOTES` 无 BLOCKER |
+| 测试员（M4.5） | `worker` | `c4a1e1f5` | 2026-11-18 | M4.5 G3 | 21 变异 |
+| 编写员（M4.5.1） | `worker` | `31857109` | 2026-11-18 | M4.5.1 R1 | **已结卡 `02f2649`**；下卡重建 |
+| 审计员（M4.5.1） | `reviewer` | `694a8c4a` | 2026-11-18 | M4.5.1 G2′ | `PASS WITH NOTES` 无 P1 |
+| 测试员（M4.5.1） | `worker` | `3cc487e2` | 2026-11-18 | M4.5.1 G3′ | 发现 1 BLOCKER（`/Outlines` 绕过 `skipSpace` 致抵消），已入 R1 |
+| 测试员（M4.2 G0） | `worker` | `b9ff0f75` | 2026-11-18 | M4.2 G0 | 25 行 AC 矩阵 + 12 变异 + A1–A10；下轮可续接 |
+| 编写员（M4.2） | `worker` | `a0cdcd13-b07e-4851-9e60-c6b6a148e3ff` → `2cc73c53`（G1 resume）→ `871ffbe2-b4a5-476b-bac8-f2cc4bbb6130`（R1） | 2026-11-18 | M4.2 G1 → R1 | G1 超时一次已 resume 补完；R1 修 W1–W6 |
+| 审计员（M4.2） | `reviewer` | `8a114329`（30 分钟超时、零结论）→ `19317eb0-856f-4b7f-9807-7ba60424100d`（缩范围重派） | 2026-11-18 | M4.2 G2 | 首轮逐行通读耗尽预算 → 第二轮改「grep 优先、20 分钟内必交」 |
+| 测试员（M4.2） | `worker` | `55e9d516-bfb8-4a90-b261-11d89aa1ec48` | 2026-11-18 | M4.2 G3 变异轮 | 12 变异 → 10 KILLED / 2 SURVIVED；洞与破坏面落 `.workflow/reports/test-mutations-M4.2.md` |
+| 编写员（M4.2 R5–R8b） | `worker` | `524be4b2`(R5) → `a60ba7af`(R6 崩溃 ECONNRESET) → `6a5284ef`(R7) → `a5322aac`(R8a) → `211a990a`(R8b) | 2026-11-18 | M4.2 返工+收尾 | 每轮新建不续接；R7 起执行「一树一写者」（§11.50） |
+| 审计员（M4.2 G2‴/G2⁗） | `reviewer` | `18a83522`(G2⁗)；G2‴ 与 R5 终审的 runId 未记（报告 `.workflow/reports/audit-M4.2-r4.md`/`-r5.md`） | 2026-11-18 | M4.2 终审 | 该载体无 shell 工具，动态项由协调者补跑；抓出文档造假 2 处 + `ci.yml` 六步≠`verify` 八步 |
+| 测试员（M4.2 G3‴/G4） | `worker` | `ba54521d`(G3‴ 45 分钟超时，报告在超时前落盘) → `0804d256`(G4) | 2026-11-18 | M4.2 终测 | G4 PASS；IEND 断言无覆盖 → R8b；`launchParentPid` 幸存者记录在案不修 |
 | 测试员（M4.5） | `worker` | `40cd46bb-4767-4348-a755-7488be062f39` | 2026-11-17 | M4.5 G0 | AC 矩阵 321 行 + A1–A14 歧义 + MV-1…MV-21；已结卡 |
 | 编写员（M4.5） | `worker` | `54f07bdf` → `ebede24d`(resume) → `8621b845`(resume) | 2026-11-17 | M4.5 F1 + R1 | **已结卡（`1dcfcba`）**；F1 首轮 30min 超时，resume 续做未重建 |
 | 审计员（M4.5） | `reviewer` | `6353d988-a229-4f1c-a5ca-483da94eee67` | 2026-11-17 | M4.5 G2 | `PASS WITH NOTES`（3 个 P1 全是测试网洞，已由 R1 补）；其环境无写工具，报告由协调者代录 `.workflow/reports/audit-M4.5.md` |

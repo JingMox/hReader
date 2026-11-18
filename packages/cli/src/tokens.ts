@@ -14,6 +14,7 @@ const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--allow-host",
   "--app-dir",
   "--base-url",
+  "--home",
   "--html",
   "--html-file",
   "--id",
@@ -34,6 +35,7 @@ const VALUE_FLAGS: ReadonlySet<string> = new Set([
 ]);
 
 const SWITCH_FLAGS: ReadonlySet<string> = new Set([
+  "--exit-with-parent",
   "--force",
   "--html-stdin",
   "--json",

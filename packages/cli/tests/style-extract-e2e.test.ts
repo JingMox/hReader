@@ -114,6 +114,7 @@ const extractOf = async (
     stderr: (text) => err.push(text),
     readStdin: () => Promise.resolve(new Uint8Array()),
     debug: false,
+    launchParentPid: process.ppid,
     env: net.key === undefined ? {} : { OPENCODE_API_KEY: net.key },
     ...(net.fetch === undefined ? {} : { fetch: net.fetch }),
   };

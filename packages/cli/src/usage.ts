@@ -36,7 +36,8 @@ const SYNOPSIS = [
   "hr export <file> [--visual <id>] [--out <path>] [--force] [--json]",
   "hr pdf <file> --out <path> [--page-size a4|letter|a5] [--no-outline] [--timeout <1..600>] [--force] [--json]",
   "hr png <file> --out <path> [--width 256..4096] [--scale 1..3] [--max-height 1000..50000] [--json]",
-  "hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",
+  "hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--home <dir>]",
+  "         [--exit-with-parent] [--json]",
   "hr --help | hr <cmd> --help",
 ];
 
@@ -123,9 +124,13 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "  { png, bytes, width, height, clipped, out }（png 为 base64，宽高是设备像素）。",
   ],
   serve: [
-    "用法：hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--json]",
+    "用法：hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--home <dir>]",
+    "         [--exit-with-parent] [--json]",
     "  --allow-host <h>  可重复/逗号分隔；缺省 127.0.0.1:<port> 与 localhost:<port>",
     "  --app-dir <dir>   构建产物目录（index.html + assets/）；缺省 packages/app/dist",
+    "  --home <dir>      daemon.json 的父目录（默认 $HOME）；必须已存在，用于隔离壳自己拉起的 daemon",
+    "  --exit-with-parent 父进程消失（被 kill -9 / re-parent）时自己退出并删 daemon.json；",
+    "                    默认关，只有桌面壳会传（它被 kill -9 时没人替它收尸）",
     "",
     "  --port <n>           监听端口（0 = 系统分配，默认 0）",
     "  起本地 daemon 并在 stdout 打印一行（JSON 时为 { port, token, pid, workspace }）；",

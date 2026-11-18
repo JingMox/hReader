@@ -382,6 +382,24 @@ hr pdf a.hreader --out a.pdf --json       # {"pdf":…,"bytes":…,"pages":…,"
 - **`outline` 是产物真值（`L-40` 已关闭，M4.5.1）**：`--json.outline` 数的是**产物 PDF 里 `/Outlines` 树的真实条目数**（`packages/cli/src/pdf/` 的 `bookmarkCountOf(bytes)`，命令层统一走这一条路径，`--no-outline` 不短路——产物没有 `/Outlines` 自然得 0）。因此 `display: none` 子树里的标题**不再被计数**（Chrome 不为它生成书签）。读不出来时按 `render_empty` 处理而不是报 0：产物里写了 `/Outlines` 但树读不出、`/First`/`/Next` 断链、条目带 `/Type /Page` 走错进页树、`/Count` 与实走不一致、条目成环，**一律 `render_empty` 且不落盘**；位置在 `startxref` 之后的 `trailer` 不认（写进 `%` 注释的冒充 trailer 也被当注释吞掉）。已知不支持：对象流（ObjStm）、xref 流、`/Names` 大纲——Chrome 产的是明文对象 + 经典 xref，这三类不出现。Chrome 对超长标题会截断到约 1 KB（`L-41`）仍然成立。
 - **不引依赖、不自写 PDF 增量更新**：全部交给 Chrome，`packages/cli/src` 里没有 PDF 解析器；测试侧的扫描器只在 `packages/cli/tests/helpers/pdf-scan.ts`（跟 `/Root`→`/Pages`→`/Kids` 算页序、沿 `/First`/`/Next`/`/Parent` 还原标题树、解 `<FEFF…>` UTF-16BE）。
 
+## M4.2 桌面壳 `@hreader/desktop` 使用节（Tauri v2 GUI）
+
+壳**不托管阅读器**：它定位 `hr`、读/复用/拉起 daemon，再把 webview 导航到 `http://127.0.0.1:<port>/s/<docId>?t=<token>`。阅读器行为一行都不在 Rust 侧；细节（一次启动的 6 步、文件分工表、`--smoke`、`accels.json`）见 `packages/desktop/README.md`，本节只写**用户/验收视角的契约**。
+
+```bash
+pnpm desktop:check                # cargo fmt --check + clippy -D warnings + cargo test（80 例）
+pnpm desktop:build                # 产物在 src-tauri/target/release/bundle/
+pnpm desktop:dev -- --workspace <dir> --open <file>   # 开发时直跑
+```
+
+- **home 是应用私有目录，不是 `$HOME`**（macOS `~/Library/Application Support/com.hreader.desktop`，Windows `%APPDATA%/com.hreader.desktop`，Linux `~/.local/share/com.hreader.desktop`），daemon 记录落在 `<该目录>/.hreader/daemon.json`。理由：双击 `.app` 时 argv 无 `--home`，若当归宿是 `$HOME` 就会**覆写并删除用户自己那份**记录；目录不存在由壳 `mkdir -p`（`hr serve --home` 要求目录已存在）。并行实例/测试请用 `--home <dir>`。
+- **daemon 生命周期**：壳拉起的 daemon 带 `--exit-with-parent`。壳正常退出 → daemon 收 SIGTERM 自退；壳被 `kill -9` → daemon 下一拍发现父消失、自退并删 `daemon.json`。壳侧还有兜底（`Drop`：`TERM` → 等 2s → `KILL`），**但验收不许用"进程没了"当证据**——被 SIGKILL 也算没了（`docs/03` §11.45）。
+- **父 pid 只采集一次**：`packages/cli/src/main.ts:12` 在首个 `await` 之前取 `process.ppid`，注入链 `CliIo.launchParentPid`（**必填**）→ `ServeInput.launchParentPid` → 启动前判 `ppid === 1` 即拒启（`invalid_input`，exit 1，不建服务、不写 json）。晚读 `process.ppid` 在类型层不可写。
+- **`--exit-with-parent` 的已知限制（`L-42`）**：启动时父进程已是 init（`ppid === 1`，典型：`nohup`、`setsid`、systemd 服务）会**拒启**。语义上不可实现"父消失即自杀"，只能 fail-fast；壳路径永远先采集父 pid，不受影响。不带该旗标时 ppid=1 正常启动。
+- **daemon 复用判定**：`/healthz` 回的 pid 与 `daemon.json` 一致才复用；端口被别的进程占着报错而不是接管；文件坏了按"没有"处理并重建。**用户手动跑的 `hr serve` 不会被误判、更不会被误杀。**
+- **真机脚本**：`scripts/gui/m4.2/`（`w1-signal-exit.sh` 壳收信号、`w2-parent-death.sh`/`w2-launch-window.sh` 父死与启动窗口、`w7-default-home.sh` 默认 home），`lib.sh` 提供 `mktemp_root`/`make_dirs`。`--home` 一律指向 `mktemp -d` 沙箱；**W7 是唯一例外**：它故意使用真实壳 app data 目录并在开头 `rm -rf` 它，脚本因此要求 `HREADER_GUI_REAL_HOME=1` 才继续——跑之前备份、并确认无在跑实例。无机器相关绝对路径。`pnpm lint:sh` 对它们逐个 `bash -n`。
+- **门禁**：`pnpm verify` 八步（`format:check` → `lint` → `lint:sh` → `typecheck` → `build` → `test:coverage` → `depcruise` → `knip`）；桌面侧独立 `pnpm desktop:check`（Cargo 与 TS 不同链，不塞进 `verify` 以免无 Rust 环境者被卡）。
+
 ## 错误码表（`HrError.code` → 退出码）
 
 本表是 §2 对外错误契约的**唯一文字版**，由 `packages/core/src/hr-error.ts` 的联合类型与 `packages/cli/src/exit-codes.ts` 的 `satisfies` 表派生：**新增 code 必须同步三处（两文件 + 本表）**，`satisfies` 只能保证前两处不脱节。退出码语义：`0` 成功 / `1` 业务拒绝 / `2` 用法错误 / `3` IO / `70` 内部错误。
