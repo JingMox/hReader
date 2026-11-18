@@ -1,0 +1,13 @@
+{
+  "name": "@hreader/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "check": "bash scripts/check.sh",
+    "build": "tauri build",
+    "smoke": "cd src-tauri && cargo run -- --smoke"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.1"
+  }
+}
