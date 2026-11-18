@@ -92,6 +92,23 @@ describe("pdfScanOf · 无 /Outlines", () => {
     const scan = pdfScanOf(bytesOf(pagesOf(1)));
     expect(scan.pages).toEqual([3]);
     expect(scan.outline).toBeUndefined();
+    expect(scan.outlineCount).toBeUndefined();
+  });
+});
+
+describe("pdfScanOf · /Count 报告（供 e2e 三方对照）", () => {
+  it("根对象自报的 /Count 原样报出（可为负，不做绝对值）", () => {
+    expect(scanOf(2, SINGLE).outlineCount).toBe(1);
+    expect(scanOf(3, NESTED).outlineCount).toBe(4);
+    const folded = SINGLE.replace("/Count 1", "/Count -1");
+    expect(scanOf(2, folded).outlineCount).toBe(-1);
+  });
+
+  it("根不带 /Count 时是 undefined（与实走数分开报，两边才能对帐）", () => {
+    const naked = SINGLE.replace(" /Count 1", "");
+    const scan = scanOf(2, naked);
+    expect(scan.outlineCount).toBeUndefined();
+    expect(scan.outline).toHaveLength(1);
   });
 });
 

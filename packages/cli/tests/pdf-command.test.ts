@@ -105,11 +105,12 @@ describe("pdfCommand · --json 键集", () => {
 });
 
 describe("pdfCommand · 人读行与渲染入参", () => {
-  it("人读行带 out、字节数与页数", async () => {
+  it("人读行带 out、页数与书签数（书签数恒印，0 也印）", async () => {
     await withDocOf(async (dir) => {
       const out = join(dir, "out.pdf");
       const text = await pdfCommand(inputOf(dir, { out }));
-      expect(text).toBe(`exported ${out} (${String(statSync(out).size)} bytes, 3 pages)\n`);
+      // 假产物没有 `/Outlines`：`3 页, 0 条书签` 就是"这一行一定带 M"的残疾证据。
+      expect(text).toBe(`${out} (3 页, 0 条书签)\n`);
     });
   });
 

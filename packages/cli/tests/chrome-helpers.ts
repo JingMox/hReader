@@ -15,13 +15,22 @@ export const VERSION_TEXT = JSON.stringify({
   webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/browser/fake",
 });
 
-/** 造一份页数可数的 PDF 文本：每页一个 `/Type /Page` 对象，`/Pages` 页树节点不算页面。 */
+/**
+ * 造一份页数可数、**结构自洽**的 PDF：Catalog(1) → Pages(2) → Page(3..)，带 trailer，不带 `/Outlines`。
+ * 页树与 trailer 必须真在：产物要过 `bookmarkCountOf` 的 trailer → `/Root` 走法。
+ */
 export const pdfOf = (pages: number): string => {
-  const pageObjects = Array.from(
-    { length: pages },
-    () => "<< /Type /Page /MediaBox [0 0 595.28 841.89] >>",
-  ).join("\n");
-  return `%PDF-1.4\n1 0 obj\n<< /Type /Pages /Count ${String(pages)} >>\nendobj\n${pageObjects}\n%%EOF\n`;
+  const ids = Array.from({ length: pages }, (_unused: unknown, index: number) => String(3 + index));
+  const pageObjects = ids
+    .map(
+      (id: string) =>
+        `${id} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] >>\nendobj`,
+    )
+    .join("\n");
+  const tree = ids.map((id: string) => `${id} 0 R`).join(" ");
+  const pagesObject = `2 0 obj\n<< /Type /Pages /Count ${String(pages)} /Kids [${tree}] >>\nendobj\n`;
+  const tail = `${pageObjects}\ntrailer\n<< /Size 99 /Root 1 0 R >>\nstartxref\n0000\n%%EOF\n`;
+  return `%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n${pagesObject}${tail}`;
 };
 
 export const pdfBase64Of = (pages: number): string => Buffer.from(pdfOf(pages)).toString("base64");

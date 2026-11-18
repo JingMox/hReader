@@ -112,7 +112,7 @@ export const humanExportWritten = (out: string, bytes: number): string =>
   `exported ${out} (${String(bytes)} bytes)\n`;
 
 /** `pdf` 是产物的 base64：`--json` 要么给全部字节，要么不给（与 `dataExport` 的 `html` 同一取舍）。
- * `outline` 是**本次打印稿的 heading 数（h1–h6）**，不是从产物里数出来的：`--no-outline` 或无 heading 时为 0。 */
+ * `outline` 是**产物里的大纲条目数**（读 PDF 的 `/Outlines` 树）：`--no-outline` 或无标题时为 0。 */
 export interface PdfReport {
   readonly base64: string;
   readonly bytes: number;
@@ -126,7 +126,7 @@ export const dataPdf = (report: PdfReport): string =>
   `"outline":${String(report.outline)},"out":${quote(report.out)}}`;
 
 export const humanPdf = (report: PdfReport): string =>
-  `exported ${report.out} (${String(report.bytes)} bytes, ${String(report.pages)} pages)\n`;
+  `${report.out} (${String(report.pages)} 页, ${String(report.outline)} 条书签)\n`;
 
 /** `png` 与 `pdf` 同一取舍：`--json` 给整张图的 base64；`width`/`height` 是反读 IHDR 的设备像素
 （已乘 `--scale`，与 `--width`/`--max-height` 的 CSS 像素不是一套口径，别直接对比）。 */

@@ -379,7 +379,7 @@ hr pdf a.hreader --out a.pdf --json       # {"pdf":…,"bytes":…,"pages":…,"
 
 - `--outline`（默认开）/ `--no-outline`：同传 → `invalid_input` exit 1；`hr png` 上出现任一个 → 同样 exit 1（PNG 没有大纲概念）。两种拒绝都**不落盘**。
 - `--json.outline`：本次打印稿里 `<h1..h6>` **元素的个数**（`--no-outline` 或无标题时为数字 `0`，键不省略、不是 `null`）。h1–h6 全收（h4/h5/h6 已真机实测确认 Chrome 会收录）。
-- **已知限制（`L-40`）**：`--no-visible` 之外的隐藏方式里，`display: none` 子树中的标题**仍被 `outline` 计数**，而 Chrome 不会为它生成书签 —— 即 `outline` 是**近似值**而非产物真值。要精确匹配需要 Chrome 的布局结果（另卡成本），常规打印稿（正文 `h1–h6` 可见）不触发。同理 Chrome 对超长标题会截断到约 1 KB（`L-41`）。
+- **`outline` 是产物真值（`L-40` 已关闭，M4.5.1）**：`--json.outline` 数的是**产物 PDF 里 `/Outlines` 树的真实条目数**（`packages/cli/src/pdf/` 的 `bookmarkCountOf(bytes)`，命令层统一走这一条路径，`--no-outline` 不短路——产物没有 `/Outlines` 自然得 0）。因此 `display: none` 子树里的标题**不再被计数**（Chrome 不为它生成书签）。读不出来时按 `render_empty` 处理而不是报 0：产物里写了 `/Outlines` 但树读不出、`/First`/`/Next` 断链、条目带 `/Type /Page` 走错进页树、`/Count` 与实走不一致、条目成环，**一律 `render_empty` 且不落盘**；位置在 `startxref` 之后的 `trailer` 不认（写进 `%` 注释的冒充 trailer 也被当注释吞掉）。已知不支持：对象流（ObjStm）、xref 流、`/Names` 大纲——Chrome 产的是明文对象 + 经典 xref，这三类不出现。Chrome 对超长标题会截断到约 1 KB（`L-41`）仍然成立。
 - **不引依赖、不自写 PDF 增量更新**：全部交给 Chrome，`packages/cli/src` 里没有 PDF 解析器；测试侧的扫描器只在 `packages/cli/tests/helpers/pdf-scan.ts`（跟 `/Root`→`/Pages`→`/Kids` 算页序、沿 `/First`/`/Next`/`/Parent` 还原标题树、解 `<FEFF…>` UTF-16BE）。
 
 ## 错误码表（`HrError.code` → 退出码）

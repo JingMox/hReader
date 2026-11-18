@@ -43,6 +43,9 @@
 | 编写员（M4.5） | `worker` | `54f07bdf` → `ebede24d`(resume) → `8621b845`(resume) | 2026-11-17 | M4.5 F1 + R1 | **已结卡（`1dcfcba`）**；F1 首轮 30min 超时，resume 续做未重建 |
 | 审计员（M4.5） | `reviewer` | `6353d988-a229-4f1c-a5ca-483da94eee67` | 2026-11-17 | M4.5 G2 | `PASS WITH NOTES`（3 个 P1 全是测试网洞，已由 R1 补）；其环境无写工具，报告由协调者代录 `.workflow/reports/audit-M4.5.md` |
 | 测试员（M4.5 G3） | `worker` | `2e7b5ce5-8dcd-451f-8805-1500c3a7b02a` | 2026-11-17 | M4.5 G3 | 真机 AC 全过 + 21 变异（19 红）；抓到 `display:none` 计数不一致 → `L-40` |
+| 编写员（M4.5.1） | `worker` | `cf4cb580-caff-4850-93e9-4f1e7f4aabc6` → `31857109`(R1) → `38ac9a78`(R2) → `1a135f09`(R3) 均为 resume 链 | 2026-11-18 | M4.5.1 F1/R1/R2/R3 | **已结卡**；R3 执行 A 方案（删冗余步数上限，只留 `seen`）；7 轮后仍健康 |
+| 审计员（M4.5.1） | `reviewer` | `fea68fda-c8c7-4ad1-8552-a9132198f805` | 2026-11-17 | M4.5.1 G2 | `PASS WITH NOTES`（无 P1）；R1 后已派 G2' 复审 `syntax.ts`（`694a8c4a`）。报告 `.workflow/reports/audit-M4.5.1.md` |
+| 测试员（M4.5.1） | `worker` | `e7a2fc15` → `3cc487e2`(G3) → `efac6326`(G3') | 2026-11-18 | M4.5.1 G3/G3' | 真机 AC 全过 + **抓到 BLOCKER**（标题含 `endobj`/`/First …` 被当结构）；G3' 8 条变异：**7 红 1 全绿**（`lastStartxref` 过滤 = 测试洞，已 R3 封口）；确认“大纲顺序不随机”（5 连跑字节差仅 `/CreationDate`/`/ModDate`）、`--outline`/`--no-outline` 交替无残留 |
 
 
 > **M4.4 结卡记录（2026-11-17，`53e456a`）**：64 文件 +5186/−81；`pnpm verify` EXIT=0 跑两遍（257 文件 / 2857 例 / 四维 perFile 100%）；真 Chrome 证据：默认档 9 页 A4 → `2400×17634`、`--width 4096 --scale 3` → `12288×16239`、`--scale 3 --max-height 50000` 未 spawn 即拒、短文 713px → `2400×1426`、内容恰好 1000px → `2400×2000`。教训入 `docs/03` §11.35–§11.38。
