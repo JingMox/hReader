@@ -293,3 +293,11 @@ M3.1.1 结卡（`c3fc6d8`）后三会话上下文各 15–47K，按阈值重生�
 | R1 | `940412df-2bc8-4b4b-b8da-fe8b9e19be95` | 2026-11-19 | `.workflow/reports/sweep-R1.md` | 进行中 |
 
 - **纪律（用户要求）**：测试员**不读 `src/`**、只读 docs/`--help`/产物；一轮只出一份整批台账；修完由测试编写员补回归用例；复测**必须换新会话**（上下文清空）。
+
+## 2026-11-19 巡回 R1 收口（提交 `5b51819`）
+
+- **范围**：F1–F14（业务 14 轮）+ T1–T8（测试 8 轮），128 文件 / +8969 / −459。
+- **修掉的形状**：入口（`hr normalize` 新增、`serve` 打印带 token 的可用地址）· 错误码（`needs_normalize`=2、`content_model_conflict`=2、`invalid_input` 不再被 TypeError 打穿）· 内容模型（`FORBIDDEN_CHILDREN`/`SELECT_CHILDREN`/`RAW_TEXT_CONTAINERS` 数据表，先解析后校验，可选结束标签合法）· 可寻址（`div` 与 `caption/thead/tbody/tr/td/th` 都能 read/patch/批注；`replace` 相同子树保持 `unchanged`）· CSP 降级（首页 fallback 改 `default-src 'none'`）。
+- **门禁**：`pnpm verify` EXIT=0（3145 例、depcruise 616 模块 0 违规、knip 干净）、`pnpm desktop:check` EXIT=0。`max-lines` 1202→1203 按 `eslint.config.mjs:170-179` 既定政策执行。
+- **协调者五条自己的教训**（写进 `docs/03`）：§11.56 单例不足以裁定整类；§11.57 判据要落在解析后的树；§12.5 派单路径必须带 `file:line`、反问不算失败；"测量点选错（管道吞 rc）"是三次假绿的共同形状；"验证过 ≠ 我亲自验过"——幽灵轮（报完成、零产出）只能靠按报告原文复跑挡住。
+- **下一轮**：R2（测试员新会话 `7000bde6-c71c-4237-8291-6b317b2541ee`）+ R1 终审（`a9039df2-3bce-4f6d-ad1b-21079b3818ab`）并行。
