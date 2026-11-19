@@ -44,6 +44,10 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   chrome_failed: true,
   render_timeout: true,
   render_empty: true,
+  needs_normalize: true,
+  port_in_use: true,
+  // R1-F6：片段内容模型与目标容器不兼容（列表尾：与 `HrErrorCode` 的声明顺序一致）
+  content_model_conflict: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {

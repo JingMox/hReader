@@ -3,6 +3,10 @@
 import { join } from "node:path";
 
 import { HrError } from "../hr-error";
+import { ARTICLE_TAG, type HtmlElementNode, type HtmlNode } from "../html/constants";
+import { parseHtml } from "../html/parse";
+import { serializeHtml } from "../html/serialize";
+import { decodeUtf8 } from "../io/bytes";
 import { isMissing } from "../io/errors";
 import {
   builtinThemeDir,
@@ -14,7 +18,7 @@ import {
 } from "../style/resource";
 import { loadThemeCss } from "../style/theme";
 import type { Reply } from "./contracts";
-import type { HandlerContext } from "./handlers";
+import { documentReply, type HandlerContext } from "./handlers";
 import { APP_CSP, assetSegmentsOf, contentTypeOf } from "./http-io";
 
 const SECURITY = { "x-content-type-options": "nosniff" } as const;
@@ -58,35 +62,80 @@ const fileOf = async (ctx: HandlerContext, path: string): Promise<Uint8Array | u
   }
 };
 
+/**
+ * 未构建首页的响应头：**不用** `APP_CSP`（`script-src 'self'`）。首页服务端渲染了文档 raw-text，
+ * 且不需要任何脚本；对齐文档页 `/s/<docId>` 的收紧口径（`default-src 'none'` + `no-referrer`），
+ * 把可注入面压到最小（`style-src 'unsafe-inline'` 只为内联样式保底）。
+ */
 const HOME_FALLBACK_HEADERS = {
   ...STATIC_HEADERS,
   "content-type": "text/html; charset=utf-8",
-  "content-security-policy": APP_CSP,
+  "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'",
+  "referrer-policy": "no-referrer",
 } as const;
 
 /**
  * 没构建前端时的最小首页：**刻意回 200 而不是 503**。
  * M2.1 已冻结"带 cookie 访问 `/` 得 200 + docId 链接"的契约（`wire-http.test.ts`），
  * 本地 `hr serve` 也常被 `curl` 当自检入口；构建缺失是"开发者未跑 build"，不是服务故障。
+ * `body` 是服务端渲染好的正文（见 `homeBodyOf`）：首页不许只是一个靠 JS 再拉一次的壳（BUG-03）。
  */
-const fallbackHome = (docId: string): Reply => ({
+const fallbackHome = (docId: string, body: string): Reply => ({
   status: 200,
   headers: HOME_FALLBACK_HEADERS,
-  body: `<!doctype html><meta charset="utf-8"><title>hReader</title><h1>hReader</h1><p>当前文档：<a href="/s/${encodeURIComponent(docId)}">${escapeHtml(docId)}</a></p><p><a href="/api/healthz">healthz</a></p>`,
+  body: `<!doctype html><meta charset="utf-8"><title>hReader</title><h1>hReader</h1><p>当前文档：<a href="/s/${encodeURIComponent(docId)}">${escapeHtml(docId)}</a></p>${body}<p><a href="/healthz">healthz</a></p>`,
 });
+
+/** `GET /` 的 401 页：人读一句话说清怎么打开，而不是丢一句 JSON（BUG-01）。 */
+export const homeUnauthorizedReply = (): Reply => ({
+  status: 401,
+  headers: HOME_FALLBACK_HEADERS,
+  body: `<!doctype html><meta charset="utf-8"><title>hReader</title><h1>hReader</h1><p>这个地址需要访问凭据：请用 <code>hr serve</code> 打印的地址打开（形如 <code>http://127.0.0.1:&lt;port&gt;/?token=…</code>）。</p>`,
+});
+
+const childNodesOf = (node: HtmlNode): readonly HtmlNode[] =>
+  node.kind === "document" || node.kind === "element" ? node.children : [];
+
+const articleIn = (node: HtmlNode): HtmlElementNode | undefined => {
+  if (node.kind === "element" && node.tag === ARTICLE_TAG) return node;
+  for (const child of childNodesOf(node)) {
+    const found = articleIn(child);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+};
+
+/**
+ * 首页外壳里的正文：直接拿文档的 `<article>` 子树（与 `/s/<docId>` 同一份可读内容，不跑 JS）。
+ * 文档读不到/没有 `<article>` 时回空串而不是 5xx：首页是 `hr serve` 的自检入口，
+ * "构建缺失"与"文档没了"都不该把 `GET /` 变成错误页（M2.1 冻结的 200 契约）。
+ */
+const homeBodyOf = async (ctx: HandlerContext, docId: string): Promise<string> => {
+  try {
+    const doc = await documentReply(ctx, docId);
+    const article = articleIn(parseHtml(decodeUtf8(doc.bytes, docId)).root);
+    if (article === undefined) return "";
+    return serializeHtml({
+      root: { kind: "document", children: [article] },
+      diagnostics: [],
+    });
+  } catch {
+    return "";
+  }
+};
 
 /**
  * `GET /`：
+ * - 未构建 → 200 最小首页 + 服务端渲染的正文（M2.1 冻结契约，见 `fallbackHome`）；
  * - 已构建（`appDir` 非空）且没带 `?doc=` → **302** 到 `/?doc=<docId>`（不注入 HTML，裁定 #1）；
- * - 带了 `?doc=` → 回 `index.html`；
- * - 未构建 → 200 最小首页（M2.1 冻结契约，见 `fallbackHome`）。
+ * - 带了 `?doc=` → 回 `index.html`。
  */
 export const indexReply = async (
   ctx: HandlerContext,
   docId: string,
   hasDocQuery = true,
 ): Promise<Reply> => {
-  if (ctx.appDir === "") return fallbackHome(docId);
+  if (ctx.appDir === "") return fallbackHome(docId, await homeBodyOf(ctx, docId));
   if (!hasDocQuery) {
     return {
       status: 302,

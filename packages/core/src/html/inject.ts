@@ -1,9 +1,8 @@
 // 这层管：给 `<article>` 内的块级元素分配稳定 `data-hr-id`；不解析、不序列化、不改入参。
 
 import {
+  ADDRESSABLE_TAGS,
   ARTICLE_TAG,
-  BLOCK_TAGS,
-  COMPONENT_ATTRIBUTE,
   type Diagnostic,
   HR_ID_ATTRIBUTE,
   HR_ID_PATTERN,
@@ -14,8 +13,10 @@ import {
 } from "./constants";
 import { HASH_SEED, mixHex, stableHex8 } from "./hash";
 import { joinPath, pathSegment } from "./path";
+import { type InjectSeed, ROOT_SEED } from "./seed";
+import { childSlots } from "./slots";
 import { drainStack } from "./stack";
-import { textSampleOf } from "./text";
+import { textSamplesOf } from "./text";
 
 export interface InjectedNodeIds {
   readonly parsed: ParsedHtml;
@@ -33,17 +34,20 @@ const attributeValue = (attrs: readonly HtmlAttribute[], name: string): string |
   return undefined;
 };
 
-const isBlockElement = (node: HtmlElementNode): boolean =>
-  BLOCK_TAGS.has(node.tag) ||
-  (node.tag === "div" && attributeValue(node.attrs, COMPONENT_ATTRIBUTE) !== undefined);
-
-/** 注入目标：最外层 `<article>` 自身，以及 article 内的块级元素（嵌套 article 不另注入）。 */
+/** 注入目标：最外层 `<article>` 自身，以及 article 内的可寻址元素（嵌套 article 不另注入）。 */
 const isInjectionTarget = (node: HtmlElementNode, insideArticle: boolean): boolean =>
-  node.tag === ARTICLE_TAG ? !insideArticle : insideArticle && isBlockElement(node);
+  node.tag === ARTICLE_TAG ? !insideArticle : insideArticle && ADDRESSABLE_TAGS.has(node.tag);
 
-/** 最多收集 64 个字符即停，避免整棵子树拼接；只按这个前缀算 ID，不看子树第 65 个字符之后。 */
-const textSample = (node: HtmlNode): string =>
-  textSampleOf(node, TEXT_SAMPLE_LENGTH).replace(/\s+/gu, " ").trim();
+/**
+ * 最多取 64 个字符；只按这个前缀算 ID，不看子树第 65 个字符之后。
+ * 前缀由 `textSamplesOf` 一次算满全树（逐个 `textSampleOf` 在深嵌套下是 O(n²)），这里只做空白归一。
+ */
+const seedText = (node: HtmlNode, state: WalkState): string => {
+  // `textSamplesOf` 的后序遍历给全树每个节点都写前缀（html/text.ts），`get` 必命中；`?? ""` 只是签名。
+  /* v8 ignore next */
+  const sample = state.samples.get(node) ?? "";
+  return sample.replace(/\s+/gu, " ").trim();
+};
 
 const collectValidIds = (root: HtmlNode): Set<string> => {
   const ids = new Set<string>();
@@ -100,6 +104,8 @@ interface WalkState {
   readonly stack: Task[];
   readonly path: string[];
   readonly context: AssignContext;
+  /** 每个节点的文本前缀：`seedOf` 要用，一次算满全树（见 `textSamplesOf`）。 */
+  readonly samples: ReadonlyMap<HtmlNode, string>;
   /** 祖先路径的滚动摘要：只带一个数走，避免每层元素都去拼整条路径（那是 O(n²)）。 */
   digest: number;
 }
@@ -108,8 +114,12 @@ interface WalkState {
  * 种子 = 标签 + 同标签兄弟序号 + 归一化文本前缀 + 祖先路径摘要。
  * 路径摘要用续算的 FNV 值而不是整串祖先路径：深度不再进入单次成本。
  */
-const seedOf = (node: HtmlElementNode, siblingIndex: number, digest: number): string =>
-  [node.tag, String(siblingIndex), textSample(node), digest.toString(16)].join("\u0000");
+const seedOf = (
+  node: HtmlElementNode,
+  siblingIndex: number,
+  digest: number,
+  text: string,
+): string => [node.tag, String(siblingIndex), text, digest.toString(16)].join("\u0000");
 
 const assignId = (
   node: HtmlElementNode,
@@ -122,7 +132,8 @@ const assignId = (
   if (existing !== undefined && HR_ID_PATTERN.test(existing)) {
     return existing;
   }
-  const id = uniqueId(`hr-${stableHex8(seedOf(node, entry.siblingIndex, digest))}`, context.used);
+  const seed = seedOf(node, entry.siblingIndex, digest, seedText(node, state));
+  const id = uniqueId(`hr-${stableHex8(seed)}`, context.used);
   context.used.add(id);
   context.injected.push(id);
   if (existing !== undefined) {
@@ -135,25 +146,6 @@ const assignId = (
     });
   }
   return id;
-};
-
-interface ChildSlot {
-  /** 同标签兄弟序号：只喂 ID 种子，换写法会让既有 `data-hr-id` 全部变。 */
-  readonly siblingIndex: number;
-  /** 父 `children` 里的原始下标：只喂诊断路径，与解析层同一口径。 */
-  readonly childIndex: number;
-}
-
-const childSlots = (children: readonly HtmlNode[]): readonly ChildSlot[] => {
-  const seen = new Map<string, number>();
-  return children.map((child, childIndex) => {
-    if (child.kind !== "element") {
-      return { siblingIndex: -1, childIndex };
-    }
-    const index = seen.get(child.tag) ?? 0;
-    seen.set(child.tag, index + 1);
-    return { siblingIndex: index, childIndex };
-  });
 };
 
 type Task =
@@ -233,17 +225,35 @@ const enterNode = (task: Extract<Task, { kind: "enter" }>, state: WalkState): vo
 /**
  * `reserved` 是调用方已知占用的 ID（如补丁片段要避开整篇文档已有 ID）；`insideArticle` 用于把
  * 片段本身当作注入根。两者都只在 patch 路径上出现，默认值与 M1.2 行为逐字一致。
+ * `rootSeed` 同属 patch 路径：给了它，片段根就按它在文档里的原位置复算 ID（`replace` 的锚点保持）。
  */
-export const injectNodeIds = (
+/** 一次注入遍历的启动状态：`result()` 取遍历后写回的根（外壳层可能被替换）。 */
+interface Walk {
+  readonly state: WalkState;
+  readonly result: () => HtmlNode;
+}
+
+const beginWalk = (
   parsed: ParsedHtml,
-  options: { readonly reserved?: readonly string[]; readonly insideArticle?: boolean } = {},
-): InjectedNodeIds => {
+  options: {
+    readonly reserved?: readonly string[];
+    readonly insideArticle?: boolean;
+    readonly rootSeed?: InjectSeed | undefined;
+  },
+): Walk => {
+  const rootSeed = options.rootSeed ?? ROOT_SEED;
   const context: AssignContext = {
     used: new Set([...collectValidIds(parsed.root), ...(options.reserved ?? [])]),
     injected: [],
     diagnostics: [],
   };
-  const state: WalkState = { stack: [], path: [], context, digest: HASH_SEED };
+  const state: WalkState = {
+    stack: [],
+    path: [],
+    context,
+    samples: textSamplesOf(parsed.root, TEXT_SAMPLE_LENGTH),
+    digest: HASH_SEED,
+  };
   let root: HtmlNode = parsed.root;
   const sink: Sink = {
     push: (node) => {
@@ -255,20 +265,33 @@ export const injectNodeIds = (
     node: parsed.root,
     sink,
     insideArticle: options.insideArticle === true,
-    siblingIndex: -1,
+    siblingIndex: rootSeed.siblingIndex,
     childIndex: -1,
-    parentDigest: HASH_SEED,
+    parentDigest: rootSeed.parentDigest,
   });
-  for (const task of drainStack(state.stack)) {
+  return { state, result: () => root };
+};
+
+export const injectNodeIds = (
+  parsed: ParsedHtml,
+  options: {
+    readonly reserved?: readonly string[];
+    readonly insideArticle?: boolean;
+    readonly rootSeed?: InjectSeed | undefined;
+  } = {},
+): InjectedNodeIds => {
+  const walk = beginWalk(parsed, options);
+  for (const task of drainStack(walk.state.stack)) {
     if (task.kind === "exit") {
-      state.path.pop();
-      state.digest = task.parentDigest;
+      walk.state.path.pop();
+      walk.state.digest = task.parentDigest;
       continue;
     }
-    enterNode(task, state);
+    enterNode(task, walk.state);
   }
+  const { context } = walk.state;
   return {
-    parsed: { root, diagnostics: [...parsed.diagnostics, ...context.diagnostics] },
+    parsed: { root: walk.result(), diagnostics: [...parsed.diagnostics, ...context.diagnostics] },
     injected: context.injected,
   };
 };

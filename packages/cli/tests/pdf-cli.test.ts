@@ -39,7 +39,9 @@ describe("hr pdf · chrome 缺失 (AC-5)", () => {
       const envelope: unknown = JSON.parse(result.stdout);
       expect(Reflect.get(Object(envelope), "ok")).toBe(false);
       expect(Reflect.get(Object(envelope), "code")).toBe("chrome_missing");
-      expect(result.stderr).toContain("HREADER_CHROME=");
+      // 一次性报错只走 stdout（P2-3），HREADER_CHROME 的实际情况跟着 message 一起出来。
+      expect(Reflect.get(Object(envelope), "message")).toContain("HREADER_CHROME=");
+      expect(result.stderr).toBe("");
       expect(existsSync(join(dir, "a.pdf"))).toBe(false);
     });
   });

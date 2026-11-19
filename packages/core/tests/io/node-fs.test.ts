@@ -23,6 +23,7 @@ const fsApi = nodePatchDeps.fs;
 describe("nodePatchDeps · 默认依赖", () => {
   it("should expose the full port and a real clock and sleep", async () => {
     expect(Object.keys(fsApi).sort()).toEqual([
+      "chmod",
       "close",
       "lstat",
       "mkdir",

@@ -25,3 +25,16 @@ export const findElement = (
   }
   return undefined;
 };
+
+/** 直接父元素：`replace`/`insert_*` 把片段放进目标原来的位置，内容模型判定看的是父容器。 */
+export const parentElementOf = (root: HtmlNode, child: HtmlNode): HtmlElementNode | undefined => {
+  const stack: HtmlNode[] = [root];
+  for (const node of drainStack(stack)) {
+    if (node.kind !== "element" && node.kind !== "document") continue;
+    for (const candidate of node.children) {
+      if (candidate === child) return node.kind === "element" ? node : undefined;
+    }
+    pushChildrenReversed(node, stack);
+  }
+  return undefined;
+};

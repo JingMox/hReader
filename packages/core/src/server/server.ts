@@ -4,19 +4,21 @@ import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { HrError } from "../hr-error";
 import type { PatchDeps } from "../io/ports";
 import type { StyleDeps } from "../style";
 import { COOKIE_NAME, hostAllowed, originAllowed } from "./auth";
 import { HttpFault } from "./http-io";
 import type { DaemonInfo, Reply, ServerOptions } from "./contracts";
-import { portOpen, readDaemonOf, removeDaemonOf, staleDaemonOf, writeDaemonOf } from "./daemon";
+import { ensureNoDaemon } from "./daemon-guard";
+import { removeDaemonOf, writeDaemonOf } from "./daemon";
 import { healthzReply } from "./handlers";
+import { bindErrorOf, ipv6Occupied, listen } from "./listen";
 import { authOf, errorReply, headerOf, jsonOf, methodNotAllowed, sendResult } from "./http-io";
 import { MAX_HEADER_BYTES, timeoutsOf } from "./limits";
 import { createServerHub, type Hub } from "./hub";
 import { decodeParams, matchRoute, type Route } from "./routes";
 import { createRuntime, type Runtime } from "./runtime";
+import { homeUnauthorizedReply } from "./static";
 import type { WatchFn } from "./watcher";
 
 export interface ServerDeps {
@@ -36,7 +38,6 @@ export interface RunningServer {
 
 const TOKEN_BYTES = 24;
 const COOKIE_MAX_AGE_S = 86_400;
-const PORT_PROBE_MS = 300;
 
 const cookieOfToken = (token: string): string =>
   `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${String(COOKIE_MAX_AGE_S)}`;
@@ -96,7 +97,12 @@ const planOf = (env: ServeEnv, req: IncomingMessage, url: URL): Plan => {
   if (lookup.kind === "none") return { kind: "reply", reply: jsonOf(404, { code: "not_found" }) };
   if (lookup.kind === "method") return { kind: "reply", reply: methodNotAllowed(lookup.allowed) };
   const auth = authOf(lookup.route, req, url, env.token);
-  if (auth.denied !== undefined) return { kind: "reply", reply: auth.denied };
+  // 首页的 401 用页面说人话：用户是把 `hr serve` 打印的地址弄丢了，不是在用 curl 调 API。
+  if (auth.denied !== undefined)
+    return {
+      kind: "reply",
+      reply: lookup.route.kind === "home" ? homeUnauthorizedReply() : auth.denied,
+    };
   if (auth.redirect !== undefined) return { kind: "redirect", location: auth.redirect };
   const page = pageOf(env, lookup.route);
   if (page !== undefined) return { kind: "reply", reply: page };
@@ -172,40 +178,6 @@ const boardOf = (
   return { server, port };
 };
 
-/**
- * 已有 daemon（pid 活着且端口能连）就拒绝启动；pid 已死（kill -9 留下的残尸）只删记录、留一行日志，不阻断。
- */
-const ensureNoDaemon = async (options: ServerOptions, deps: ServerDeps): Promise<void> => {
-  const existing = await readDaemonOf(options.home, deps.patch);
-  if (existing === undefined) return;
-  if (staleDaemonOf(existing)) {
-    await removeDaemonOf(options.home, existing.pid, deps.patch);
-    options.diagnose?.(`清理陈旧 daemon.json：pid ${String(existing.pid)} 已不在`);
-    return;
-  }
-  if (!(await portOpen(existing.port, PORT_PROBE_MS))) return;
-  throw new HrError(
-    "daemon_already_running",
-    `已有 daemon 在 127.0.0.1:${String(existing.port)} 运行`,
-  );
-};
-
-/** EADDRINUSE 归一成"这个端口上已经有人"（退出码 2），而不是 70：环境问题但要人换端口。 */
-const bindErrorOf = (port: number, error: unknown): unknown => {
-  const code: unknown = Reflect.get(Object(error), "code");
-  return code === "EADDRINUSE"
-    ? new HrError("daemon_already_running", `端口 ${String(port)} 已被占用`)
-    : error;
-};
-
-const listen = (server: Server, port: number): Promise<void> =>
-  new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => {
-      resolve();
-    });
-  });
-
 const shutdown = (server: Server): Promise<void> =>
   new Promise((resolve) => {
     server.close(() => {
@@ -227,6 +199,12 @@ const armOf = async (options: ServerOptions, deps: ServerDeps, parts: Parts): Pr
     await listen(parts.server, options.port);
   } catch (error: unknown) {
     throw bindErrorOf(options.port, error);
+  }
+  // 真绑上了才探：探到占用只提示——v4 能用，但 IPv6 访问会被别的进程接走。
+  if (options.port !== 0 && (await ipv6Occupied(options.port))) {
+    options.diagnose?.(
+      `注意：:: 上已有监听，经 IPv6 访问端口 ${String(options.port)} 的流量可能被别的进程接走`,
+    );
   }
 };
 

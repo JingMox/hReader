@@ -79,18 +79,24 @@ describe("退出码 1 · 禁用内容", () => {
 });
 
 describe("退出码 1 · 片段校验", () => {
-  it("should fail invalid_fragment for an unclosed fragment", async () => {
+  it("should fail invalid_fragment for a fragment with two roots", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
       seed(dir);
       const result = checked(
-        await runCli(["patch", "a.html", "hr-c", "--action", "append", "--html", "<div>"], {
-          cwd: dir,
-        }),
+        await runCli(
+          ["patch", "a.html", "hr-c", "--action", "append", "--html", "<p>a</p><p>b</p>"],
+          {
+            cwd: dir,
+          },
+        ),
       );
 
+      // 片段层先拦（`invalid_fragment`，退出码 1）：两个根不可能落进任何容器的一个位置。
+      // 这里不再拿"未闭合的 `<div>`"当非法样本——单根片段现在按容错解析收下，落到内容模型那层才算错。
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("片段");
+      expect(result.stderr).toContain("根元素");
     });
   });
 });
@@ -116,7 +122,7 @@ describe("退出码 2 · 用法错误", () => {
 
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("缺少命令：outline | read | patch | style");
+    expect(result.stderr).toContain("缺少命令：normalize | outline | read | patch | style");
     expect(result.stderr).toContain("用法：");
   });
 

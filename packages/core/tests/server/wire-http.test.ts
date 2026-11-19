@@ -197,7 +197,8 @@ describe("wire · 响应头与安全头", () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toContain('<a href="/s/doc.html">doc.html</a>');
-      expect(response.body).toContain("/api/healthz");
+      expect(response.body).toContain('<a href="/healthz">healthz</a>');
+      expect(response.body).not.toContain("/api/healthz");
     });
   });
 

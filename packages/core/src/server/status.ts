@@ -44,6 +44,7 @@ const STATUS: Readonly<Record<ServerCode, number>> = {
   node_not_allowed: 400,
   invalid_max_bytes: 400,
   invalid_input: 400,
+  content_model_conflict: 400,
   locked: 409,
   invalid_fragment: 400,
   forbidden_content: 400,
@@ -65,6 +66,9 @@ const STATUS: Readonly<Record<ServerCode, number>> = {
   daemon_already_running: 409,
   invalid_payload: 400,
   nothing_to_undo: 409,
+  // M4.8：文档缺 `data-hr-id` 与服务端口被占都是“可一步修好的状态”，不是请求本身写错了。
+  needs_normalize: 409,
+  port_in_use: 409,
 };
 
 export const statusOf = (code: ServerCode): number => STATUS[code];

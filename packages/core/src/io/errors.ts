@@ -14,8 +14,15 @@ export const isMissing = (error: unknown): boolean => codeOf(error) === "ENOENT"
 /** `EEXIST` 是锁的"已被别人持有"，不是故障：调用方要据此重试。 */
 export const isExists = (error: unknown): boolean => codeOf(error) === "EEXIST";
 
+/** `EACCES`/`EPERM` 是权限不足，不是磁盘或路径坏了：用户看到 `.hreader/locks` 这类内部路径时必须知道该改权限。 */
+const isDenied = (error: unknown): boolean =>
+  codeOf(error) === "EACCES" || codeOf(error) === "EPERM";
+
+const permissionHint = (error: unknown): string =>
+  isDenied(error) ? "（权限不足：给该目录/文件写权限后重试，或先 chmod）" : "";
+
 export const ioFailure = (action: string, path: string, error: unknown): HrError =>
-  new HrError("io_failure", `${action}失败：${path}`, { cause: error });
+  new HrError("io_failure", `${action}失败：${path}${permissionHint(error)}`, { cause: error });
 
 /** 缺文件 → `not_a_file`（调用方指错了路），其余 → `io_failure`。 */
 export const failureOf = (action: string, path: string, error: unknown): HrError =>

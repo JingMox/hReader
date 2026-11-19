@@ -1,7 +1,7 @@
 // 这层管：属性读取与"块级元素"判定（与 html/inject.ts 同口径）；不做校验、不碰 IO。
 
 import type { HtmlAttribute, HtmlElementNode } from "../../html/constants";
-import { ARTICLE_TAG, BLOCK_TAGS, COMPONENT_ATTRIBUTE } from "../../html/constants";
+import { PATCHABLE_TAGS } from "../../html/constants";
 
 export const attributeValue = (
   attrs: readonly HtmlAttribute[],
@@ -33,10 +33,7 @@ export const hasAttributeLoose = (attrs: readonly HtmlAttribute[], name: string)
   attrs.some(([attributeName]) => attributeName.toLowerCase() === name.toLowerCase());
 
 /**
- * 只有块级元素能被 patch：patch 是按"块"做的最小改动单元，行内元素一旦被替换会拆散
- * 周围文本的排版假设。`<article>` 本身也允许（`root` 目标就是它）。
+ * 只有可作目标的元素能被 patch：patch 是按"块"做的最小改动单元，行内元素一旦被替换会拆散
+ * 周围文本的排版假设。集合见 `PATCHABLE_TAGS`（默认等于可寻址集合：`div`/`tr`/`td` 这些不再是死区）。
  */
-export const isBlockLevel = (node: HtmlElementNode): boolean =>
-  node.tag === ARTICLE_TAG ||
-  BLOCK_TAGS.has(node.tag) ||
-  (node.tag === "div" && attributeValue(node.attrs, COMPONENT_ATTRIBUTE) !== undefined);
+export const isBlockLevel = (node: HtmlElementNode): boolean => PATCHABLE_TAGS.has(node.tag);

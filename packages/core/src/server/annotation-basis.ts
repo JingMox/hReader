@@ -84,10 +84,11 @@ const hitBasisOf = (nodeId: string, after: string, before: string | undefined): 
     : { before, after, nodeId };
 
 /**
- * 为什么会需要"重新识别"：`patchNode` 的 `parseFragment` 会剥掉片段自带 ID（`fragment.ts:163`），
- * 再由 `injectNodeIds` 按"标签 + 兄弟序 + 文本前缀 + 路径摘要"**重算** ID；改写过的块 ID 必然变。
- * 因此三档：`nodeId` 命中 → 正常；未命中但快照里同块在模型先序里同位置、同 tag、同嵌套层 → 按位置重识别（声明降级）；
- * 都不中 → 块已不存在（声明降级）。**不**改 patch 的 ID 语义，也不假装身份已确认。
+ * 为什么会需要"重新识别"：`replace` 保留**片段根**的 id，但片段子树里的 id 由 `injectNodeIds`
+ * 按"标签 + 兄弟序 + 文本前缀 + 路径摘要"重算；批注锚在子树里（或藏在片段之外的文桲里）
+ * 就可能指向一个已不在盘上的 id。因此三档：`nodeId` 命中 → 正常；未命中但快照里同块在模型
+ * 先序里同位置、同 tag、同嵌套层 → 按位置重识别（声明降级）；都不中 → 块已不存在（声明降级）。
+ * **不**假装身份已确认。
  */
 export const blockBasisOf = async (
   ctx: HandlerContext,

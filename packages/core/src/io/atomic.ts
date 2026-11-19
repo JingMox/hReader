@@ -98,6 +98,38 @@ interface AtomicInput {
   readonly data: Uint8Array;
 }
 
+const OWNER_WRITE = 0o200;
+const PERMISSION_BITS = 0o7777;
+
+/** 目标已存在时的 mode；`undefined` = 不存在（新建，权限交给 umask）。 */
+const targetModeOf = async (deps: PatchDeps, path: string): Promise<number | undefined> => {
+  try {
+    return (await deps.fs.lstat(path)).mode;
+  } catch {
+    // 只有“不存在”算新建；其余失败会在写/rename 上以准确报文暴露，不在这里抢先判死。
+    return undefined;
+  }
+};
+
+/**
+ * 临时文件 + rename 会绕过目标自己的只读位：444 的文件照样被改写，用户以为设了只读就安全。
+ * 只拦“owner 写位为 0”，不看 group/other——那是共享目录的既有习惯，不该由这里重新解释。
+ */
+const assertWritable = (path: string, mode: number | undefined): void => {
+  if (mode === undefined || (mode & OWNER_WRITE) !== 0) return;
+  throw new HrError("io_failure", `文件是只读的，拒绝改写：${path}（先 chmod +w ${path}）`);
+};
+
+/** 先给 tmp 定成原文件的权限再 rename：不这么做，一次改写就会把用户设的权限位静默改掉。 */
+const applyMode = async (
+  deps: PatchDeps,
+  path: string,
+  mode: number | undefined,
+): Promise<void> => {
+  if (mode === undefined || deps.fs.chmod === undefined) return;
+  await deps.fs.chmod(path, mode & PERMISSION_BITS);
+};
+
 /** `rename` 前任一步失败都回到"原文件未动"：tmp 删掉、抛 `io_failure`（cause 保留原错）。 */
 export const writeAtomic = async (input: AtomicInput, deps: PatchDeps): Promise<void> => {
   const dir = dirname(input.path);
@@ -105,10 +137,13 @@ export const writeAtomic = async (input: AtomicInput, deps: PatchDeps): Promise<
     dir,
     `${TMP_PREFIX}${String(process.pid)}.${nonce()}.${basename(input.path)}`,
   );
+  const mode = await targetModeOf(deps, input.path);
   try {
+    assertWritable(input.path, mode);
     await assertParentInside(deps, dir, input.workspace);
     await removeStaleTmp(deps, dir);
     await writeTmp(deps, tmpPath, input.data);
+    await applyMode(deps, tmpPath, mode);
     await assertParentInside(deps, dir, input.workspace);
     await assertTargetNotLink(deps, input.path);
     await deps.fs.rename(tmpPath, input.path);

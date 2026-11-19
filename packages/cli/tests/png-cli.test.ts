@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { DOC } from "./cli-support";
-import { runCli, withTempDir } from "./harness";
+import { fieldOf, parseJsonLine, runCli, withTempDir } from "./harness";
 
 const FAKE_CHROME = fileURLToPath(new URL("../fixtures/fake-chrome.mjs", import.meta.url));
 
@@ -47,7 +47,9 @@ describe("hr png · 取值越界 (exit 1)", () => {
         env: { HREADER_CHROME: join(dir, "no-chrome") },
       });
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(expected);
+      // `--json` 只有一条通道（P2-3）：越界说明在信封的 message 里，stderr 留空。
+      expect(fieldOf(parseJsonLine(result.stdout), "message")).toContain(expected);
+      expect(result.stderr).toBe("");
       expect(existsSync(join(dir, "a.png"))).toBe(false);
     });
   });

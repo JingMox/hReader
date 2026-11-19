@@ -1,5 +1,7 @@
 // 这层管：patch 的词表与裸数据类型；不含逻辑、不碰 IO、不分配 ID。
 
+import type { Diagnostic } from "../../html/constants";
+
 export type PatchAction = "replace" | "insert_before" | "insert_after" | "append" | "delete";
 
 export interface PatchRequest {
@@ -10,10 +12,20 @@ export interface PatchRequest {
   readonly html?: string;
 }
 
+/** `replace` 让目标自己的 id 随内容重算：旧 id 已失效，调用方需要知道它换成了哪个。 */
+export interface ReplacedId {
+  readonly from: string;
+  readonly to: string;
+}
+
 export interface PatchOutcome {
   readonly html: string;
   /** 本次新分配的 ID，文档序；已有 ID 一律不动。 */
   readonly newIds: readonly string[];
+  /** 只有 `replace` 且目标 id 真的变了才有条目；其余动作恒为空。 */
+  readonly replacedIds: readonly ReplacedId[];
+  /** 片段自己的解析诊断（`duplicate_attribute` 等）：没变字节也会带出来，不当静默丢弃。 */
+  readonly warnings: readonly Diagnostic[];
   readonly changed: boolean;
 }
 

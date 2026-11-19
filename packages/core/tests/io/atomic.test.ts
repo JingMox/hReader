@@ -116,6 +116,37 @@ describe("writeAtomic · 前置步骤失败", () => {
   });
 });
 
+describe("writeAtomic · 只读目标", () => {
+  it("should refuse to rewrite a file whose owner write bit is off", async () => {
+    // tmp + rename 会绕过目标自己的权限位：444 的文件照样被改写，用户以为设了只读就安全。
+    const fake = fakeFs({ [DOC]: "old" });
+    const deps = depsAt(fake);
+    const readonlyDeps = {
+      ...deps,
+      fs: {
+        ...deps.fs,
+        lstat: () =>
+          Promise.resolve({
+            isFile: () => true,
+            isSymbolicLink: () => false,
+            mtimeMs: NOW,
+            mode: 0o444,
+          }),
+      },
+    };
+
+    const error: unknown = await writeAtomic(
+      { path: DOC, workspace: "/ws", data: encodeUtf8("new") },
+      readonlyDeps,
+    ).catch((thrown: unknown) => thrown);
+
+    expect(Reflect.get(Object(error), "code")).toBe("io_failure");
+    expect(String(Reflect.get(Object(error), "message"))).toContain("文件是只读的");
+    expect(decode(fake.state, DOC)).toBe("old");
+    expect(tmpNames(fake.state)).toEqual([]);
+  });
+});
+
 describe("removeStaleTmp · 只动自己且已死的 tmp", () => {
   it("should delete a dead-pid tmp and keep foreign or live files", async () => {
     const dead = tmpName(DEAD_PID, "a.html");

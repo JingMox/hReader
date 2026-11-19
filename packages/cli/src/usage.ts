@@ -1,6 +1,7 @@
 // 这层管：`--help` 文本的单一来源（根目录 + 每条命令一段）；不做解析、不格式化结果。
 
 export const COMMAND_NAMES = [
+  "normalize",
   "outline",
   "read",
   "patch",
@@ -21,11 +22,12 @@ export const isCommandName = (value: string | undefined): value is CommandName =
 
 const COMMON = [
   "  --json              stdout 只输出单行 JSON（无缩进、无尾随空格）",
-  "  --workspace <dir>   路径安全边界（默认当前目录；patch/style --visual 用）",
+  "  --workspace <dir>   路径安全边界（默认当前目录；写命令按它算相对路径）",
   "  --help              显示帮助",
 ];
 
 const SYNOPSIS = [
+  "hr normalize <file> [--write] [--json]",
   "hr outline <file> [--json]",
   "hr read <file> <nodeId|selector> [--json] [--max-bytes <n>]",
   "hr patch <file> <nodeId> --action <replace|insert_before|insert_after|append|delete>",
@@ -42,6 +44,16 @@ const SYNOPSIS = [
 ];
 
 const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
+  normalize: [
+    "用法：hr normalize <file> [--write] [--json]",
+    "",
+    "  --write  原地写回（临时文件 + rename）；已有 data-hr-id 一字不动，再跑一次什么也不变",
+    "",
+    "  给缺 data-hr-id 的文档补上稳定 id（同一输入永远同一批 id；内容寻址，不含时间/随机/路径）。",
+    "  不带 --write 时把规范化结果打印到 stdout；JSON 时为 { needsNormalize, html, injected }。",
+    "  文档里没有 <article> 时报 invalid_document（退出码 1）。",
+    "  outline / read / patch / serve 遇到缺 id 的文档会直接报 needs_normalize（退出码 2）并指向本命令。",
+  ],
   outline: [
     "用法：hr outline <file> [--json]",
     "",

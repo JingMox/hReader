@@ -81,6 +81,12 @@ const PARSE5_TO_DIAGNOSTIC: Readonly<Partial<Record<ErrorCodes, DiagnosticCode>>
   [ErrorCodes.duplicateAttribute]: "duplicate_attribute",
 };
 
+/** 用户看得懂的报文；表里没有的 parse5 错误码退回原始码。 */
+const PARSE5_MESSAGE: Readonly<Partial<Record<ErrorCodes, string>>> = {
+  [ErrorCodes.duplicateAttribute]:
+    "开始标签里有重复属性（parse5: duplicate-attribute），解析器只保留第一个，写回去会少掉后一个",
+};
+
 const isString = (value: unknown): value is string => typeof value === "string";
 
 const isElement = (node: P5Node): node is P5Element => "tagName" in node;
@@ -250,7 +256,9 @@ const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Docum
     onParseError: (error) => {
       const code = PARSE5_TO_DIAGNOSTIC[error.code];
       if (code !== undefined) {
-        context.diagnostics.push(diagnosticOf(code, `parse5 报告 ${error.code}`, undefined));
+        context.diagnostics.push(
+          diagnosticOf(code, PARSE5_MESSAGE[error.code] ?? `parse5 报告 ${error.code}`, undefined),
+        );
       }
     },
   });

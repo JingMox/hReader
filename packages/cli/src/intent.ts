@@ -25,6 +25,12 @@ export type Intent =
   | { readonly kind: "help"; readonly topic: CommandName | undefined }
   | ({ readonly kind: "outline"; readonly path: string } & Common)
   | ({
+      readonly kind: "normalize";
+      readonly path: string;
+      /** 缺省 `false`：不写盘，只把规范化结果交给调用方。 */
+      readonly write: boolean;
+    } & Common)
+  | ({
       readonly kind: "read";
       readonly path: string;
       readonly target: string;

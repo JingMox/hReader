@@ -2,6 +2,7 @@
 
 import { HrError, nodePatchDeps, nodeStyleDeps, startServer } from "@hreader/core";
 
+import { withNormalizeAdvice } from "../document-normalize";
 import { dataServe, humanServe, jsonOk } from "../output";
 import {
   PARENT_POLL_MS,
@@ -27,6 +28,10 @@ export interface ServeInput {
   readonly stop: Promise<void>;
   /** `--exit-with-parent`：父进程（壳）消失就自己关；`false` = 不看父进程（默认，用户自己起的 daemon）。 */
   readonly exitWithParent?: boolean | undefined;
+  /** core 的诊断出口（`::` 上另有监听、清理陈旧 `daemon.json`）：没有它就等于把这两件事静默掉。 */
+  readonly diagnose?: ((message: string) => void) | undefined;
+  /** 回执里印的文档路径（用户视角）：不给就印 workspace 相对名。 */
+  readonly displayPath?: string | undefined;
   /** `main.ts` 在首个 `await` 之前采集的父 pid；落在这里是为了让"采集时机"只有一个来源。 */
   readonly launchParentPid: number;
 }
@@ -47,10 +52,13 @@ export const serveCommand = async (input: ServeInput): Promise<string> => {
       home: input.home,
       docId: input.file,
       ...(appDir === undefined ? {} : { appDir }),
+      ...(input.diagnose === undefined ? {} : { diagnose: input.diagnose }),
       ...(input.allowHosts === undefined ? {} : { allowHosts: input.allowHosts }),
     },
     { patch: nodePatchDeps, style: nodeStyleDeps(input.workspace), now: Date.now },
-  );
+  ).catch((error: unknown): never => {
+    throw withNormalizeAdvice(error, input.file);
+  });
   // 记下启动时的 ppid、之后每次轮询重读：壳被 kill -9 时 ppid 会变（re-parent 到 1 或 launchd），
   // 这是 daemon 唯一能自己发现"壳没了"的信号。
   const disposeWatch = watchParent(
@@ -62,7 +70,9 @@ export const serveCommand = async (input: ServeInput): Promise<string> => {
     disposeWatch();
     await running.close();
   });
-  return input.json ? jsonOk(dataServe(running.info)) : humanServe(running.info);
+  return input.json
+    ? jsonOk(dataServe(running.info))
+    : humanServe(running.info, input.displayPath ?? input.file);
 };
 
 /** 只有壳显式要求时才看父进程：默认（用户自己起的 daemon）一个定时器都不许建。 */

@@ -43,6 +43,8 @@ export interface PngCommandInput {
   readonly workspace: string;
   readonly json: boolean;
   readonly warn: (message: string) => void;
+  /** 回执里印的 `--out`（用户视角）：不给就印真实路径。 */
+  readonly displayOut?: string | undefined;
   /** 会话层注入点：`run.ts` 接真 Chrome，进程内测试接假传输。 */
   readonly render: RenderPng;
 }
@@ -124,5 +126,5 @@ export const pngCommand = async (input: PngCommandInput): Promise<string> => {
     what: "写入 PNG",
   });
   const report = reportOf(image, input.out);
-  return input.json ? jsonOk(dataPng(report)) : humanPng(report);
+  return input.json ? jsonOk(dataPng(report)) : humanPng(report, input.displayOut ?? report.out);
 };

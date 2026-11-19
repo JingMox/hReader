@@ -101,7 +101,7 @@ describe("run · style 的 human 输出", () => {
 
     expect(applied).toBe(EXIT_OK);
     expect(code).toBe(EXIT_OK);
-    expect(second.out()).toMatch(/^unchanged .*human\.html \(\d+ bytes\)\n$/u);
+    expect(second.out()).toMatch(/^unchanged .*human\.html \(\d+ bytes，主题已与文档里的/u);
     expect(second.err()).toBe("");
   });
 });

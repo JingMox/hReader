@@ -2,7 +2,7 @@
 
 export type HttpMethod = "GET" | "POST";
 
-/** `token` = 唯一允许 `?t=` 的入口（`/s/<docId>`）；`cookie+csrf` = 写命令。 */
+/** `token` = 允许 `?t=` / `?token=` 的入口（`/` 与 `/s/<docId>`）；`cookie+csrf` = 写命令。 */
 export type AuthKind = "none" | "cookie" | "token" | "cookie+csrf";
 
 export type RouteKind =
@@ -59,7 +59,8 @@ const route = (
 ): Route => Object.freeze({ method, segments: Object.freeze(segments), auth, kind });
 
 export const ROUTES: readonly Route[] = Object.freeze([
-  route("GET", [], "cookie", "home"),
+  // `/` 也吃 token：`hr serve` 打印的就是 `/?token=…`，首访落 cookie 后 302 回干净的 `/`（BUG-01）。
+  route("GET", [], "token", "home"),
   route("GET", ["assets", REST_PARAM], "none", "assets"),
   route("GET", ["api", "theme"], "none", "themes"),
   route("GET", ["api", "theme", ":styleId"], "none", "theme"),

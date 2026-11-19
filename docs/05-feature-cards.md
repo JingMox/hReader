@@ -51,7 +51,7 @@
 
 ### M1.1 HTML 解析 / 序列化 / `data-hr-id` 注入
 
-- AC1 对合法自包含文档解析后，`<article>` 下所有块级元素（section/header/p/h1-h4/ul/ol/table/figure/details/pre/div[data-hr-component]）都有唯一 `data-hr-id`。
+- AC1 对合法自包含文档解析后，`<article>` 下**可寻址**元素（`packages/core/src/html/constants.ts` 的 `ADDRESSABLE_TAGS`：块级词表 + `h5/h6/div/aside/nav/main/dl/dt/dd/figcaption` + 表格结构 `caption/thead/tbody/tfoot/tr/td/th`）都有唯一 `data-hr-id`。`div` 一律编号，不再只在带 `data-hr-component` 时才算块级（BUG-13）。
 - AC2 已有 `data-hr-id` 保持不变；新节点按稳定规则生成（同一输入两次运行结果一致，与文件路径无关）。
 - AC3 容错：无 doctype、未闭合标签、嵌套错误、`<script id="hr-meta">` 含 `</script>` 文本时，解析不抛未捕获异常，返回带 `code` 的诊断。
 - AC4 序列化保留属性顺序与空白策略一致；往返（parse→serialize→parse）后 outline 结果稳定（属性级不变）。
@@ -117,6 +117,7 @@
 - AC4 `--json` 输出 schema 稳定，含 `ok/code/message` 字段；错误时也输出合法 JSON（便于 Agent 解析）。
 - AC5 `hr patch` 在 `--html-file` 指向不存在文件、非法 UTF-8 时给出稳定错误码，不写文件。
 - AC6 帮助文本 `--help` 覆盖所有命令与参数；`hr` 无参数时输出用法并非 0 退出码。
+- AC7 patch 目标集 = `PATCHABLE_TAGS`（默认与 `ADDRESSABLE_TAGS` 同集，当前无例外）：`div`、`tbody/tr/td` 都能直接 `append`/`replace`，行内元素仍拒（`isBlockLevel`）；表格结构片段（`<tr>`/`<td>`）解析时套上祖先链，不再要求整表替换。
 
 ### M1.9 Universal Skill
 
@@ -142,7 +143,8 @@ cp packages/pi-extension/pi-hreader.ts ~/.pi/agent/extensions/   # 或：pi -e p
 
 - `/hreader <path>`：把文档推给阅读器并订阅它的批注事件；`<path>` 相对 daemon 的 workspace 或绝对路径。
   无参时只给用法 + daemon 状态（`127.0.0.1:<port>`、workspace，换过视觉时追加当前风格）——不打印根 URL，
-  因为 `GET /` 是 cookie 认证、`/s/:docId` 是 token 认证，无参时没有可点的合法链接。
+  因为 `/s/:docId` 是 token 认证，而这里没有文档可指。（`hr serve` 自己打印的根地址是 `/?token=…`，
+  `GET /` 也吃 token：首访落 `hr` cookie 后 302 回干净的 `/`，所以那行地址可以直接粘进浏览器。）
 - `/hr-style <id>`：换当前文档的视觉。无参列出可选 id；id 只来自 daemon 的 `GET /api/theme`，不在列表里的 id
   连 `POST /api/style` 都不发。风格记在**文档**上（`POST /api/style` 带的就是 `docId`）：换到别的文档时状态行
   不报上一个文档的风格，换回来仍记得；连发两次时后一次生效，先发的慢响不覆盖。daemon 与用户来源的字符串
@@ -437,13 +439,18 @@ pnpm desktop:dev -- --workspace <dir> --open <file>   # 开发时直跑
 | `io_failure` / `style_io_failure` | 3 | 读写失败（磁盘、权限） |
 | `invalid_utf8` | 3 | 文件不是合法 UTF-8 |
 | `llm_failure` | 3 | 风格建议层调用失败（message 里不许出现 key/prompt/响应原文） |
-| `daemon_already_running` | 2 | 已有 daemon 占着端口 |
+| `daemon_already_running` | 1 | 已有 daemon 占着端口（运行时状态，不是用法错）；message 点名 pid 与两条后手：`kill <pid>` 或删 `daemon.json` |
+| `port_in_use` | 2 | `127.0.0.1:<port>` 的 bind 真失败（`EADDRINUSE`），占端口的**不是**我们的 daemon（是的话报上一条）；`daemon.json` 记的端口上探不到身份（`/healthz` 超时/非 JSON）也落到这条——探不到 ≠ 能证明它是我们的；后手一律是换 `--port`。`::` 上另有监听只作 stderr 提示，不改变能否启动 |
+| `needs_normalize` | 2 | 文档缺 `data-hr-id`（`outline`/`read`/`patch`/`serve` 的前置判定）；message 点名 `hr normalize <file> --write` |
+| `content_model_conflict` | 2 | 片段内容模型与目标容器不兼容（`patch` 的 `append`/`prepend`/`replace` 写盘前判）：`<p>`/`<h1>`–`<h6>`/`<pre>` 这类 phrasing-only 容器装不下块级子节点。**用户可修**（换容器如 `article`/`section`/`div`、或改 `--html`），因此与 `invalid_input`（整条输入不合法、得看文档）分开，也不复用 `invalid_fragment`（片段本身合法，是“放不下”） |
 
 ---
 
 ## 横切口径：`data-hr-id` 与批注锚点的生命周期
 
-`data-hr-id` 由内容派生（详见 `.workflow/cards/M2.3.md` §8）：同一份字节两次注入 id 稳定，编辑则会让 id 漂移。批注的 `nodeId` **不做落盘迁移**，锚点失效由读时重识别兜底（三档：命中 / `block_reidentified` / `block_missing`）。**发布前**若更换 id 方案，必须先交付 `nodeId` 迁移脚本，否则既有批注全部失效；当前未发布，无迁移义务（`L-02`，重构卡 R-6）。
+`data-hr-id` 由内容派生（详见 `.workflow/cards/M2.3.md` §8）：同一份字节两次注入 id 稳定，编辑则会让 id 漂移。
+
+三个标签集合的分工（`packages/core/src/html/constants.ts`）：`BLOCK_TAGS` 只判**内容模型**（派生文档模型时算不算块），`ADDRESSABLE_TAGS` 管**有没有 id**（= 批注/`read`/`patch` 的可达面，`div` 与表格内部都在内），`PATCHABLE_TAGS` 管**能不能被改**（默认同为可寻址集；要表达"可寻址但不可作目标"只在这里减项并写理由，不在判定里加 if 链）。`hr normalize` 的迁移是纯增量：已有合法 `data-hr-id` 一律保留，只给裸着的可寻址元素补 id；`replace` 传入逐字相同的子树时保持 `unchanged` 且 id 不变——它是行级锚点不丢的判据。批注的 `nodeId` **不做落盘迁移**，锚点失效由读时重识别兜底（三档：命中 / `block_reidentified` / `block_missing`）。**发布前**若更换 id 方案，必须先交付 `nodeId` 迁移脚本，否则既有批注全部失效；当前未发布，无迁移义务（`L-02`，重构卡 R-6）。
 
 ## Milestone 2–4 卡片（暂只列标题，开工时再拆）
 

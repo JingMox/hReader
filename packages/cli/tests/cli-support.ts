@@ -26,6 +26,16 @@ export const seed = (dir: string, name = "a.html", html = DOC): string => {
   return path;
 };
 
+/**
+ * 取文档里第一个 `<tag>` 的 `data-hr-id`：id 只在**规范化之后**才存在，所以一律从文件里读，
+ * 用例里不硬编码——硬编码的 id 会让「内容寻址」这件事退化成金样比对。
+ */
+export const idOfTag = (html: string, tag: string): string => {
+  const id = new RegExp(`<${tag} data-hr-id="(hr-[0-9a-f]{8})"`, "u").exec(html)?.[1];
+  if (id === undefined) throw new Error(`规范化之后 <${tag}> 没有 data-hr-id`);
+  return id;
+};
+
 /** 所有子进程结果都过一遍：无 ANSI、无 signal。 */
 export const checked = (result: CliResult): CliResult => {
   expectNoAnsi(result);

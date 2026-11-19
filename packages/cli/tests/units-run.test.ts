@@ -1,6 +1,9 @@
 // 这层管：`run()` 的归口逻辑（argv → 退出码 / stdout / stderr），用假 io；真 fs 只为成功路径。
+//
+// 注意：`--html-stdin` 的 stdin 拒绝用例只是**防御分支/顺带**覆盖 `run.ts` 的 `runPatch` 返回，
+// 它的红色只由 stderr 格式决定，别把它记作 patch 路径的症状覆盖。
 
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -64,10 +67,12 @@ describe("run · 成功路径", () => {
     const cases: readonly { argv: readonly string[]; needle: string }[] = [
       { argv: ["outline", "a.html"], needle: "- hr-b" },
       { argv: ["read", "a.html", "h2"], needle: "<h2" },
+      { argv: ["normalize", "a.html"], needle: "data-hr-id" },
       { argv: ["style", "a.html", "--tone", DEFAULT_STYLE_ID], needle: "语言风格" },
       { argv: ["style", "a.html", "--lint"], needle: "" },
       {
-        argv: ["patch", "a.html", "hr-c", "--action", "append", "--html", "<p>新</p>"],
+        // 目标必须是能装块级子节点的容器：往 `<p>` 里 append 一个 `<p>` 会写出不可重解析的嵌套。
+        argv: ["patch", "a.html", "hr-a", "--action", "append", "--html", "<p>新</p>"],
         needle: "patched",
       },
     ];
@@ -177,7 +182,7 @@ describe("run · core 错误与内部错误", () => {
     expect(err.join("")).toContain("读取时路径不存在");
   });
 
-  it("should write the error JSON to stdout and the message to stderr under --json", async () => {
+  it("should write the error JSON to stdout and nothing to stderr under --json", async () => {
     const { io, out, err } = capture();
     const code = await run(["outline", "missing.html", "--json"], io);
 
@@ -187,7 +192,8 @@ describe("run · core 错误与内部错误", () => {
         join(dir, "missing.html") +
         '"}\n',
     );
-    expect(err.join("")).toContain("读取时路径不存在");
+    // 只走一条通道（P2-3）：`2>&1` 的消费者不会再收到第二段。
+    expect(err).toEqual([]);
   });
 
   it("should map a non-HrError to exit 70 without a stack by default", async () => {
@@ -216,7 +222,40 @@ describe("run · HR_DEBUG", () => {
   });
 });
 
+describe("run · 没有 stack 的 Error", () => {
+  it('should print an empty line instead of the string "undefined" when --debug has no stack', async () => {
+    const error = new Error("没有栈");
+    // 有的运行时/包装只留 message：`error.stack` 读出来是 undefined，`--debug` 不能因此印 "undefined"。
+    Reflect.deleteProperty(error, "stack");
+    const { io, err, out } = capture({ debug: true, readStdin: () => Promise.reject(error) });
+
+    expect(await run(["patch", "a.html", "hr-c", "--action", "append", "--html-stdin"], io)).toBe(
+      70,
+    );
+    expect(err.join("")).toBe("没有栈\n\n");
+    // patch 走 io 失败时 stdout 必须空：这条是 patch 路径的正常失败通道，不是只为了看 debug 栈。
+    expect(out.join("")).toBe("");
+  });
+});
+
 describe("run · 非 Error 的拒绝值", () => {
+  it("should not try to print a stack when --debug is on but the rejection is not an Error", async () => {
+    const rejection: unknown = "不是 Error 的字符串";
+    const { io, err } = capture({
+      debug: true,
+      readStdin: () =>
+        new Promise<never>((_resolve, reject) => {
+          Reflect.apply(reject, undefined, [rejection]);
+        }),
+    });
+
+    // 没有 `stack` 可读：照样只印一句，不能因为开了 --debug 就再印一行 "undefined"。
+    expect(await run(["patch", "a.html", "hr-c", "--action", "append", "--html-stdin"], io)).toBe(
+      70,
+    );
+    expect(err.join("")).toBe("不是 Error 的字符串\n");
+  });
+
   it("should stringify a non-Error rejection", async () => {
     const rejection: unknown = Symbol("非 Error");
     // run.ts 的 messageOf 必须能 stringify 非 Error 拒绝值：用 Reflect.apply 构造
@@ -250,25 +289,4 @@ describe("run · serve 的 stop 注入", () => {
     expect(await running).toBe(0);
     expect(out.join("")).toContain('"port"');
   }, 20_000);
-});
-
-describe("run · pdf/png 的 Chrome 接线", () => {
-  // 只走到"选 Chrome 二进制"这一步就失败：命令层到会话层的整条接线被执行到，但不真的起进程。
-  const noChrome = { env: { HREADER_CHROME: join(dir, "no-chrome") } };
-
-  // 用 `img.html`：`printProductOf` 在渲染之前就发警告，顺带把 stderr 的 warn 接线也走一遍。
-  it.each([
-    ["pdf", ["img.html", "--out", join(dir, "a.pdf")], join(dir, "a.pdf")],
-    ["png", ["img.html", "--out", join(dir, "a.png"), "--width", "800"], join(dir, "a.png")],
-  ])("%s 找不到 Chrome 时 exit 3、警告已出、不落盘", async (kind, argv, out) => {
-    // `stop` 给上：pdf/png 也必须把它接进渲染层（不传就等满 --timeout，Ctrl-C 会白等）。
-    const stop = new Promise<void>(() => undefined);
-    const { io, out: stdout, err } = capture({ ...noChrome, stop });
-    expect(await run([kind, ...argv], io)).toBe(3);
-    expect(err.join("")).toContain("已移除 1 个外部图片");
-    expect(err.join("")).toContain("找不到 Chrome");
-    expect(err.join("")).toContain("候选路径：");
-    expect(stdout.join("")).toBe("");
-    expect(existsSync(out)).toBe(false);
-  });
 });

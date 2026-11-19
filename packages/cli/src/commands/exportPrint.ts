@@ -1,4 +1,4 @@
-// 这层管：`hr export`（读文档 → 注入 id → 大纲 → 主题 → 打印稿 → stdout 或原子写）；不判参数、不定退出码。
+// 这层管：`hr export`（读文档 → 大纲 → 主题 → 打印稿 → stdout 或原子写）；不判参数、不定退出码。
 // `hr pdf` 复用同一份打印稿与同一套 `--out` 规矩，避免第二套路径判定（D5）。
 
 import { basename, dirname, extname, resolve } from "node:path";
@@ -6,7 +6,6 @@ import { basename, dirname, extname, resolve } from "node:path";
 import {
   buildOutline,
   HrError,
-  injectNodeIds,
   isInside,
   loadThemeCss,
   nodePatchDeps,
@@ -34,6 +33,8 @@ export interface ExportPrintInput {
   readonly force: boolean;
   /** 非致命提示的出口（外部图片被删）；由 `run.ts` 接到 stderr，本层不碰进程。 */
   readonly warn: (message: string) => void;
+  /** 回执里印的 `--out`（用户视角）：不给就印真实路径。 */
+  readonly displayOut?: string | undefined;
 }
 
 /** fs 的 errno 不许当 `code` 泄给外面：折成 `io_failure`（exit 3），原始错误只留在 `cause`。 */
@@ -90,15 +91,17 @@ export interface PrintSourceInput {
 
 /** 打印稿的单一来源：`hr export` 落 HTML、`hr pdf` 把同一份 HTML 交给 Chrome。 */
 export const printProductOf = async (input: PrintSourceInput): Promise<PrintHtmlResult> => {
-  const injected = injectNodeIds(parseHtml(await readTextFile(input.path)));
+  // 不注入 id（BUG-02）：源里没有 `data-hr-id`，产物就不带——否则用户从打印稿里拄下的 id
+  // 在源文件里不存在，拿去 `patch` 只会得到 `node_not_found`。
+  const parsed = parseHtml(await readTextFile(input.path));
   // 主题走 core：`loadThemeCss` 内部已过 `assertThemeSafe`，这一层不重复实现闸门（裁定 A）。
   const report = printHtmlReportOf({
     docId: basename(input.path, extname(input.path)),
     visualId: input.visual,
     paper: input.paper,
     bodyClass: `hr-visual-${input.visual}`,
-    documentHtml: serializeHtml(injected.parsed),
-    outline: buildOutline(injected.parsed).nodes,
+    documentHtml: serializeHtml(parsed),
+    outline: buildOutline(parsed).nodes,
     themeCss: await loadThemeCss(input.visual, nodeStyleDeps(input.workspace)),
   });
   // 4 MiB 上限（§11.4）只在渲染层剥一次（`print-page.ts` 的 `MAX_PRODUCT_BYTES`，判据 `>`）：
@@ -146,5 +149,5 @@ export const exportPrintCommand = async (input: ExportPrintInput): Promise<strin
   });
   return input.json
     ? jsonOk(dataExport(report, input.out))
-    : humanExportWritten(input.out, report.bytes);
+    : humanExportWritten(input.displayOut ?? input.out, report.bytes);
 };

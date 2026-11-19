@@ -51,8 +51,19 @@ const PATCHED: PatchResult = {
   path: "a.html",
   bytes: 42,
   newIds: ["hr-9"],
+  replacedIds: [],
   changed: true,
   historyPath: ".hreader/history/a/2026.html",
+  undoable: true,
+};
+
+const REPLACED: PatchResult = {
+  path: "b.html",
+  bytes: 149,
+  newIds: ["hr-e5acd1ce"],
+  replacedIds: [{ from: "hr-a392514c", to: "hr-e5acd1ce" }],
+  changed: true,
+  historyPath: ".hreader/history/b/2026.html",
   undoable: true,
 };
 
@@ -87,6 +98,15 @@ describe("output · JSON 信封", () => {
       "newIds",
       "changed",
       "historyPath",
+    ]);
+    // `replacedIds` 只在 replace 且 id 真变时出现：这是用户违约时「旧 id 已失效」的唯一机器可读渠道。
+    expect(keysOf(JSON.parse(dataPatch(REPLACED)))).toEqual([
+      "path",
+      "bytes",
+      "newIds",
+      "changed",
+      "historyPath",
+      "replacedIds",
     ]);
     expect(keysOf(JSON.parse(dataRead(READ, ["hr-1"])))).toEqual(["html", "ids"]);
     expect(keysOf(JSON.parse(dataStyle(STYLE)))).toEqual(["path", "changed"]);
@@ -145,8 +165,8 @@ describe("output · 人读文本", () => {
     expect(humanOutline(OUTLINE)).toBe("- hr-1  标题  (1w)\n  - hr-2  子  (1w)\n");
   });
 
-  it("should print an empty outline as a single newline", () => {
-    expect(humanOutline({ ...OUTLINE, nodes: [] })).toBe("");
+  it("should print an empty outline as a named hint, never as zero bytes", () => {
+    expect(humanOutline({ ...OUTLINE, nodes: [] })).toBe("（没有标题）\n");
   });
 
   it("should print read html plus a newline", () => {
@@ -154,12 +174,18 @@ describe("output · 人读文本", () => {
   });
 
   it("should print patched/unchanged lines with byte counts", () => {
-    expect(humanPatch(PATCHED)).toBe("patched a.html (42 bytes, +1 ids)\n");
+    expect(humanPatch(PATCHED)).toBe("patched a.html (42 bytes, +1 ids: hr-9)\n");
     expect(humanPatch(UNCHANGED)).toBe("unchanged a.html (42 bytes)\n");
   });
 
-  it("should print one lint line per hit, then a trailing newline", () => {
-    expect(humanLint(HITS)).toBe("hr-1: boom — …boom…\n");
+  it("should print the old → new id mapping when replace moved the target id", () => {
+    expect(humanPatch(REPLACED)).toBe(
+      "patched b.html (149 bytes, id 变更: hr-a392514c → hr-e5acd1ce)\n",
+    );
+  });
+
+  it("should print one lint line per hit with the in-block offset, then a trailing newline", () => {
+    expect(humanLint(HITS)).toBe("hr-1:3: boom — …boom…\n");
     expect(humanLint({ hits: [], truncated: false })).toBe("");
   });
 
@@ -167,15 +193,18 @@ describe("output · 人读文本", () => {
     expect(humanTone("一二\n三")).toBe("一二\n三\n");
   });
 
-  it("should print styled/unchanged lines", () => {
+  it("should print styled/unchanged lines, naming the theme when unchanged", () => {
     expect(humanStyle(STYLE)).toBe("styled a.html (42 bytes)\n");
-    expect(humanStyle({ ...STYLE, changed: false })).toBe("unchanged a.html (42 bytes)\n");
+    expect(humanStyle({ ...STYLE, changed: false })).toBe(
+      'unchanged a.html (42 bytes，主题已与文档里的 <style id="hr-theme"> 一致)\n',
+    );
   });
 });
 
 describe("usage · 单一事实源", () => {
-  it("should name all eight commands", () => {
+  it("should name all ten commands", () => {
     expect(COMMAND_NAMES).toEqual([
+      "normalize",
       "outline",
       "read",
       "patch",

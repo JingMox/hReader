@@ -243,7 +243,7 @@ describe("watcher · 回声窗口过期后仍要转发", () => {
 });
 
 describe("startServer · 端口被占用", () => {
-  it("should reject with daemon_already_running", async () => {
+  it("should reject with port_in_use", async () => {
     const workspace = root("hr-bind-ws-");
     const home = root("hr-bind-home-");
     writeFileSync(join(workspace, "doc.html"), DOC, "utf8");
@@ -259,7 +259,7 @@ describe("startServer · 端口被占用", () => {
           { workspace, port, home, docId: "doc.html" },
           { patch: nodePatchDeps, style: nodeStyleDeps(workspace), now: Date.now },
         ),
-      ).rejects.toMatchObject({ code: "daemon_already_running" });
+      ).rejects.toMatchObject({ code: "port_in_use" });
     } finally {
       blocker.close();
     }

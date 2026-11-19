@@ -9,8 +9,10 @@ import { describe, expect, it } from "vitest";
 import { httpCall, withServer } from "./harness";
 import { withPost } from "./wire";
 
+// 追加的行内片段：目标是 <p>（hr-d），块级子节点会被 F6 的内容模型校验拒掉；
+// 这里只关心“并发写不丢”，用行内元素同样能落地字节。
 const appendBody = (docId: string, text: string): string =>
-  JSON.stringify({ docId, action: "append", targetId: "hr-d", fragment: `<p>${text}</p>` });
+  JSON.stringify({ docId, action: "append", targetId: "hr-d", fragment: `<b>${text}</b>` });
 
 const post = async (
   port: number,

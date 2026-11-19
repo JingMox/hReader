@@ -4,6 +4,8 @@ export interface FileStat {
   readonly isFile: () => boolean;
   readonly isSymbolicLink: () => boolean;
   readonly mtimeMs: number;
+  /** 完整 `st_mode`（含文件类型位）；缺省 = 该 fs 不提供，调用方不得因此改权。 */
+  readonly mode?: number;
 }
 
 /**
@@ -25,6 +27,8 @@ export interface FileSystem {
   readonly unlink: (path: string) => Promise<void>;
   readonly mkdir: (path: string) => Promise<void>;
   readonly lstat: (path: string) => Promise<FileStat>;
+  /** 只在保留权限位时用到；缺省 = 该 fs 不表态（测试替身），按不改权处理。 */
+  readonly chmod?: (path: string, mode: number) => Promise<void>;
   readonly readdir: (path: string) => Promise<readonly string[]>;
   readonly realpath: (path: string) => Promise<string>;
   readonly open: (path: string, mode: OpenMode) => Promise<OpenFile>;

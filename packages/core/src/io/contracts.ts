@@ -1,6 +1,7 @@
 // 这层管：io 对外的裸入参/结果类型；不含逻辑、不碰 fs。
 
-import type { PatchRequest } from "../ops/patchNode";
+import type { Diagnostic } from "../html/constants";
+import type { PatchRequest, ReplacedId } from "../ops/patchNode";
 
 export interface PatchTargetInput {
   readonly workspace: string;
@@ -20,6 +21,10 @@ export interface PatchResult {
   readonly path: string;
   readonly bytes: number;
   readonly newIds: readonly string[];
+  /** `replace` 的旧 id → 新 id 映射；其余动作/内容未变时为空。 */
+  readonly replacedIds: readonly ReplacedId[];
+  /** 片段的解析诊断（`duplicate_attribute` 等）：能落盘但用户得知道字节里少了东西；缺省视作空。 */
+  readonly warnings?: readonly Diagnostic[];
   /** 未写盘（`changed: false`）时为 `null`：不留历史是 AC7 的硬要求。 */
   readonly historyPath: string | null;
   readonly changed: boolean;

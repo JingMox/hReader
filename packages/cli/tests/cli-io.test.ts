@@ -14,7 +14,8 @@ describe("--json 契约（AC3）", () => {
       seed(dir);
       const result = checked(
         await runCli(
-          ["patch", "a.html", "hr-c", "--action", "append", "--html", "<p>x</p>", "--json"],
+          // 目标是容器 <article>：段落在它的内容模型之内（往 <p> 里 append 段落会被 F6 拒，那是另一条用例的事）。
+          ["patch", "a.html", "hr-a", "--action", "append", "--html", "<p>x</p>", "--json"],
           { cwd: dir },
         ),
       );
@@ -49,14 +50,16 @@ describe("--json 单行契约", () => {
     });
   });
 
-  it("should write a parseable error JSON to stdout and the message to stderr", async () => {
+  // 只走一条通道（P2-3）：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段。
+  it("should write a parseable error JSON to stdout and nothing to stderr", async () => {
     const result = checked(await runCli(["outline", "missing.html", "--json"]));
 
     expect(result.code).toBe(3);
     const envelope = parseJsonLine(result.stdout);
     expect(keysOf(envelope)).toEqual(["ok", "code", "message"]);
     expect(fieldOf(envelope, "ok")).toBe(false);
-    expect(result.stderr).toContain("读取时路径不存在");
+    expect(fieldOf(envelope, "message")).toContain("读取时路径不存在");
+    expect(result.stderr).toBe("");
   });
 });
 
@@ -135,13 +138,20 @@ describe("管道与编码 · UTF-8 拒绝", () => {
 });
 
 describe("深嵌套回归（40k 层不崩）", () => {
-  it("should outline a 40000-deep document without crashing", async () => {
+  // F10 把 `div` 放进 `ADDRESSABLE_TAGS`，于是“全篇 div 都没 id”= 这份文档还没 normalize（`assertNormalized`）。
+  // 所以先把 40k 层落盘 + `normalize --write` 过一遍，再 outline：两段都是活生生的迭代/序列化压力点。
+  it("should normalize and outline a 40000-deep document without crashing", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
-      const deep = `<article data-hr-id="hr-a">${"<div>".repeat(40_000)}x${"</div>".repeat(40_000)}</article>`;
+      const deep = `<article>${"<div>".repeat(40_000)}x${"</div>".repeat(40_000)}</article>`;
       writeFileSync(join(dir, "deep.html"), deep);
-      const result = checked(await runCli(["outline", "deep.html", "--json"], { cwd: dir }));
 
+      const normalized = checked(await runCli(["normalize", "deep.html", "--write"], { cwd: dir }));
+      expect(normalized.code).toBe(0);
+      // 每个 div（加最外层 article 自身）都该拿到 id：少一个就说明深递归在某层悄悄停了。
+      expect(normalized.stdout).toContain("+40001 ids");
+
+      const result = checked(await runCli(["outline", "deep.html", "--json"], { cwd: dir }));
       expect(result.code).toBe(0);
       expect(JSON.parse(result.stdout.trim())).toMatchObject({ ok: true });
     }, 30_000);
