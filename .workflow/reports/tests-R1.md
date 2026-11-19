@@ -623,3 +623,62 @@ $ npx eslint packages/renderer-html/tests --max-warnings=0   # 干净（EXIT=0�
 ```
 
 自检：未 commit、未 push、无 staged 文件；只改 `packages/renderer-html/tests/print-html-attributes.test.ts` 与这份报告；未改 `src/**`；新增用例里 `it.fails(` 出现 0 次。
+
+## T9 · F15 报文跟进 + 三集合护栏 + 覆盖率复核
+
+### T9-1 三条断言跟着 F15 分叉（`packages/core/tests/io/fragments.ts`）
+
+F15 把"根是注释/纯文本"从"根数不对"里拆出来单列报文（`packages/core/src/ops/patchNode/fragmentTokens.ts:41-43`：`片段的根不是元素（是注释或纯文本），请给一个元素`；多根仍是 `片段必须恰好有一个根元素（实际 N 个根级内容节点）`）。三条 user 命名的用例按各自证的点改断言；多根那条**保持不变**。
+
+逐条改前/改后对照（`code` 全部仍是 `invalid_fragment`，变的是 `marker`）：
+
+| 用例（fragment） | 它证的点 | 改前 marker | 改后 marker | 判据变化 |
+|---|---|---|---|---|
+| `纯文本` (:46) | 根是文本 → 拒绝 | `恰好有一个根元素` | `根不是元素` | 收紧：原来靠多根报文"蹭"到，现在锁死"根不是元素"这条分支 |
+| `<!-- 只有注释 -->` (:63) | 根是注释 → 拒绝 | `恰好有一个根元素` | `根不是元素` | 收紧：同上 |
+| `<!-- only a comment -->` (:66) | 根是注释 → 拒绝 | `根元素`（宽，两种报文都含） | `根不是元素` | 收紧：从宽匹配改成只认"根不是元素"分支 |
+| `<p>a</p><p>b</p>` (:45，多根) | 多个根级内容节点 → 拒绝 | `恰好有一个根元素` | `恰好有一个根元素`（**未动**） | 保持：多根判据不被顺带抹掉 |
+
+（`:64` `""` / `:65` 纯空白仍断言 `根元素`，命中的是 `片段为空或只有空白：必须恰好有一个根元素`，与 F15 无冲突，未动。）
+
+### T9-2 三集合关系护栏（新增 `packages/core/tests/html-constants.test.ts`）
+
+纯数据断言（无 IO），三条对应"模型节点必有 id + 只减项"：
+
+1. `[...BLOCK_TAGS].filter(t => !ADDRESSABLE_TAGS.has(t))` 为空 → `BLOCK_TAGS ⊆ ADDRESSABLE_TAGS`；
+2. `[...PATCHABLE_TAGS].filter(t => !ADDRESSABLE_TAGS.has(t))` 为空 → `PATCHABLE_TAGS ⊆ ADDRESSABLE_TAGS`（只减项）；
+3. `PATCHABLE_TAGS.size <= ADDRESSABLE_TAGS.size`。
+
+变异自检（临时给 `PATCHABLE_TAGS` 加不在寻址面的 `"hr"`，`/tmp` 备份 + `cp` 还原）：
+
+```
+# 改前基线：git diff --stat -- packages/core/src 与还原后逐字相同（见下）
+$ perl -0pi -e 's/new Set\(ADDRESSABLE_TAGS\);/new Set([...ADDRESSABLE_TAGS, "hr"]);/' packages/core/src/html/constants.ts
+ × should keep every PATCHABLE_TAGS entry inside ADDRESSABLE_TAGS (only 减项)   → missing: ["hr"]
+ × should not let PATCHABLE_TAGS grow beyond ADDRESSABLE_TAGS                → expected 35 to be <= 34
+ Tests  2 failed | 1 passed (3)
+$ cp /tmp/constants.ts.bak packages/core/src/html/constants.ts   # 还原
+ ✓ html-constants.test.ts (3 tests)   # 绿
+```
+
+还原后 `git diff --stat -- packages/core/src` 与"变异前基线"逐字一致（四项均为其它工作流在飞的 F12/F15 改动，非本任务引入），`constants.ts` 的 `PATCHABLE_TAGS` 已回到 `new Set(ADDRESSABLE_TAGS)`。
+
+### T9-3 复核审计 DYNAMIC 两条
+
+- 覆盖率四维（`pnpm test:coverage`，perFile 100% 门禁通过）：`lines 100 / statements 100 / functions 100 / branches 100`，`coverage-summary.json` 内 `lowFiles 0`（`fragment.ts` 的 `v8 ignore` + 按文件名 `coverage.exclude` 未制造假红/假绿）。
+- `packages/core/tests/io/patch-actions.test.ts` 的 `should reject a non-string html through the parser`：**已转绿**（F12 的 `typeof html !== "string"` 守卫生效，`codeOf({ ... html: 42 }) === "invalid_html"`）。
+
+### 门禁
+
+```
+$ pnpm verify
+  Test Files  291 passed (291) / Tests  3148 passed (3148)
+  ✔ no dependency violations found (617 modules, 2594 dependencies cruised)
+  knip 干净
+  VERIFY_EXIT=0
+$ pnpm desktop:check
+  cargo test 全 ok（含 connect_recheck 3 例）
+  DESKTOP_CHECK_EXIT=0
+```
+
+自检：未 commit、未 push、无 staged 文件；只改 `packages/core/tests/io/fragments.ts` + 新增 `packages/core/tests/html-constants.test.ts` + 本报告；未改 `src/**`（T9-2 的 src 变异已还原，diff 与基线一致）。

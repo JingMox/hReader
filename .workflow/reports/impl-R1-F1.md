@@ -1867,3 +1867,87 @@ $ git show --stat HEAD | tail -8
 ### 未做
 
 - 未 `push`；未改任何源码/测试/文档内容（本轮只做提交）。
+
+## F15 按终审报告修 1 条 P1 + 3 条 P2（R1-F15，未提交、未 push）
+
+审计依据：`.workflow/reports/audit-R1-final.md`（CHANGES-NEEDED，P0=0/P1=1/P2=5）。本轮只碰 F15-1~F15-4；其余 P2 不在本轮范围。**一条测试都没改**（`tests/**` 未触碰），需要改的 3 条列在下面 `TESTS_TO_UPDATE`。
+
+### F15-1（P1）契约表与行为对齐 —— `docs/05-feature-cards.md`
+
+- `:418`（`invalid_fragment` 行）原文 `片段标签不配平`，而 F11 之后该码只在两处抛：空白片段（`packages/core/src/ops/patchNode/fragment.ts:239-241`）与"解析后不是恰好一个根元素"（`packages/core/src/ops/patchNode/fragmentTokens.ts:38-49`）；片段路径已完全不判标签配平（`<div>`、`<b><i>x</b></i>` 都被接受）。
+  改为：`片段为空/只有空白，或解析后不是恰好一个根元素（标签不配平不算错——HTML5 容错解析会补闭合）`。
+- `:411`（`invalid_html` 行）删掉已失效的"不是完整文档"分支，改为 `传进来的不是字符串 / 文档没有 <head> 时注入主题样式失败`（现只有 `parse.ts:271-273`、`fragment.ts:222`、`style/apply.ts:128` 沾"没有 `<head>`"）。
+- 退出码列（均为 `1`）未动。
+- 连带清掉 `:120` 里旧名 `isBlockLevel` → `isPatchableTarget`（F15-2 的改名要求"全清"）。
+
+### F15-2（P2-1）名字与报文不再宣称"块级=同口径"
+
+- `packages/core/src/ops/patchNode/attrs.ts:38-40`：`isBlockLevel` → `isPatchableTarget`（判的仍是 `PATCHABLE_TAGS`）。
+- `packages/core/src/ops/patchNode/apply.ts:11` import、`:91` 调用点同步。
+- `packages/core/src/ops/patchNode/apply.ts:94` 报文 `patch 目标必须是块级元素` → `patch 目标必须是可寻址且可作目标的块级元素`。
+- `packages/core/src/ops/patchNode/attrs.ts:1` 头注释 `与 html/inject.ts 同口径` → `与 html/inject.ts 共用同一批标签常量`；`:36-39` 文档注释补上"这里判的是 `可作目标` 集合（`PATCHABLE_TAGS`），允许比可寻址集合 `ADDRESSABLE_TAGS` 小"。
+- `packages/core/src/html/constants.ts:76` 里对 `isBlockLevel` 的引用同步改名（否则注释指向一个已不存在的符号）。
+- `grep -rn isBlockLevel packages/*/src docs` → 无命中。
+
+### F15-3（P2-2）`<article>` 注释改成与生效路径一致 —— 只改注释，集合内容未动
+
+- `packages/core/src/html/constants.ts:50` 原文写"最外层 article 自身必须带 id；嵌套 article 由 `isInjectionTarget` 另行排除"，但 `packages/core/src/html/inject.ts:39` 是
+  `node.tag === ARTICLE_TAG ? !insideArticle : insideArticle && ADDRESSABLE_TAGS.has(node.tag)`，
+  tag 为 `article` 的节点永远走第一分支，`ADDRESSABLE_TAGS.has("article")` **永不被求值**；`article` 留在集合里的唯一实际作用是随拷贝进 `PATCHABLE_TAGS`。
+- 改为：`<article>` 放在这里是为了让 `PATCHABLE_TAGS` 能按 id 命中 `<article>`；最外层/嵌套 article 的注入判定由 `html/inject.ts:39` 的 tag 分支直接做（tag 为 article 时走第一分支，本集合的 has("article") 不被求值）。
+- 未把 `article` 移出集合再加进 `PATCHABLE_TAGS`（那会破坏"只增不改"的规则）。
+
+### F15-4（P2-4）"只有注释"的片段报文与根数分离 —— `fragmentTokens.ts`
+
+- `packages/core/src/ops/patchNode/fragmentTokens.ts:41-43` 新增分支：`candidates.length === 1` 且唯一根 `kind !== "element"` 时抛 `invalid_fragment`，报文 `片段的根不是元素（是注释或纯文本），请给一个元素`；根数 ≠ 1 的旧报文（`片段必须恰好有一个根元素（实际 N 个根级内容节点）`）保留在 `:44-47`。
+- 真机判据（`node --experimental-strip-types packages/cli/src/main.ts`，沙箱 `/tmp/f15check`，`hr normalize --write` 后对 `hr-294114b7`（`<p>`）做 `--action append`）：
+
+```
+frag=[<!--x-->] rc=1 out=片段的根不是元素（是注释或纯文本），请给一个元素
+frag=[text]     rc=1 out=片段的根不是元素（是注释或纯文本），请给一个元素
+frag=[<b>x</b>] rc=0 out=patched t.html (129 bytes, +0)
+```
+
+### TESTS_TO_UPDATE（锁旧报文，未改测试）
+
+`packages/core/tests/io/fragments.ts` 三条 `marker` 仍锁旧串，需测试编写员改成 `根不是元素`：
+
+- `:46` `{ fragment: "纯文本", code: "invalid_fragment", marker: "恰好有一个根元素" }`
+- `:63` `{ fragment: "<!-- 只有注释 -->", code: "invalid_fragment", marker: "恰好有一个根元素" }`
+- `:66` `{ fragment: "<!-- only a comment -->", code: "invalid_fragment", marker: "根元素" }`
+
+（`:45` `<p>a</p><p>b</p>` 与 `:64`/`:65` 空片段仍是旧报文，不需要改；`packages/core/tests/io/fragment-gate.test.ts:100` 的 `marker: "恰好有一个根元素（实际 2 个根级内容节点）"` 也仍然对。）
+
+失败原始输出（`/tmp/verify-f15b.log`，`test:coverage` 段）：
+
+```
+× parseFragment · 必须拒绝的片段 > should reject '纯文本' with 'invalid_fragment' 3ms
+  → expected '片段的根不是元素（是注释或纯文本），请给一个元素' to contain '恰好有一个根元素'
+× parseFragment · 必须拒绝的片段 > should reject '<!-- 只有注释 -->' with 'invalid_fragment' 0ms
+  → expected '片段的根不是元素（是注释或纯文本），请给一个元素' to contain '恰好有一个根元素'
+× parseFragment · 必须拒绝的片段 > should reject '<!-- only a comment -->' with 'invalid_fragment' 0ms
+  → expected '片段的根不是元素（是注释或纯文本），请给一个元素' to contain '根元素'
+FAIL  packages/core/tests/io/fragment-gate.test.ts > ... 3 failed
+```
+
+### 门禁原始结果
+
+- `npx prettier --write packages/core/src/ops/patchNode/fragmentTokens.ts` → 只格式化该文件；`git diff --stat` 仍只有本任务的 5 个文件：
+  `docs/05-feature-cards.md`、`packages/core/src/html/constants.ts`、`packages/core/src/ops/patchNode/{apply,attrs,fragmentTokens}.ts`。
+- `pnpm verify` **EXIT=1**，唯一红点在 `test:coverage` 的上述 3 条锁旧报文用例；其前 `format:check`/`check-ci-parity`/`lint`/`lint:sh`/`lint-sh-selftest`/`typecheck`/`build` 全过。
+  因 `&&` 短路，`depcruise`/`knip` 未在 verify 内执行，单独补跑：`pnpm depcruise` EXIT=0（`no dependency violations found (616 modules, 2592 dependencies cruised)`）、`pnpm knip` EXIT=0。
+- `pnpm desktop:check` **EXIT=0**（cargo fmt/clippy/test；`3 passed; 0 failed`）。
+- `git status --porcelain`：上述 5 个 M + 未跟踪的 `.workflow/reports/audit-R1-final.md`；**无 staged 文件**，未 commit、未 push。
+
+### 行号索引（本轮改动落点）
+
+| 文件:行 | 内容 |
+| --- | --- |
+| `docs/05-feature-cards.md:411` | `invalid_html` 何时出现 |
+| `docs/05-feature-cards.md:418` | `invalid_fragment` 何时出现（P1） |
+| `docs/05-feature-cards.md:120` | `isPatchableTarget` 改名同步 |
+| `packages/core/src/ops/patchNode/attrs.ts:1`、`:38-40` | 头注释 + 改名 + 集合口径说明 |
+| `packages/core/src/ops/patchNode/apply.ts:11`、`:91`、`:94` | import / 调用点 / 报文 |
+| `packages/core/src/html/constants.ts:50` | `<article>` 注释改对生效路径 |
+| `packages/core/src/html/constants.ts:76` | 注释里的函数改名同步 |
+| `packages/core/src/ops/patchNode/fragmentTokens.ts:41-43` | 新增"根不是元素"分支 |

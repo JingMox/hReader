@@ -43,7 +43,7 @@ export const REJECTED_FRAGMENTS: RejectedFragment[] = [
     marker: "meta http-equiv",
   },
   { fragment: "<p>a</p><p>b</p>", code: "invalid_fragment", marker: "恰好有一个根元素" },
-  { fragment: "纯文本", code: "invalid_fragment", marker: "恰好有一个根元素" },
+  { fragment: "纯文本", code: "invalid_fragment", marker: "根不是元素" },
   {
     fragment: "<p>a</style><style>body{}</style></p>",
     code: "forbidden_content",
@@ -60,10 +60,10 @@ export const REJECTED_FRAGMENTS: RejectedFragment[] = [
     marker: "data:",
   },
   { fragment: '<P ONCLICK="x">y</P>', code: "forbidden_content", marker: "onclick" },
-  { fragment: "<!-- 只有注释 -->", code: "invalid_fragment", marker: "恰好有一个根元素" },
+  { fragment: "<!-- 只有注释 -->", code: "invalid_fragment", marker: "根不是元素" },
   { fragment: "", code: "invalid_fragment", marker: "根元素" },
   { fragment: "   \n\t ", code: "invalid_fragment", marker: "根元素" },
-  { fragment: "<!-- only a comment -->", code: "invalid_fragment", marker: "根元素" },
+  { fragment: "<!-- only a comment -->", code: "invalid_fragment", marker: "根不是元素" },
   // 单根但未闭合/交错嵌套的片段**不再列为非法**：`fragment.ts` 已改成"先解析后校验"，
   // 可选结束标签由 HTML5 容错解析自动闭合（见 ACCEPTED_FRAGMENTS 的两条对照）。
   // 裸 `<tr>` / `<td>` 片段同理：`CONTEXT_ANCESTORS` 会让它们套上 `<table><tbody>` 祖先链解析，

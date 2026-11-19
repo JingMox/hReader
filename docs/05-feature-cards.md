@@ -117,7 +117,7 @@
 - AC4 `--json` 输出 schema 稳定，含 `ok/code/message` 字段；错误时也输出合法 JSON（便于 Agent 解析）。
 - AC5 `hr patch` 在 `--html-file` 指向不存在文件、非法 UTF-8 时给出稳定错误码，不写文件。
 - AC6 帮助文本 `--help` 覆盖所有命令与参数；`hr` 无参数时输出用法并非 0 退出码。
-- AC7 patch 目标集 = `PATCHABLE_TAGS`（默认与 `ADDRESSABLE_TAGS` 同集，当前无例外）：`div`、`tbody/tr/td` 都能直接 `append`/`replace`，行内元素仍拒（`isBlockLevel`）；表格结构片段（`<tr>`/`<td>`）解析时套上祖先链，不再要求整表替换。
+- AC7 patch 目标集 = `PATCHABLE_TAGS`（默认与 `ADDRESSABLE_TAGS` 同集，当前无例外）：`div`、`tbody/tr/td` 都能直接 `append`/`replace`，行内元素仍拒（`isPatchableTarget`）；表格结构片段（`<tr>`/`<td>`）解析时套上祖先链，不再要求整表替换。
 
 ### M1.9 Universal Skill
 
@@ -408,14 +408,14 @@ pnpm desktop:dev -- --workspace <dir> --open <file>   # 开发时直跑
 
 | code | 退出码 | 何时出现（用户视角） |
 | --- | --- | --- |
-| `invalid_html` | 1 | 传进来的不是字符串 / 不是完整文档 |
+| `invalid_html` | 1 | 传进来的不是字符串 / 文档没有 `<head>` 时注入主题样式失败 |
 | `no_article` | 1 | **源文档里没有 `<article>`**，无从导出 |
 | `empty_document` | 1 | **`<article>` 在，但裁掉交互 UI 后没有可读文本**（与 `no_article` 不许合并）；判定前先剥零宽字符 `U+200B`/`U+FEFF`/`U+180E`，否则只含零宽的文档会排出空白页 |
 | `node_not_found` | 1 | `data-hr-id` 匹配不到节点 |
 | `node_not_allowed` | 1 | 目标是页面外壳锚点，不可读 |
 | `invalid_selector` | 1 | 选择器非法 |
 | `invalid_document` | 1 | `hr-meta` 等伴随文件不是合法 JSON |
-| `invalid_fragment` | 1 | 片段标签不配平 |
+| `invalid_fragment` | 1 | 片段为空/只有空白，或解析后不是恰好一个根元素（标签不配平不算错——HTML5 容错解析会补闭合） |
 | `invalid_max_bytes` | 1 | `maxBytes` 超出 `(0, MAX_BYTES_LIMIT]` |
 | `invalid_input` | 1 | 参数/配置/输入超出契约（含 `hr export` 产物 **> 4 MiB**；按拼接后的 UTF-8 字节**精确**判定，不是估算，故 4 MiB±1 不会走错分支） |
 | `locked` | 1 | 并发写锁被抢/被接管 |
