@@ -47,7 +47,7 @@ export const BLOCK_TAGS: ReadonlySet<string> = new Set([
  *
  * 与 `BLOCK_TAGS` 的关系（三者不是同一个集合，别合并）：`BLOCK_TAGS` 管内容模型投影，本集合管"有没有 id"，
  * `PATCHABLE_TAGS` 管"能不能被改"。加了一个块级容器却忘了加在这里，症状就是它拿不到 id、批注无处可挂（BUG-12/13）。
- * `<article>` 也在这里：最外层 article 自身必须带 id；嵌套 article 由 `html/inject.ts` 的 `isInjectionTarget` 另行排除。
+ * `<article>` 放在这里是为了让 `PATCHABLE_TAGS` 能按 id 命中 `<article>`；最外层/嵌套 article 的注入判定由 `html/inject.ts:39` 的 tag 分支直接做（tag 为 article 时走第一分支，本集合的 has("article") 不被求值）。
  */
 export const ADDRESSABLE_TAGS: ReadonlySet<string> = new Set([
   ...BLOCK_TAGS,
@@ -73,7 +73,7 @@ export const ADDRESSABLE_TAGS: ReadonlySet<string> = new Set([
 
 /**
  * 可作 `hr patch` 目标的标签：默认与 `ADDRESSABLE_TAGS` 同集（能拿到 id 的都能被改）。
- * "可寻址但不可作目标"只能在这里表达（从集合里减掉 + 写清理由），不许在 `isBlockLevel` 里加 if 链。
+ * "可寻址但不可作目标"只能在这里表达（从集合里减掉 + 写清理由），不许在 `isPatchableTarget` 里加 if 链。
  * 当前例外为空：目标里面能装什么由 `ops/patchNode/content.ts` 的内容模型判，与"能不能当目标"正交。
  */
 // 独立实例（不是 `ADDRESSABLE_TAGS` 的别名）：两套口径要能分开演进，减项不许传染寻址面。

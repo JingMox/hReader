@@ -38,6 +38,10 @@ export const contentNodesOf = (root: HtmlNode): readonly HtmlNode[] => {
 export const singleElementOf = (candidates: readonly HtmlNode[]): HtmlElementNode => {
   const [only] = candidates;
   if (candidates.length === 1 && only?.kind === "element") return only;
+  // 恰好一个根、但它不是元素（注释/纯文本）：报文要和"根数不对"分开，否则用户看到"实际 1 个"会以为程序算错。
+  if (candidates.length === 1) {
+    throw new HrError("invalid_fragment", "片段的根不是元素（是注释或纯文本），请给一个元素");
+  }
   throw new HrError(
     "invalid_fragment",
     `片段必须恰好有一个根元素（实际 ${String(candidates.length)} 个根级内容节点）`,

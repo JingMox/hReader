@@ -8,7 +8,7 @@ import { parseHtml } from "../../html/parse";
 import { serializeHtml } from "../../html/serialize";
 import { ZERO_SPAN } from "../../html/span";
 import { HrError } from "../../hr-error";
-import { attributeValue, isBlockLevel } from "./attrs";
+import { attributeValue, isPatchableTarget } from "./attrs";
 import {
   PATCH_ACTIONS,
   ROOT_TARGET_ID,
@@ -88,10 +88,10 @@ const locateById = (root: HtmlNode, targetId: string): HtmlElementNode => {
     }
     throw new HrError("node_not_found", `找不到 data-hr-id="${targetId}" 的元素`);
   }
-  if (!isBlockLevel(found)) {
+  if (!isPatchableTarget(found)) {
     throw new HrError(
       "invalid_input",
-      `data-hr-id="${targetId}" 落在 <${found.tag}> 上，patch 目标必须是块级元素`,
+      `data-hr-id="${targetId}" 落在 <${found.tag}> 上，patch 目标必须是可寻址且可作目标的块级元素`,
     );
   }
   return found;
