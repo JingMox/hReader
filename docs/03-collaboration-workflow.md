@@ -1052,3 +1052,25 @@ R<n> 开始
 - 子代理发现派单前提不对，**应当先反问再动手**；反问不计为失败，凭假前提硬凑出来的实现才算失败（`docs/03` §11.20）。
 - 同理，派单里禁止用"照抄 XX 的文案"这种**指代式**要求，要么给原文，要么允许对方按风格原创并在报告里注明。
 
+
+### 12.6 测 `serve` 的三条铁律（四次踩坑后写死，2026-11-19）
+
+**症状**：子会话的 `bash` 工具挂 240s 被系统报警，我 kill 掉 `hr serve …` 进程后 shell 才返回。R1 期间业务编写员踩了两次（`/tmp/r1f1-ev2.sh`）、R2 测试员踩了一次（`pid 72547`），合计浪费 ~20 分钟。根因是 `serve` **没有"跑完"这回事**，把它放前台就是无限等待。
+
+**铁律一：永不前台跑常驻进程**。要么后台 `&`（拿到 `$!` 后**必杀**），要么 `timeout N`。
+```bash
+# A. 后台 + 轮询 + 收尾必杀
+node --experimental-strip-types packages/cli/src/main.ts serve demo.html --port 8978 \
+  --app-dir packages/app/dist --json > /tmp/s.json 2>&1 &
+SPID=$!; sleep 2
+URL=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/s.json","utf8")).data.url)')
+curl -sS -D /tmp/h.txt "$URL" -o /tmp/b.html; echo "curl rc=$?"
+kill $SPID
+
+# B. 一次性、限时（超时 rc=124 是预期，不是失败）
+timeout 15 node --experimental-strip-types packages/cli/src/main.ts serve … --port 8979
+```
+
+**铁律二：取 `rc` 时禁止接管道**。`cmd | tail` 得到的 `$?` 是 `tail` 的（`BUG-11` 曾被这样误判成 rc=0，前后骗了三次）。一律 `cmd > /tmp/o 2>&1; echo rc=$?`。
+
+**铁律三：常驻进程留下的端口/pid 必须显式收尾**。收尾动作写进报告（`kill $SPID` 的退出码），否则下一轮"端口被占"会被误判成产品缺陷。
