@@ -135,6 +135,14 @@ export const keysOf = (value: unknown): readonly string[] =>
     ? Reflect.ownKeys(value).map((key) => String(key))
     : [];
 
+/** `--json` 里的数组字段按元素遍历（非数组一律空），避免测试里为 `unknown[]` 写断言。 */
+export const listOf = (value: unknown): readonly unknown[] =>
+  Array.isArray(value)
+    ? keysOf(value)
+        .filter((key) => key !== "length")
+        .map((key) => fieldOf(value, key))
+    : [];
+
 /** 数组/对象按下标取值（配合 `keysOf` 断言嵌套键序）。 */
 export const atOf = (value: unknown, index: number): unknown =>
   Reflect.get(Object(value), String(index));

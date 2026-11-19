@@ -2,7 +2,7 @@
 
 export { HrError } from "./hr-error";
 export type { HrErrorCode } from "./hr-error";
-export { injectNodeIds, parseHtml, serializeHtml } from "./html";
+export { injectNodeIds, parseHtml, serializeHtml, hasArticle } from "./html";
 export { toDocumentModel, validateDocument } from "./model";
 export type { DocumentModel } from "./model";
 export { buildOutline, readNode } from "./ops";
@@ -122,3 +122,5 @@ export type {
 } from "./ops/annotationOps";
 export { revertLast } from "./ops/revertOp";
 export type { RevertResult } from "./ops/revertOp";
+export { normalizeFile } from "./ops/normalizeFile";
+export type { NormalizeInput, NormalizeResult } from "./ops/normalizeFile";

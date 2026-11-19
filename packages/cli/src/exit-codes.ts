@@ -36,7 +36,7 @@ const EXIT_CODES = {
   too_many_clients: EXIT_FAILURE,
   unauthorized: EXIT_FAILURE,
   forbidden_origin: EXIT_FAILURE,
-  daemon_already_running: EXIT_USAGE,
+  daemon_already_running: EXIT_FAILURE,
   invalid_payload: EXIT_FAILURE,
   nothing_to_undo: EXIT_FAILURE,
   anchor_lost: EXIT_FAILURE,
@@ -47,6 +47,9 @@ const EXIT_CODES = {
   chrome_failed: EXIT_IO,
   render_timeout: EXIT_IO,
   render_empty: EXIT_IO,
+  needs_normalize: EXIT_USAGE,
+  port_in_use: EXIT_USAGE,
+  content_model_conflict: EXIT_USAGE,
 } satisfies Record<HrErrorCode, number>;
 
 /** `satisfies` 已保证表内穷尽：CLI 与 core 同仓同版本，不存在"新 core 配旧 CLI"的运行时分支。 */

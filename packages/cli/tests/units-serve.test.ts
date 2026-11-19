@@ -62,7 +62,10 @@ describe("serveCommand · 结束后", () => {
       const text = await serveCommand(inputOf(dir, false, stopped));
       stop();
 
-      expect(text).toMatch(/^serving .+ on http:\/\/127\.0\.0\.1:\d+\/ \(pid \d+\)\n$/u);
+      // 打印的必须是"能直接粘进浏览器"的那串：裸地址没 token，粘了就是 401（`GET /` 吃 token）。
+      expect(text).toMatch(
+        /^serving .+ on http:\/\/127\.0\.0\.1:\d+\/\?token=[\w-]+ \(pid \d+\)\n$/u,
+      );
     } finally {
       dir.drop();
     }

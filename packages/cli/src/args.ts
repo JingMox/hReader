@@ -21,6 +21,27 @@ const ACTIONS: readonly string[] = ["replace", "insert_before", "insert_after", 
 
 const isAction = (value: string): value is PatchAction => ACTIONS.includes(value);
 
+/** 只补 id、不碰其它字节：`--write` 才落盘，不给就只把结果打到 stdout。 */
+const normalizeIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
+  const [file = "", ...extra] = rest;
+  const problem =
+    extra.length > 0
+      ? `normalize 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
+      : file === ""
+        ? "normalize 缺少 <file>"
+        : unusedFlag(raw, ["--json", "--write", "--workspace"]);
+  if (problem !== undefined) return failure(problem, "normalize");
+  return {
+    ok: true,
+    intent: {
+      kind: "normalize",
+      path: absoluteOf(file, cwd),
+      write: raw.switches.has("--write"),
+      ...commonOf(raw, cwd),
+    },
+  };
+};
+
 const outlineIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
   const [file = "", ...extra] = rest;
   const problem =
@@ -221,6 +242,7 @@ type IntentBuilder = (raw: Raw, rest: readonly string[], cwd: string) => ParsedA
 
 /** 一张表代替 if 链：每加一个命令只多一行，`build` 的圈复杂度不随之长。 */
 const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
+  normalize: normalizeIntent,
   outline: outlineIntent,
   read: readIntent,
   patch: patchIntent,
@@ -236,7 +258,7 @@ const build = (raw: Raw, cwd: string): ParsedArgs => {
   const [name, ...rest] = raw.positionals;
   if (name === undefined) {
     return failure(
-      "缺少命令：outline | read | patch | style | undo | export | pdf | png | serve",
+      "缺少命令：normalize | outline | read | patch | style | undo | export | pdf | png | serve",
       undefined,
     );
   }

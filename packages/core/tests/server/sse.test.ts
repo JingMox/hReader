@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import { cookieOf, httpCall, openSse, type SseFrame, withServer } from "./harness";
 import { withPost } from "./wire";
 
+// 追加到 <p>（hr-d）的片段必须是行内内容：块级子节点会被 F6 的内容模型校验拒掉，
+// 而本文件的用例只关心“帧的形状”，不关心插进去的是段落还是强调。
 const bodyOf = (fragment: string): string =>
   JSON.stringify({ docId: "doc.html", action: "append", targetId: "hr-d", fragment });
 
@@ -76,8 +78,8 @@ describe("sse · patch 事件与转义", () => {
     await withServer(async (ctx) => {
       const sse = openSse(ctx.port, "/api/events", { Cookie: cookieOf(ctx.token) });
       await sse.waitFor(1);
-      expect(await send(ctx.port, ctx.token, "<p>一</p>")).toBe(200);
-      expect(await send(ctx.port, ctx.token, "<p>二</p>")).toBe(200);
+      expect(await send(ctx.port, ctx.token, "<b>一</b>")).toBe(200);
+      expect(await send(ctx.port, ctx.token, "<b>二</b>")).toBe(200);
       await untilFrames(sse, (frames) => frames.filter(isDocChanged).length >= 2);
       sse.close();
 
@@ -93,7 +95,7 @@ describe("sse · 外部文件与转义", () => {
     await withServer(async (ctx) => {
       const sse = openSse(ctx.port, "/api/events", { Cookie: cookieOf(ctx.token) });
       await sse.waitFor(1);
-      expect(await send(ctx.port, ctx.token, "<p>x</p>")).toBe(200);
+      expect(await send(ctx.port, ctx.token, "<b>x</b>")).toBe(200);
       writeFileSync(join(ctx.workspace, "extra.html"), "<article><p>y</p></article>");
       // 去抖后才会把新文件报出来：等"含 extra.html 的 library.changed"出现，而不是等任意一条。
       await untilFrames(sse, (frames) =>
@@ -111,7 +113,7 @@ describe("sse · 外部文件与转义", () => {
     await withServer(async (ctx) => {
       const sse = openSse(ctx.port, "/api/events", { Cookie: cookieOf(ctx.token) });
       await sse.waitFor(1);
-      expect(await send(ctx.port, ctx.token, "<p>a\nb</p>")).toBe(200);
+      expect(await send(ctx.port, ctx.token, "<b>a\nb</b>")).toBe(200);
       await untilFrames(sse, (frames) => frames.some(isDocChanged));
       sse.close();
 
@@ -127,7 +129,7 @@ describe("sse · 帧转义（换行不能伪造新帧）", () => {
     await withServer(async (ctx) => {
       const sse = openSse(ctx.port, "/api/events", { Cookie: cookieOf(ctx.token) });
       await sse.waitFor(1);
-      writeFileSync(join(ctx.workspace, "we\nird.html"), "<p>x</p>");
+      writeFileSync(join(ctx.workspace, "we\nird.html"), "<article><p>x</p></article>");
       const deadline = Date.now() + 3000;
       let frame = sse.frames.find((candidate) => candidate.data.includes("ird.html"));
       while (frame === undefined && Date.now() < deadline) {
@@ -148,8 +150,8 @@ describe("sse · 帧转义（换行不能伪造新帧）", () => {
 describe("sse · Last-Event-ID 命中", () => {
   it("should backfill only the missed event on a hit (no reset)", async () => {
     await withServer(async (ctx) => {
-      await send(ctx.port, ctx.token, "<p>一</p>");
-      await send(ctx.port, ctx.token, "<p>二</p>");
+      await send(ctx.port, ctx.token, "<b>一</b>");
+      await send(ctx.port, ctx.token, "<b>二</b>");
       const sse = openSse(ctx.port, "/api/events", {
         Cookie: cookieOf(ctx.token),
         "Last-Event-ID": "1",
@@ -175,7 +177,7 @@ describe("sse · Last-Event-ID 过期", () => {
     async () => {
       await withServer(async (ctx) => {
         for (let index = 0; index < 258; index += 1) {
-          expect(await send(ctx.port, ctx.token, `<p>e${String(index)}</p>`)).toBe(200);
+          expect(await send(ctx.port, ctx.token, `<b>e${String(index)}</b>`)).toBe(200);
         }
         const sse = openSse(ctx.port, "/api/events", {
           Cookie: cookieOf(ctx.token),

@@ -18,7 +18,7 @@ export const attributeOf = (node: HtmlElementNode, name: string): string | undef
   return undefined;
 };
 
-/** 与 M1.1 注入范围同一判据：块级标签，或带 `data-hr-component` 的 `div`。 */
+/** 模型面是寻址面的子集：块级标签，或带 `data-hr-component` 的 `div`（比 `ADDRESSABLE_TAGS` 窄）。 */
 export const isBlockElement = (node: HtmlElementNode): boolean =>
   BLOCK_TAGS.has(node.tag) ||
   (node.tag === "div" && attributeOf(node, COMPONENT_ATTRIBUTE) !== undefined);

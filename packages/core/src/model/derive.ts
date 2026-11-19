@@ -79,9 +79,10 @@ const enterArticle = (node: HtmlElementNode, state: DeriveState): void => {
   }
   const draft = draftOf(node, ARTICLE_TAG);
   if (draft.id === "") {
+    // 不点名 `injectNodeIds`：那是内部函数，用户手上没有这个入口（B-02）。
     throw new HrError(
-      "invalid_document",
-      `<${ARTICLE_TAG}> 缺少合法的 data-hr-id：模型根 ID 不得为空（输入需先经 injectNodeIds）`,
+      "needs_normalize",
+      `<${ARTICLE_TAG}> 缺少合法的 data-hr-id：这份文档还没 normalize 过（先跑 hr normalize --write）`,
     );
   }
   state.open.push(draft);

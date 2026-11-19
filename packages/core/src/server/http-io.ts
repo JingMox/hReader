@@ -194,7 +194,8 @@ export const authOf = (
   if (route.auth === "none") return {};
   const cookieOk = tokenMatches(cookieOf(headerOf(req, "cookie"), COOKIE_NAME), token);
   if (route.auth === "token") {
-    const query = url.searchParams.get("t");
+    // 两个参数名都认：`?t=` 是桌面壳与旧链接的形状，`?token=` 是 `hr serve` 打印地址的形状。
+    const query = url.searchParams.get("t") ?? url.searchParams.get("token");
     if (query !== null && tokenMatches(query, token)) return { redirect: url.pathname };
     return cookieOk ? {} : unauthorized;
   }

@@ -52,12 +52,16 @@ describe("outlineCommand", () => {
     });
   });
 
-  it("should degrade to an empty outline when ids are missing (warning diagnostic)", async () => {
+  it("should reject a handwritten document with needs_normalize (no silent empty outline)", async () => {
     const path = fileOf("o3.html", "<article><h2>标题</h2></article>");
-    const text = await outlineCommand({ path, json: true });
 
-    expect(text).toContain('"outline_node_without_id"');
-    expect(text).toContain('"nodes":[]');
+    // 用户视角：大纲空了却不说“为什么”，看起来像“文档没标题”；这里必须指向唯一的下一步。
+    await expect(outlineCommand({ path, json: true })).rejects.toMatchObject({
+      code: "needs_normalize",
+    });
+    await expect(outlineCommand({ path, json: false })).rejects.toThrow(
+      /缺少 data-hr-id，先跑 hr normalize .*o3\.html --write/u,
+    );
   });
 });
 
@@ -93,11 +97,11 @@ describe("readCommand", () => {
     ).rejects.toMatchObject({ code: "invalid_max_bytes" });
   });
 
-  it("should inject ids for a document without any and report both", async () => {
+  it("should reject a document without any ids (needs_normalize, same code as outline)", async () => {
     const path = fileOf("r4.html", "<article><p>x</p></article>");
-    const text = await readCommand({ path, target: "p", maxBytes: undefined, json: true });
-    expect(text).toMatch(/"ids":\["hr-[^"]+"\]/u);
-    expect(text).toContain("data-hr-id=");
+    await expect(
+      readCommand({ path, target: "p", maxBytes: undefined, json: true }),
+    ).rejects.toMatchObject({ code: "needs_normalize" });
   });
 });
 
@@ -106,7 +110,9 @@ describe("patchCommand", () => {
     fileOf("p1.html", DOC);
     const text = await patchCommand({
       path: "p1.html",
-      nodeId: "hr-d",
+      // 目标换成容器 <article>：往 <p>（hr-d）里 append 段落会被 F6 拒（内容模型冲突），
+      // 而这条用例只关心“写入成功且回报 changed/newIds/historyPath”。
+      nodeId: "hr-a",
       action: "append",
       html: "<p>新</p>",
       workspace: dir,
@@ -130,23 +136,8 @@ describe("patchCommand", () => {
       json: false,
     });
 
-    expect(text).toMatch(/^patched .*p2\.html \(\d+ bytes, \+\d+ ids\)\n$/u);
-  });
-});
-
-describe("patchCommand · 失败面", () => {
-  it("should reject an unknown node id (node_not_found)", async () => {
-    fileOf("p3.html", DOC);
-    await expect(
-      patchCommand({
-        path: "p3.html",
-        nodeId: "hr-nope",
-        action: "delete",
-        html: undefined,
-        workspace: dir,
-        json: false,
-      }),
-    ).rejects.toMatchObject({ code: "node_not_found" });
+    // replace 后 id 由内容派生 ⇒ 旧 id 失效；人读行必须把“旧 → 新”写出来，否则用户拿着旧 id 继续调。
+    expect(text).toMatch(/^patched .*p2\.html \(\d+ bytes, id 变更: hr-c → hr-[0-9a-f]{8}\)\n$/u);
   });
 });
 
@@ -217,5 +208,65 @@ describe("styleCommand · visual", () => {
 
     expect(first).toContain('"changed":true');
     expect(again).toContain('"changed":false');
+  });
+
+  it("should fall back to its own path when no display path is supplied", async () => {
+    fileOf("s5.html", DOC);
+    const human = await styleCommand({
+      path: "s5.html",
+      mode: { kind: "visual", id: DEFAULT_STYLE_ID },
+      workspace: dir,
+      json: false,
+    });
+
+    // 命令层拿不到用户写的那个相对串（只有分发层知道）：退路是结果自己的路径，且一样要印出来。
+    expect(human).toContain("s5.html");
+    expect(human).toMatch(/^styled .+s5\.html \(\d+ bytes\)\n$/u);
+  });
+});
+
+describe("styleCommand · visual 的 id 校验", () => {
+  it("should refuse a tone id on --visual (B-16：两套 id 空间)", async () => {
+    fileOf("s4.html", DOC);
+
+    // 把语言基调 id 交给 `--visual` 会静默换错主题，所以要在应用前就拦住并指着剩下的那条路。
+    await expect(
+      styleCommand({
+        path: "s4.html",
+        mode: { kind: "visual", id: "feynman-tech" },
+        workspace: dir,
+        json: false,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("should surface a malformed visual id as invalid_style instead of treating it as unknown", async () => {
+    fileOf("s6.html", DOC);
+
+    // `--visual "Bad Id!"` 连形状都不合法：这不是"找不到主题"，而是 id 本身就写错了（后手完全不同）。
+    await expect(
+      styleCommand({
+        path: "s6.html",
+        mode: { kind: "visual", id: "Bad Id!" },
+        workspace: dir,
+        json: false,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_style" });
+  });
+});
+
+describe("styleCommand · visual 的未知 id", () => {
+  it("should let an unknown id through to applyStyle instead of guessing", async () => {
+    fileOf("s5.html", DOC);
+
+    // 既不是 visual 也不是 tone：不在这里抢答，交给 applyStyle 报它自己的 `unknown_style`。
+    await expect(
+      styleCommand({
+        path: "s5.html",
+        mode: { kind: "visual", id: "no-such-theme" },
+        workspace: dir,
+        json: false,
+      }),
+    ).rejects.toMatchObject({ code: "unknown_style" });
   });
 });

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { dataUndo, humanUndo } from "../src/output";
 import { run, type CliIo } from "../src/run";
 import { checked, DOC, seed, sha } from "./cli-support";
-import { keysOf, runCli, withTempDir } from "./harness";
+import { fieldOf, keysOf, parseJsonLine, runCli, withTempDir } from "./harness";
 
 interface Capture {
   readonly io: CliIo;
@@ -81,7 +81,7 @@ describe("hr undo · 真盘与输出", () => {
       const code = await run(["undo", "a.html"], io);
 
       expect(code).toBe(1);
-      expect(err.join("")).toContain("没有可回滚的历史快照");
+      expect(err.join("")).toContain("没有可撤销的历史快照");
       expect(out).toEqual([]);
       expect(sha(path)).toBe(before);
     });
@@ -112,9 +112,10 @@ describe("hr undo · 输出与历史", () => {
       out.length = 0;
       expect(await run(["undo", "a.html", "--json"], io)).toBe(0);
 
-      // 键序是契约（`dataUndo` 的字段顺序）：一条正则同时钉住顺序与四个字段的形状。
-      expect(out.join("")).toMatch(
-        /^\{"path":"[^"]+a\.html","bytes":\d+,"restoredFrom":".+","sha256":"[0-9a-f]{64}"\}.*$/u,
+      // 键序是契约（信封 `ok`→`data`，data 内是 `dataUndo` 的字段顺序）：一条正则同时钉住 envelope 与内层。
+      const line = out.join("").trimEnd();
+      expect(line).toMatch(
+        /^\{"ok":true,"data":\{"path":"[^"]+a\.html","bytes":\d+,"restoredFrom":".+","sha256":"[0-9a-f]{64}"\}\}$/u,
       );
       // `sha256` 必须是"恢复后的盘上字节"的哈希：差一位就说明 undo 没真把原字节写回去。
       expect(out.join("")).toContain(`"sha256":"${sha(join(dir, "a.html"))}"`);
@@ -149,7 +150,7 @@ describe("hr undo · 真子进程", () => {
 
       expect(result.code).not.toBe(0);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("没有可回滚的历史快照");
+      expect(result.stderr).toContain("没有可撤销的历史快照");
       expect(sha(path)).toBe(before);
     });
   });
@@ -162,10 +163,15 @@ describe("undo 的输出格式（纯函数）", () => {
     expect(humanUndo(result)).toBe("undone /w/a.html (12 bytes, from r1)\n");
   });
 
-  it("should render a JSON object with the four keys in contract order", () => {
+  it("should wrap the four data keys in the ok envelope, in contract order", () => {
     const line = dataUndo(result);
+    const envelope = parseJsonLine(line);
 
-    expect(keysOf(JSON.parse(line))).toEqual(["path", "bytes", "restoredFrom", "sha256"]);
-    expect(line.endsWith("\n")).toBe(false);
+    expect(keysOf(envelope)).toEqual(["ok", "data"]);
+    expect(fieldOf(envelope, "ok")).toBe(true);
+    // 信封内层键序是契约（`dataUndo` 的字段顺序）：一条 toEqual 同钉住顺序与四个字段。
+    expect(keysOf(fieldOf(envelope, "data"))).toEqual(["path", "bytes", "restoredFrom", "sha256"]);
+    // 所有 `--json` 输出都以换行结尾（行导向消费：`head -1` / `readline` 都不必处理半行）。
+    expect(line.endsWith("\n")).toBe(true);
   });
 });

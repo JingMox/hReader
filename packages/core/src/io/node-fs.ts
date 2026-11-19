@@ -2,6 +2,7 @@
 
 import { constants } from "node:fs";
 import {
+  chmod,
   lstat,
   mkdir,
   open,
@@ -61,6 +62,9 @@ const nodeFileSystem: FileSystem = {
     await mkdir(path, { recursive: true });
   },
   lstat: async (path) => lstat(path),
+  chmod: async (path, mode) => {
+    await chmod(path, mode);
+  },
   readdir: async (path) => readdir(path),
   realpath: async (path) => realpath(path),
   open: openExclusive,

@@ -18,7 +18,10 @@ export const COMPONENT_WHITELIST: readonly string[] = [
 /** 文档容器标签：模型根、注入目标的锚点（M1.2 v2 起 `<article>` 自身也注入）。 */
 export const ARTICLE_TAG = "article";
 
-/** 注入范围：最外层 `<article>` 自身 + `<article>` 内的块级元素；`div` 只在带 `data-hr-component` 时算块级。 */
+/**
+ * 内容模型口径的块级标签：只回答"派生文档模型时这个元素是不是块级"，不回答"能不能被寻址/当 patch 目标"。
+ * 寻址面比它宽（`div`、表格内部都要能被批注和 patch 命中），见 `ADDRESSABLE_TAGS`。
+ */
 export const BLOCK_TAGS: ReadonlySet<string> = new Set([
   "section",
   "header",
@@ -37,6 +40,44 @@ export const BLOCK_TAGS: ReadonlySet<string> = new Set([
   "pre",
   "blockquote",
 ]);
+
+/**
+ * 可寻址集合：`hr normalize` 会给这些元素分配 `data-hr-id`，因此也是 `read`/`patch`/批注的可达面。
+ * = 内容模型块级（`BLOCK_TAGS`）∪ 常见块级容器 ∪ 表格结构。
+ *
+ * 与 `BLOCK_TAGS` 的关系（三者不是同一个集合，别合并）：`BLOCK_TAGS` 管内容模型投影，本集合管"有没有 id"，
+ * `PATCHABLE_TAGS` 管"能不能被改"。加了一个块级容器却忘了加在这里，症状就是它拿不到 id、批注无处可挂（BUG-12/13）。
+ * `<article>` 也在这里：最外层 article 自身必须带 id；嵌套 article 由 `html/inject.ts` 的 `isInjectionTarget` 另行排除。
+ */
+export const ADDRESSABLE_TAGS: ReadonlySet<string> = new Set([
+  ...BLOCK_TAGS,
+  "h5",
+  "h6",
+  "div",
+  "aside",
+  "nav",
+  "main",
+  "article",
+  "dl",
+  "dt",
+  "dd",
+  "figcaption",
+  "caption",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "td",
+  "th",
+]);
+
+/**
+ * 可作 `hr patch` 目标的标签：默认与 `ADDRESSABLE_TAGS` 同集（能拿到 id 的都能被改）。
+ * "可寻址但不可作目标"只能在这里表达（从集合里减掉 + 写清理由），不许在 `isBlockLevel` 里加 if 链。
+ * 当前例外为空：目标里面能装什么由 `ops/patchNode/content.ts` 的内容模型判，与"能不能当目标"正交。
+ */
+// 独立实例（不是 `ADDRESSABLE_TAGS` 的别名）：两套口径要能分开演进，减项不许传染寻址面。
+export const PATCHABLE_TAGS: ReadonlySet<string> = new Set(ADDRESSABLE_TAGS);
 
 /** 内容不解析字符引用、也不解析标签的元素：序列化时原样输出，绝不转义。 */
 export const RAW_TEXT_TAGS: ReadonlySet<string> = new Set([

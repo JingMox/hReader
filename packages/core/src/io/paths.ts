@@ -61,6 +61,10 @@ const storeErrorOf = (relativePath: string, file: string): HrError | undefined =
  * 两道校验各管一类逃逸：词法拦 `..`/绝对路径（文件不存在也要拦得住），
  * realpath 拦"父目录是指向 workspace 外的符号链接"（词法看不出来）。
  * 这里只是第一道；写盘前的两道复核在 `atomic.ts`（P0-1）。
+ *
+ * `file` 也是 `serve` 的 docId、`/api/doc/:docId/*` 的路径参数：这里的三条就是它全部的合法面
+ * （不是 workspace 绝对路径、不靠 `..` 逃跑、不进 `.hreader/**`），平铺目录里的 `a.html` 属于合法，
+ * 不要求"至少两级目录"。
  */
 export const resolveTarget = async (
   input: { readonly workspace: string; readonly file: string },
@@ -73,7 +77,13 @@ export const resolveTarget = async (
   if (isAbsolute(input.file)) throw outside("不接受绝对路径", input.file);
   const workspaceAbs = resolve(input.workspace);
   const lexical = resolve(workspaceAbs, input.file);
-  if (!isInside(workspaceAbs, lexical)) throw outside("`file` 逃出了 workspace", input.file);
+  if (!isInside(workspaceAbs, lexical)) {
+    // 报文给绝对路径与两个可执行退路：输入可以是 `../..` 相对串，读起来看不出自己指到哪去。
+    throw new HrError(
+      "path_outside_workspace",
+      `\`file\` 逃出了 workspace：${lexical}（workspace 是 ${workspaceAbs}；先 cd 到文档所在目录，或用 --workspace <dir>）`,
+    );
+  }
   const workspaceReal = await realpathOf(fsApi, workspaceAbs);
   const realPath = await realpathOf(fsApi, lexical);
   if (!isInside(workspaceReal, realPath)) throw outside("真实路径落在 workspace 外", input.file);

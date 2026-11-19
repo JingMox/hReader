@@ -42,7 +42,13 @@ export type HrErrorCode =
   | "chrome_missing"
   | "chrome_failed"
   | "render_timeout"
-  | "render_empty";
+  | "render_empty"
+  // M4.8 C1/C4：文档缺 `data-hr-id` 是可一步修好的状态（`hr normalize --write`），不当用法错以外的错
+  | "needs_normalize"
+  // M4.8：端口被别的进程占——与 `daemon_already_running`（确实有 daemon 在跑）是两件事
+  | "port_in_use"
+  // R1-F6：片段内容模型与目标容器不兼容（用户换容器/改 HTML 就能修，故与 `invalid_input` 分开）
+  | "content_model_conflict";
 
 /**
  * 唯一对外错误类型。跨包用 `instanceof HrError` 判定，按 `code` 分支；

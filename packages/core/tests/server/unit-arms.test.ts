@@ -212,7 +212,7 @@ describe("daemon · 失败与自删（续）", () => {
 });
 
 describe("server · 端口占用与关闭", () => {
-  it("should map EADDRINUSE to daemon_already_running", async () => {
+  it("should map EADDRINUSE to port_in_use", async () => {
     const blocker = createServer();
     await new Promise<void>((resolve) => {
       blocker.listen(0, "127.0.0.1", resolve);
@@ -231,7 +231,7 @@ describe("server · 端口占用与关闭", () => {
           { workspace, port, home, docId: "doc.html" },
           { patch: nodePatchDeps, style: nodeStyleDeps(workspace), now: Date.now },
         ),
-      ).rejects.toMatchObject({ code: "daemon_already_running" });
+      ).rejects.toMatchObject({ code: "port_in_use" });
     } finally {
       blocker.close();
       rmSync(workspace, { recursive: true, force: true });

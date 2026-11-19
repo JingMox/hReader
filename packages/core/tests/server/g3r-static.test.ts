@@ -81,6 +81,16 @@ describe("indexReply · 构建产物与未构建回退", () => {
     expect(reply.status).toBe(404);
     expect(String(reply.body)).toContain("index.html");
   });
+
+  it("should keep 200 with an empty body when the doc is no longer a document", async () => {
+    // 文档在启动后被换成“不是文档”的东西：首页是 `hr serve` 的自检入口，不该因此变 5xx。
+    writeFileSync(join(fx.workspace, "plain.html"), "<p>随手记一段</p>", "utf8");
+    const reply = await indexReply(ctxOf(""), "plain.html", false);
+
+    expect(reply.status).toBe(200);
+    expect(String(reply.body)).toContain('href="/s/plain.html"');
+    expect(String(reply.body)).not.toContain("随手记一段");
+  });
 });
 
 describe("assetReply · 白名单与越界", () => {

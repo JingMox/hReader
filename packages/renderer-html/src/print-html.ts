@@ -1,6 +1,6 @@
 // 这层管：把源文档与 outline 渲染成单文件可打印 HTML（封面 / 目录 / 正文三段）；不读盘、不碰进程。
 
-import { HrError, injectNodeIds, parseHtml, serializeHtml } from "@hreader/core";
+import { HrError, parseHtml, serializeHtml } from "@hreader/core";
 import type { HtmlElementNode, HtmlNode, OutlineNode } from "@hreader/core";
 
 import { attributeStringOf, utf8LengthOf } from "./markup";
@@ -54,6 +54,9 @@ export interface PrintHtmlResult {
 }
 
 const DOC_ID_ATTRIBUTE = "data-hr-id";
+
+/** 序号 span 的类名；`print-css.ts` 用同名类排版，两处必须同一个拼写。 */
+const SECNUM_CLASS = "secnum";
 
 const textOf = (node: HtmlNode): string => {
   if (node.kind === "text") {
@@ -157,9 +160,20 @@ const attributesOf = (
 const numberSpanOf = (number: string): HtmlElementNode => ({
   kind: "element",
   tag: "span",
-  attrs: [["class", "secnum"]],
+  attrs: [["class", SECNUM_CLASS]],
   children: [{ kind: "text", value: `${number} ` }],
 });
+
+/**
+ * 带 `<span class="secnum">` 开头的标题 = 这棵子树曾被导出过。
+ * 只认第一个子节点：序号永远在最前，作者自己写在正文里的 secnum 不该被动。
+ */
+const isSecnumSpan = (node: HtmlNode | undefined): boolean =>
+  node?.kind === "element" && node.tag === "span" && attributeOf(node, "class") === SECNUM_CLASS;
+
+/** 已有序号就换掉它而不是再套一层：对打印稿再 `export` 一次不该变成「1 1 季度复盘」。 */
+const withoutLeadingSecnum = (children: readonly HtmlNode[]): readonly HtmlNode[] =>
+  isSecnumSpan(children[0]) ? children.slice(1) : children;
 
 const rewrittenElementOf = (
   node: HtmlElementNode,
@@ -187,7 +201,8 @@ const rewrittenElementOf = (
     // §11.2：嵌套 `<article>` 降级为 `div`（属性原样留），产物里只许有一个 `<article>`。
     tag: node.tag === "article" ? "div" : node.tag,
     attrs: attributesOf(node, chapter, anchor),
-    children: number === undefined ? children : [numberSpanOf(number), ...children],
+    children:
+      number === undefined ? children : [numberSpanOf(number), ...withoutLeadingSecnum(children)],
   };
 };
 
@@ -229,7 +244,9 @@ const articleBodyOf = (article: HtmlElementNode, state: RewriteState): string =>
 };
 
 export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
-  const parsed = injectNodeIds(parseHtml(input.documentHtml)).parsed;
+  // 不注入 id（BUG-02）：导出产物里只有源文档本来就有的 `data-hr-id`，
+  // 否则用户从打印稿拄下来的 id 拿去 `patch` 只会得到 `node_not_found`。
+  const parsed = parseHtml(input.documentHtml);
   const article = findElement(parsed.root, "article");
   if (article === undefined) {
     throw new HrError("no_article", "源文档里没有 <article>，无法导出打印稿");

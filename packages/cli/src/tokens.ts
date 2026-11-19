@@ -44,6 +44,7 @@ const SWITCH_FLAGS: ReadonlySet<string> = new Set([
   "--no-outline",
   "--outline",
   "--help",
+  "--write",
 ]);
 
 /** `--flag <value>` 用"待取值"状态配对，避免按下标取值的 `undefined` 分支。 */

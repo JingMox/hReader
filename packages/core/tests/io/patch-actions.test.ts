@@ -205,7 +205,21 @@ describe("请求校验 · action 与 html 的配对", () => {
       codeOf({ targetId: "root", action: "append", html: "<p>x</p>" }, '<p data-hr-id="p1">x</p>'),
     ).toBe("node_not_found");
   });
+});
 
+describe("请求校验 · 未 normalize 的文档", () => {
+  it("should say needs_normalize when the document has no data-hr-id at all", () => {
+    // 全文一个 id 都没有不是“id 写错了”，是这份文档从没 normalize 过（B-03）：两条报错的后手不一样。
+    expect(
+      codeOf(
+        { targetId: "p1", action: "replace", html: "<p>新</p>" },
+        "<article><p>旧</p></article>",
+      ),
+    ).toBe("needs_normalize");
+  });
+});
+
+describe("请求校验 · 非字符串 html", () => {
   it("should reject a non-string html through the parser", () => {
     expect(codeOf({ targetId: "p1", action: "append", html: 42 })).toBe("invalid_html");
   });

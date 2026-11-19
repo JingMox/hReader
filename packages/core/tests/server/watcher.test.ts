@@ -18,7 +18,8 @@ const append = async (port: number, token: string, text: string): Promise<number
       docId: "doc.html",
       action: "append",
       targetId: "hr-d",
-      fragment: `<p>${text}</p>`,
+      // 行内片段才能落在 <p>（hr-d）里；块级会被 F6 的内容模型校验拒掉。
+      fragment: `<b>${text}</b>`,
     }),
   });
   return response.status;

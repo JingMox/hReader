@@ -109,15 +109,18 @@ describe("parseFragment（applyPatch 入口）不再裸崩", () => {
     }
   });
 
-  it("should reject the unclosed variant with invalid_fragment, not a TypeError", () => {
+  it("should parse the unclosed variant instead of crashing with a TypeError", () => {
+    // 片段校验已改成"先解析后校验"：单根片段由 HTML5 容错解析补齐，未闭合不再算非法。
+    // 这条用例原本担心的"裸崩"仍要守住：无论如何只能给出树或 HrError，不能是 TypeError。
+    let node: unknown;
     try {
-      parseFragment("<svg><template>");
+      node = parseFragment("<svg><template>");
     } catch (thrown: unknown) {
       const code: unknown = Reflect.get(Object(thrown), "code");
-      expect(code).toBe("invalid_fragment");
+      expect(typeof code).toBe("string");
       return;
     }
-    throw new Error("parseFragment 吞掉了未闭合片段");
+    expect(Object(node)).toHaveProperty("kind");
   });
 });
 

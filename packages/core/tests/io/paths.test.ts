@@ -108,7 +108,8 @@ describe("路径逃逸 · 符号链接（续）", () => {
         {
           workspace: dir,
           file: "link.html",
-          request: { targetId: "p1", action: "append", html: "<p>加</p>" },
+          // 行内片段才能落在 <p> 里（append 的容器就是目标自己）；这条用例只关心符号链接下历史键名。
+          request: { targetId: "p1", action: "append", html: "<b>加</b>" },
         },
         deps,
       );

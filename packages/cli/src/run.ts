@@ -7,13 +7,11 @@ import { join, relative } from "node:path";
 import { HrError, nodeStyleDeps } from "@hreader/core";
 
 import { parseArgs, type Intent } from "./args";
-import { renderPdfOf, renderPngOf, chromeDepsOf } from "./chrome/session";
 import { attemptRealpath, realpathThroughAncestors } from "./canonical";
 import { exportPrintCommand } from "./commands/exportPrint";
+import { normalizeCommand } from "./commands/normalize";
 import { outlineCommand } from "./commands/outline";
 import { patchCommand } from "./commands/patch";
-import { pdfCommand } from "./commands/pdf";
-import { pngCommand } from "./commands/png";
 import { readCommand } from "./commands/read";
 import { styleCommand } from "./commands/style";
 import { styleExtractCommand } from "./commands/styleExtract";
@@ -22,7 +20,8 @@ import { EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./exit-codes";
 import { sourceText } from "./input";
 import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
 import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
-import { jsonError } from "./output";
+import { displayedPathOf, jsonError } from "./output";
+import { pdfOf, pngOf, type ProductIo } from "./run-products";
 import { serveCommandOf } from "./run-serve";
 import { isDiscoveredStylePath, undiscoveredHint } from "./style-out";
 import { usageText, type CommandName } from "./usage";
@@ -39,10 +38,7 @@ export interface CliIo {
   readonly fetch?: typeof globalThis.fetch;
   /** serve 靠它感知 SIGTERM/SIGINT；其它命令不需要（测试里构造 io 时可省）。 */
   readonly stop?: Promise<void>;
-  /**
-   * 启动时父进程的 pid：**必填**，只有 `main.ts` 能在首个 `await` 之前采集它。
-   * 留一个 `?? process.ppid` 兜底就是重开 W2 的洞：新的 io 构造点会在 await 之后读到已经被 re-parent 的 ppid。
-   */
+  /** 启动时父进程的 pid：**必填**，只有 `main.ts` 能在首个 `await` 之前采集它（`?? process.ppid` 兜底 = 重开 W2 的洞）。 */
   readonly launchParentPid: number;
   readonly home?: string;
 }
@@ -88,12 +84,21 @@ const runPatch = async (
     html,
     workspace: paths.workspace,
     json: intent.json,
+    displayPath: displayedPathOf(intent.path, io.cwd),
   });
 };
 
-const runUndo = async (intent: Extract<Runnable, { kind: "undo" }>): Promise<string> => {
+const runUndo = async (
+  intent: Extract<Runnable, { kind: "undo" }>,
+  cwd: string,
+): Promise<string> => {
   const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
-  return undoCommand({ path: paths.file, workspace: paths.workspace, json: intent.json });
+  return undoCommand({
+    path: paths.file,
+    workspace: paths.workspace,
+    json: intent.json,
+    displayPath: displayedPathOf(intent.path, cwd),
+  });
 };
 
 const LLM_KEY_ENV = "OPENCODE_API_KEY";
@@ -156,6 +161,7 @@ const runExtract = async (
     force: intent.force,
     json: intent.json,
     llm,
+    displayOut: intent.out === undefined ? undefined : displayedPathOf(intent.out, io.cwd),
   });
   hintIfUndiscovered(displayedOutOf(intent.out, io.cwd), intent.id, workspace, io);
   return written;
@@ -166,10 +172,8 @@ const runExport = async (
   io: CliIo,
 ): Promise<string> => {
   const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
-  // 落盘目标也先真实化：`writeAtomic` 的 workspace 判定与提示展示都该拿同一条路径。
   const out = intent.out === undefined ? undefined : realpathThroughAncestors(intent.out);
   return exportPrintCommand({
-    // 命令层只收绝对路径（它要读文件、也要算 docId），workspace 内的相对换算留在这一层。
     path: join(paths.workspace, paths.file),
     visual: intent.visual,
     out,
@@ -177,6 +181,7 @@ const runExport = async (
     workspace: paths.workspace,
     json: intent.json,
     warn: io.stderr,
+    displayOut: intent.out === undefined ? undefined : displayedPathOf(intent.out, io.cwd),
   });
 };
 
@@ -189,41 +194,6 @@ const resolvedIoOf = (io: CliIo): ResolvedIo => ({
   home: io.home ?? homedir(),
 });
 
-/** 纸张/超时在会话层定；这里只把"哪份 HTML 交给哪个 Chrome"接起来（D1 命令层不碰进程）。 */
-const runPdf = async (
-  intent: Extract<Runnable, { kind: "pdf" }>,
-  io: ResolvedIo,
-): Promise<string> => {
-  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
-  // 页宽/超时/大纲这类字段意图层与命令层同名：整体透传，只换算路径相关的三项。
-  return pdfCommand({
-    ...intent,
-    path: join(paths.workspace, paths.file),
-    out: realpathThroughAncestors(intent.out),
-    workspace: paths.workspace,
-    warn: io.stderr,
-    render: (renderInput) =>
-      renderPdfOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),
-  });
-};
-
-/** 长图尺寸在会话层定；这里只把视口参数与停止口接上（D1 命令层不碰进程）。 */
-const runPng = async (
-  intent: Extract<Runnable, { kind: "png" }>,
-  io: ResolvedIo,
-): Promise<string> => {
-  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
-  return pngCommand({
-    ...intent,
-    path: join(paths.workspace, paths.file),
-    out: realpathThroughAncestors(intent.out),
-    workspace: paths.workspace,
-    warn: io.stderr,
-    render: (renderInput) =>
-      renderPngOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),
-  });
-};
-
 /** `--home` 只有 serve 会用到；缺省落点已经由 `resolvedIoOf` 归一。 */
 const runServe = async (
   intent: Extract<Runnable, { kind: "serve" }>,
@@ -231,24 +201,52 @@ const runServe = async (
 ): Promise<string> =>
   serveCommandOf(intent, withinWorkspace({ workspace: intent.workspace, absolute: intent.path }), {
     home: intent.home === undefined ? io.home : homeRealpathOf(intent.home),
+    cwd: io.cwd,
     stop: io.stop,
     launchParentPid: io.launchParentPid,
+    diagnose: io.stderr,
+    displayPath: displayedPathOf(intent.path, io.cwd),
   });
 
-const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
-  if (intent.kind === "outline") return outlineCommand(intent);
-  if (intent.kind === "read") return readCommand(intent);
-  if (intent.kind === "export") return runExport(intent, io);
-  if (intent.kind === "pdf") return runPdf(intent, io);
-  if (intent.kind === "png") return runPng(intent, io);
-  if (intent.kind === "serve") return runServe(intent, io);
-  if (intent.kind === "undo") return runUndo(intent);
-  if (intent.kind === "styleExtract") return runExtract(intent, io);
-  if (intent.kind === "style") {
+/** 产物命令的注入面：与 `ResolvedIo` 同源的四个字段，只给命令层看得到的部分。 */
+const productIoOf = (io: ResolvedIo): ProductIo => ({
+  cwd: io.cwd,
+  stop: io.stop,
+  env: io.env,
+  warn: io.stderr,
+});
+
+type RemainingKind =
+  "patch" | "pdf" | "png" | "serve" | "undo" | "styleExtract" | "normalize" | "style";
+
+/** 剩下一半都要 io（或要走写盘路径）：两段各守一半，圈复杂度不随命令数线性增长。 */
+const runRemaining = async (
+  intent: Extract<Runnable, { kind: RemainingKind }>,
+  io: ResolvedIo,
+): Promise<string> => {
+  if (intent.kind === "normalize" || intent.kind === "style") {
     const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
-    return styleCommand({ ...intent, path: paths.file, workspace: paths.workspace });
+    const displayPath = displayedPathOf(intent.path, io.cwd);
+    return intent.kind === "normalize"
+      ? normalizeCommand({ ...intent, path: paths.file, workspace: paths.workspace, displayPath })
+      : styleCommand({ ...intent, path: paths.file, workspace: paths.workspace, displayPath });
   }
+  if (intent.kind === "pdf" || intent.kind === "png") {
+    const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+    return intent.kind === "pdf"
+      ? pdfOf(intent, paths, productIoOf(io))
+      : pngOf(intent, paths, productIoOf(io));
+  }
+  if (intent.kind === "serve") return runServe(intent, io);
+  if (intent.kind === "undo") return runUndo(intent, io.cwd);
+  if (intent.kind === "styleExtract") return runExtract(intent, io);
   return runPatch(intent, io);
+};
+
+const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
+  if (intent.kind === "outline") return outlineCommand({ ...intent, warn: io.stderr });
+  if (intent.kind === "read") return readCommand(intent);
+  return intent.kind === "export" ? runExport(intent, io) : await runRemaining(intent, io);
 };
 
 const usageFailure = (message: string, topic: CommandName | undefined, io: CliIo): number => {
@@ -262,12 +260,12 @@ const topicOf = (kind: Runnable["kind"]): CommandName => (kind === "styleExtract
 const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
   if (!(error instanceof HrError)) {
     io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
-    if (io.debug && error instanceof Error && typeof error.stack === "string")
-      io.stderr(`${error.stack}\n`);
+    if (io.debug && error instanceof Error) io.stderr(`${error.stack ?? ""}\n`);
     return EXIT_INTERNAL;
   }
+  // 只走一条通道：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段（P2-3）。
   if (json) io.stdout(jsonError(error.code, error.message));
-  io.stderr(`${error.message}\n`);
+  else io.stderr(`${error.message}\n`);
   return exitCodeOf(error.code);
 };
 

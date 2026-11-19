@@ -64,8 +64,10 @@ export const REJECTED_FRAGMENTS: RejectedFragment[] = [
   { fragment: "", code: "invalid_fragment", marker: "根元素" },
   { fragment: "   \n\t ", code: "invalid_fragment", marker: "根元素" },
   { fragment: "<!-- only a comment -->", code: "invalid_fragment", marker: "根元素" },
-  { fragment: "<div>", code: "invalid_fragment", marker: "结构不完整" },
-  { fragment: "<b><i>x</b></i>", code: "invalid_fragment", marker: "结构不完整" },
+  // 单根但未闭合/交错嵌套的片段**不再列为非法**：`fragment.ts` 已改成"先解析后校验"，
+  // 可选结束标签由 HTML5 容错解析自动闭合（见 ACCEPTED_FRAGMENTS 的两条对照）。
+  // 裸 `<tr>` / `<td>` 片段同理：`CONTEXT_ANCESTORS` 会让它们套上 `<table><tbody>` 祖先链解析，
+  // 解析回来仍是那个元素，所以它们属于 ACCEPTED_FRAGMENTS（见下方两条）。
 ];
 
 /** 外壳可省、结构完整：这些必须放行，否则"拒绝"就没有对照组。 */
@@ -74,4 +76,12 @@ export const ACCEPTED_FRAGMENTS: readonly { readonly fragment: string; readonly 
   { fragment: "<html><body><p>外壳</p></body></html>", tag: "p" },
   { fragment: "<div><!-- 注释 --><p>带注释</p></div>", tag: "div" },
   { fragment: "<ul><li>a<li>b</ul>", tag: "ul" },
+  // 反面对照：表格要把整张表当片段给，才拿得到表格上下文。
+  { fragment: "<table><tr><td>x</td></tr></table>", tag: "table" },
+  // 表格结构片段：单独解析会丢标签，套祖先链解析后标签还在，所以放行（落盘位置见 fragment-gate-io）。
+  { fragment: "<tr><td>b</td></tr>", tag: "tr" },
+  { fragment: "<td>b</td>", tag: "td" },
+  // 未闭合与交错嵌套：HTML5 容错解析后仍是单根元素，照收（拒绝它们等于重造解析器规则）。
+  { fragment: "<div>", tag: "div" },
+  { fragment: "<b><i>x</b></i>", tag: "b" },
 ];

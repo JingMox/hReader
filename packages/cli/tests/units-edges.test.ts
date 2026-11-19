@@ -19,7 +19,7 @@ afterAll(() => {
 const DOC = [
   "<!doctype html><html><body>",
   '<article data-hr-id="hr-a"><h2 data-hr-id="hr-b">标题</h2>',
-  "<style>p{color:red}</style><p>正文</p></article>",
+  '<style>p{color:red}</style><p data-hr-id="hr-c">正文</p></article>',
   "</body></html>",
 ].join("\n");
 

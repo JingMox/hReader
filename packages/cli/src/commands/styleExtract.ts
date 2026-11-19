@@ -69,6 +69,8 @@ export interface StyleExtractInput {
   readonly inheritsVisual: string;
   /** `--out` 的 workspace 相对路径；`undefined` = 只打印到 stdout。 */
   readonly out: string | undefined;
+  /** 回执里印的 `--out`（用户视角）：不给就印 workspace 相对路径。 */
+  readonly displayOut?: string | undefined;
   readonly force: boolean;
   readonly json: boolean;
   /** 有 key 且没给 `--no-llm` 时的传输层；`undefined` = 纯统计版（D2 的降级，不是错误）。 */
@@ -119,7 +121,7 @@ const emitOf = async (
   );
   return input.json
     ? jsonOk(dataStyleExtract(result, input.out, dropped))
-    : humanStyleExtract(result, input.out);
+    : humanStyleExtract(result, input.displayOut ?? input.out);
 };
 
 /**

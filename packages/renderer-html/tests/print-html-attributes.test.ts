@@ -1,7 +1,9 @@
 import { injectNodeIds, parseHtml } from "@hreader/core";
+import type { OutlineNode } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
 import { printHtmlOf, printHtmlReportOf } from "../src/index";
+import type { PrintHtmlInput } from "../src/index";
 import {
   anchorHrefsOfHtml,
   attrOf,
@@ -96,10 +98,89 @@ describe("生成锚不与既有 id 冲突（§13.1 / §10 裁定）", () => {
   });
 });
 
+/** 直接装配输入：不经过 `inputOf` 的 `injectNodeIds`，才能造出"没有 `data-hr-id` 的树"。 */
+const unnormalizedInputOf = (
+  documentHtml: string,
+  outline: readonly OutlineNode[],
+): PrintHtmlInput => ({
+  docId: "sample-doc",
+  visualId: "atelier-editorial",
+  paper: "a4",
+  documentHtml,
+  themeCss: "",
+  outline,
+});
+
+// outline 条目的 id 用 `x`：这让兜底值 `""` 与任何别的字面量可区分——若改成 `?? "x"`，
+// 带 `data-hr-id="x"` 的标题会让 `""` 分支失效，占位也就不再发生。
+const headingOutline: readonly OutlineNode[] = [
+  { id: "x", tag: "h1", level: 1, text: "标题甲", wordCount: 3, children: [] },
+];
+
+describe("未 normalize 的树：无 data-hr-id 的既有 id 先占位（§13.1）", () => {
+  // `sectionId` 为 undefined 是真实输入：元素只有 `id`、没有 `data-hr-id`。它的 `id` 必须先占位，
+  // 否则随后生成的 `sec-…` 会撞上它。
+  it('id="sec-1" 无 data-hr-id 时占位生效，生成锚让位到 sec-1-2', () => {
+    const html = printHtmlOf(
+      unnormalizedInputOf(
+        '<article><p id="sec-1">占位</p><h1 data-hr-id="x">标题甲</h1></article>',
+        headingOutline,
+      ),
+    );
+    // 小节标题拿到的锚是让位后的 sec-1-2，而不是与 <p> 同值的 sec-1。
+    expect(attrOf(firstTagOf(parseHtml(html).root, "h1"), "id")).toBe("sec-1-2");
+    expect(anchorHrefsOfHtml(html)).toEqual(["sec-1-2"]);
+    // 占位者本身原样保留，且全树只有一个 sec-1。
+    expect(idsOfHtml(html).filter((id) => id === "sec-1")).toHaveLength(1);
+  });
+
+  it("同元素补上 data-hr-id 且已编号时不占位，生成锚直接用 sec-1", () => {
+    const html = printHtmlOf(
+      unnormalizedInputOf(
+        '<article><p id="sec-1" data-hr-id="x">占位</p><h1>标题甲</h1></article>',
+        headingOutline,
+      ),
+    );
+    const ids = idsOfHtml(html);
+    expect(ids.filter((id) => id === "sec-1-2")).toHaveLength(0);
+    expect(anchorHrefsOfHtml(html)).toEqual(["sec-1"]);
+    expect(ids).toContain("sec-1");
+    // 同一棵树只挪动 `data-hr-id` 的位置：占位与否必须产出不同结果。
+    expect(html).not.toBe(
+      printHtmlOf(
+        unnormalizedInputOf(
+          '<article><p id="sec-1">占位</p><h1 data-hr-id="x">标题甲</h1></article>',
+          headingOutline,
+        ),
+      ),
+    );
+  });
+});
+
 describe("字节数", () => {
   it("报告里的 bytes 等于产物的 UTF-8 字节数（AC-11 上限判据由调用方用）", () => {
     const report = printHtmlReportOf(input);
     expect(report.bytes).toBe(Buffer.byteLength(report.html, "utf8"));
     expect(report.bytes).toBeGreaterThan(report.html.length);
+  });
+});
+
+describe("对打印稿再导出一次（§11.4 序号不叠）", () => {
+  it("换掉开头的 secnum 而不是再套一层", () => {
+    // 用户把导出的打印稿又喂回 `hr export`：不该变成「1 1 季度复盘」。
+    const twice = printHtmlOf(inputOf(product));
+    const countOf = (html: string): number => (html.match(/class="secnum"/gu) ?? []).length;
+
+    // 打印稿必须真的有序号（否则下面那条"不叠"恒真）
+    expect(countOf(product)).toBeGreaterThan(0);
+    expect(countOf(twice)).toBe(countOf(product));
+    expect(twice).not.toMatch(/class="secnum">[^<]*<\/span><span class="secnum"/u);
+  });
+
+  it("空标题（没有子节点）不崩", () => {
+    const html = printHtmlOf(inputOf("<article><h1></h1><p>正文</p></article>"));
+
+    expect(html).toContain("正文");
+    expect(html).toContain('class="secnum"');
   });
 });

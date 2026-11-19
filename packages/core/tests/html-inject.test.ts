@@ -80,7 +80,9 @@ describe("injectNodeIds · 注入范围 · 续", () => {
 });
 
 describe("injectNodeIds · div 与词表", () => {
-  it("should treat div as a block only when it carries a component attribute", () => {
+  // F10：`div` 无条件进 `ADDRESSABLE_TAGS` —— 批注与 patch 要能命中普通容器，
+  // 不再要求 `data-hr-component`。这条用例守着“别再把它按组件属性分等级”。
+  it("should give a plain div the same id treatment as a component div", () => {
     const injected = inject(
       '<article><div>a</div><div data-hr-component="kpi-bento">b</div></article>',
     );
@@ -92,8 +94,9 @@ describe("injectNodeIds · div 与词表", () => {
     const tagged = withIds.find(
       (element) => attributeValue(element, "data-hr-component") === "kpi-bento",
     );
-    expect(injected.injected).toHaveLength(2);
-    expect(withIds).toHaveLength(2);
+    expect(injected.injected).toHaveLength(3);
+    expect(withIds).toHaveLength(3);
+    expect(withIds.filter((element) => element.tag === "div")).toHaveLength(2);
     expect(tagged?.tag).toBe("div");
   });
 
@@ -108,11 +111,16 @@ describe("injectNodeIds · div 与词表", () => {
 });
 
 describe("injectNodeIds · 块级词表", () => {
-  it("should skip inline, unknown and plain div siblings", () => {
+  // 行内与未知标签仍然不拿 id；`h5`/`h6`/`div` 在 F10 之后是寻址面成员，所以都该有 id。
+  it("should skip inline and unknown tags but id h5, h6 and plain div", () => {
     const html =
       "<article><nav>n</nav><h5>t</h5><h6>t</h6><span>s</span><div>d</div><article><p>a</p></article></article>";
 
-    expect(inject(html).injected).toHaveLength(2);
+    const injected = inject(html);
+    const span = requireElement(injected.parsed.root, "span");
+
+    expect(injected.injected).toHaveLength(6);
+    expect(attributeValue(span, HR_ID)).toBeUndefined();
   });
 });
 

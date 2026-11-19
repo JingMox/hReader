@@ -77,3 +77,41 @@ describe("parseFragment · SVG 动画改写事件属性", () => {
     expect(fragmentElementOf('<div><set attributeName="onload"/></div>').tag).toBe("div");
   });
 });
+
+describe("parseFragment · 解析器会吞掉/挪走的构造", () => {
+  // 这四类片段的共同点：解析器**不报错**，只是把元素忽略掉或挪到容器之外。
+  // 拦截它们的分别是 F11 的四条判定 —— 任何一条退化成 no-op，这里就会从 `invalid_*` 变回 `no_throw`。
+  const CASES: readonly { fragment: string; code: string; marker: string; why: string }[] = [
+    {
+      fragment: "<select><div>x</div></select>",
+      code: "invalid_input",
+      marker: "被丢弃（<div>）",
+      why: "`<select>` 里 `<div>` 被整类忽略（assertTokensSurvived）",
+    },
+    {
+      fragment: "<td><tr>x</tr></td>",
+      code: "invalid_input",
+      marker: "移到了包装容器之外（<tr>/文本）",
+      why: "`<tr>` 不能嵌在 `<td>` 里，被挤到包装器之外（assertNothingEscaped）",
+    },
+    {
+      fragment: "<table><p>x</p></table>",
+      code: "invalid_fragment",
+      marker: "恰好有一个根元素（实际 2 个根级内容节点）",
+      why: "`<p>` 被 foster-parent 到 `<table>` 之前，根列表多出一个（assertNothingEscaped 之前的根数校验）",
+    },
+    {
+      fragment: "<tr><td>b</td></tr></table><p>evil</p>",
+      code: "invalid_input",
+      marker: "闭合了外层的 <table>",
+      why: "`</table>` 关掉包装祖先，后面的 `<p>` 被挤到包装器之外（assertNoAncestorClosed，解析前就拒）",
+    },
+  ];
+
+  it.each(CASES)("should reject $fragment ($why)", ({ fragment, code, marker }) => {
+    const failure = rejectedFragmentOf(fragment);
+
+    expect(failure.code).toBe(code);
+    expect(failure.message).toContain(marker);
+  });
+});
