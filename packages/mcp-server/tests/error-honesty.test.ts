@@ -94,7 +94,7 @@ const CASES: readonly Case[] = [
   {
     name: "超长路径",
     tool: "hr_create_doc",
-    args: { filePath: `${"a/".repeat(2000)}x.html`, title: "太长" },
+    args: { filePath: `${"a/".repeat(2500)}x.html`, title: "太长" },
     codes: ["invalid_input"],
   },
   {

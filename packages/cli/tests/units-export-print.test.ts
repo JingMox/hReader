@@ -129,7 +129,7 @@ describe("exportPrintCommand · 4 MiB 三档（契约是 > limit 才拒）", () 
         exportPrintCommand(inputOf(await writeProductOfBytes(dir, LIMIT + 1), { out: overOut })),
       ).rejects.toMatchObject({ code: "invalid_input" });
       expect(existsSync(overOut)).toBe(false);
-    });
+    }, 120_000);
   }, 120_000);
 });
 

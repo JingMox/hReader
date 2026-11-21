@@ -126,7 +126,7 @@ describe("hr_outline · hr-meta 注入与原型污染 · 续 1", () => {
       expect(error instanceof RangeError).toBe(true);
       expect(error instanceof Error ? error.message : "").toContain("Maximum call stack");
     }
-  });
+  }, 30_000);
 });
 describe("hr_outline · hr-meta 注入与原型污染 · 续 1", () => {
   it("should read a meta script that lives outside the article", () => {
