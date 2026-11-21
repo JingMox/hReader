@@ -196,7 +196,7 @@ const writtenCountOf = async (html: string, name: string): Promise<number> => {
     await stepOf(dir, ["export", "source.html", "--out", "print.html"]);
     count = reportedCountOf(await stepOf(dir, ["pdf", "print.html", "--out", name, "--json"]));
     expect(existsSync(join(dir, name))).toBe(true);
-  });
+  }, 120_000);
   return count;
 };
 
@@ -218,7 +218,7 @@ describe.skipIf(SKIP_REASON !== null)("AC-5 / AC-6 · 真 Chrome 的大纲不变
 
       // ③ 稳定性：同输入两次渲染，标题序列与页序相等（不断字节：PDF 里有时间戳/对象号）。
       expect(pairsOf(two.outline ?? [])).toEqual(pairsOf(one.outline ?? []));
-    });
+    }, 120_000);
   }, 120_000);
 
   it("should count bookmarks whose title is the literal endobj", async () => {
