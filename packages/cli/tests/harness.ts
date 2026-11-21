@@ -27,26 +27,27 @@ export interface CliOptions {
   /** 用一个已打开的 fd 当 stdin（例如目录 fd，用来触发非 HrError 读失败）。 */
   readonly stdinFd?: number;
   readonly env?: Readonly<Record<string, string>>;
+  readonly timeoutMs?: number;
 }
 
 /** 挂上 stdout/stderr 与超时/退出事件的监听（body 拆出去，免得单函数过 40 行）。 */
 const wire = (
   child: ChildProcess,
   args: readonly string[],
-  resolve: (result: CliResult) => void,
-  reject: (error: Error) => void,
+  timeoutMs: number,
+  done: { readonly resolve: (result: CliResult) => void; readonly reject: (error: Error) => void },
 ): void => {
   let stdout = "";
   let stderr = "";
   const timer = setTimeout(() => {
     child.kill("SIGKILL");
-    reject(new Error(`CLI 子进程超过 ${String(TIMEOUT_MS)}ms 未退出：${args.join(" ")}`));
-  }, TIMEOUT_MS);
+    done.reject(new Error(`CLI 子进程超过 ${String(timeoutMs)}ms 未退出：${args.join(" ")}`));
+  }, timeoutMs);
 
   const out = child.stdout;
   const errOut = child.stderr;
   if (out === null || errOut === null) {
-    reject(new Error("子进程的 stdout/stderr 不是管道：检查 spawn 的 stdio"));
+    done.reject(new Error("子进程的 stdout/stderr 不是管道：检查 spawn 的 stdio"));
     return;
   }
   out.setEncoding("utf8");
@@ -59,11 +60,11 @@ const wire = (
   });
   child.on("error", (error) => {
     clearTimeout(timer);
-    reject(error);
+    done.reject(error);
   });
   child.on("close", (code, signal) => {
     clearTimeout(timer);
-    resolve({ code, stdout, stderr, signal });
+    done.resolve({ code, stdout, stderr, signal });
   });
 };
 
@@ -81,7 +82,7 @@ export const runCli = async (
       reject(new Error("子进程的 stdout/stderr 不是管道：检查 spawn 的 stdio"));
       return;
     }
-    wire(child, args, resolve, reject);
+    wire(child, args, options.timeoutMs ?? TIMEOUT_MS, { resolve, reject });
     if (options.stdin !== undefined && child.stdin !== null) child.stdin.end(options.stdin);
   });
 
