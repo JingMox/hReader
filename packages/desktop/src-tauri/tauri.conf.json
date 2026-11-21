@@ -22,7 +22,7 @@
       {
         "ext": ["html", "htm"],
         "name": "HTML Document",
-        "description": "hReader 阅读器文档",
+        "description": "hReader HTML Document",
         "role": "Viewer",
         "mimeType": "text/html"
       }
