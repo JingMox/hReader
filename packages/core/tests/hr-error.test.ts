@@ -48,6 +48,8 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   port_in_use: true,
   // R1-F6：片段内容模型与目标容器不兼容（列表尾：与 `HrErrorCode` 的声明顺序一致）
   content_model_conflict: true,
+  // R2-11（docs/05:68）：同一文档里两个元素共用同一个 `data-hr-id`，读/写入口直接 exit 2。
+  duplicate_id: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {
@@ -139,12 +141,30 @@ describe("HrError cause passthrough", () => {
 });
 
 describe("HrError observable surface", () => {
-  it("should keep the enumerable surface limited to name and code", () => {
+  it("should keep the enumerable surface to name/code/data (serialisable, no cause/stack)", () => {
     const error = new HrError("invalid_html", "serialisable", { cause: "deep" });
 
-    // 可枚举面即 JSON.stringify 面：只允许 name + code，message/cause/stack 不得外泄。
-    expect(Object.keys(error).sort()).toEqual(["code", "name"]);
+    // 可枚举面即 JSON.stringify 面：`data` 是 F18 新增的程序可面（docs/05:424，
+    // 让调用方用 `reason` 判别两种 `invalid_selector` 成因），其余 message/cause/stack 不得外泄。
+    expect(Object.keys(error).sort()).toEqual(["code", "data", "name"]);
     expect(Object.prototype.propertyIsEnumerable.call(error, "message")).toBe(false);
     expect(Object.prototype.propertyIsEnumerable.call(error, "cause")).toBe(false);
+  });
+
+  it("should carry `data` through JSON and omit it when the caller gave none", () => {
+    // 多义报文要能被 Agent 解析：`reason/count/candidates` 必须出现在序列化结果里；
+    // 没带 `data` 的码（如单纯 node_not_found）不得凭空长出这个键。
+    const withData = new HrError("invalid_selector", "多义", {
+      data: { reason: "ambiguous", count: 7, candidates: ["hr-a"] },
+    });
+    expect(JSON.parse(JSON.stringify(withData))).toEqual({
+      code: "invalid_selector",
+      data: { reason: "ambiguous", count: 7, candidates: ["hr-a"] },
+      name: "HrError",
+    });
+    expect(JSON.parse(JSON.stringify(new HrError("node_not_found", "无")))).toEqual({
+      code: "node_not_found",
+      name: "HrError",
+    });
   });
 });

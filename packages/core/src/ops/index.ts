@@ -4,5 +4,7 @@ export { buildOutline } from "./outline";
 export type { Outline, OutlineNode, PendingAnnotation } from "./outline";
 export { readNode } from "./readNode";
 export type { ReadNodeResult } from "./readNode";
+export { locateTarget, patchTargetIdOf } from "./locate";
+export type { LocatedTarget } from "./locate";
 export { applyPatch, parseFragment } from "./patchNode";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./patchNode";

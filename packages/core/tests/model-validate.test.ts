@@ -5,10 +5,16 @@ import { DIAGNOSTIC_SEVERITY } from "../src/html/constants";
 import type { Diagnostic, DiagnosticCode } from "../src/index";
 
 // 卡片 M1.2 契约 2：validateDocument 与 M1.1 的诊断同处一个 code 空间、按文档序稳定、
-// 按 `code|path|message` 去重；四个新码的严重度与"每处一条"的粒度都在这里钉住。
+// 按 `code|path|message` 去重；四个新码的严重度与“每处一条”的粒度都在这里钉住。
+//
+// R2-11（docs/05:68）：注入会先把重复 id 去掉（保留第一个，其余给 `id_reassigned`），
+// 所以 `duplicate_id` 只能由**未注入**的输入落出来——这正是读入口看到的形态。
 
 const validate = (html: string): readonly Diagnostic[] =>
   validateDocument(injectNodeIds(parseHtml(html)).parsed);
+
+/** 绕过注入：直接喂原始解析结果，重复 id 还在。 */
+const validateRaw = (html: string): readonly Diagnostic[] => validateDocument(parseHtml(html));
 
 const triplesOf = (diagnostics: readonly Diagnostic[]): readonly string[] =>
   diagnostics.map((diagnostic) =>
@@ -17,7 +23,7 @@ const triplesOf = (diagnostics: readonly Diagnostic[]): readonly string[] =>
 
 describe("validateDocument · duplicate_id", () => {
   it("should report every occurrence of a repeated id, with its own path", () => {
-    const diagnostics = validate(
+    const diagnostics = validateRaw(
       '<article data-hr-id="doc"><p data-hr-id="dup">a</p><p data-hr-id="dup">b</p><p data-hr-id="dup">c</p></article>',
     );
 
@@ -41,7 +47,7 @@ describe("validateDocument · duplicate_id", () => {
 
 describe("validateDocument · duplicate_id · 续", () => {
   it("should count the article itself when it shares the id", () => {
-    const diagnostics = validate(
+    const diagnostics = validateRaw(
       '<article data-hr-id="dup"><p data-hr-id="dup">a</p><p data-hr-id="dup">b</p></article>',
     );
 
@@ -51,19 +57,25 @@ describe("validateDocument · duplicate_id · 续", () => {
   });
 
   it("should be an error and keep document order stable across calls", () => {
-    const injected = injectNodeIds(
-      parseHtml(
-        '<article data-hr-id="doc"><p data-hr-id="d">a</p><p data-hr-id="d">b</p></article>',
-      ),
+    const parsed = parseHtml(
+      '<article data-hr-id="doc"><p data-hr-id="d">a</p><p data-hr-id="d">b</p></article>',
     );
 
-    expect(validateDocument(injected.parsed).map((diagnostic) => diagnostic.severity)).toEqual([
+    expect(validateDocument(parsed).map((diagnostic) => diagnostic.severity)).toEqual([
       "error",
       "error",
     ]);
-    expect(triplesOf(validateDocument(injected.parsed))).toEqual(
-      triplesOf(validateDocument(injected.parsed)),
+    expect(triplesOf(validateDocument(parsed))).toEqual(triplesOf(validateDocument(parsed)));
+  });
+
+  it("should leave no duplicate_id behind once injection has renamed the repeats", () => {
+    // 注入是“先改名”的那一半：第二个 `d` 变成新 id，于是 validate 看不到重复。
+    const diagnostics = validate(
+      '<article data-hr-id="doc"><p data-hr-id="d">a</p><p data-hr-id="d">b</p></article>',
     );
+
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["id_reassigned"]);
+    expect(diagnostics[0]?.message).toContain('重复的 data-hr-id="d"（只保留第一个）');
   });
 });
 
@@ -134,6 +146,8 @@ describe("validateDocument · article 数量", () => {
 
 describe("validateDocument · 与 M1.1 诊断合并", () => {
   it("should keep M1.1 diagnostics first and remain stable across calls", () => {
+    // 注入先改名：`Bad Id` → invalid_hr_id（原地的）、第二个 `dup` → id_reassigned；
+    // 没过注入的 `duplicate_id` 在这里已经不存在了（R2-11）。
     const html =
       "<article><h2>a</h2><h4>b</h4><p data-hr-id='Bad Id'>x</p><p data-hr-id='dup'>1</p><p data-hr-id='dup'>2</p></article>";
     const injected = injectNodeIds(parseHtml(html));
@@ -141,9 +155,8 @@ describe("validateDocument · 与 M1.1 诊断合并", () => {
 
     expect(first.map((diagnostic) => diagnostic.code)).toEqual([
       "invalid_hr_id",
+      "id_reassigned",
       "heading_level_jump",
-      "duplicate_id",
-      "duplicate_id",
     ]);
     expect(triplesOf(validateDocument(injected.parsed))).toEqual(triplesOf(first));
   });
@@ -173,7 +186,9 @@ describe("validateDocument · 与 M1.1 诊断合并 · 续", () => {
     );
 
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["invalid_hr_id"]);
-    expect(diagnostics[0]?.message).toBe('data-hr-id="Bad Id" 不合法（应为非空 [a-z0-9-]）');
+    expect(diagnostics[0]?.message).toBe(
+      'data-hr-id="Bad Id" 不合法（应为 ^[A-Za-z][A-Za-z0-9_-]{0,63}$）',
+    );
     expect(diagnostics[0]?.path).toBe("html[0]>body[1]>article[0]");
   });
 
@@ -183,7 +198,9 @@ describe("validateDocument · 与 M1.1 诊断合并 · 续", () => {
     );
 
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["invalid_hr_id"]);
-    expect(diagnostics[0]?.message).toBe('data-hr-id="" 不合法（应为非空 [a-z0-9-]）');
+    expect(diagnostics[0]?.message).toBe(
+      'data-hr-id="" 不合法（应为 ^[A-Za-z][A-Za-z0-9_-]{0,63}$）',
+    );
     expect(diagnostics[0]?.path).toBe("html[0]>body[1]>article[0]>p[0]");
   });
 

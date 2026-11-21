@@ -102,6 +102,10 @@ const eventsOpsOf = (
             target.tocId ??
             target.closest?.("[data-toc-id]")?.getAttribute("data-toc-id") ??
             undefined,
+          blockId:
+            target.blockId ??
+            target.closest?.("[data-hr-id]:not(article)")?.getAttribute("data-hr-id") ??
+            undefined,
         });
       };
       handlers.set(`${selector}|${type}`, adapted);

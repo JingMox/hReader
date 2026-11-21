@@ -3,13 +3,15 @@
 
 import { buildOutline, parseHtml } from "@hreader/core";
 
-import { assertIsDocument, assertNormalized } from "../document-normalize";
+import { assertIsDocument, assertNormalized, assertUniqueIds } from "../document-normalize";
 import { readTextFile } from "../input";
 import { dataOutline, humanDiagnostic, humanOutline, jsonOk } from "../output";
 
 export interface OutlineInput {
   readonly path: string;
   readonly json: boolean;
+  /** 空大纲提示里印的路径（用户视角）；缺省 = `path`。 */
+  readonly displayPath?: string | undefined;
   /** 诊断出口（人读模式）；缺省 = 丢弃（单测只需要返回串时）。 */
   readonly warn?: (message: string) => void;
 }
@@ -17,9 +19,10 @@ export interface OutlineInput {
 export const outlineCommand = async (input: OutlineInput): Promise<string> => {
   const parsed = parseHtml(await readTextFile(input.path));
   assertIsDocument(parsed, input.path);
+  assertUniqueIds(parsed, input.path);
   assertNormalized(parsed, input.path);
   const outline = buildOutline(parsed);
   if (input.json) return jsonOk(dataOutline(outline));
   for (const diagnostic of outline.diagnostics) input.warn?.(humanDiagnostic(diagnostic));
-  return humanOutline(outline);
+  return humanOutline(outline, input.displayPath ?? input.path);
 };

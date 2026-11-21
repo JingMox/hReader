@@ -1,6 +1,6 @@
 // 这层管：`patch` 命令的人读行与失败面（真 fs + 真 core，不跑子进程）；不碰别的命令。
 
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -56,8 +56,8 @@ describe("patchCommand · 人读行", () => {
   });
 });
 
-describe("patchCommand · replace 的 id 变更行", () => {
-  it("should print both the id mapping and the deeper extra ids when replace adds nested blocks", async () => {
+describe("patchCommand · replace 的人读行（id 不再变）", () => {
+  it("should keep the target id and print only the deeper new ids when replace adds nested blocks", async () => {
     fileOf("p7.html", DOC);
     const text = await patchCommand({
       path: "p7.html",
@@ -68,10 +68,10 @@ describe("patchCommand · replace 的 id 变更行", () => {
       json: false,
     });
 
-    // `id 变更: 旧 → 新` 之后还要跟 `+N ids: …`：片段里更深的块同样要能被后续 patch 引用。
-    expect(text).toMatch(
-      /^patched .*p7\.html \(\d+ bytes, id 变更: hr-c → hr-[0-9a-f]{8}, \+\d+ ids: [\w-]+.*\)\n$/u,
-    );
+    // docs/05:57：新根继承 `hr-c`（不算新分配），片段里更深的三个块才是新 id——它们同样要能被后续 patch 引用。
+    expect(text).toMatch(/^patched .*p7\.html \(\d+ bytes, \+3 ids: [\w-]+, [\w-]+, [\w-]+\)\n$/u);
+    expect(text).not.toContain("id 变更");
+    expect(readFileSync(join(dir, "p7.html"), "utf8")).toContain('<section data-hr-id="hr-c">');
   });
 });
 

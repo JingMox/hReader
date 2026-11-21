@@ -1,119 +1,25 @@
-// 这层管：`annotation-basis.ts` 的三档判定里**没有快照可用**的两条边——它们决定用户看到的是
-// "整块都是新增"还是"块没了"。
+// 这层管：`annotation-basis.ts` 里**没有现成快照可对**的几条边——它们决定用户看到的是
+// "整块都是新增"、"块没了"，还是"按槽位重识别"。`degradedReason` 是直接显示给人看的一句话，
+// 档位拿错时用户会被告知"历史里找不到该块"（正确是"看不出变化"），靠常规"改一次块再 diff"走不到。
 //
-// 为什么值得单独钉：`degradedReason` 是直接显示给人看的一句话，档位拿错时用户会被告知
-// "历史里找不到该块"（正确是"看不出变化"）或者反过来看到一片绿 diff 却不知道基版缺失。
-// 这两条都只在历史被裁空 / 从未写过历史时出现，靠常规"改一次块再 diff"的路径永远走不到。
+// 夹具在 `diff-basis-support.test.ts`（共用，两边只差别在不同历史形状）。
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { cookieOf, httpCall, jsonBodyOf, withServer, type TestServer } from "./harness";
-import { withPost } from "./wire";
-
-const fieldOf = (body: unknown, key: string): unknown =>
-  typeof body === "object" && body !== null ? Reflect.get(body, key) : undefined;
-
-/** 一篇自带 meta 脚本、但工作区里没有任何历史快照的文档（拷贝进来的文件就是这种形状）。 */
-const DOC_WITH_META = (annotationId: string, nodeId: string): string =>
-  [
-    "<!doctype html>",
-    "<html><head><title>t</title></head><body>",
-    '<article data-hr-id="hr-a"><h2 data-hr-id="hr-b">标题</h2>',
-    `<p data-hr-id="${nodeId}">正文一</p><p data-hr-id="hr-d">正文二</p></article>`,
-    `<script id="hr-meta" type="application/json">${JSON.stringify({
-      version: 1,
-      annotations: [
-        {
-          id: annotationId,
-          nodeId,
-          anchor: { exact: "正文", prefix: "", suffix: "", start: 0 },
-          note: "随文件进来",
-          status: "pending",
-          createdAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-    })}</script>`,
-    "</body></html>",
-  ].join("\r\n");
-
-/** 正文里**没有**这条批注指向的块（用户在编辑器里删掉了它），但 meta 脚本还在。 */
-const DOC_META_ORPHAN = [
-  "<!doctype html>",
-  "<html><head><title>t</title></head><body>",
-  '<article data-hr-id="hr-a"><h2 data-hr-id="hr-b">标题</h2><p data-hr-id="hr-c">正文一</p></article>',
-  `<script id="hr-meta" type="application/json">${JSON.stringify({
-    version: 1,
-    annotations: [
-      {
-        id: "an-gone",
-        nodeId: "hr-gone",
-        anchor: { exact: "正文一", prefix: "", suffix: "", start: 0 },
-        note: "块已经被删了",
-        status: "pending",
-        createdAt: "2026-01-01T00:00:00.000Z",
-      },
-    ],
-  })}</script>`,
-  "</body></html>",
-].join("\r\n");
-
-const addAt = async (ctx: TestServer, nodeId: string, note: string): Promise<string> => {
-  const response = await httpCall(ctx.port, {
-    method: "POST",
-    path: `/api/doc/${ctx.docId}/annotations`,
-    headers: withPost(ctx.token),
-    body: JSON.stringify({
-      docId: ctx.docId,
-      nodeId,
-      anchor: { exact: "正文", prefix: "", suffix: "", start: 0 },
-      note,
-    }),
-  });
-  expect(response.status).toBe(201);
-  const id = fieldOf(jsonBodyOf(response), "id");
-  if (typeof id !== "string") throw new Error("响应缺 id");
-  return id;
-};
-
-const patchOf = async (
-  ctx: TestServer,
-  action: "replace" | "delete",
-  targetId: string,
-  fragment?: string,
-): Promise<void> => {
-  const response = await httpCall(ctx.port, {
-    method: "POST",
-    path: "/api/patch",
-    headers: withPost(ctx.token),
-    body: JSON.stringify(
-      action === "replace"
-        ? { docId: ctx.docId, action, targetId, fragment }
-        : { docId: ctx.docId, action, targetId },
-    ),
-  });
-  expect(response.status).toBe(200);
-};
-
-const diffOf = async (ctx: TestServer, anId: string): Promise<unknown> => {
-  const response = await httpCall(ctx.port, {
-    path: `/api/doc/${ctx.docId}/notes/${anId}/diff`,
-    headers: { Cookie: cookieOf(ctx.token) },
-  });
-  expect(response.status).toBe(200);
-  return jsonBodyOf(response);
-};
-
-const chunkTextOf = (body: unknown): string => {
-  const raw = fieldOf(body, "chunks");
-  if (!Array.isArray(raw)) throw new Error("chunks 形状不符");
-  return raw
-    .map((chunk: unknown) => fieldOf(chunk, "text"))
-    .filter((text): text is string => typeof text === "string")
-    .join("");
-};
+import {
+  addAt,
+  chunkTextOf,
+  diffOf,
+  DOC_META_ORPHAN,
+  DOC_WITH_META,
+  docWithOrphanMeta,
+  fieldOf,
+  patchOf,
+} from "./diff-basis-support";
+import { withServer } from "./harness";
 
 describe("diff 基版 · 历史为空", () => {
   it("should give only the current block text when the workspace has no snapshot at all", async () => {
@@ -136,25 +42,23 @@ describe("diff 基版 · 历史为空", () => {
 });
 
 describe("diff 基版 · 基版取哪一份", () => {
-  it("should take before from the annotated block itself, not from whatever now sits in that slot", async () => {
-    // 槽位被换成另一种标签后，最新快照同一位置上的文本已经不是这条批注的正文了；
-    // 拿它当基版等于给用户看一份"别人的改动"。
+  it("should take before from the snapshot, not from the current file", async () => {
+    // “基版取自历史、不是当前文件”：手改过的正文不得当基版（`before` 必须是快照里的旧文本）。
     await withServer(async (ctx) => {
       const anId = await addAt(ctx, "hr-c", "主批注");
-      await patchOf(ctx, "replace", "hr-c", "<h2>左块改</h2>");
-      // 只换标签、不删兄弟：删掉前一个兄弟会让后续元素整体前移，“同位置 + 同 tag”那条
-      // 位置兜底就会把前移过来的段落当成这块（那是它本身的口径，不是本用例要证的事）。
+      // 只改兄弟：先落一份“正文一”的快照，再绕过 hr 手改 `hr-c`。
       await patchOf(ctx, "replace", "hr-b", "<p>标题改</p>");
+      const current = readFileSync(ctx.file, "utf8");
+      writeFileSync(ctx.file, current.replace("正文一", "手改的第三版"), "utf8");
 
       const body = await diffOf(ctx, anId);
 
       expect(fieldOf(body, "nodeId")).toBe("hr-c");
       expect(fieldOf(body, "before")).toBe("正文一");
-      expect(fieldOf(body, "after")).toBe("");
-      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+      expect(fieldOf(body, "after")).toBe("手改的第三版");
+      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。id 没变 ⇒ 不降级。
       expect(fieldOf(body, "reason")).toBeUndefined();
-      expect(fieldOf(body, "degraded")).toBe(true);
-      expect(typeof fieldOf(body, "degradedReason")).toBe("string");
+      expect(fieldOf(body, "degraded")).toBe(false);
     });
   });
 });
@@ -194,8 +98,7 @@ describe("diff 基版 · 批注指向的块在工作区外被删掉", () => {
 
 describe("diff 基版 · 同 tag 但不同层", () => {
   it("should not hand a shallow block the identity of a deleted nested one", async () => {
-    // 位置兜底里 `depth` 的那一半：只比 tag 会把"原来的深块"认成"前移上来的浅块"，
-    // 用户会在一条批注上看到别人的正文。删掉 `depth` 判定这条必须红。
+    // 位置兜底里 `depth` 的那一半：只比 tag 会把"深块"认成"前移上来的浅块"。
     await withServer(
       async (ctx) => {
         const anId = await addAt(ctx, "hr-deep", "深块批注");
@@ -216,39 +119,64 @@ describe("diff 基版 · 同 tag 但不同层", () => {
   });
 });
 
-describe("diff 基版 · 块在正文里但历史里没有", () => {
-  it("should report block_missing when the block only exists in the current file", async () => {
-    // 手改文件（拷进一段带 `data-hr-id` 的旧标记）会让"正文里有、历史里没有"同时成立：
-    // 这时没有基版可比，但也不能说"没有变化"——必须报缺基版，且 `before` 是空串而不是正文本身。
+describe("diff 基版 · 槽位在更新的快照里已就地改过", () => {
+  it("should take before from the latest snapshot text at that slot", async () => {
+    // `beforeOfSlot` 的一侧：同槽位还能在新快照里找到时，基版取那份快照的文本（此处 `hr-d`）。
+    let body: unknown = null;
     await withServer(async (ctx) => {
       const anId = await addAt(ctx, "hr-c", "主批注");
-      await patchOf(ctx, "replace", "hr-c", "<h2>左块改</h2>");
-      await patchOf(ctx, "replace", "hr-d", "<p>正文二改</p>");
-      const current = readFileSync(ctx.file, "utf8");
-      expect(current).not.toContain('data-hr-id="hr-c"');
-      writeFileSync(
-        ctx.file,
-        current.replace("<h2", '<p data-hr-id="hr-c">手改回来的块</p><h2'),
-        "utf8",
-      );
-
-      const body = await diffOf(ctx, anId);
-
-      expect(fieldOf(body, "nodeId")).toBe("hr-c");
-      expect(fieldOf(body, "before")).toBe("");
-      expect(fieldOf(body, "degraded")).toBe(true);
-      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
-      expect(fieldOf(body, "reason")).toBeUndefined();
-      expect(fieldOf(body, "degradedReason")).toBe("历史里找不到该块");
-      expect(chunkTextOf(body)).toBe("手改回来的块");
+      await patchOf(ctx, "delete", "hr-c");
+      await patchOf(ctx, "replace", "hr-d", "<p>后来的段落</p>");
+      body = await diffOf(ctx, anId);
     });
+    // 重识别成功：`nodeId` 给那一槽位真实的 id；`before` 是新快照里的文本，不是锚定的旧文本。
+    expect(fieldOf(body, "nodeId")).toBe("hr-d");
+    expect(fieldOf(body, "before")).toBe("正文二");
+    expect(fieldOf(body, "after")).toBe("后来的段落");
+    expect(fieldOf(body, "degraded")).toBe(true);
+  });
+});
+
+describe("diff 基版 · 块在正文里但历史里没有", () => {
+  it("should report block_missing when the block only exists in the current file", async () => {
+    // “正文里有、历史里没有”：必须报缺基版，且 `before` 是空串而不是正文本身。
+    await withServer(
+      async (ctx) => {
+        // 先造出历史：一次 patch 就会落快照，而这份快照里根本没有 `hr-hand`（它只在手改后的文件里）。
+        await patchOf(ctx, "replace", "hr-b", "<p>标题改</p>");
+        const current = readFileSync(ctx.file, "utf8");
+        expect(current).not.toContain('data-hr-id="hr-hand"');
+        writeFileSync(
+          ctx.file,
+          current.replace(
+            '<p data-hr-id="hr-c">正文一</p>',
+            '<p data-hr-id="hr-c">正文一</p><p data-hr-id="hr-hand">手改回来的块</p>',
+          ),
+          "utf8",
+        );
+
+        const body = await diffOf(ctx, "an-hand");
+
+        expect(fieldOf(body, "nodeId")).toBe("hr-hand");
+        expect(fieldOf(body, "before")).toBe("");
+        expect(fieldOf(body, "degraded")).toBe(true);
+        expect(fieldOf(body, "degradedReason")).toBe("历史里找不到该块");
+        expect(chunkTextOf(body)).toBe("手改回来的块");
+      },
+      (workspace) => {
+        writeFileSync(
+          join(workspace, "doc.html"),
+          docWithOrphanMeta("an-hand", "hr-hand", "只在手改后的文件里"),
+          "utf8",
+        );
+      },
+    );
   });
 });
 
 describe("diff 基版 · 历史被裁空", () => {
   it("should report block_missing once every snapshot containing the block has been pruned", async () => {
-    // 长跑文档的真实形状：块删掉之后又写了十几次，`HISTORY_LIMIT` 把带块的那份挤掉了。
-    // 此时没有任何快照认领这个 id——不能崩，也不能假装重识别成功。
+    // 块删掉之后又写了十几次，`HISTORY_LIMIT` 把带块的那份挤掉了：不能崩，也不能假装重识别成功。
     await withServer(async (ctx) => {
       const anId = await addAt(ctx, "hr-c", "主批注");
       await patchOf(ctx, "delete", "hr-c");
@@ -267,5 +195,27 @@ describe("diff 基版 · 历史被裁空", () => {
       expect(fieldOf(body, "degraded")).toBe(true);
       expect(fieldOf(body, "degradedReason")).toBe("历史里找不到该块");
     });
+  });
+});
+
+describe("diff 基版 · 槽位在更新的快照里已被别的块顶掉", () => {
+  it("should fall back to the anchored old text when the latest slot no longer holds it", async () => {
+    // `beforeOfSlot` 的另一侧：块在**最新**快照的那个先序槽位上已经不是同一个 tag 了
+    // （前面的 `<p>` 全换成 `<h2>`），基版只能回到还留着它自己那份快照里的旧文本。
+    let body: unknown = null;
+    await withServer(async (ctx) => {
+      const anId = await addAt(ctx, "hr-c", "主批注");
+      await patchOf(ctx, "delete", "hr-c");
+      await patchOf(ctx, "replace", "hr-d", "<h2>后来的段落</h2>");
+      // 快照是"改之前"的副本：再改一次兄弟，最新快照里那个槽位才真的变成 `<h2>`。
+      await patchOf(ctx, "replace", "hr-b", "<h2>标题改</h2>");
+      body = await diffOf(ctx, anId);
+    });
+    // 槽位对不上 ⇒ block_missing：`before` 是锚定块自己的旧文本，不是占了那个槽位的 `<h2>`。
+    expect(fieldOf(body, "nodeId")).toBe("hr-c");
+    expect(fieldOf(body, "before")).toBe("正文一");
+    expect(fieldOf(body, "after")).toBe("");
+    expect(fieldOf(body, "degraded")).toBe(true);
+    expect(fieldOf(body, "degradedReason")).toBe("当前文档里找不到该块");
   });
 });

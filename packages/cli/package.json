@@ -1,15 +1,24 @@
 {
   "name": "@hreader/cli",
-  "version": "0.0.0",
-  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
+  "private": false,
   "type": "module",
   "sideEffects": false,
   "bin": {
-    "hr": "./src/main.ts"
+    "hr": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "styles"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs"
   },
   "devDependencies": {
     "@hreader/core": "workspace:*",
     "@hreader/renderer-html": "workspace:*",
+    "esbuild": "0.28.2",
     "vitest": "3.2.4"
   }
 }

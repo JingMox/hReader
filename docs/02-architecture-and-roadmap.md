@@ -1,7 +1,7 @@
 # hReader 总体架构设计兼演进路线图 (Architecture & Roadmap)
 
 > [!IMPORTANT]
-> 本文档基于 [01-competitor-research.md](file:///Users/liu/Documents/Project/hReader/docs/01-competitor-research.md) 的竞品调研结论，详细定义 **hReader** 的总体系统架构、自包含 HTML 文档规范、“视觉+语言”双维风格引擎、DOM 增量 Patch 协议、四大生态插件（Skill / MCP / Pi / DeepSeek Harness）的实现方案，以及分阶段演进路线图（Roadmap）。
+> 本文档基于 [01-competitor-research.md](./01-competitor-research.md) 的竞品调研结论，详细定义 **hReader** 的总体系统架构、自包含 HTML 文档规范、“视觉+语言”双维风格引擎、DOM 增量 Patch 协议、四大生态插件（Skill / MCP / Pi / DeepSeek Harness）的实现方案，以及分阶段演进路线图（Roadmap）。
 
 ---
 
@@ -270,7 +270,7 @@ sequenceDiagram
 
 ## 四、 拟建工程目录结构 (Monorepo Structure)
 
-建议在 `/Users/liu/Documents/Project/hReader` 下采用 `pnpm workspace` 组织轻量级 TypeScript Monorepo：
+建议在 `./hReader` 仓库根目录下采用 `pnpm workspace` 组织轻量级 TypeScript Monorepo：
 
 ```text
 hReader/

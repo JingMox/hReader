@@ -38,5 +38,5 @@ export const truncatedOutput = (
 ): Diagnostic =>
   diagnosticOf(
     "truncated_output",
-    `输出已截断：原 ${String(originalBytes)} 字节（序列化后）/ 上限 ${String(limit)} 字节 / 已保留 ${String(keptNodes)} 个节点`,
+    `（已截断：原 ${String(originalBytes)} 字节（序列化后）/ 上限 ${String(limit)} 字节 / 已保留 ${String(keptNodes)} 个节点）`,
   );

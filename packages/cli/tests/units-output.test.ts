@@ -60,8 +60,8 @@ const PATCHED: PatchResult = {
 const REPLACED: PatchResult = {
   path: "b.html",
   bytes: 149,
-  newIds: ["hr-e5acd1ce"],
-  replacedIds: [{ from: "hr-a392514c", to: "hr-e5acd1ce" }],
+  newIds: [],
+  replacedIds: [{ from: "hr-a392514c", to: "p-1-2" }],
   changed: true,
   historyPath: ".hreader/history/b/2026.html",
   undoable: true,
@@ -99,7 +99,6 @@ describe("output · JSON 信封", () => {
       "changed",
       "historyPath",
     ]);
-    // `replacedIds` 只在 replace 且 id 真变时出现：这是用户违约时「旧 id 已失效」的唯一机器可读渠道。
     expect(keysOf(JSON.parse(dataPatch(REPLACED)))).toEqual([
       "path",
       "bytes",
@@ -108,7 +107,8 @@ describe("output · JSON 信封", () => {
       "historyPath",
       "replacedIds",
     ]);
-    expect(keysOf(JSON.parse(dataRead(READ, ["hr-1"])))).toEqual(["html", "ids"]);
+    const readKeys = ["html", "ids", "truncated", "diagnostics"]; // AC-7（docs/05:98）：四键恒在
+    expect(keysOf(JSON.parse(dataRead(READ, ["hr-1"])))).toEqual(readKeys);
     expect(keysOf(JSON.parse(dataStyle(STYLE)))).toEqual(["path", "changed"]);
     expect(keysOf(JSON.parse(dataTone("p")))).toEqual(["prompt"]);
     expect(keysOf(JSON.parse(dataLint(HITS)))).toEqual(["hits"]);
@@ -159,14 +159,17 @@ describe("output · patch/outline 序列化", () => {
     expect(dataLint({ hits: [], truncated: true })).toBe('{"hits":[]}');
   });
 });
-
+// 占位符与 `usage.ts` 的用法行同一个（`<nodeId|selector>`）：提示要能直接粘回命令行。
+const EMPTY_OUTLINE_HINT =
+  "（没有标题）\n本文没有标题；用 hr read a.html <nodeId|selector> 取内容\n";
 describe("output · 人读文本", () => {
   it("should indent the outline tree by depth and end with one newline", () => {
     expect(humanOutline(OUTLINE)).toBe("- hr-1  标题  (1w)\n  - hr-2  子  (1w)\n");
   });
 
-  it("should print an empty outline as a named hint, never as zero bytes", () => {
-    expect(humanOutline({ ...OUTLINE, nodes: [] })).toBe("（没有标题）\n");
+  it("should print an empty outline as a named hint with a runnable next step (docs/05:120)", () => {
+    expect(humanOutline({ ...OUTLINE, nodes: [] }, "a.html")).toBe(EMPTY_OUTLINE_HINT);
+    expect(humanOutline({ ...OUTLINE, nodes: [] })).toContain("hr read <文件>");
   });
 
   it("should print read html plus a newline", () => {
@@ -178,10 +181,8 @@ describe("output · 人读文本", () => {
     expect(humanPatch(UNCHANGED)).toBe("unchanged a.html (42 bytes)\n");
   });
 
-  it("should print the old → new id mapping when replace moved the target id", () => {
-    expect(humanPatch(REPLACED)).toBe(
-      "patched b.html (149 bytes, id 变更: hr-a392514c → hr-e5acd1ce)\n",
-    );
+  it("should print the ignored fragment id mapping when the fragment brought its own id", () => {
+    expect(humanPatch(REPLACED)).toBe("patched b.html (149 bytes, id 变更: hr-a392514c → p-1-2)\n");
   });
 
   it("should print one lint line per hit with the in-block offset, then a trailing newline", () => {

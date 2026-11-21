@@ -67,6 +67,20 @@ pub fn bootstrap_url(port: u16, doc_id: &str, token: &str) -> Result<String, Pat
     ))
 }
 
+/// 三栏阅读器首跳入口（配合 `--app-dir`）：`/` 在 cookie+token 层种下 cookie 后 302 到 `/?doc=<docId>`。
+pub fn reader_url(port: u16, token: &str) -> String {
+    format!("http://127.0.0.1:{port}/?t={}", encode_query(token))
+}
+
+/// 已拿到 cookie 后的文档切换 URL（停留在 `/` 三栏阅读器内）。
+pub fn doc_reader_url(port: u16, doc_id: &str) -> Result<String, PathError> {
+    encode_path(doc_id)?;
+    Ok(format!(
+        "http://127.0.0.1:{port}/?doc={}",
+        encode_query(doc_id)
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +162,18 @@ mod tests {
         let url = bootstrap_url(9000, "a#b.html", "tok").expect("a#b.html 在段内不算非法");
         assert!(!url.contains('#'));
         assert!(url.ends_with("?t=tok"));
+    }
+
+    #[test]
+    fn reader_and_doc_urls_escape_query_properly() {
+        assert_eq!(reader_url(8123, "a+b"), "http://127.0.0.1:8123/?t=a%2Bb");
+        assert_eq!(
+            doc_reader_url(8123, "a/b c.html"),
+            Ok("http://127.0.0.1:8123/?doc=a%2Fb%20c.html".to_string())
+        );
+        assert_eq!(
+            doc_reader_url(8123, "../x.html"),
+            Err(PathError::DotSegment)
+        );
     }
 }

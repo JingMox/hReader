@@ -128,3 +128,27 @@ describe("POST .../resolve · 无备注", () => {
     });
   });
 });
+
+describe("POST /api/doc/:docId · body 省略 docId（浏览器端真请求形状）", () => {
+  it("should accept annotation add and undo when docId comes only from URL path", async () => {
+    await withServer(async (ctx) => {
+      const before = sha256Of(readFileSync(ctx.file));
+      const addRes = await httpCall(ctx.port, {
+        method: "POST",
+        path: `/api/doc/${ctx.docId}/annotations`,
+        headers: withPost(ctx.token),
+        body: JSON.stringify(ANNOTATION),
+      });
+      const undoRes = await httpCall(ctx.port, {
+        method: "POST",
+        path: `/api/doc/${ctx.docId}/undo`,
+        headers: withPost(ctx.token),
+        body: "{}",
+      });
+
+      expect(addRes.status).toBe(201);
+      expect(undoRes.status).toBe(200);
+      expect(sha256Of(readFileSync(ctx.file))).toBe(before);
+    });
+  });
+});

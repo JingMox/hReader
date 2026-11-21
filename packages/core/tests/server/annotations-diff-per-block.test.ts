@@ -2,7 +2,8 @@
 // 全篇 diff 有两个可观察后果：两条不同块的批注拿到同一份结果；面板也没有 `nodeId` 可标块。
 // 另加一条短文档守门：`degraded` 不该在这种规模上为真（审计实测 2 000 字符 → false）。
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -115,40 +116,28 @@ const diffOfDeletedBlock = async (ctx: TestServer): Promise<unknown> => {
   return diffOf(ctx, anId);
 };
 
-/** 判定“按位置重识别到同一块”：必须声明降级，且 `after` 必须是**那块**的新文本。
- *  D.4 裁定：重识别时 `nodeId` = **新** id（前端用它标块）；旧 id 不再上 wire（C1/L-05）。 */
-const expectReidentified = (body: unknown, after: string, newNodeId: string): void => {
-  // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
-  expect(fieldOf(body, "reason")).toBeUndefined();
-  expect(fieldOf(body, "after")).toBe(after);
-  expect(fieldOf(body, "degraded")).toBe(true);
-  expect(fieldOf(body, "nodeId")).toBe(newNodeId);
-  expect(fieldOf(body, "originNodeId")).toBeUndefined();
-};
-
-/** 两条结果必须各自只含自己那块的新文本，且都声明“ID 重建”。 */
+/** 判定“块粒度”：`nodeId` 是**自己的** id，`after` 只含自己那块的新文本。
+ *  R2-04 后 patch 保留目标 id ⇒ 直接命中，不降级（旧口径的“重识别”已无产生路径）。 */
 const expectOwnBlockOnly = (
   left: unknown,
   right: unknown,
   ids: { readonly leftNodeId: string; readonly rightNodeId: string },
 ): void => {
-  // 旧 id 在 patch 后已经不在正文里了；响应必须给“现在能标到的那一块”的 id，并声明降级。
   expect(fieldOf(left, "nodeId")).toBe(ids.leftNodeId);
   expect(fieldOf(right, "nodeId")).toBe(ids.rightNodeId);
-  expect(ids.leftNodeId).not.toBe("hr-c");
-  expect(ids.rightNodeId).not.toBe("hr-d");
-  // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+  // id 归产品所有：`replace` 不再换锚点（docs/05:57），所以盘中 id 就是批注写的那个。
+  expect(ids.leftNodeId).toBe("hr-c");
+  expect(ids.rightNodeId).toBe("hr-d");
+  // C1/L-05：wire 不再有 reason/originNodeId；`degraded` 才是契约。
   expect(fieldOf(left, "originNodeId")).toBeUndefined();
   expect(fieldOf(right, "originNodeId")).toBeUndefined();
-  expect(fieldOf(left, "degraded")).toBe(true);
-  expect(fieldOf(right, "degraded")).toBe(true);
+  expect(fieldOf(left, "degraded")).toBe(false);
+  expect(fieldOf(right, "degraded")).toBe(false);
   expect(textOf(left)).toContain("左块新说");
   expect(textOf(left)).not.toContain("右块新说");
   expect(textOf(right)).toContain("右块新说");
   expect(textOf(right)).not.toContain("左块新说");
   expect(textOf(left)).not.toBe(textOf(right));
-  // patch 重建了块 ID：按位置重识别，口语上“内容变了”，所以必须声明降级（裁定：三档语义）；
-  // 上面那两条 `degraded` 就是这一位。C1/L-05：wire 不再有 reason/originNodeId。
   expect(fieldOf(left, "reason")).toBeUndefined();
 };
 
@@ -181,32 +170,51 @@ describe("GET …/diff · 粒度是块（P1-4）", () => {
 
 // 三档里的后两档（重识别 / 缺失）单独一个 `describe`：它们是 D.4 新补的字段语义，
 // 和“全篇 diff 变成块级 diff”是两件事，混在一个块里会超 `max-lines-per-function`。
-describe("GET …/diff · 块 ID 重建后的三档语义（D.4）", () => {
-  // “同位置”必须是**文档先序**，且 `flattenOf` 不能动模型本身：用 `reverse()` 而非 `toReversed()` 时
-  // 子数组会被就地反转，同一模型第二次 flatten（`blockOf` 一次 + `findIndex` 一次）返回的顺序就和第一次不同，
-  // 位置索引落到邻块 `hr-d`（同 tag、不同文本）→ `before` 取到别人的历史。所以这里必须连 `before` 一起断言。
-  //
-  // 变异体表（M1 一族）：
-  //   M1a `children.reverse()`（就地）      → KILLED（模型 children 被冻结，服务端 500）
-  //   M1b `[...children].reverse()`（非就地）→ **等价变异体，不可杀**：与 `toReversed()` 同语义。
-  //       若将来 `flattenOf` 改成复用可变数组（或用 `splice`/`sort` 原地操作），M1b 会变成可杀，
-  //       届时把它升级为必杀（这条注释就是那天的线索）。
-  //   M1c index 翻转（反文档序）             → KILLED（本用例 + `should diff only the annotation's own block`）
-  it("should reidentify by document-order position, not by a mutated order", async () => {
-    await withServer(async (ctx) => {
-      const anId = await addAt(ctx, "hr-c", "正文一");
-      await patchBlock(ctx, "hr-c", '<p data-hr-id="hr-c2">左块新说</p>');
-      // 新 id 由 `injectNodeIds` 按内容重算（片段自带的 id 会被剥掉），所以从正文里取而不是写死。
-      const newNodeId = currentNodeIdOf(ctx, "左块新说");
+// “同位置”必须是**文档先序**，且 `flattenOf` 不能动模型本身：用 `reverse()` 而非 `toReversed()` 时
+// 子数组会被就地反转，同一模型第二次 flatten（`blockOf` 一次 + `findIndex` 一次）返回的顺序就和第一次不同，
+// 位置索引落到邻块 `hr-d`（同 tag、不同文本）→ `before` 取到别人的历史。所以这里必须连 `before` 一起断言。
+//
+// 变异体表（M1 一族）：
+//   M1a `children.reverse()`（就地）      → KILLED（模型 children 被冻结，服务端 500）
+//   M1b `[...children].reverse()`（非就地）→ **等价变异体，不可杀**：与 `toReversed()` 同语义。
+//       若将来 `flattenOf` 改成复用可变数组（或用 `splice`/`sort` 原地操作），M1b 会变成可杀，
+//       届时把它升级为必杀（这条注释就是那天的线索）。
+//   M1c index 翻转（反文档序）             → KILLED（本用例 + `should diff only the annotation's own block`）
+describe("GET …/diff · 第二档：按文档先序重识别", () => {
+  it("should reidentify by document-order position when only the fragment subtree's id was rebuilt", async () => {
+    // R2-04 后 `replace` 保留片段根的 id，但**子树内部的 id 仍会重算**；批注锚在子树里时
+    // 老 id 就不在盘上了——这是现在唯一还能走到位置重识别（D.4 第二档）的路径。
+    const NESTED = [
+      "<!doctype html>",
+      "<html><head><title>t</title></head><body>",
+      '<article data-hr-id="hr-a"><h2 data-hr-id="hr-b">标题</h2>',
+      '<blockquote data-hr-id="hr-quote"><p data-hr-id="hr-deep">深块</p></blockquote></article>',
+      "</body></html>",
+    ].join("\r\n");
+    await withServer(
+      async (ctx) => {
+        const anId = await addAt(ctx, "hr-deep", "深块");
+        await patchBlock(ctx, "hr-quote", "<blockquote><p>深块新说</p></blockquote>");
+        const newNodeId = currentNodeIdOf(ctx, "深块新说");
 
-      const body = await diffOf(ctx, anId);
+        const body = await diffOf(ctx, anId);
 
-      expect(fieldOf(body, "before")).toBe("正文一");
-      expect(newNodeId).not.toBe("hr-c");
-      expectReidentified(body, "左块新说", newNodeId);
-    });
+        expect(fieldOf(body, "before")).toBe("深块");
+        expect(newNodeId).not.toBe("hr-deep");
+        expect(fieldOf(body, "after")).toBe("深块新说");
+        expect(fieldOf(body, "degraded")).toBe(true);
+        expect(fieldOf(body, "nodeId")).toBe(newNodeId);
+        expect(fieldOf(body, "originNodeId")).toBeUndefined();
+        expect(fieldOf(body, "reason")).toBeUndefined();
+      },
+      (workspace) => {
+        writeFileSync(join(workspace, "doc.html"), NESTED, "utf8");
+      },
+    );
   });
+});
 
+describe("GET …/diff · 第三档：块缺失", () => {
   it("should report block_missing when the annotated block is gone", async () => {
     await withServer(async (ctx) => {
       const body = await diffOfDeletedBlock(ctx);

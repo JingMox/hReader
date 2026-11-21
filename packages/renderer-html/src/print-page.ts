@@ -96,7 +96,7 @@ const productOf = (parts: readonly string[]): string => {
   if (productBytes > MAX_PRODUCT_BYTES) {
     throw new HrError(
       "invalid_input",
-      `打印稿 ${String(productBytes)} 字节，超过 4 MiB 上限（${String(MAX_PRODUCT_BYTES)}），拒绝拼接`,
+      `打印稿 ${String(productBytes)} 字节，超过 4 MiB 上限（${String(MAX_PRODUCT_BYTES)}），拒绝拼接；按章拆分文档，单篇控制在 4 MiB 以内再导出`,
     );
   }
   return parts.join("\n");

@@ -52,8 +52,12 @@
 ### M1.1 HTML 解析 / 序列化 / `data-hr-id` 注入
 
 - AC1 对合法自包含文档解析后，`<article>` 下**可寻址**元素（`packages/core/src/html/constants.ts` 的 `ADDRESSABLE_TAGS`：块级词表 + `h5/h6/div/aside/nav/main/dl/dt/dd/figcaption` + 表格结构 `caption/thead/tbody/tfoot/tr/td/th`）都有唯一 `data-hr-id`。`div` 一律编号，不再只在带 `data-hr-component` 时才算块级（BUG-13）。
+  HTML5 的隐含结束标签可能产生空段落（例如 stray `</p>`），它们同样获得 id；`hr outline` 不会列出无文本的块。
 - AC2 已有 `data-hr-id` 保持不变；新节点按稳定规则生成（同一输入两次运行结果一致，与文件路径无关）。
+  **id 归产品所有**：`hr patch` 片段自带的 `data-hr-id` 一律忽略（片段根带了不同的 id 时给一条 `fragment_ids_ignored` warning，并在 `replacedIds` 里报成 `{from: 片段带的 id, to: 继承到的目标 id}` 这一对；片段没带 id 就不报），`replace` 的新根**继承目标自己的 id**（连续两次 replace 同一 id 都命中），片段内部其它节点由产品重新分配；`append` 保持既有 id 不变。
 - AC3 容错：无 doctype、未闭合标签、嵌套错误、`<script id="hr-meta">` 含 `</script>` 文本时，解析不抛未捕获异常，返回带 `code` 的诊断。
+  树构造按 HTML5「in body」的隐含结束补全：`<p>` 遇到 `table/div/ul/ol/dl/li/p/h1..h6/blockquote/pre/hr/section/article` 等块级开始标签即结束，块成为 `<p>` 的**兄弟**（no-quirks 下由解析器完成，quirks 文档由 `packages/core/src/html/implicitClose.ts` 补齐；再 normalize 一次必须 `unchanged`）。
+  **边界（任意深度）**：判据看的是「`<p>` 内有没有块级元素」，不是「直接子节点是不是块级」——quirks 下 `<p>a<span><table>…</table></span></p>` 的 `<table>` 仍留在 `<p>` 里，必须连那层 `<span>` 一起挪出 `<p>`（`<div>`/`<ul>` 这类解析器自己就关 `p`，无须我们动手）。分裂出来的每段各占自己的源码区间与 id：首段留原 `data-hr-id`，后续段不带 id、由注入阶段分配，因此 `hr patch <首段 id> --action delete` 只删那一段，不会连带切掉挪出去的表格。
 - AC4 序列化保留属性顺序与空白策略一致；往返（parse→serialize→parse）后 outline 结果稳定（属性级不变）。
 - AC5 1MB 文档 parse+inject ≤ 300ms（本机基线记录在报告里）。
 - AC6 `data-hr-component` 只接受 7 个白名单值（6 类，callout 分 insight/warning），非法值产生诊断而非静默丢弃。
@@ -62,6 +66,7 @@
 
 - AC1 模型以纯数据暴露：`{ id, tag, component?, text, children }`，不泄露 parse5 内部节点。
 - AC2 校验：重复 id、id 非法字符、`<article>` 缺失、标题层级跳跃（h2→h4）分别给出稳定 `code`。
+  `data-hr-id` 必须匹配 `^[A-Za-z][A-Za-z0-9_-]{0,63}$` 且全文唯一：`hr normalize` 对不合规/重复（保留第一个）的 id 重新分配并给 `id_reassigned` / `invalid_hr_id` warning；读/写入口（`read`/`patch`/`outline`）遇到重复 id 直接报 `duplicate_id`（exit 2）。
 - AC3 不可变更新：模型变换不就地修改输入（除非显式标注为破坏性且测试覆盖）。
 - AC4 属性/文本转义在模型层前完成，模型不持有未转义 HTML 字符串。
 
@@ -72,13 +77,14 @@
 - AC3 `pendingAnnotations` 汇总所有 `status === "pending_ai"` 的批注（id/targetId/comment 摘要），并校验 `targetId` 是否存在（不存在给诊断）。
 - AC4 与 M1.1 的 ID 规则一致；对无 section 的扁平文档，按 h1 分块且不崩。
 - AC5 输出稳定排序（文档顺序），对同一文档两次调用字节级一致。
+- AC6 空大纲不静默：`hr outline` 对一个标题都没有的文档仍退出 0，但输出两行——第一行 `（没有标题）`，第二行给出可直接粘的命令 `hr read <file> <nodeId|selector>`（参数名与 M1.8 AC1 的用法行同字面，不写 `<选择器>` 这类会被当字面 target 的占位）。
 
 ### M1.4 `hr_read_node`
 
 - AC1 按 `nodeId` 读取子树 HTML + 关联批注；`nodeId` 不存在时返回 `code: "node_not_found"`。
-- AC2 选择器支持：`#id`、`[data-hr-id="x"]`、`article > section:nth-of-type(2)`；选择器语法非法返回 `code: "invalid_selector"`，不抛裸异常。
+- AC2 选择器支持：`#id`、`[data-hr-id="x"]`、`article > section:nth-of-type(2)`；选择器语法非法返回 `code: "invalid_selector"`，不抛裸异常。`#id` 的字符集与 `HR_ID_PATTERN`（`^[A-Za-z][A-Za-z0-9_-]{0,63}$`）**同源**：大写与 `_` 在 `#` 形态里一样可用（`#hr-Ab12` 与 `[data-hr-id="hr-Ab12"]` 同义）。选择器命中 **>1** 个元素时取**文档顺序第一个**并给 `ambiguous_selector` warning（`data.matches` 报命中总数）；子选择器恰好命中 1 个**不**告警。
 - AC3 不外泄 `<html>`/`<body>`/`<script id="hr-meta">` 内容；读取 `<script>` 节点时显式拒绝（`code: "node_not_allowed"`）。
-- AC4 输出体量控制：默认对超大子树（> 64KB）返回截断 + `truncated: true` + 节点首行提示。
+- AC4 输出体量控制：默认对超大子树（> 64KB）返回截断 + `truncated: true` + 节点首行提示；`--max-bytes` 截断时**人读模式也打一行** `（已截断：原 N 字节（序列化后）/ 上限 M 字节 / 已保留 K 个节点）`——就是 JSON `diagnostics` 里那条 `truncated_output` 原文，不许只在 JSON 里有而人读静默。`--json` 的 `data` **恒含** `truncated`（布尔）与 `diagnostics`（数组，未截断时为 `[]`）：键恒在，不因截断而增减。`--max-bytes` 约束的是**内容**（`data.html` 的字节数）；`（已截断：…）` 与 JSON 的 `diagnostics` 是元信息，**不计入该预算**，原告警必须恰好一行。
 
 ### M1.5 `hr_patch_node`
 
@@ -90,6 +96,7 @@
 - AC6 并发：同一文件两个 patch 串行化（文件锁），不产生丢失更新；锁超时给出 `code: "locked"`。
 - AC7 幂等：同一 `replace` 内容重复执行两次，文件字节一致（除历史快照）。
 - AC8 路径安全：`../`、绝对路径、符号链接指向工作区外 → 拒绝。
+- AC9 寻址：第二个位置参数与 `hr read` 同一解析器（`nodeId|selector`，先选择器、再 node id），5 种 action 都可寻址；选择器命中多个可寻址元素时不猜——报 `invalid_selector` + `data.reason: "ambiguous"`（附 `count` 与前 5 个 `candidates`），命中不可寻址元素（无 `data-hr-id`）报 `node_not_found`。
 
 ### M1.6 双维风格引擎
 
@@ -111,13 +118,14 @@
 
 ### M1.8 CLI `hr`
 
-- AC1 命令：`hr outline <file> [--json]`、`hr read <file> <nodeId|selector> [--json]`、`hr patch <file> <nodeId> --action <a> (--html <s>|--html-file <p>)`、`hr style <file> (--visual <id>|--tone <id>|--lint)`。
+- AC1 命令：`hr outline <file> [--json]`、`hr read <file> <nodeId|selector> [--json]`、`hr patch <file> <nodeId|selector> --action <a> (--html <s>|--html-file <p>)`、`hr style <file> (--visual <id>|--tone <id>|--lint)`。
 - AC2 退出码：`0` 成功、`1` 可预期业务失败（节点不存在等）、`2` 用法错误、`3` IO/权限错误、`70` 内部错误（未捕获）。每种都有测试。
 - AC3 stdout 只输出结果（`--json` 时为单行合法 JSON），诊断/日志走 stderr；管道下无颜色码。
 - AC4 `--json` 输出 schema 稳定，含 `ok/code/message` 字段；错误时也输出合法 JSON（便于 Agent 解析）。
 - AC5 `hr patch` 在 `--html-file` 指向不存在文件、非法 UTF-8 时给出稳定错误码，不写文件。
 - AC6 帮助文本 `--help` 覆盖所有命令与参数；`hr` 无参数时输出用法并非 0 退出码。
 - AC7 patch 目标集 = `PATCHABLE_TAGS`（默认与 `ADDRESSABLE_TAGS` 同集，当前无例外）：`div`、`tbody/tr/td` 都能直接 `append`/`replace`，行内元素仍拒（`isPatchableTarget`）；表格结构片段（`<tr>`/`<td>`）解析时套上祖先链，不再要求整表替换。
+- AC8 公共出口：`locateTarget(parsed, target)` 是 `read`/`patch` 共用的**唯一寻址入口**（兑现 M1.5 AC9 的"同一解析器"）；`patchTargetIdOf(located)` 承载"patch 必须拿到**恰好一个**可寻址 id"的语义。边界：这两个**不承诺**为长期稳定 API，签名演进允许，改动须同步本卡。
 
 ### M1.9 Universal Skill
 
@@ -318,6 +326,8 @@ hr export notes/perf.html --json | jq -r .data.html > notes/perf-print.html
 | `--workspace <dir>` | workspace 根，决定 `--out` 的边界；默认进程 cwd |
 | `--json` | 成功 `{ok:true,data:{html,bytes,droppedImages,out}}`；失败 `{"ok":false,"code":…,"message":…}` 单行。键集固定（含 `out:null`、`droppedImages:0` 时不省键） |
 
+**4 MiB 上限**：打印稿按拼接后的 UTF-8 字节判定，`> 4194304` 报 `invalid_input`（exit 1），报文给实际字节数与处理方法——按章拆分文档，单篇控制在 4 MiB 以内再导出。该上限同时写在 `hr export --help` 里（不再只在报错时才可见）。
+
 **`dropped_images` 口径**：只统计被删的 `<img>` 与 SVG `<image>`；`<video>`/`<audio>`/`<svg>`/`<iframe>` 是**整删不计数**。原因：前两者删掉会直接少一张图（用户看得见），后者整块删是结构决策、不是丢图。有图被删时 stderr 另给一行“已移除 N 个外部图片”。
 
 **印刷骨架与主题的关系**：`PRINT_CSS`（骨架）拼在主题 `<style>` **之后**，因此骨架压主题；`themeCss` 里任何 `</style` 先转成 `<\/style`（纯字符串兜底，最后一道物理防线），合法性判定仍由 core 的 `assertThemeSafe` 在 `loadThemeCss` 里做——打印层**不重复实现**该校验。产物里 `@media print` 之外的 `.print-*` 别名只有四个：`.print-cover`/`.print-toc`/`.print-chapter`/`.print-cover__title`，**不补齐**旧骨架类名（别名是迁移期内给旧样式表的短路，不是 API）。
@@ -411,9 +421,9 @@ pnpm desktop:dev -- --workspace <dir> --open <file>   # 开发时直跑
 | `invalid_html` | 1 | 传进来的不是字符串 / 文档没有 `<head>` 时注入主题样式失败 |
 | `no_article` | 1 | **源文档里没有 `<article>`**，无从导出 |
 | `empty_document` | 1 | **`<article>` 在，但裁掉交互 UI 后没有可读文本**（与 `no_article` 不许合并）；判定前先剥零宽字符 `U+200B`/`U+FEFF`/`U+180E`，否则只含零宽的文档会排出空白页 |
-| `node_not_found` | 1 | `data-hr-id` 匹配不到节点 |
+| `node_not_found` | 1 | 三条来源：①`data-hr-id` 匹配不到节点（id 不存在）；②选择器命中但目标**不可寻址**（如无 `data-hr-id` 的 `<span>` 无法承担 patch 的根）；③文法合法但零命中。三者都归这个码，**不是** `invalid_selector` |
 | `node_not_allowed` | 1 | 目标是页面外壳锚点，不可读 |
-| `invalid_selector` | 1 | 选择器非法 |
+| `invalid_selector` | 1 | 选择器语法非法（`data.reason: "syntax"`），或选择器命中多个可寻址元素、需要给 id（`data.reason: "ambiguous"` + `data.count` + `data.matches` + `data.candidates`）。`count` 是**这次歧义里可选项的总数**（多义命中时等于 `addressable`，截断不影响它，不变式 `candidates.length === Math.min(count, 5)`）：双解释时恒 2（id 一个 + 选择器一个）；**不是**“选择器命中了几个元素”——那个数在 `matches` |
 | `invalid_document` | 1 | `hr-meta` 等伴随文件不是合法 JSON |
 | `invalid_fragment` | 1 | 片段为空/只有空白，或解析后不是恰好一个根元素（标签不配平不算错——HTML5 容错解析会补闭合） |
 | `invalid_max_bytes` | 1 | `maxBytes` 超出 `(0, MAX_BYTES_LIMIT]` |
@@ -441,7 +451,8 @@ pnpm desktop:dev -- --workspace <dir> --open <file>   # 开发时直跑
 | `llm_failure` | 3 | 风格建议层调用失败（message 里不许出现 key/prompt/响应原文） |
 | `daemon_already_running` | 1 | 已有 daemon 占着端口（运行时状态，不是用法错）；message 点名 pid 与两条后手：`kill <pid>` 或删 `daemon.json` |
 | `port_in_use` | 2 | `127.0.0.1:<port>` 的 bind 真失败（`EADDRINUSE`），占端口的**不是**我们的 daemon（是的话报上一条）；`daemon.json` 记的端口上探不到身份（`/healthz` 超时/非 JSON）也落到这条——探不到 ≠ 能证明它是我们的；后手一律是换 `--port`。`::` 上另有监听只作 stderr 提示，不改变能否启动 |
-| `needs_normalize` | 2 | 文档缺 `data-hr-id`（`outline`/`read`/`patch`/`serve` 的前置判定）；message 点名 `hr normalize <file> --write` |
+| `needs_normalize` | 2 | 文档**缺** `data-hr-id`（`outline`/`read`/`patch`/`serve` 的前置判定）；message 点名 `hr normalize <file> --write`（normalize 会补齐，是「缺」不是「撞」） |
+| `duplicate_id` | 2 | 同一文档里两个元素**共用**同一个 `data-hr-id`（同为 exit 2，与 `needs_normalize` 靠「缺 vs 撞」区分）：`read`/`patch` **在定位之前就报本条并退出 2**——重复的那处永远读不到、也改不到删不掉（不是“只命中第一个”）；message 点名 `hr normalize <file> --write`（normalize 会给后出现的那个改名） |
 | `content_model_conflict` | 2 | 片段内容模型与目标容器不兼容（`patch` 的 `append`/`prepend`/`replace` 写盘前判）：`<p>`/`<h1>`–`<h6>`/`<pre>` 这类 phrasing-only 容器装不下块级子节点。**用户可修**（换容器如 `article`/`section`/`div`、或改 `--html`），因此与 `invalid_input`（整条输入不合法、得看文档）分开，也不复用 `invalid_fragment`（片段本身合法，是“放不下”） |
 
 ---

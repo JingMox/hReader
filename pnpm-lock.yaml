@@ -48,8 +48,6 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
 
-  packages/chrome-extension: {}
-
   packages/cli:
     devDependencies:
       '@hreader/core':
@@ -58,6 +56,9 @@ importers:
       '@hreader/renderer-html':
         specifier: workspace:*
         version: link:../renderer-html
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       vitest:
         specifier: 3.2.4
         version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)

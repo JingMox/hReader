@@ -94,6 +94,19 @@ describe("measureSelection · 正常换算", () => {
 
     expect(await offsetsOf()).toEqual({ start: 1, end: 5 });
   });
+
+  it("should bind document as this when calling createRange", async () => {
+    const boundDoc = {
+      createRange(this: unknown) {
+        if (this !== boundDoc) throw new TypeError("Illegal invocation");
+        return rangeOf();
+      },
+    };
+    vi.stubGlobal("document", boundDoc);
+    vi.stubGlobal("window", { getSelection: () => ({ rangeCount: 1, getRangeAt: () => SAME }) });
+
+    expect(await offsetsOf()).toEqual({ start: 1, end: 5 });
+  });
 });
 
 describe("measureSelection · 拿不到 selection / range 时给零", () => {
@@ -193,6 +206,19 @@ describe("measureSelection · 焦点容器缺失的退化", () => {
 
     // `focusNodeParent ?? null`：缺失时必须当"没有块"处理，否则 `blockOf(undefined)` 会抛。
     expect(measure.crossBlock(selection)).toBe(true);
+  });
+
+  it("should fall back to focusNode.parentElement when focusNodeParent is omitted", async () => {
+    const measure = await call();
+    const anchor = blockOf("hr-a");
+    const selection: SelectionLike = {
+      anchorNode: { parentElement: { closest: anchor.closest } },
+      anchorOffset: 0,
+      focusNode: { parentElement: { closest: anchor.closest } },
+      focusOffset: 2,
+    };
+
+    expect(measure.crossBlock(selection)).toBe(false);
   });
 });
 

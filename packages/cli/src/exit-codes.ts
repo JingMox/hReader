@@ -50,6 +50,8 @@ const EXIT_CODES = {
   needs_normalize: EXIT_USAGE,
   port_in_use: EXIT_USAGE,
   content_model_conflict: EXIT_USAGE,
+  // F16：重复 id 是「先 normalize --write 就能修」的状态，与 `needs_normalize` 同档
+  duplicate_id: EXIT_USAGE,
 } satisfies Record<HrErrorCode, number>;
 
 /** `satisfies` 已保证表内穷尽：CLI 与 core 同仓同版本，不存在"新 core 配旧 CLI"的运行时分支。 */

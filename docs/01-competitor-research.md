@@ -155,4 +155,4 @@ flowchart TB
 
 ---
 
-> 🔗 **下一步阅读**：关于如何将上述六大基因落地为具体的模块设计、数据协议、插件接口与分阶段开发计划，请参阅姊妹篇文档：[02-architecture-and-roadmap.md](file:///Users/liu/Documents/Project/hReader/docs/02-architecture-and-roadmap.md)。
+> 🔗 **下一步阅读**：关于如何将上述六大基因落地为具体的模块设计、数据协议、插件接口与分阶段开发计划，请参阅姊妹篇文档：[02-architecture-and-roadmap.md](./02-architecture-and-roadmap.md)。

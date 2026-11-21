@@ -31,6 +31,8 @@ export interface TargetLike {
   readonly value?: string;
   /** 由 `Host.on` 预解析的 `[data-toc-id]`：widget 只读这一个字段，不碰选择器/属性名。 */
   readonly tocId?: string | undefined;
+  /** 由 `Host.on` 预解析的 `[data-hr-id]:not(article)`：正文块点击只读这一个字段。 */
+  readonly blockId?: string | undefined;
 }
 
 export interface Host {
@@ -45,6 +47,8 @@ export interface Host {
   readonly blockHtml: (id: string, markup: string) => void;
   /** 块在新文档里不存在了：从 DOM 真正删掉（裁定 #8；**必选**，缺实现就是漏删块）。 */
   readonly removeBlock: (id: string) => void;
+  /** 同步整篇 HTML 中新增、改标签或重排的块，保留未改动块与选区。 */
+  readonly syncBlocks?: (markup: string) => void;
   readonly on: (
     selector: string,
     type: string,
@@ -76,9 +80,15 @@ export interface ElementLike {
   readonly getAttribute: (name: string) => string | null;
   innerHTML: string;
   textContent: string | null;
+  value?: string;
+  readonly tagName: string;
+  readonly parentElement?: ElementLike | null;
+  readonly nextElementSibling?: ElementLike | null;
   readonly classList: { readonly toggle: (name: string, on?: boolean) => void };
   readonly replaceChildren: (...nodes: ElementLike[]) => void;
   readonly appendChild: (node: ElementLike) => void;
+  readonly insertBefore: (node: ElementLike, ref: ElementLike | null) => void;
+  readonly replaceWith: (node: ElementLike) => void;
   readonly addEventListener: (
     type: string,
     handler: (event: { target: TargetLike }) => void,
@@ -102,25 +112,88 @@ const paint = (root: DocumentLike, spec: NodeSpec): ElementLike => {
   return element;
 };
 
+const stripHeadOf = (markup: string): string => {
+  const match = /<article\b[\s\S]*<\/article>/iu.exec(markup);
+  return match === null ? markup : match[0];
+};
+
+const syncHeadTheme = (root: DocumentLike, markup: string): void => {
+  const css = /<style\b[^>]*\bid=["']hr-theme["'][^>]*>([\s\S]*?)<\/style>/iu.exec(markup)?.[1];
+  const themeEl = css === undefined ? undefined : found(root, "#hr-theme");
+  if (themeEl !== undefined && css !== undefined && themeEl.textContent !== css) {
+    themeEl.textContent = css;
+  }
+};
+
+const indexBlocks = (nodes: readonly ElementLike[]): Map<string, ElementLike> => {
+  const index = new Map<string, ElementLike>();
+  for (const node of nodes) {
+    const id = node.getAttribute("data-hr-id");
+    if (id !== null) index.set(id, node);
+  }
+  return index;
+};
+
+const parsedBlocksOf = (
+  root: DocumentLike,
+  markup: string,
+  topOnly = false,
+): Map<string, ElementLike> => {
+  const box = root.createElement("div");
+  // 游离 `<div>` 解析：不进活动文档（裁定 #7 的三处之一）。
+  box.innerHTML = stripHeadOf(markup);
+  const direct = topOnly ? box.querySelectorAll("article[data-hr-id] > [data-hr-id]") : [];
+  // 跳过根 `<article>` 自身，索引文档内所有可寻址块（整块同步时优先取 `<article>` 直接子块以保住包装容器）。
+  const nodes = direct.length > 0 ? direct : box.querySelectorAll("[data-hr-id]:not(article)");
+  return indexBlocks(nodes);
+};
+
+const sameShape = (live: ElementLike, fresh: ElementLike): boolean =>
+  live.tagName === fresh.tagName &&
+  live.getAttribute("data-hr-component") === fresh.getAttribute("data-hr-component");
+
+const placeBlock = (
+  container: ElementLike,
+  live: ElementLike | undefined,
+  fresh: ElementLike,
+  anchor: ElementLike | null,
+): ElementLike => {
+  if (live === undefined) {
+    container.insertBefore(fresh, anchor);
+    return fresh;
+  }
+  if (!sameShape(live, fresh)) {
+    live.replaceWith(fresh);
+    return fresh;
+  }
+  if (live.parentElement === container && live.nextElementSibling !== anchor) {
+    container.insertBefore(live, anchor);
+  }
+  return live;
+};
+
+const syncAllBlocks = (root: DocumentLike, markup: string): void => {
+  syncHeadTheme(root, markup);
+  const container = found(root, "#hr-doc article[data-hr-id]") ?? found(root, "#hr-doc");
+  if (container === undefined) return;
+  const freshEntries = [...parsedBlocksOf(root, markup, true).entries()].reverse();
+  let anchor: ElementLike | null = null;
+  for (const [id, fresh] of freshEntries) {
+    anchor = placeBlock(container, found(root, `[data-hr-id="${id}"]`), fresh, anchor);
+  }
+};
+
 /** 结构/事件无关的那一半（纯读改写）。 */
 const paintOps = (
   root: DocumentLike,
-): Pick<Host, "children" | "blocks" | "blockHtml" | "removeBlock"> => ({
+): Pick<Host, "children" | "blocks" | "blockHtml" | "removeBlock" | "syncBlocks"> => ({
   children: (selector, specs) => {
     const element = found(root, selector);
     if (element !== undefined) element.replaceChildren(...specs.map((spec) => paint(root, spec)));
   },
   blocks: (markup) => {
-    const box = root.createElement("div");
-    // 游离 `<div>` 解析：不进活动文档，只为量出每块的 innerHTML（裁定 #7 的三处之一）。
-    box.innerHTML = markup;
     const index = new Map<string, string>();
-    // 只取最外层：嵌套的 `[data-hr-id]` 属于父块的内容，不能单独成"块"（裁定 #8）。
-    const outer = box.querySelectorAll("[data-hr-id]:not([data-hr-id] [data-hr-id])");
-    for (const node of outer) {
-      const id = node.getAttribute("data-hr-id");
-      if (id !== null) index.set(id, node.innerHTML);
-    }
+    for (const [id, node] of parsedBlocksOf(root, markup)) index.set(id, node.innerHTML);
     return index;
   },
   blockHtml: (id, markup) => {
@@ -131,6 +204,9 @@ const paintOps = (
   removeBlock: (id) => {
     found(root, `[data-hr-id="${id}"]`)?.remove?.();
   },
+  syncBlocks: (markup) => {
+    syncAllBlocks(root, markup);
+  },
 });
 
 /** 只碰文本/属性/类名的那些。 */
@@ -139,7 +215,9 @@ const textOps = (
 ): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "has"> => ({
   text: (selector, value) => {
     const element = found(root, selector);
-    if (element !== undefined && element.textContent !== value) element.textContent = value;
+    if (element === undefined) return;
+    if (element.textContent !== value) element.textContent = value;
+    if (typeof element.value === "string" && element.value !== value) element.value = value;
   },
   attr: (selector, name, value) => {
     const element = found(root, selector);
@@ -148,8 +226,10 @@ const textOps = (
     else element.setAttribute(name, value);
   },
   html: (selector, markup) => {
+    syncHeadTheme(root, markup);
+    const clean = stripHeadOf(markup);
     const element = found(root, selector);
-    if (element !== undefined && element.innerHTML !== markup) element.innerHTML = markup;
+    if (element !== undefined && element.innerHTML !== clean) element.innerHTML = clean;
   },
   cls: (selector, name, on) => {
     found(root, selector)?.classList.toggle(name, on);
@@ -166,14 +246,17 @@ export const createDomHost = (root: DocumentLike): Host => {
   const on: Host["on"] = (selector, type, handler) => {
     const element = found(root, selector);
     if (element === undefined) return () => undefined;
-    // 真实 `event.target` 满足 `TargetLike`（`closest` 与 `value` 本来就是 DOM 成员）；
-    // 这里不给 DOM lib 付代价，靠上面声明的结构类型。
-    // DOM 语义（向上找最近的 `[data-toc-id]` 再取属性）只留在这个适配器里；
-    // widget 拿到的 target 已带 `tocId`，不再自己 `closest`。
+    // 真实 DOM 的 `value` 与 `closest` 在原型链上，直接对象展开会丢掉：必须显式转接并保留 `this`。
     const listener = (event: { target: TargetLike }): void => {
+      const target = event.target;
+      const findClosest = target.closest;
+      const closest =
+        findClosest === undefined ? undefined : (sel: string) => findClosest.call(target, sel);
       handler({
-        ...event.target,
-        tocId: event.target.closest?.("[data-toc-id]")?.getAttribute("data-toc-id") ?? undefined,
+        ...(target.value === undefined ? {} : { value: target.value }),
+        ...(closest === undefined ? {} : { closest }),
+        tocId: closest?.("[data-toc-id]")?.getAttribute("data-toc-id") ?? undefined,
+        blockId: closest?.("[data-hr-id]:not(article)")?.getAttribute("data-hr-id") ?? undefined,
       });
     };
     element.addEventListener(type, listener);

@@ -89,6 +89,7 @@ pub fn parse(
                 // 值属于 `open_arg`，这里只跳过，避免被当成未知 flag。
                 value(&mut index)?;
             }
+            other if other.starts_with("-psn_") => {}
             other if other.starts_with('-') => {
                 return Err(OptionsError::UnknownFlag(other.to_string()))
             }

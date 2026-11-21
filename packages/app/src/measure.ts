@@ -41,7 +41,7 @@ export const measureSelection = (): MeasureLike => ({
     const block = blockOf(selection.anchorNode?.parentElement ?? null);
     if (range === undefined || factory === undefined || block === null) return { start: 0, end: 0 };
     const measure = (node: unknown, offset: number): number => {
-      const head = factory();
+      const head = factory.call(document);
       head.selectNodeContents(block);
       head.setEnd(node, offset);
       return head.toString().length;
@@ -51,8 +51,8 @@ export const measureSelection = (): MeasureLike => ({
     return left <= right ? { start: left, end: right } : { start: right, end: left };
   },
   crossBlock: (selection) => {
-    const focus = selection.focusNodeParent;
-    const focusBlock = focus === undefined ? null : blockOf(focus);
+    const focus = selection.focusNodeParent ?? selection.focusNode?.parentElement;
+    const focusBlock = focus === undefined || focus === null ? null : blockOf(focus);
     return blockOf(selection.anchorNode?.parentElement ?? null) !== focusBlock;
   },
 });

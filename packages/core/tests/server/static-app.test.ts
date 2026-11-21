@@ -124,6 +124,7 @@ describe("GET / · 构建产物与回退", () => {
     expect(statusOf(raw)).toBe("HTTP/1.1 200 OK");
     expect(raw.toLowerCase()).toContain("content-type: text/html; charset=utf-8");
     expect(raw.toLowerCase()).toContain("content-security-policy: default-src 'none'");
+    expect(raw.toLowerCase()).toContain("style-src 'self' 'unsafe-inline'");
     expect(bodyOf(raw)).toContain("built");
   });
 

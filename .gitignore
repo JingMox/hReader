@@ -1,7 +1,13 @@
 node_modules/
 dist/
-# 生成物：`build` 把仓库根 styles/ 拷进来（M3.1.1 AC-1），不入库
+# 生成物：build 把仓库根 styles/ 拷进来，不入库
 packages/mcp-server/styles/
+packages/cli/styles/
+skills/hreader/scripts/cli.mjs
+skills/hreader/scripts/styles/
+packages/desktop/src-tauri/resources/app/
+packages/desktop/src-tauri/resources/cli/
+release-artifacts/
 coverage/
 .stryker-tmp/
 *.log
@@ -12,6 +18,8 @@ coverage/
 *.tsbuildinfo
 .eslintcache
 .deltabox/
+.workflow/
+home3/
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map
 packages/*/src/**/*.d.ts.map

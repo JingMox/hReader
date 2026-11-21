@@ -105,8 +105,10 @@ describe("applyPatch · replace 看的是直接父容器", () => {
 
     // 父容器是 `<article>`：装得下块级就是合法改动，不查祖先链。
     expect(outcome.changed).toBe(true);
-    // 新节点会拿到新 id（自 F10 起不可寻址的块也会在写盘时补 id），所以只比标签与内容。
-    expect(outcome.html).toMatch(/<div data-hr-id="hr-[0-9a-f]{8}">块<\/div>/u);
+    // docs/05:57：`replace` 的新根继承目标 id（`hr-p`），换标签也不换锚点。
+    expect(outcome.html).toBe(
+      '<article data-hr-id="hr-a"><div data-hr-id="hr-p">块</div></article>',
+    );
   });
 });
 

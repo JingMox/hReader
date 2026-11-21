@@ -14,6 +14,7 @@ pub mod signals;
 pub mod spawn_decision;
 pub mod supervisor;
 pub mod url_build;
+pub mod workbench;
 
 mod smoke;
 mod window;
@@ -55,10 +56,16 @@ impl Reaper {
     }
 }
 
-/// 一次启动的产物：daemon 关系（带着收尸能力）+ webview 该去的地址。
+/// 一次启动的产物：daemon 关系（带着收尸能力）+ webview 该去的地址与工作区上下文。
 pub struct Session {
     pub daemon: Reaper,
     pub url: String,
+    pub reader_url: Option<String>,
+    pub port: u16,
+    pub token: String,
+    pub workspace: PathBuf,
+    pub doc_id: String,
+    pub cli: PathBuf,
     /// 信号订阅随 session 一起活：`connect` 期间就装好了，提前丢了等于没装。
     _signals: signals::SignalSubscription,
 }
@@ -134,7 +141,7 @@ pub fn run(argv: &[String]) -> i32 {
             return 1;
         }
     };
-    let options = match options::parse(argv, &cwd, &home) {
+    let mut options = match options::parse(argv, &cwd, &home) {
         Ok(options) => options,
         Err(error) => {
             eprintln!("参数有误：{error}");
@@ -147,20 +154,179 @@ pub fn run(argv: &[String]) -> i32 {
     // 必须在 `connect()` 之前装上：`connect` 里有"已 spawn、还没 own"的窗口（最长 `READY_TIMEOUT`），
     // 那段时间被 SIGTERM 掉就没人收尸。类型上的说法是 `connect_with` 必须收下这个 token。
     let _before_connect = signals::watch();
+    prepare_gui_launch(argv, &cwd, &mut options);
     if let Some(seconds) = options.hold {
         return hold(argv, &options, Duration::from_secs(seconds));
     }
     match connect(argv, &options, _before_connect) {
         Ok(session) => {
-            let url = session.url.clone();
-            window::run(url, session)
+            save_last_workspace(&options.home, &session.workspace);
+            window::run(window::LaunchTarget::Session(session))
         }
+        Err(StartupError::NoDocument(_)) => match locate_cli(&options) {
+            Ok(cli) => {
+                save_last_workspace(&options.home, &options.workspace);
+                window::run(window::LaunchTarget::Empty {
+                    workspace: options.workspace,
+                    cli,
+                })
+            }
+            Err(cli_err) => {
+                let message = cli_err.to_string();
+                eprintln!("{message}");
+                show_native_error("hReader 启动失败", &message);
+                1
+            }
+        },
         Err(error) => {
-            eprintln!("{error}");
+            let message = error.to_string();
+            eprintln!("{message}");
+            show_native_error("hReader 启动失败", &message);
             1
         }
     }
 }
+
+fn has_flag(argv: &[String], flag: &str) -> bool {
+    argv.iter().any(|token| token == flag)
+}
+
+fn raw_doc_arg(argv: &[String]) -> Option<&str> {
+    if let Some(idx) = argv.iter().position(|token| token == "--open") {
+        return argv.get(idx + 1).map(String::as_str);
+    }
+    let mut index = 0;
+    while index < argv.len() {
+        let token = argv[index].as_str();
+        if options::VALUE_FLAGS.contains(&token) {
+            index += 2;
+            continue;
+        }
+        if !token.starts_with('-') {
+            return Some(token);
+        }
+        index += 1;
+    }
+    None
+}
+
+const LAST_WORKSPACE_FILE: &str = "last-workspace.txt";
+
+pub(crate) fn is_filesystem_root(path: &Path) -> bool {
+    path.parent().is_none()
+}
+
+pub(crate) fn save_last_workspace(home: &Path, workspace: &Path) {
+    if is_filesystem_root(workspace) || !workspace.is_dir() {
+        return;
+    }
+    if std::fs::create_dir_all(home).is_ok() {
+        let _ = std::fs::write(
+            home.join(LAST_WORKSPACE_FILE),
+            workspace.to_string_lossy().as_bytes(),
+        );
+    }
+}
+
+pub(crate) fn load_last_workspace(home: &Path) -> Option<PathBuf> {
+    let raw = std::fs::read_to_string(home.join(LAST_WORKSPACE_FILE)).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_dir() && !is_filesystem_root(&path) {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn default_gui_workspace(home: &Path) -> Option<PathBuf> {
+    if let Some(last) = load_last_workspace(home) {
+        return Some(last);
+    }
+    let home_root = home_from_env(|name| std::env::var_os(name)).ok()?;
+    let docs_dir = home_root.join("Documents").join("hReader");
+    if std::fs::create_dir_all(&docs_dir).is_ok() {
+        return Some(docs_dir);
+    }
+    None
+}
+
+/// 保证手写 `.html` 已带 `data-hr-id`，避免桌面端打开即被 `hr serve` 拒收。
+pub(crate) fn ensure_doc_ready(cli: &Path, workspace: &Path, doc_id: &str) {
+    let target = workspace.join(doc_id);
+    let Ok(html) = std::fs::read_to_string(&target) else {
+        return;
+    };
+    if html.contains("data-hr-id=") {
+        return;
+    }
+    let _ = supervisor::run_cli_task(cli, workspace, &["normalize", doc_id, "--write"]);
+}
+
+/// 若桌面壳私有目录里残留着**另一个工作区**的 daemon，先停掉它，确保新打开的文档/工作区不被旧 daemon 拒收。
+pub(crate) fn clear_other_workspace_daemon(home: &Path, target_workspace: &Path) {
+    let file = daemon_file::daemon_file_in(home);
+    if let Ok(daemon_file::DaemonState::Present(info)) = daemon_file::read_daemon(&file) {
+        if info.workspace != target_workspace {
+            supervisor::stop_pid(info.pid);
+            let _ = std::fs::remove_file(&file);
+            std::thread::sleep(Duration::from_millis(120));
+        }
+    }
+}
+
+fn prepare_gui_launch(argv: &[String], cwd: &Path, options: &mut ShellOptions) {
+    if !has_flag(argv, "--workspace") {
+        if let Some(raw_doc) = raw_doc_arg(argv) {
+            let candidate = Path::new(raw_doc);
+            let abs = if candidate.is_absolute() {
+                candidate.to_path_buf()
+            } else {
+                cwd.join(candidate)
+            };
+            if abs.is_file() {
+                if let Some(parent) = abs.parent() {
+                    options.workspace = parent.to_path_buf();
+                }
+            }
+        } else if is_filesystem_root(&options.workspace)
+            || workbench::list_html_files(&options.workspace).is_empty()
+        {
+            if let Some(fallback_ws) = default_gui_workspace(&options.home) {
+                options.workspace = fallback_ws;
+            }
+        }
+    }
+    clear_other_workspace_daemon(&options.home, &options.workspace);
+    if let Ok(action) = open_arg::action_of(argv, &options.workspace) {
+        if let (Ok(doc_id), Ok(cli)) = (
+            document_of(&action, &options.workspace),
+            locate_cli(options),
+        ) {
+            ensure_doc_ready(&cli, &options.workspace, &doc_id);
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn show_native_error(title: &str, message: &str) {
+    let script = format!(
+        "display alert {:?} message {:?} as critical",
+        title, message
+    );
+    let _ = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
+#[cfg(not(target_os = "macos"))]
+fn show_native_error(_title: &str, _message: &str) {}
 
 /// `--hold <secs>`：无窗口、跑满一段时间或收到 SIGTERM/SIGINT 就退出，给 AC-14 一个可测的靶子。
 fn hold(argv: &[String], options: &ShellOptions, timeout: Duration) -> i32 {
@@ -204,6 +370,7 @@ pub fn connect_with(
     let state = daemon_file::read_daemon(&daemon_file::daemon_file_in(&options.home))
         .map_err(StartupError::DaemonFile)?;
 
+    let app_dir = supervisor::default_app_dir();
     let daemon = match decide(&state, probe) {
         Decision::Reuse(info) => {
             // TOCTOU：判定之后、带 token 导航之前必须再核一次，否则抢到端口的人就能看到 `?t=`。
@@ -221,61 +388,99 @@ pub fn connect_with(
             // 家目录会变成隐形的新 home），所以由壳先建。
             std::fs::create_dir_all(&options.home)
                 .map_err(|_| StartupError::HomeUnwritable(options.home.clone()))?;
-            Daemon::spawn(
+            Daemon::spawn_with_app(
                 &cli,
                 &doc_id,
                 &options.workspace,
                 &options.home,
                 options.port,
+                app_dir.as_deref(),
             )
             .map_err(StartupError::Supervise)?
         }
     };
 
-    let info = daemon.info();
+    let info = daemon.info().clone();
     let url = url_build::bootstrap_url(info.port, &doc_id, &info.token)
         .map_err(StartupError::BadDocId)?;
+    let reader_url = app_dir.map(|_| url_build::reader_url(info.port, &info.token));
     Ok(Session {
         daemon: Reaper::new(daemon),
         url,
+        reader_url,
+        port: info.port,
+        token: info.token,
+        workspace: options.workspace.clone(),
+        doc_id,
+        cli,
         _signals: signals,
     })
+}
+
+pub(crate) fn fallback_cli_path() -> Option<PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            for rel in [
+                "../Resources/resources/cli/cli.mjs",
+                "../Resources/cli/cli.mjs",
+                "../Resources/cli/hr.mjs",
+                "resources/cli/cli.mjs",
+                "resources/cli/hr.mjs",
+            ] {
+                let bundled = exe_dir.join(rel);
+                if bundled.is_file() {
+                    return Some(bundled);
+                }
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    for sys_cli in [
+        "/usr/lib/hReader/resources/cli/cli.mjs",
+        "/usr/lib/hreader-desktop/resources/cli/cli.mjs",
+    ] {
+        let candidate = Path::new(sys_cli);
+        if candidate.is_file() {
+            return Some(candidate.to_path_buf());
+        }
+    }
+    let repo_hr =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../skills/hreader/scripts/hr.mjs");
+    if repo_hr.is_file() {
+        return repo_hr.canonicalize().ok().or(Some(repo_hr));
+    }
+    None
 }
 
 fn locate_cli(options: &ShellOptions) -> Result<PathBuf, StartupError> {
     let env_cli = std::env::var_os("HREADER_CLI").map(PathBuf::from);
     let path_var = std::env::var("PATH").ok();
-    let located = cli_locate::locate(
+    match cli_locate::locate(
         options.cli_path.as_deref(),
         env_cli.as_deref(),
         path_var.as_deref(),
         &|candidate: &Path| candidate.is_file(),
-    )
-    .map_err(StartupError::Locate)?;
-    Ok(located.cli)
+    ) {
+        Ok(located) => Ok(located.cli),
+        Err(LocateError::NotFound) if options.cli_path.is_none() => {
+            fallback_cli_path().ok_or(StartupError::Locate(LocateError::NotFound))
+        }
+        Err(error) => Err(StartupError::Locate(error)),
+    }
 }
 
-/// 没有文档参数时给 `hr serve` 的默认文档：workspace 里第一个 `.html`（按名字排序）。
+/// 没有文档参数时给 `hr serve` 的默认文档：workspace 里第一个 `.html`（按名字排序，含子文件夹）。
 pub(crate) fn document_of(action: &Action, workspace: &Path) -> Result<String, StartupError> {
     if let Action::OpenDocument { doc_id } = action {
         return Ok(doc_id.clone());
     }
-    let entries =
-        std::fs::read_dir(workspace).map_err(|_| StartupError::NoDocument(workspace.into()))?;
-    let mut candidates: Vec<String> = entries
-        .flatten()
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .filter(|name| {
-            Path::new(name).extension().is_some_and(|extension| {
-                extension.eq_ignore_ascii_case("html") || extension.eq_ignore_ascii_case("htm")
-            })
-        })
-        .collect();
-    candidates.sort();
-    match candidates.first() {
-        Some(name) => Ok(name.clone()),
-        None => Err(StartupError::NoDocument(workspace.into())),
+    if is_filesystem_root(workspace) {
+        return Err(StartupError::NoDocument(workspace.into()));
     }
+    workbench::list_html_files(workspace)
+        .into_iter()
+        .next()
+        .ok_or_else(|| StartupError::NoDocument(workspace.into()))
 }
 
 /// 壳只对外说一句能读懂的话；`Display` 里不含 token，所以直接用它。
@@ -325,6 +530,7 @@ pub fn default_home_for(home: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     /// 一档图标数据只可能是 PNG（`PNG\r\n\x1a\n`）或 32bpp DIB（40 字节 `BITMAPINFOHEADER`）。
     const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
@@ -597,5 +803,76 @@ mod tests {
             "{} 应在 app data 目录下",
             file.display()
         );
+    }
+
+    #[test]
+    fn prepare_gui_launch_never_stays_on_filesystem_root() {
+        let root = std::env::temp_dir().join(format!("hr-lib-root-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let home = root.join("home");
+        let fallback_ws = root.join("vault");
+        fs::create_dir_all(&home).expect("create home");
+        fs::create_dir_all(&fallback_ws).expect("create vault");
+        save_last_workspace(&home, &fallback_ws);
+
+        let mut options = ShellOptions {
+            smoke: false,
+            home: home.clone(),
+            workspace: PathBuf::from("/"),
+            cli_path: None,
+            port: None,
+            hold: None,
+        };
+        prepare_gui_launch(&[], Path::new("/"), &mut options);
+        assert!(
+            !is_filesystem_root(&options.workspace),
+            "Finder launch cwd='/' must never remain '/': {}",
+            options.workspace.display()
+        );
+        assert_eq!(options.workspace, fallback_ws);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn document_of_finds_nested_html_in_subfolders() {
+        let root = std::env::temp_dir().join(format!("hr-lib-nested-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("notes/sub")).expect("create sub");
+        fs::write(root.join("notes/sub/first.html"), "<p>hi</p>").expect("write html");
+        let found = document_of(&Action::NoAction, &root).expect("should find nested");
+        assert_eq!(found, "notes/sub/first.html");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn document_of_returns_no_document_for_empty_workspace() {
+        let root = std::env::temp_dir().join(format!("hr-lib-empty-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("empty-sub")).expect("create empty");
+        fs::write(root.join("notes.txt"), "not html").expect("write txt");
+        let err = document_of(&Action::NoAction, &root).expect_err("empty workspace must err");
+        assert!(matches!(err, StartupError::NoDocument(_)), "{err:?}");
+        assert!(matches!(
+            document_of(&Action::NoAction, Path::new("/")),
+            Err(StartupError::NoDocument(_))
+        ));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn last_workspace_roundtrip_ignores_filesystem_root() {
+        let root = std::env::temp_dir().join(format!("hr-lib-lastws-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let home = root.join("home");
+        let vault = root.join("vault");
+        fs::create_dir_all(&home).expect("create home");
+        fs::create_dir_all(&vault).expect("create vault");
+
+        save_last_workspace(&home, Path::new("/"));
+        assert_eq!(load_last_workspace(&home), None);
+
+        save_last_workspace(&home, &vault);
+        assert_eq!(load_last_workspace(&home), Some(vault));
+        let _ = fs::remove_dir_all(&root);
     }
 }

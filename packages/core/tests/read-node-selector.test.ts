@@ -59,6 +59,13 @@ describe("selector · the four legal shapes", () => {
   it("should resolve a bare tag to the first element of that tag in document order", () => {
     expect(read("section").html).toBe('<section data-hr-id="s1">一</section>');
   });
+
+  it("should accept an uppercase #id because data-hr-id allows uppercase (D5)", () => {
+    // `HR_ID_PATTERN` 允许 `hr-Ab12` 这类大写 id，所以选择器窄文法必须同样收下，不得把 `#hr-Ab12` 判非法。
+    const html = '<article data-hr-id="hr-Root"><p data-hr-id="hr-Ab12">正文</p></article>';
+
+    expect(read("#hr-Ab12", html).html).toBe('<p data-hr-id="hr-Ab12">正文</p>');
+  });
 });
 
 describe("selector · child combinators and nth-of-type", () => {
@@ -164,7 +171,7 @@ const ILLEGAL: readonly Illegal[] = [
   { input: "article > section:nth-of-type(2)x", why: "序号后垃圾" },
   { input: "article >", why: "子选择器缺右侧" },
   { input: "(", why: "裸括号" },
-  { input: "#S2", why: "id 只接受小写" },
+  { input: "#", why: "井号后缺少 id" },
   { input: "#s2 x", why: "id 后尾随" },
   { input: "my-tag", why: "标签名含连字符" },
   { input: "＃s2", why: "全角井号" },
@@ -192,5 +199,10 @@ describe("selector · missing targets (not a grammar error)", () => {
     expect(codeOf("#nope")).toBe("node_not_found");
     expect(codeOf("table")).toBe("node_not_found");
     expect(codeOf("article > div:nth-of-type(9)")).toBe("node_not_found");
+  });
+
+  it("should treat an uppercase #id as a miss, not a grammar error (D5)", () => {
+    // `#S2` 文法合法（大写 id 可写），只是文档里只有小写 `s2`，所以是“找不到”而不是“非法”。
+    expect(codeOf("#S2")).toBe("node_not_found");
   });
 });

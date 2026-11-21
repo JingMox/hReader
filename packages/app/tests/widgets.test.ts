@@ -139,7 +139,35 @@ describe("canvas · 焦点与空 HTML（仍不整篇重注入）", () => {
     widget.update(stateOf({ documentHtml: "" }));
     fake.fire(`${ROOT} #hr-theme-select`, "change", targetOf("manuscript"));
     fake.fire(`${ROOT} #hr-theme-select`, "change", {});
-    expect(intents).toEqual([{ kind: "themeSelected", theme: "manuscript" }]);
+    fake.fire(`${ROOT} #hr-doc`, "click", { blockId: "hr-b" });
+    fake.fire(`${ROOT} #hr-doc`, "click", { blockId: "" });
+    fake.fire(`${ROOT} #hr-doc`, "click", {});
+    expect(intents).toEqual([
+      { kind: "themeSelected", theme: "manuscript" },
+      { kind: "scrollTo", id: "hr-b" },
+    ]);
+  });
+});
+
+describe("canvas · syncBlocks", () => {
+  it("should forward syncBlocks when the host provides it", () => {
+    const fake = createFakeHost(() => new Map([["hr-a", "<p>一</p>"]]));
+    const synced: string[] = [];
+    const host = {
+      ...fake.host,
+      syncBlocks: (markup: string) => {
+        synced.push(markup);
+      },
+    };
+    const widget = mountCanvas({
+      host,
+      parent: ROOT,
+      state: stateOf({ documentHtml: "old", revision: "r1" }),
+      input: { html: "old", themes: [] },
+      onIntent: () => undefined,
+    });
+    widget.update(stateOf({ documentHtml: "new", revision: "r2", blocks: ["hr-a", "hr-b"] }));
+    expect(synced).toEqual(["new"]);
   });
 });
 

@@ -1,6 +1,6 @@
 // 这层管：**已知缺陷登记表（KD）的机器校验**——仓库不许出现"没有登记的 it.fails"，
 // 也不许出现"用普通 it 断言坏行为"的负向钉住（M2.3 起）。
-// 规则见 `.workflow/known-defects.md`：每条 `it.fails` 必须带 `// KD-nn`，
+// 规则见 `docs/known-defects.md`：每条 `it.fails` 必须带 `// KD-nn`，
 // 每个编号必须在表里出现，且唯一编号数不得超过表头 `CAP`（只减不增）。
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -9,7 +9,7 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO = join(import.meta.dirname, "../../..");
-const TABLE = join(REPO, ".workflow/known-defects.md");
+const TABLE = join(REPO, "docs/known-defects.md");
 const PACKAGES = join(REPO, "packages");
 
 interface Offence {
@@ -78,7 +78,7 @@ describe("KD 登记表 · 源码与表一致", () => {
     expect(offences).toEqual([]);
   });
 
-  it("should register every marker in .workflow/known-defects.md", () => {
+  it("should register every marker in docs/known-defects.md", () => {
     const { rows } = tableOf();
     const offences: Offence[] = sites
       .filter((site) => site.marker !== undefined && !rows.includes(site.marker))

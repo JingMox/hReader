@@ -3,7 +3,7 @@
 // 坑：workspace 与 cwd 在 core 里是 realpath 的，而 `--workspace` 是用户原文；
 // macOS 的 /tmp → /private/tmp 会让两者不一致（见报告的"真实发现"），所以这里一律用 realpath。
 
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -14,6 +14,7 @@ import { outlineCommand } from "../src/commands/outline";
 import { patchCommand } from "../src/commands/patch";
 import { readCommand } from "../src/commands/read";
 import { styleCommand } from "../src/commands/style";
+import { fieldOf } from "./harness";
 
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "hr-cmd-")));
 afterAll(() => {
@@ -37,6 +38,14 @@ const fileOf = (name: string, html: string): string => {
 
 /** 断言 JSON 形状（`toMatchObject` 对数组是长度严格的，所以顺便断"只有这些"）。 */
 const jsonOf = (text: string): unknown => JSON.parse(text.trim());
+
+/** 取字符串字段而不写类型断言（`consistent-type-assertions` 不许 `as`）：不是字符串就当场失败。 */
+const textOf = (value: unknown): string => {
+  if (typeof value !== "string") {
+    throw new Error(`期望字符串，收到 ${typeof value}`);
+  }
+  return value;
+};
 
 describe("outlineCommand", () => {
   it("should print the human outline tree", async () => {
@@ -74,14 +83,6 @@ describe("readCommand", () => {
     expect(text).toContain('"ids":["hr-b"]');
   });
 
-  it("should apply --max-bytes to the human output", async () => {
-    const path = fileOf("r2.html", DOC);
-    const text = await readCommand({ path, target: "article", maxBytes: 80, json: false });
-
-    expect(text.endsWith("\n")).toBe(true);
-    expect(text.length).toBeLessThanOrEqual(81);
-  });
-
   it("should honour a valid --max-bytes (readNode with a limit)", async () => {
     const path = fileOf("r2.html", DOC);
     const text = await readCommand({ path, target: "hr-a", maxBytes: 4000, json: false });
@@ -105,6 +106,24 @@ describe("readCommand", () => {
   });
 });
 
+/** 预算只管内容：`data.html` 的 UTF-8 字节数 ≤ 80；`（已截断：…）` 是元信息，不计入预算（docs/05 AC4）。 */
+describe("readCommand · --max-bytes 的预算边界", () => {
+  it("should apply --max-bytes to the content and leave the truncation line outside it", async () => {
+    const path = fileOf("r2.html", DOC);
+    const json = await readCommand({ path, target: "article", maxBytes: 80, json: true });
+    const html = textOf(fieldOf(fieldOf(jsonOf(json), "data"), "html"));
+    const text = await readCommand({ path, target: "article", maxBytes: 80, json: false });
+
+    expect(Buffer.byteLength(html, "utf8")).toBeLessThanOrEqual(80);
+    expect(text.startsWith(`${html}\n`)).toBe(true);
+    const trailer = text.slice(html.length + 1);
+    expect(trailer.endsWith("\n")).toBe(true);
+    const lines = trailer.slice(0, -1).split("\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("（已截断：");
+  });
+});
+
 describe("patchCommand", () => {
   it("should write an append and report changed true with a history path", async () => {
     fileOf("p1.html", DOC);
@@ -125,7 +144,7 @@ describe("patchCommand", () => {
     expect(text).toMatch(/"newIds":\["[^"]+"\]/u);
   });
 
-  it("should print the human patched line", async () => {
+  it("should print the human patched line without any id change on replace", async () => {
     fileOf("p2.html", DOC);
     const text = await patchCommand({
       path: "p2.html",
@@ -136,8 +155,11 @@ describe("patchCommand", () => {
       json: false,
     });
 
-    // replace 后 id 由内容派生 ⇒ 旧 id 失效；人读行必须把“旧 → 新”写出来，否则用户拿着旧 id 继续调。
-    expect(text).toMatch(/^patched .*p2\.html \(\d+ bytes, id 变更: hr-c → hr-[0-9a-f]{8}\)\n$/u);
+    // docs/05:57（R2-04）：`replace` 的新根继承目标 id ⇒ 没有「旧 → 新」可说，行尾是干净的 `+0)`；
+    // 老 id `hr-c` 仍是盘上那个节点的锚点（下一行断言从这里读回来）。
+    expect(text).toMatch(/^patched .*p2\.html \(\d+ bytes, \+0\)\n$/u);
+    expect(text).not.toContain("id 变更");
+    expect(readFileSync(join(dir, "p2.html"), "utf8")).toContain('<p data-hr-id="hr-c">改</p>');
   });
 });
 

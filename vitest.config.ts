@@ -10,7 +10,6 @@ const ALIASES = [
   "@hreader/core",
   "@hreader/protocol",
   "@hreader/renderer-html",
-  "@hreader/chrome-extension",
   "@hreader/app",
   "@hreader/mcp-server",
 ] as const;

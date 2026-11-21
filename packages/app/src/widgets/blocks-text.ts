@@ -5,10 +5,17 @@ import type { Host } from "../dom.ts";
 
 export const textOfBlocks = (
   host: Host,
-  documentHtml: string,
+  documentHtml: string | (() => string),
 ): ((id: string) => string | undefined) => {
-  const blocks = host.blocks(documentHtml);
+  const readHtml = typeof documentHtml === "function" ? documentHtml : () => documentHtml;
+  let lastHtml: string | undefined;
+  let blocks: ReadonlyMap<string, string> = new Map();
   return (id) => {
+    const html = readHtml();
+    if (html !== lastHtml) {
+      blocks = host.blocks(html);
+      lastHtml = html;
+    }
     const markup = blocks.get(id);
     return markup === undefined
       ? undefined

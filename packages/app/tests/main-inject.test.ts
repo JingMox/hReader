@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Host } from "../src/dom.ts";
 import type { AppIo } from "../src/main.ts";
+import { fakeElement, withBlocks } from "./support/fake-dom.ts";
 import {
   ARTICLE,
   CSS,
@@ -15,6 +16,7 @@ import {
   installGlobals,
   model,
   outline,
+  stubs,
   themes,
 } from "./support/main-stubs.ts";
 
@@ -110,7 +112,8 @@ const failingIoOf = (broken: string): AppIo => ({
   text: (path) =>
     path === broken ? Promise.reject(new Error(`${path} → 500`)) : Promise.resolve(ARTICLE),
   json: (path, guard) => {
-    const candidate: unknown = path === "/api/theme" ? themes : outline;
+    const candidate: unknown =
+      path === "/api/theme" ? themes : path.endsWith("/model") ? model : outline;
     return guard(candidate)
       ? Promise.resolve(candidate)
       : Promise.reject(new Error(`${path} → 响应形状不符`));
@@ -167,6 +170,25 @@ describe("main · 注入面（@internal bootWith / main） · 主题接线", () 
 
     expect(texts.filter(([selector]) => selector === "#hr-theme")).toEqual([["#hr-theme", CSS]]);
     booted.destroy();
+  });
+
+  it("should read live block text when pressing c after bootWith", async () => {
+    installGlobals("doc.html", "http://x/?doc=doc.html");
+    const box = fakeElement("div");
+    const liveP = fakeElement("p");
+    liveP.setAttribute("data-hr-id", "hr-a");
+    liveP.innerHTML = "动态正文";
+    withBlocks(box, [liveP]);
+    vi.stubGlobal("document", { ...stubs.doc, createElement: () => box });
+    const asked: string[] = [];
+
+    const { main } = await import("../src/main.ts");
+    await main({ io: ioOf(CSS, asked), docIdSource: { attr: "doc.html", href: "http://x/" } });
+    await flush();
+    stubs.keyHandlers[0]?.({ key: "c" });
+    await flush();
+
+    expect(asked).toContain("/api/doc/doc.html/model");
   });
 });
 

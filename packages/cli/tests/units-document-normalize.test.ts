@@ -6,7 +6,12 @@ import { describe, expect, it } from "vitest";
 
 import { HrError, parseHtml } from "@hreader/core";
 
-import { assertIsDocument, assertNormalized, withNormalizeAdvice } from "../src/document-normalize";
+import {
+  assertIsDocument,
+  assertNormalized,
+  assertUniqueIds,
+  withNormalizeAdvice,
+} from "../src/document-normalize";
 
 const DOC = parseHtml('<article data-hr-id="hr-a"><p data-hr-id="hr-b">正文</p></article>');
 const DRAFT = parseHtml("<article><p>正文</p></article>");
@@ -21,6 +26,47 @@ describe("assertIsDocument", () => {
     expect(() => {
       assertIsDocument(parseHtml("<p>随手记一段</p>"), "/ws/note.html");
     }).toThrow(/\/ws\/note\.html 里没有 <article>：这不是一篇 hReader 文档/u);
+  });
+});
+
+describe("assertUniqueIds", () => {
+  const duplicated = parseHtml(
+    '<article data-hr-id="hr-a"><p data-hr-id="hr-c">甲</p><p data-hr-id="hr-c">乙</p></article>',
+  );
+
+  it("should pass a document whose ids are all distinct", () => {
+    expect(() => {
+      assertUniqueIds(DOC, "/ws/a.html");
+    }).not.toThrow();
+  });
+
+  it("should reject a document where two elements share one id, naming file/id/count", () => {
+    // docs/05:452：重复 id 在**加载侧**就要拒（read/patch 只命中第一个，第二个既改不到也删不掉）。
+    let thrown: unknown;
+    try {
+      assertUniqueIds(duplicated, "/ws/a.html");
+    } catch (error: unknown) {
+      thrown = error;
+    }
+    if (!(thrown instanceof HrError)) throw new Error("重复 id 必须抛 HrError");
+    expect(thrown.code).toBe("duplicate_id");
+    // 三件事缺一不可：哪份文件、哪个 id、一共有几处（用户要知道该改谁）。
+    expect(thrown.message).toMatch(/\/ws\/a\.html/u);
+    expect(thrown.message).toMatch(/data-hr-id "hr-c"/u);
+    expect(thrown.message).toMatch(/共 2 处/u);
+    expect(thrown.message).toMatch(/hr normalize \/ws\/a\.html --write/u);
+  });
+
+  it("should count every repeat, not just the second one", () => {
+    // 三处共用同一个 id 时报的是**总数**：只说“有两个”会让用户改完一轮又撞同一个错。
+    const tripled = parseHtml(
+      '<article data-hr-id="hr-a"><p data-hr-id="hr-c">甲</p>' +
+        '<section data-hr-id="hr-c"><p data-hr-id="hr-c">乙</p></section></article>',
+    );
+
+    expect(() => {
+      assertUniqueIds(tripled, "/ws/b.html");
+    }).toThrow(/共 3 处/u);
   });
 });
 

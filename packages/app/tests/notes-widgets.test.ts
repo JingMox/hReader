@@ -97,7 +97,7 @@ const selectionLike = (over: SelectionOver = {}): SelectionLike => {
     anchorNode,
     anchorOffset: over.anchorOffset ?? 0,
     focusOffset: over.focusOffset ?? 2,
-    focusNode: over.sameFocus === false ? { other: true } : anchorNode,
+    focusNode: over.sameFocus === false ? { parentElement: null } : anchorNode,
   };
 };
 
@@ -148,11 +148,21 @@ describe("rawSelectionOf · 退化输入", () => {
 
 describe("textOfBlocks", () => {
   it("should strip tags and collapse whitespace", () => {
-    const host = createFakeHost(() => new Map([["hr-a", "<p>你好   <em>世界</em></p>"]]));
+    let html = "<p>你好</p>";
+    const host = createFakeHost((markup) =>
+      markup.includes("二")
+        ? new Map([["hr-a", "<p>改写后</p>"]])
+        : new Map([["hr-a", "<p>你好   <em>世界</em></p>"]]),
+    );
     const textOf = textOfBlocks(host.host, "<p>你好</p>");
+    const liveTextOf = textOfBlocks(host.host, () => html);
 
     expect(textOf("hr-a")).toBe("你好 世界");
     expect(textOf("hr-missing")).toBeUndefined();
+    expect(liveTextOf("hr-a")).toBe("你好 世界");
+    html = "<p>二</p>";
+    expect(liveTextOf("hr-a")).toBe("改写后");
+    expect(liveTextOf("hr-a")).toBe("改写后");
   });
 });
 

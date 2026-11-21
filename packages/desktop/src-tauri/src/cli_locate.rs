@@ -47,17 +47,25 @@ pub fn locate(
             });
         }
     }
+    let sep = if cfg!(windows) { ';' } else { ':' };
+    let names: &[&str] = if cfg!(windows) {
+        &["hr.cmd", "hr.exe", "hr"]
+    } else {
+        &["hr"]
+    };
     for directory in path_var
         .unwrap_or("")
-        .split(':')
+        .split(sep)
         .filter(|item| !item.is_empty())
     {
-        let candidate = Path::new(directory).join("hr");
-        if exists(&candidate) {
-            return Ok(Located {
-                cli: candidate,
-                source: Source::Path,
-            });
+        for name in names {
+            let candidate = Path::new(directory).join(name);
+            if exists(&candidate) {
+                return Ok(Located {
+                    cli: candidate,
+                    source: Source::Path,
+                });
+            }
         }
     }
     Err(LocateError::NotFound)

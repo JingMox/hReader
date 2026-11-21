@@ -45,6 +45,7 @@ const STATUS: Readonly<Record<ServerCode, number>> = {
   invalid_max_bytes: 400,
   invalid_input: 400,
   content_model_conflict: 400,
+  duplicate_id: 400,
   locked: 409,
   invalid_fragment: 400,
   forbidden_content: 400,

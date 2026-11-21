@@ -24,7 +24,7 @@ describe("退出码 0 · 成功", () => {
   it("should print --help and exit 0", async () => {
     const result = checked(await runCli(["--help"]));
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain("hr patch <file> <nodeId>");
+    expect(result.stdout).toContain("hr patch <file> <nodeId|selector>");
   });
 });
 
@@ -40,7 +40,8 @@ describe("退出码 1 · 业务失败", () => {
 
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("找不到 data-hr-id");
+      // F19 起报文只有一句：`hr-nope` 是合规 id 形态、文档里没有，报 node_not_found 那一句。
+      expect(result.stderr).toContain('文档里没有 id 为 "hr-nope" 的节点。');
       expect(sha(path)).toBe(before);
     });
   });

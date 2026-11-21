@@ -1,6 +1,6 @@
 // 这层管：Skill 壳 `skills/hreader/scripts/hr.mjs`（真子进程 + 真退出码透传）；不 mock spawn。
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,7 +89,7 @@ describe("hr.mjs · 路径与退出码", () => {
 
       const missingNode = await runShell(["patch", "a.html", "hr-nope", "--action", "delete"], dir);
       expect(missingNode.code).toBe(1);
-      expect(missingNode.stderr).toContain("找不到 data-hr-id");
+      expect(missingNode.stderr).toContain('文档里没有 id 为 "hr-nope" 的节点。');
 
       const noArgs = await runShell([], dir);
       expect(noArgs.code).toBe(2);
@@ -108,5 +108,73 @@ describe("hr.mjs · --help", () => {
     expectClean(result);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("hr style <file>");
+  });
+});
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const firstLineOf = (child: ChildProcess): Promise<string> =>
+  new Promise((resolve, reject) => {
+    let buf = "";
+    const timer = setTimeout(() => {
+      reject(new Error("hr.mjs serve 超过 10s 未输出启动信封"));
+    }, 10_000);
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      buf += chunk;
+      const at = buf.indexOf("\n");
+      if (at === -1) return;
+      clearTimeout(timer);
+      resolve(buf.slice(0, at));
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+
+const portFromEnvelope = (line: string, expectedPid: number | undefined): number => {
+  const envelope: unknown = JSON.parse(line);
+  if (!isRecord(envelope) || !isRecord(envelope["data"])) {
+    throw new Error(`启动信封格式有误：${line}`);
+  }
+  const data = envelope["data"];
+  expect(envelope["ok"]).toBe(true);
+  expect(data["pid"]).toBe(expectedPid);
+  const port = data["port"];
+  if (typeof port !== "number") throw new Error(`port 不是数字：${line}`);
+  return port;
+};
+
+describe("hr.mjs · serve PID 一致性（桌面壳按子进程 PID 探活 /healthz）", () => {
+  it("should keep the same pid in the serve envelope and /healthz as the spawned wrapper", async () => {
+    await withTempDir(async (raw) => {
+      const dir = realpathSync(raw);
+      const home = join(dir, "home");
+      mkdirSync(home);
+      writeFileSync(join(dir, "a.html"), DOC);
+      const child = spawn(
+        process.execPath,
+        [SHELL, "serve", "a.html", "--port", "0", "--home", home, "--json"],
+        { cwd: dir, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      try {
+        const port = portFromEnvelope(await firstLineOf(child), child.pid);
+        const health: unknown = await (
+          await fetch(`http://127.0.0.1:${String(port)}/healthz`)
+        ).json();
+        expect(health).toMatchObject({ ok: true, pid: child.pid });
+      } finally {
+        if (child.exitCode === null) {
+          child.kill("SIGTERM");
+          await new Promise<void>((resolve) => {
+            child.once("close", () => {
+              resolve();
+            });
+          });
+        }
+      }
+    });
   });
 });

@@ -1,10 +1,11 @@
 // 这层管：默认依赖装配（HOME/项目根/内置主题根）与错误文本兜底；不碰真盘。
 
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { nodeStyleDeps } from "../../src/style/node";
+import { nodeStyleDeps, resolveStylesRoot } from "../../src/style/node";
 import { messageOf } from "../../src/style/text";
 import { styleEnv } from "./harness";
 import { existsOf } from "../../src/style/resource";
@@ -20,6 +21,19 @@ describe("nodeStyleDeps", () => {
     expect(deps.stylesRoot.endsWith("/styles/")).toBe(true);
     expect(typeof deps.fs.readFile).toBe("function");
     expect(typeof deps.sleep).toBe("function");
+  });
+
+  it("should pick the first bundled candidate that carries atelier-editorial/theme.css and fall back cleanly", () => {
+    const first = join("/bundled", "styles");
+    const second = join("/fallback", "styles");
+
+    expect(
+      resolveStylesRoot(
+        [first, second],
+        (target) => target === join(second, "atelier-editorial", "theme.css"),
+      ),
+    ).toBe(second);
+    expect(resolveStylesRoot([first], () => false).endsWith("/styles/")).toBe(true);
   });
 });
 

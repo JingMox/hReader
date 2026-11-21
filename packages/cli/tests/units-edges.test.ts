@@ -29,16 +29,18 @@ const fileOf = (name: string, html: string): string => {
   return path;
 };
 
-/** 把拒绝结果收敛成"码 + 消息"，避免每处都写 `await expect(...).rejects`。 */
+/** 把拒绝结果收敛成“码 + 消息 + data.reason”，避免每处都写 `await expect(...).rejects`。 */
 const rejectionOf = async (
   promise: Promise<string>,
-): Promise<{ code: string; message: string }> => {
+): Promise<{ code: string; message: string; reason: string }> => {
   try {
     await promise;
   } catch (error: unknown) {
     const code: unknown = Reflect.get(Object(error), "code");
     const message: unknown = Reflect.get(Object(error), "message");
-    return { code: String(code), message: String(message) };
+    const data: unknown = Reflect.get(Object(error), "data");
+    const reason: unknown = Reflect.get(Object(data), "reason");
+    return { code: String(code), message: String(message), reason: String(reason) };
   }
   throw new Error("期望被拒绝，但命令成功了");
 };
@@ -54,24 +56,28 @@ describe("readCommand · 选择器失败后按 node id 重试", () => {
     });
   });
 
-  it("should report invalid_selector when both interpretations are invalid selectors", async () => {
+  it("should report invalid_selector when the target is not a legal selector", async () => {
     const path = fileOf("e2.html", DOC);
     const failed = await rejectionOf(
       readCommand({ path, target: '">', maxBytes: undefined, json: false }),
     );
 
+    // F19 D1：两跳都会失败时，码与报文都由目标形态定——`">` 不是合规 id，所以是 syntax 那一句。
     expect(failed.code).toBe("invalid_selector");
-    expect(failed.message).toContain("按选择器 →");
-    expect(failed.message).toContain("按 node id →");
+    expect(failed.reason).toBe("syntax");
+    expect(failed.message).toContain('选择器 "\\">" 无法解析：');
   });
 
   it("should prefer node_not_found when only the id lookup is well-formed", async () => {
     const path = fileOf("e3.html", DOC);
+    // `hr-NOPE` 是合规 id 形态（`HR_ID_PATTERN` 允许大写）且文档里没有：只走 id 那一跳的失败，
+    // 用来证明“两跳只有 id 那跳成立时给 node_not_found”这条原始意图没有随 `p[` 改判 syntax 丢掉。
     const failed = await rejectionOf(
-      readCommand({ path, target: "p[", maxBytes: undefined, json: false }),
+      readCommand({ path, target: "hr-NOPE", maxBytes: undefined, json: false }),
     );
 
     expect(failed.code).toBe("node_not_found");
+    expect(failed.message).toContain('文档里没有 id 为 "hr-NOPE" 的节点。');
   });
 });
 

@@ -104,7 +104,8 @@ const createAndOutlineOf = async (
   return { createdBytes: await readFile(join(workspace, "loop.html")), oldId };
 };
 
-/** 用大纲给的 id 改正文，再大纲 + 读节点：新 id 必须真的可寻址（M3.1 的 F3 回归点）。 */
+/** 用大纲给的 id 改正文，再大纲 + 读节点：id 必须**仍是那一个**且真的可寻址。
+ *  R2-04：`replace` 的新根继承目标自己的 id（docs/05:57），所以改完正文标题的锚点不变。 */
 const patchAndReadBackOf = async (workspace: string, oldId: unknown): Promise<void> => {
   await resultIn({
     workspace,
@@ -123,7 +124,8 @@ const patchAndReadBackOf = async (workspace: string, oldId: unknown): Promise<vo
   });
   const newId = headingIdOf(nodesOf(outlineOf(again)));
   expect(typeof newId).toBe("string");
-  expect(newId).not.toBe(oldId);
+  // id 归产品所有：改内容不换锚点，大纲继续用同一个 id 指这块。
+  expect(newId).toBe(oldId);
 
   const readBack = await resultIn({
     workspace,

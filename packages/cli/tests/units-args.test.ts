@@ -208,7 +208,7 @@ describe("parseArgs · patch", () => {
 describe("parseArgs · patch 的用法错误", () => {
   it.each([
     [["patch"], "patch 缺少 <file>"],
-    [["patch", "a.html"], "patch 缺少 <nodeId>"],
+    [["patch", "a.html"], "patch 缺少 <nodeId|selector>"],
     [["patch", "a", "b", "c", "--action", "delete"], "patch 只接受 2 个位置参数，多出 1 个"],
     [["patch", "a", "b", "--action"], "参数 --action 缺少取值"],
     [["patch", "a", "b", "--max-bytes", "5", "--action", "delete"], "--max-bytes"],

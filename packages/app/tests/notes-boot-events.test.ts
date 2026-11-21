@@ -108,8 +108,11 @@ describe("批注接线 · 卡片点击", () => {
     const h = clickable(() => true);
     await flush();
     h.fake.fire(`${ROOT} #hr-notes-body`, "click", CARD_EVENT);
+    h.fake.fire(`${ROOT} #hr-notes-pending`, "click", CARD_EVENT);
+    h.fake.fire(`${ROOT} #hr-notes-resolved`, "click", CARD_EVENT);
 
     expect(h.fake.calls).toContainEqual({ op: "scrollTo", args: [`${ROOT} [data-hr-id="hr-a"]`] });
+    expect(h.fake.calls.filter((call) => call.op === "scrollTo")).toHaveLength(3);
     expect(h.fake.calls).toContainEqual({
       op: "cls",
       args: [`${ROOT} [data-hr-id="hr-a"]`, "hr-note-target", "1"],

@@ -31,7 +31,12 @@ interface Run {
 const SANDBOX = mkdtempSync(join(tmpdir(), "hreader-smoke-"));
 
 const runPi = (args: readonly string[]): Run => {
-  const result = spawnSync("pi", args, { cwd: SANDBOX, encoding: "utf8", timeout: TIMEOUT_MS });
+  const result = spawnSync("pi", args, {
+    cwd: SANDBOX,
+    encoding: "utf8",
+    timeout: TIMEOUT_MS,
+    maxBuffer: 16 * 1024 * 1024,
+  });
   if (result.error !== undefined) throw result.error;
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
 };

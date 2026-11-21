@@ -2,7 +2,7 @@
 // `boot` 只有两个出口：`before(intent)` 在 dispatch **前**求值（守卫用），`after(intent)` 在 dispatch **后**（渲染用）。
 // 两者职责写在这里，避免再出现"守卫读到 dispatch 之后的状态"（P0-2）。
 
-import type { Host } from "./dom.ts";
+import type { Host, TargetLike } from "./dom.ts";
 import {
   annotationIntentOf,
   renderAnnotations,
@@ -122,7 +122,7 @@ const wireNotesDom = (host: Host, store: Store, dispatch: (intent: ReaderIntent)
   host.on(`${ROOT} #hr-note-draft`, "input", (event) => {
     dispatch({ kind: "noteChanged", text: event.value ?? "" });
   });
-  host.on(`${ROOT} #hr-notes-body`, "click", (event) => {
+  const onCardClick = (event: TargetLike): void => {
     const id = event.closest?.("[data-hr-annotation]")?.getAttribute("data-hr-annotation");
     if (id === null || id === undefined) return;
     dispatch({ kind: "annotationOpened", id });
@@ -132,7 +132,10 @@ const wireNotesDom = (host: Host, store: Store, dispatch: (intent: ReaderIntent)
     if (target === undefined) return;
     host.scrollTo(`${ROOT} [data-hr-id="${escapeAttr(target)}"]`);
     host.cls(`${ROOT} [data-hr-id="${escapeAttr(target)}"]`, "hr-note-target", true);
-  });
+  };
+  host.on(`${ROOT} #hr-notes-body`, "click", onCardClick);
+  host.on(`${ROOT} #hr-notes-pending`, "click", onCardClick);
+  host.on(`${ROOT} #hr-notes-resolved`, "click", onCardClick);
 };
 
 const wireSubmit = (
