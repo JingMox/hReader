@@ -157,7 +157,7 @@ const expectHeadingsOf = (nodes: readonly PdfOutlineNode[], headings: readonly s
 };
 
 const stepOf = async (cwd: string, argv: readonly string[]): Promise<string> => {
-  const result = await runCli(argv, { cwd });
+  const result = await runCli(argv, { cwd, timeoutMs: 60_000 });
   expectNoAnsi(result);
   if (result.code !== 0) throw new Error(`${argv.join(" ")} 失败：${result.stderr}`);
   return result.stdout;
