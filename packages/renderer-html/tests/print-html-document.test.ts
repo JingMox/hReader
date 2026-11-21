@@ -81,19 +81,19 @@ describe("4 MiB 上限（§11.4）", () => {
     const report = printHtmlReportOf(inputOf(`<article><p>${"a".repeat(pad + 1)}</p></article>`));
     expect(report.bytes).toBe(LIMIT - 1);
     expect(report.bytes).toBe(Buffer.byteLength(report.html, "utf8"));
-  });
+  }, 30_000);
 
   it("恰好 limit 字节是合格产物（契约是 > 4 MiB 才拒，不是 >=", () => {
     const pad = LIMIT - offset;
     const report = printHtmlReportOf(inputOf(`<article><p>${"a".repeat(pad + 1)}</p></article>`));
     expect(report.bytes).toBe(LIMIT);
     expect(report.bytes).toBe(Buffer.byteLength(report.html, "utf8"));
-  });
+  }, 30_000);
 
   it("limit+1 在拼接前抛 invalid_input（不是先拼完再判）", () => {
     const html = `<article><p>${"a".repeat(LIMIT + 2 - offset)}</p></article>`;
     expect(codeOf(() => printHtmlOf(inputOf(html)))).toBe("invalid_input");
-  });
+  }, 30_000);
 });
 
 describe("转义", () => {

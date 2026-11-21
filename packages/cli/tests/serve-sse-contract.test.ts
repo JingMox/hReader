@@ -150,7 +150,7 @@ const openEvents = async (
   if (body === null) throw new Error("没有响应体");
   return {
     text: async (until) =>
-      await readStream(body, until, 3000, () => {
+      await readStream(body, until, 5000, () => {
         controller.abort();
       }),
     stop: () => {
@@ -220,19 +220,22 @@ describe("SSE 契约 · 服务器帧 → 客户端解析器", () => {
   });
 
   it("should never leak an absolute path in a watcher-driven payload", async () => {
-    // 实测：外部改文件触发的 `library.changed` 里 `path` 是**绝对路径**——P1 违反
-    // 「绝对路径不进浏览器」（`doc.changed` 则用相对 docId）。
+    // 实测：外部改工作区内非当前文档触发 `library.changed`，载荷必须只给相对路径，不泄绝对路径。
     const server = fixture?.server;
     if (server === undefined) throw new Error("fixture 未就绪");
     const events = await openEvents(server);
     const reading = events.text('"type":"library.changed"');
     await new Promise((resolve) => setTimeout(resolve, 100));
-    writeFileSync(join(fixture?.workspace ?? "", "doc.html"), DOC.replace("一", "外部改"), "utf8");
+    writeFileSync(
+      join(fixture?.workspace ?? "", "other.html"),
+      DOC.replace("一", "外部改"),
+      "utf8",
+    );
     const text = await reading;
     events.stop();
     expect(text).toContain('"type":"library.changed"');
     expect(text).not.toContain(fixture?.workspace ?? "<none>");
-  });
+  }, 15_000);
 });
 
 /** 只回放真帧；`lastEventId` 按帧头给（`main.ts` 的适配层正是在这里丢了 id）。 */

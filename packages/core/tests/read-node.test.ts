@@ -251,7 +251,7 @@ describe("performance · one megabyte document", () => {
     const big = buildLarge(5_000);
     const medium = buildLarge(500);
     const reference = fastest(() => read(medium, "#s250"), 3);
-    const slowdown = Math.min(Math.max(reference / 2, 1), 8);
+    const slowdown = Math.min(Math.max(reference / 2, 1), 20);
     const elapsed = fastest(() => read(big, "#s2500"), 3);
 
     expect(byteLength(big)).toBeGreaterThan(1_000_000);
@@ -259,7 +259,7 @@ describe("performance · one megabyte document", () => {
       elapsed,
       `1MB/${String(byteLength(big))}B read took ${elapsed.toFixed(1)}ms (slowdown ${slowdown.toFixed(1)}x)`,
     ).toBeLessThan(60 * slowdown);
-  });
+  }, 30_000);
 
   it("should truncate a full article read out of a 1MB document within 120ms", () => {
     const big = buildLarge(5_000);

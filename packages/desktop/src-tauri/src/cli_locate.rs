@@ -116,8 +116,13 @@ mod tests {
     #[test]
     fn ac6_path_is_the_last_resort() {
         let exists = only_these(&["/bin/hr"]);
+        let path_env = if cfg!(windows) {
+            "/usr/bin;/bin"
+        } else {
+            "/usr/bin:/bin"
+        };
         assert_eq!(
-            locate(None, None, Some("/usr/bin:/bin"), &exists),
+            locate(None, None, Some(path_env), &exists),
             Ok(Located {
                 cli: PathBuf::from("/bin/hr"),
                 source: Source::Path,
@@ -155,8 +160,13 @@ mod tests {
     #[test]
     fn ac6_empty_path_entries_are_skipped() {
         let exists = only_these(&["/bin/hr"]);
+        let path_env = if cfg!(windows) {
+            ";;/bin;;"
+        } else {
+            "::/bin::"
+        };
         assert_eq!(
-            locate(None, None, Some("::/bin::"), &exists),
+            locate(None, None, Some(path_env), &exists),
             Ok(Located {
                 cli: PathBuf::from("/bin/hr"),
                 source: Source::Path,

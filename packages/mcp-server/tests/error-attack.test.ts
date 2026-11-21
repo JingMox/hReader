@@ -36,8 +36,8 @@ afterEach(async () => {
 
 /** 深 200 层、406 个字符：合法（`PATH_MAX=1024`），所以"不存在"才是它的真因。 */
 const DEEP_BUT_LEGAL = `${"a/".repeat(200)}x.html`;
-/** 4006 个字符：确实超长。 */
-const TOO_LONG = `${"a/".repeat(2000)}x.html`;
+/** 5006 个字符：超过 Linux `PATH_MAX=4096` 与 macOS `PATH_MAX=1024`。 */
+const TOO_LONG = `${"a/".repeat(2500)}x.html`;
 
 const errorOf = (error: unknown): { code: unknown; data: unknown; message: unknown } => ({
   code: Reflect.get(Object(error), "code"),
