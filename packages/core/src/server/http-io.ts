@@ -94,9 +94,9 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
 export const contentTypeOf = (path: string): string =>
   CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
 
-/** 应用页只允许同源脚本：`/assets/main.js` 不能被 `default-src 'none'` 连带禁掉。 */
+/** 应用页只允许同源脚本与样式表：`/assets/main.js` 和 `/assets/styles.css` 同属 `'self'`（inline 样式只为主题挂载 `#hr-theme`）。 */
 export const APP_CSP =
-  "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:";
+  "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:";
 
 const MAX_ASSET_PATH = 512;
 /** 文件名单段上限（多数文件系统 255）：更长的段交给内核只会拿到 `ENAMETOOLONG`。 */

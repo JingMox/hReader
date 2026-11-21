@@ -1,12 +1,12 @@
-// 这层管：`@hreader/core` 唯一公开入口（按 docs/02 §5.2 的极小导出面）；不承载实现。
+// 这层管：`@hreader/core` 唯一公开入口（公共出口清单见 `.workflow/cards/R3.md` D1–D8 接口冻结表与 docs/05 M1.8）；不承载实现。
 
 export { HrError } from "./hr-error";
-export type { HrErrorCode } from "./hr-error";
+export type { HrErrorCode, HrErrorData } from "./hr-error";
 export { injectNodeIds, parseHtml, serializeHtml, hasArticle } from "./html";
 export { toDocumentModel, validateDocument } from "./model";
 export type { DocumentModel } from "./model";
-export { buildOutline, readNode } from "./ops";
-export type { Outline, OutlineNode, PendingAnnotation, ReadNodeResult } from "./ops";
+export { buildOutline, locateTarget, patchTargetIdOf, readNode } from "./ops";
+export type { LocatedTarget, Outline, OutlineNode, PendingAnnotation, ReadNodeResult } from "./ops";
 export { applyPatch, parseFragment } from "./ops";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./ops";
 export { isInside, isInsideOrSelf, nodePatchDeps, patchFile, undoPatch, writeAtomic } from "./io";

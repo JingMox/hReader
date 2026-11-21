@@ -1,0 +1,49 @@
+name: Bug Report
+description: Report a bug in hReader Desktop, CLI, MCP Server, or Plugins
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thank you for reporting an issue. Please provide enough details so we can reproduce it cleanly.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Desktop App (@hreader/desktop)
+        - CLI (hr / @hreader/cli)
+        - MCP Server (@hreader/mcp-server)
+        - Core / Renderer (@hreader/core, @hreader/renderer-html)
+        - Agent Skill / Pi / DSH Plugin
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version & Environment
+      placeholder: "e.g. v1.0.0, macOS 15 arm64, Node v22.14.0"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the bug and expected vs. actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Error Output
+      render: shell

@@ -113,8 +113,41 @@ export const COMPONENT_ATTRIBUTE = "data-hr-component";
 export const HR_ID_ATTRIBUTE = "data-hr-id";
 export const META_SCRIPT_ID = "hr-meta";
 
-/** 合法 `data-hr-id`：非空、无空白、字符集 `[a-z0-9-]`。 */
-export const HR_ID_PATTERN = /^[a-z0-9-]+$/;
+/** 合法 `data-hr-id`：字母打头，余下字母/数字/`_`/`-`，总长 ≤ 64。 */
+export const HR_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+
+/**
+ * 开局这些块级标签时 `<p>` 的隐式结束（HTML5 “in body” 插入模式）：
+ * parse5 只在 no-quirks 下把 `<table>` 移出 `<p>`，quirks 文档（无 doctype）会把 `p > table` 整棵留下来，
+ * 那种树会被后续内容模型判为非法。收尾按本集合统一补隐式结束。
+ */
+export const P_CLOSING_TAGS: ReadonlySet<string> = new Set([
+  "p",
+  "table",
+  "ul",
+  "ol",
+  "dl",
+  "div",
+  "section",
+  "article",
+  "aside",
+  "nav",
+  "main",
+  "header",
+  "footer",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "blockquote",
+  "pre",
+  "hr",
+  "figure",
+  "details",
+  "address",
+]);
 
 /** ---------------------------- 数据模型 ---------------------------- */
 
@@ -175,6 +208,8 @@ export type DiagnosticCode =
   | "duplicate_attribute"
   | "invalid_component"
   | "invalid_hr_id"
+  | "id_reassigned"
+  | "fragment_ids_ignored"
   | "script_in_meta"
   | "empty_document"
   | "duplicate_id"
@@ -201,6 +236,8 @@ export const DIAGNOSTIC_SEVERITY: Readonly<Record<DiagnosticCode, DiagnosticSeve
   duplicate_attribute: "warning",
   invalid_component: "warning",
   invalid_hr_id: "warning",
+  id_reassigned: "warning",
+  fragment_ids_ignored: "warning",
   script_in_meta: "warning",
   empty_document: "warning",
   duplicate_id: "error",

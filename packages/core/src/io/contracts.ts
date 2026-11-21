@@ -8,8 +8,14 @@ export interface PatchTargetInput {
   readonly file: string;
 }
 
+/**
+ * 锁内、读原文之后才决定 request：调用方想「target 定位」与「文档能不能改」都绑在本次要写的那份
+ * 字节上就以函数形式给（锁外另读一份快照会把期间被别人改坏的文档放过去）；已自己定位好的直接给对象。
+ */
+export type PatchRequestOf = (html: string) => PatchRequest;
+
 export interface PatchFileInput extends PatchTargetInput {
-  readonly request: PatchRequest;
+  readonly request: PatchRequest | PatchRequestOf;
 }
 
 export interface PatchOptions {

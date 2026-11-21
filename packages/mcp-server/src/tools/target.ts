@@ -13,7 +13,7 @@ import { foldedOf } from "../errors";
  * 宿主 `cd /` 拉起时界内就是整个根，这不是 bug，但不能靠宿主自己猜（G3 P1-3）。
  */
 export const FILE_PATH_HINT =
-  "路径相对工作区（工作区 = 服务器启动时的当前工作目录 cwd）；绝对路径也必须落在工作区之内";
+  "路径相对工作区（可用 --workspace <dir> 指定，缺省为启动时的 cwd）；绝对路径也必须落在工作区之内";
 
 export interface DocumentTarget {
   /** 边界（core 的 `workspace`）。 */

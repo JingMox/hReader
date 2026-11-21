@@ -6,12 +6,12 @@ import {
   type Diagnostic,
   HR_ID_ATTRIBUTE,
   HR_ID_PATTERN,
-  type HtmlAttribute,
   type HtmlElementNode,
   type HtmlNode,
   type ParsedHtml,
 } from "./constants";
 import { HASH_SEED, mixHex, stableHex8 } from "./hash";
+import { attributeValue, collectValidIdCounts, uniqueId, withHrId } from "./hrIds";
 import { joinPath, pathSegment } from "./path";
 import { type InjectSeed, ROOT_SEED } from "./seed";
 import { childSlots } from "./slots";
@@ -24,15 +24,6 @@ export interface InjectedNodeIds {
 }
 
 const TEXT_SAMPLE_LENGTH = 64;
-
-const attributeValue = (attrs: readonly HtmlAttribute[], name: string): string | undefined => {
-  for (const [attributeName, value] of attrs) {
-    if (attributeName === name) {
-      return value;
-    }
-  }
-  return undefined;
-};
 
 /** 注入目标：最外层 `<article>` 自身，以及 article 内的可寻址元素（嵌套 article 不另注入）。 */
 const isInjectionTarget = (node: HtmlElementNode, insideArticle: boolean): boolean =>
@@ -49,55 +40,16 @@ const seedText = (node: HtmlNode, state: WalkState): string => {
   return sample.replace(/\s+/gu, " ").trim();
 };
 
-const collectValidIds = (root: HtmlNode): Set<string> => {
-  const ids = new Set<string>();
-  const stack: HtmlNode[] = [root];
-  for (const current of drainStack(stack)) {
-    if (current.kind === "element") {
-      const id = attributeValue(current.attrs, HR_ID_ATTRIBUTE);
-      if (id !== undefined && HR_ID_PATTERN.test(id)) {
-        ids.add(id);
-      }
-    }
-    if (current.kind === "element" || current.kind === "document") {
-      for (const child of current.children) {
-        stack.push(child);
-      }
-    }
-  }
-  return ids;
-};
-
-/** 后缀按文档顺序递增：同一文档两次调用逐字节一致，且与遍历起点无关。 */
-const uniqueId = (base: string, used: Set<string>): string => {
-  if (!used.has(base)) {
-    return base;
-  }
-  let suffix = 2;
-  while (used.has(`${base}-${String(suffix)}`)) {
-    suffix += 1;
-  }
-  return `${base}-${String(suffix)}`;
-};
-
-const withHrId = (
-  attrs: readonly HtmlAttribute[],
-  id: string | undefined,
-): readonly HtmlAttribute[] => {
-  if (id === undefined) {
-    return attrs;
-  }
-  return attrs.some(([name]) => name === HR_ID_ATTRIBUTE)
-    ? attrs.map(([name, value]) =>
-        name === HR_ID_ATTRIBUTE ? ([name, id] as const) : ([name, value] as const),
-      )
-    : [...attrs, [HR_ID_ATTRIBUTE, id] as const];
-};
-
 interface AssignContext {
   readonly used: Set<string>;
   readonly injected: string[];
   readonly diagnostics: Diagnostic[];
+  /** 全文合法 id 的出现次数：判"重复 id 只保留第一个"用。 */
+  readonly idCounts: ReadonlyMap<string, number>;
+  /** 已经原样留下的重复 id：第二次遇到它才重分配（先序，先到先得）。 */
+  readonly kept: Set<string>;
+  /** `replace` 的片段根要继承的目标 id：id 归产品所有，片段自己算出来的不算数。 */
+  readonly rootId: string | undefined;
 }
 
 interface WalkState {
@@ -121,6 +73,13 @@ const seedOf = (
   text: string,
 ): string => [node.tag, String(siblingIndex), text, digest.toString(16)].join("\u0000");
 
+/**
+ * 显式 id 能不能原样留下：格式合法**且**（全文只出现一次，或是重复 id 里的第一个）。
+ * 先序遍历保证“第一个”就是文档里第一个——其余重分配。
+ */
+const isKeepableId = (id: string, state: WalkState): boolean =>
+  HR_ID_PATTERN.test(id) && (state.context.idCounts.get(id) === 1 || !state.context.kept.has(id));
+
 const assignId = (
   node: HtmlElementNode,
   entry: { readonly siblingIndex: number; readonly childIndex: number },
@@ -129,7 +88,9 @@ const assignId = (
 ): string => {
   const { context } = state;
   const existing = attributeValue(node.attrs, HR_ID_ATTRIBUTE);
-  if (existing !== undefined && HR_ID_PATTERN.test(existing)) {
+  if (existing !== undefined && isKeepableId(existing, state)) {
+    context.used.add(existing);
+    context.kept.add(existing);
     return existing;
   }
   const seed = seedOf(node, entry.siblingIndex, digest, seedText(node, state));
@@ -137,10 +98,13 @@ const assignId = (
   context.used.add(id);
   context.injected.push(id);
   if (existing !== undefined) {
+    const duplicated = HR_ID_PATTERN.test(existing);
     context.diagnostics.push({
-      code: "invalid_hr_id",
+      code: duplicated ? "id_reassigned" : "invalid_hr_id",
       severity: "warning",
-      message: `data-hr-id="${existing}" 不合法（空/含空白/非 [a-z0-9-]），已改写为 ${id}`,
+      message: duplicated
+        ? `重复的 data-hr-id="${existing}"（只保留第一个），已改名为 ${id}`
+        : `data-hr-id="${existing}" 不合法（应为 ${HR_ID_PATTERN.source}），已改写为 ${id}`,
       // 路径串只在真要发诊断时拼：正常文档一个诊断都没有，不该为它付遍历成本。
       path: joinPath(state.path.join(">"), pathSegment(node.tag, entry.childIndex)),
     });
@@ -191,15 +155,29 @@ const openChildren = (
   }
 };
 
+/**
+ * 这个节点写不写 id：根任务（`childIndex === -1`）只可能是遍历起点，`replace` 给它的目标 id
+ * 优先于"按片段内容再算一个"——id 归产品所有，换内容不该换锚点。
+ */
+const idOf = (
+  task: Extract<Task, { kind: "enter" }>,
+  node: HtmlElementNode,
+  digest: number,
+  state: WalkState,
+): string | undefined => {
+  if (task.childIndex === -1 && state.context.rootId !== undefined) return state.context.rootId;
+  return isInjectionTarget(node, task.insideArticle)
+    ? assignId(node, task, digest, state)
+    : undefined;
+};
+
 const enterElement = (
   task: Extract<Task, { kind: "enter" }>,
   node: HtmlElementNode,
   state: WalkState,
 ): void => {
   const digest = mixHex(`${node.tag}#${String(task.siblingIndex)}`, task.parentDigest);
-  const id = isInjectionTarget(node, task.insideArticle)
-    ? assignId(node, task, digest, state)
-    : undefined;
+  const id = idOf(task, node, digest, state);
   const children: HtmlNode[] = [];
   task.sink.push({ kind: "element", tag: node.tag, attrs: withHrId(node.attrs, id), children });
   state.stack.push({ kind: "exit", parentDigest: task.parentDigest });
@@ -233,24 +211,41 @@ interface Walk {
   readonly result: () => HtmlNode;
 }
 
-const beginWalk = (
-  parsed: ParsedHtml,
-  options: {
-    readonly reserved?: readonly string[];
-    readonly insideArticle?: boolean;
-    readonly rootSeed?: InjectSeed | undefined;
-  },
-): Walk => {
-  const rootSeed = options.rootSeed ?? ROOT_SEED;
-  const context: AssignContext = {
-    used: new Set([...collectValidIds(parsed.root), ...(options.reserved ?? [])]),
+/** 注入选项：`reserved`/`insideArticle`/`rootSeed`/`rootId` 只在 patch 路径出现，缺省与 M1.2 逐字一致。 */
+interface InjectOptions {
+  /** 调用方已知占用的 ID（如补丁片段要避开整篇文档已有 ID）。 */
+  readonly reserved?: readonly string[];
+  /** 把片段自身当作注入根。 */
+  readonly insideArticle?: boolean;
+  /** 片段根在文档里的原位置：给了它就按原位置复算 ID。 */
+  readonly rootSeed?: InjectSeed | undefined;
+  /** `replace` 的新根直接继承目标 id（id 归产品所有，不跟内容重算）。 */
+  readonly rootId?: string | undefined;
+}
+
+/** 遍历起点：`used` 预置全文已有 id（含重复的，重分配时不能再撞上），`kept` 记录已保留的重复 id。 */
+const assignContextOf = (parsed: ParsedHtml, options: InjectOptions): AssignContext => {
+  const idCounts = collectValidIdCounts(parsed.root);
+  return {
+    used: new Set([
+      ...idCounts.keys(),
+      ...(options.reserved ?? []),
+      ...(options.rootId === undefined ? [] : [options.rootId]),
+    ]),
     injected: [],
     diagnostics: [],
+    idCounts,
+    kept: new Set<string>(),
+    rootId: options.rootId,
   };
+};
+
+const beginWalk = (parsed: ParsedHtml, options: InjectOptions): Walk => {
+  const rootSeed = options.rootSeed ?? ROOT_SEED;
   const state: WalkState = {
     stack: [],
     path: [],
-    context,
+    context: assignContextOf(parsed, options),
     samples: textSamplesOf(parsed.root, TEXT_SAMPLE_LENGTH),
     digest: HASH_SEED,
   };
@@ -272,14 +267,7 @@ const beginWalk = (
   return { state, result: () => root };
 };
 
-export const injectNodeIds = (
-  parsed: ParsedHtml,
-  options: {
-    readonly reserved?: readonly string[];
-    readonly insideArticle?: boolean;
-    readonly rootSeed?: InjectSeed | undefined;
-  } = {},
-): InjectedNodeIds => {
+export const injectNodeIds = (parsed: ParsedHtml, options: InjectOptions = {}): InjectedNodeIds => {
   const walk = beginWalk(parsed, options);
   for (const task of drainStack(walk.state.stack)) {
     if (task.kind === "exit") {

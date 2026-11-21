@@ -1,9 +1,10 @@
 [package]
 name = "hreader-desktop"
-version = "0.0.0"
+version = "1.0.0"
+license = "MIT"
 edition = "2021"
 rust-version = "1.98.0"
-description = "hReader desktop shell: 定位 hr CLI、拉起本地 daemon、把 webview 导航到 daemon 托管的阅读器"
+description = "hReader desktop shell: locate hr CLI, manage local daemon, and render the Typora-style reader workspace"
 
 [lib]
 name = "hreader_desktop"
@@ -17,11 +18,14 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-libc = "0.2"
 serde_json = "1"
-signal-hook-registry = "1"
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+signal-hook-registry = "1"
 
 [profile.release]
 codegen-units = 1

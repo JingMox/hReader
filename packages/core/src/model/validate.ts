@@ -107,7 +107,12 @@ const checkId = (node: HtmlElementNode, path: string, state: State): void => {
   }
   state.occurrences.push({ id, path, order: state.step });
   if (!HR_ID_PATTERN.test(id)) {
-    record(state, "invalid_hr_id", `data-hr-id="${id}" 不合法（应为非空 [a-z0-9-]）`, path);
+    record(
+      state,
+      "invalid_hr_id",
+      `data-hr-id="${id}" 不合法（应为 ${HR_ID_PATTERN.source}）`,
+      path,
+    );
   }
 };
 

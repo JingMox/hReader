@@ -27,6 +27,13 @@ export default tseslint.config(
       "**/dist/**",
       "**/coverage/**",
       ".stryker-tmp/**",
+      "release-artifacts/**",
+      "packages/desktop/src-tauri/target/**",
+      "packages/desktop/src-tauri/resources/**",
+      "packages/cli/styles/**",
+      "packages/mcp-server/styles/**",
+      "skills/hreader/scripts/cli.mjs",
+      "skills/hreader/scripts/styles/**",
       "pnpm-lock.yaml",
     ],
   },
@@ -172,12 +179,14 @@ export default tseslint.config(
     // 逐字相等、core 新增一个 `HrErrorCode` 就必须多一行。2026-11-16 实测 1202 行（M4.1 R2 新增
     // `file_exists`/`llm_failure`）；2026-11-19 实测 1203 行（R1 新增 `content_model_conflict`）
     // ——不留余量，同一理由再来一次就再改一次数字，不改规则。
+    // 2026-11-19 R2-F17：新增 duplicate_id（1203→1204）；L-46 记下「行数墙 vs AC-1 单文件扩展」的死锁，
+    // 出口是打包后拆分（见 docs/known-defects.md L-46）。
     // `max-params` 的触发点只有一个：AC-6 要求的 `tool.execute(toolCallId, params, signal, onUpdate, ctx)`
     // 是 Pi 定的五参签名，本文件必须照抄，故这条规则在本文件不适用。
     files: ["packages/pi-extension/pi-hreader.ts"],
     rules: {
       "import/no-default-export": "off",
-      "max-lines": ["error", { max: 1203 }],
+      "max-lines": ["error", { max: 1204 }],
       "max-params": "off",
     },
   },

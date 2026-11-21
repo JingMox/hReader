@@ -11,6 +11,7 @@ import type {
   ExtractStyleLlmResult,
   ExtractStyleResult,
   HrErrorCode,
+  HrErrorData,
   LintHit,
   LintReport,
   Outline,
@@ -49,8 +50,10 @@ const bool = (value: boolean): string => (value ? "true" : "false");
 
 export const jsonOk = (data: string): string => `{"ok":true,"data":${data}}\n`;
 
-export const jsonError = (code: HrErrorCode, message: string): string =>
-  `{"ok":false,"code":${quote(code)},"message":${quote(message)}}\n`;
+/** `data` 是给调用方分支用的机器可读成因（如 `invalid_selector` 的 `reason`/`candidates`）；没有就整个键不出现。 */
+export const jsonError = (code: HrErrorCode, message: string, data?: HrErrorData): string =>
+  `{"ok":false,"code":${quote(code)},"message":${quote(message)}` +
+  `${data === undefined ? "" : `,"data":${JSON.stringify(data)}`}}\n`;
 
 const nodeJson = (node: OutlineNode): string =>
   `{"id":${quote(node.id)},"tag":${quote(node.tag)},"level":${String(node.level)},` +
@@ -71,8 +74,12 @@ export const dataOutline = (outline: Outline): string =>
   `"wordCount":${String(outline.wordCount)},` +
   `"diagnostics":[${outline.diagnostics.map(diagnosticJson).join(",")}]}`;
 
+/** 键恒在（未截断时 `false`/`[]`）：`--json` 的契约只增不减，条件键会把“键可能不存在”的分支
+ * 摊给每个调用方——形状稳定的代价只是一个 `false`。 */
 export const dataRead = (result: ReadNodeResult, ids: readonly string[]): string =>
-  `{"html":${quote(result.html)},"ids":${JSON.stringify(ids)}}`;
+  `{"html":${quote(result.html)},"ids":${JSON.stringify(ids)},` +
+  `"truncated":${bool(result.truncated)},` +
+  `"diagnostics":[${result.diagnostics.map(diagnosticJson).join(",")}]}`;
 
 /** 键序 = 卡片 §3；`historyPath` 为 `null` 表示没写盘（`changed:false`）。
  * `replacedIds` 只在 `replace` 让目标 id 真变了时出现：其余动作不印空数组，免得既有调用以为多了一个"映射"。
@@ -174,17 +181,26 @@ const outlineLines = (nodes: readonly OutlineNode[], depth: number): readonly st
     ...outlineLines(node.children, depth + 1),
   ]);
 
-/** 空大纲不能静默：0 字节 stdout + 退出码 0 读起来像“文档没问题”，其实是“确实没标题”。 */
-export const humanOutline = (outline: Outline): string =>
+/** 空大纲不能静默：0 字节 stdout + 退出码 0 读起来像“文档没问题”，其实是“确实没标题”。
+ * 第二行是给下一步的动作：没有标题的文档（论文正文、Word 导出）只能从内容里摸，`read` 就是那条路。
+ * 路径默认值是给直调的单测用的占位；CLI 永远传用户视角路径。
+ */
+export const humanOutline = (outline: Outline, displayPath = "<文件>"): string =>
   outline.nodes.length === 0
-    ? `（没有标题）\n`
+    ? `（没有标题）\n本文没有标题；用 hr read ${displayPath} <nodeId|selector> 取内容\n`
     : [...outlineLines(outline.nodes, 0), ""].join("\n");
 
 /** 人读模式下的诊断行：与 `--json` 的 `diagnostics` 同源，只是压成一行。 */
 export const humanDiagnostic = (diagnostic: DiagnosticShape): string =>
   `${diagnostic.severity}: ${diagnostic.message}\n`;
 
-export const humanRead = (result: ReadNodeResult): string => `${result.html}\n`;
+/** 截断不能只写在 JSON 的 `diagnostics` 里：人读模式的 stdout 与未截断时逐字相同，用户只会以为节点就这么长。
+ * 打的是 core 那条 `truncated_output` 原文（不另排一套数字）：两个输出源同源，就不会各说一套。
+ */
+export const humanRead = (result: ReadNodeResult): string => {
+  const truncation = result.diagnostics.find((item) => item.code === "truncated_output");
+  return `${result.html}\n${truncation === undefined ? "" : `${truncation.message}\n`}`;
+};
 
 /**
  * `replace` 会按内容重发 id（docs/05 横切口径）：不把「旧 id → 新 id」印出来，用户手上那个旧 id 就再也不能用（B-04）。

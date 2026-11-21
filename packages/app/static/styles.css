@@ -14,6 +14,8 @@ html,
 body {
   margin: 0;
   padding: 0;
+  height: 100%;
+  overflow: hidden;
   background: var(--hr-paper);
   color: var(--hr-ink);
   font-family: "Iowan Old Style", "Songti SC", serif;
@@ -22,8 +24,11 @@ body {
 #hr-root {
   display: grid;
   grid-template-columns: var(--hr-side) minmax(0, 1fr) var(--hr-side);
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: var(--hr-gap);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   padding: var(--hr-gap);
   box-sizing: border-box;
 }
@@ -31,6 +36,14 @@ body {
 #hr-root > * {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+#hr-library,
+#hr-canvas,
+#hr-notes {
+  grid-row: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 #hr-library {
@@ -48,7 +61,14 @@ body {
   padding-left: var(--hr-gap);
 }
 
+.notes-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 12px;
+}
+
 #hr-statusbar {
+  grid-row: 2;
   grid-column: 1 / -1;
   display: flex;
   gap: var(--hr-gap);
@@ -64,7 +84,7 @@ body {
   line-height: 1.7;
 }
 
-#hr-doc [data-hr-id] {
+#hr-doc [data-hr-id]:not(article):not([data-hr-component]) {
   transition: background 100ms;
   border-left: 2px solid transparent;
   padding-left: 8px;

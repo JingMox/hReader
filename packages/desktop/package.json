@@ -1,9 +1,11 @@
 {
   "name": "@hreader/desktop",
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "check": "bash scripts/check.sh",
+    "prepare-resources": "node scripts/prepare-resources.mjs",
     "build": "tauri build",
     "smoke": "cd src-tauri && cargo run -- --smoke"
   },

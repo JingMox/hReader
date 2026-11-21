@@ -48,18 +48,44 @@ export type HrErrorCode =
   // M4.8：端口被别的进程占——与 `daemon_already_running`（确实有 daemon 在跑）是两件事
   | "port_in_use"
   // R1-F6：片段内容模型与目标容器不兼容（用户换容器/改 HTML 就能修，故与 `invalid_input` 分开）
-  | "content_model_conflict";
+  | "content_model_conflict"
+  // R2-F16：文档里两个元素共用同一个 data-hr-id（`normalize` 会把重复的那个改名，但读/写入口必须先拒绝歧义）
+  | "duplicate_id";
+
+/**
+ * `invalid_selector` 有两种成因（文法不合法 / 选择器命中多个可寻址元素），
+ * 报文之外必须给程序一个稳定的判别面：让调用方去正则 `message` 太脆，而多开一个错误码
+ * 会打破「码表已冻结」的约定。`reason` 就是这两种成因的判别面。
+ */
+export interface HrErrorData {
+  readonly reason: "syntax" | "ambiguous";
+  /** 这次歧义里**可选项的总数**（候选上限截断不影响它）。
+   * 它不是“选择器命中了几个元素”——那个数在 `matches`；两种成因都自洽的是“可选项数”，
+   * 多义命中时等于 `addressable`，截断时仍等于 `addressable` 而不是 `candidates.length`
+   * （不变式 `candidates.length === Math.min(count, 5)`）；双解释时恒为 2（id 一个 + 选择器一个）。 */
+  readonly count?: number;
+  /** 选择器命中元素数（含不可寻址）；截断时与 `count` 不等。 */
+  readonly matches?: number;
+  /** 多义时候选 `data-hr-id`，文档序。 */
+  readonly candidates?: readonly string[];
+}
 
 /**
  * 唯一对外错误类型。跨包用 `instanceof HrError` 判定，按 `code` 分支；
- * `message` 只给人看，程序判定必须依赖 `code`。
+ * `message` 只给人看，程序判定必须依赖 `code`（需要细分时看 `data.reason`）。
  */
 export class HrError extends Error {
   readonly code: HrErrorCode;
+  readonly data: HrErrorData | undefined;
 
-  constructor(code: HrErrorCode, message: string, options?: { cause?: unknown }) {
+  constructor(
+    code: HrErrorCode,
+    message: string,
+    options?: { cause?: unknown; data?: HrErrorData },
+  ) {
     super(message, options);
     this.name = "HrError";
     this.code = code;
+    this.data = options?.data;
   }
 }

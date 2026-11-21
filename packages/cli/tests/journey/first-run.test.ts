@@ -88,8 +88,8 @@ const readOf = async (
   };
 };
 
-/** ④ 改一章：返回"旧 id → 新 id"的映射（用户拿它继续操作）。 */
-const patchChapter = async (dir: string, oldId: string): Promise<{ from: string; to: string }> => {
+/** ④ 改一章：返回 patch 的信封 `data`（R2-04 起 id 不变，「旧 id 还能用」才是用户要的那件事）。 */
+const patchChapter = async (dir: string, oldId: string): Promise<unknown> => {
   const result = checked(
     await runCli(
       [
@@ -106,8 +106,7 @@ const patchChapter = async (dir: string, oldId: string): Promise<{ from: string;
     ),
   );
   expect(result.code).toBe(0);
-  const pair = listOf(fieldOf(dataOf(result), "replacedIds"))[0];
-  return { from: textOf(fieldOf(pair, "from")), to: textOf(fieldOf(pair, "to")) };
+  return dataOf(result);
 };
 
 /** ⑤ 上一套视觉风格：命令成功，且文件里真的落进了主题样式（不是只在内存里改）。 */
@@ -158,11 +157,11 @@ describe("首用路径 · 改一章、换风格、出打印稿", () => {
       await normalizeDraft(dir);
       const { chapter2 } = await outlineOf(dir);
 
-      // 改完：旧 id 已失效、新 id 立刻可用，盘上正文也换了。
+      // 改完：docs/05:57（R2-04「id 归产品所有」）——新根继承目标 id，**旧 id 仍然可用**，
+      // 所以这里断言的是「拿旧 id 立刻读回新正文」，而不是「旧 id 已失效」。
       const replaced = await patchChapter(dir, chapter2);
-      expect(replaced.from).toBe(chapter2);
-      expect(replaced.to).not.toBe(chapter2);
-      expect((await readOf(dir, replaced.to)).chapter).toContain("第二章 评审：必须与可以");
+      expect(listOf(fieldOf(replaced, "replacedIds"))).toEqual([]);
+      expect((await readOf(dir, chapter2)).chapter).toContain("第二章 评审：必须与可以");
       expect(readFileSync(join(dir, "doc.html"), "utf8")).toContain("第二章 评审：必须与可以");
 
       await styleOf(dir);

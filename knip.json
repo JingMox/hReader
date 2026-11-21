@@ -29,6 +29,7 @@
         "src/commands/*.ts",
         "fixtures/*.mjs",
         "scripts/*.ts",
+        "scripts/*.mjs",
         "tests/**/*.ts"
       ]
     },

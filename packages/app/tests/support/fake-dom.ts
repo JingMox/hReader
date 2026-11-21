@@ -6,6 +6,10 @@ import type { ElementLike, TargetLike } from "../../src/dom.ts";
 /** 参数类型故意写成 `ElementLike`（与接口一致），因此本类型结构上就是 `ElementLike`。 */
 export interface FakeElement {
   tag: string;
+  tagName: string;
+  value?: string;
+  parentElement: FakeElement | null;
+  nextElementSibling: ElementLike | null;
   calls: string[];
   listeners: string[];
   attrs: Map<string, string>;
@@ -21,6 +25,8 @@ export interface FakeElement {
   classList: { toggle: (name: string, on?: boolean) => void };
   replaceChildren: (...nodes: ElementLike[]) => void;
   appendChild: (node: ElementLike) => void;
+  insertBefore: (node: ElementLike, ref: ElementLike | null) => void;
+  replaceWith: (node: ElementLike) => void;
   addEventListener: (type: string, handler: (event: { target: TargetLike }) => void) => void;
   removeEventListener: (type: string, handler: (event: { target: TargetLike }) => void) => void;
   fire: (type: string, target: TargetLike) => void;
@@ -42,6 +48,46 @@ const handleOf = (element: FakeElement, withHandles: boolean): void => {
     element.scrollIntoView = (options) => element.calls.push(`scroll:${options.block}`);
 };
 
+const fakeRegistry = new WeakMap<ElementLike, FakeElement>();
+
+const relink = (parent: FakeElement): void => {
+  for (let i = 0; i < parent.children.length; i += 1) {
+    const child = parent.children[i];
+    const fakeChild = child === undefined ? undefined : fakeRegistry.get(child);
+    if (fakeChild !== undefined) {
+      fakeChild.parentElement = parent;
+      fakeChild.nextElementSibling = parent.children[i + 1] ?? null;
+    }
+  }
+};
+
+const wireTree = (element: FakeElement): void => {
+  element.replaceChildren = (...nodes) => {
+    element.children.splice(0, element.children.length, ...nodes);
+    relink(element);
+  };
+  element.appendChild = (node) => {
+    element.children.push(node);
+    relink(element);
+  };
+  element.insertBefore = (node, ref) => {
+    const oldAt = element.children.indexOf(node);
+    if (oldAt !== -1) element.children.splice(oldAt, 1);
+    const refAt = ref === null ? -1 : element.children.indexOf(ref);
+    if (refAt === -1) element.children.push(node);
+    else element.children.splice(refAt, 0, node);
+    relink(element);
+  };
+  element.replaceWith = (node) => {
+    element.calls.push("replaceWith");
+    const parent = element.parentElement;
+    if (parent === null) return;
+    const at = parent.children.indexOf(element);
+    if (at !== -1) parent.children.splice(at, 1, node);
+    relink(parent);
+  };
+};
+
 const wireOf = (element: FakeElement): void => {
   const handlers = new Map<string, (event: { target: TargetLike }) => void>();
   element.setAttribute = (name, value) => {
@@ -56,12 +102,7 @@ const wireOf = (element: FakeElement): void => {
       element.classes.set(name, on ?? !(element.classes.get(name) ?? false));
     },
   };
-  element.replaceChildren = (...nodes) => {
-    element.children.splice(0, element.children.length, ...nodes);
-  };
-  element.appendChild = (node) => {
-    element.children.push(node);
-  };
+  wireTree(element);
   element.addEventListener = (type, handler) => {
     element.listeners.push(type);
     handlers.set(type, handler);
@@ -89,6 +130,9 @@ const markupOf = (element: FakeElement): void => {
 export const fakeElement = (tag: string, withHandles = true): FakeElement => {
   const element: FakeElement = {
     tag,
+    tagName: tag.toUpperCase(),
+    parentElement: null,
+    nextElementSibling: null,
     calls: [],
     listeners: [],
     attrs: new Map(),
@@ -104,10 +148,13 @@ export const fakeElement = (tag: string, withHandles = true): FakeElement => {
     classList: { toggle: () => undefined },
     replaceChildren: () => undefined,
     appendChild: () => undefined,
+    insertBefore: () => undefined,
+    replaceWith: () => undefined,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
     fire: () => undefined,
   };
+  fakeRegistry.set(element, element);
   wireOf(element);
   markupOf(element);
   handleOf(element, withHandles);

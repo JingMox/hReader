@@ -21,10 +21,16 @@ afterEach(() => {
 });
 
 describe("main · 文档定位与首屏", () => {
-  it("should boot from body[data-doc-id]: themes, html and annotations", async () => {
+  it("should boot from body[data-doc-id]: themes, html, annotations, model and outline", async () => {
     install("doc.html", "http://x/?doc=other", happy);
     await load();
-    expect(stubs.fetched).toEqual(["/api/theme", "/s/doc.html", "/api/doc/doc.html/annotations"]);
+    expect(stubs.fetched).toEqual([
+      "/api/theme",
+      "/s/doc.html",
+      "/api/doc/doc.html/annotations",
+      "/api/doc/doc.html/model",
+      "/api/doc/doc.html/outline",
+    ]);
   });
 
   it("should reload on a named frame with a frame-header id", async () => {
@@ -34,7 +40,7 @@ describe("main · 文档定位与首屏", () => {
     source?.onopen?.();
     source?.fire("doc.changed", JSON.stringify({ changedNodes: ["hr-a"] }), "7");
     await flush(5);
-    expect(stubs.fetched.filter((url) => url.endsWith("/model"))).toHaveLength(1);
+    expect(stubs.fetched.filter((url) => url.endsWith("/model"))).toHaveLength(2);
   });
 
   it("should drop frames that carry no id at all", async () => {
@@ -44,7 +50,7 @@ describe("main · 文档定位与首屏", () => {
     source?.onopen?.();
     source?.fire("doc.changed", JSON.stringify({ changedNodes: ["hr-a"] }));
     await flush(5);
-    expect(stubs.fetched.filter((url) => url.endsWith("/model"))).toEqual([]);
+    expect(stubs.fetched.filter((url) => url.endsWith("/model"))).toHaveLength(1);
   });
 });
 

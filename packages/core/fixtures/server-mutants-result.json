@@ -13,7 +13,7 @@
       ],
       "status": "KILLED（1 例）",
       "killers": [
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth-timing.test.ts > auth · 定长比较 should compare the real bytes when the lengths match"
+        "packages/core/tests/server/auth-timing.test.ts > auth · 定长比较 should compare the real bytes when the lengths match"
       ]
     },
     {
@@ -25,11 +25,11 @@
       "tests": ["packages/core/tests/server/auth.test.ts"],
       "status": "KILLED（5 例）",
       "killers": [
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host 127.0.0.1:1 with 403 forbidden_origin",
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host evil.example with 403 forbidden_origin",
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host 127.0.0.1 with 403 forbidden_origin",
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host 127.0.0.1:8443 with 403 forbidden_origin",
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Origin with a .evil.com suffix and allow the real one"
+        "packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host 127.0.0.1:1 with 403 forbidden_origin",
+        "packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host evil.example with 403 forbidden_origin",
+        "packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host 127.0.0.1 with 403 forbidden_origin",
+        "packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Host 127.0.0.1:8443 with 403 forbidden_origin",
+        "packages/core/tests/server/auth.test.ts > auth · Host 与 Origin should reject Origin with a .evil.com suffix and allow the real one"
       ]
     },
     {
@@ -44,7 +44,7 @@
       ],
       "status": "KILLED（1 例）",
       "killers": [
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/sse.test.ts > sse · Last-Event-ID should send reset(events_expired) when the id fell out of the ring"
+        "packages/core/tests/server/sse.test.ts > sse · Last-Event-ID should send reset(events_expired) when the id fell out of the ring"
       ]
     },
     {
@@ -59,8 +59,8 @@
       ],
       "status": "KILLED（2 例）",
       "killers": [
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/sse.test.ts > sse · Last-Event-ID should send reset(events_expired) when the id fell out of the ring",
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/unit-ring-diff.test.ts > createEventRing · 容量与补齐 should drop the oldest event when capacity is reached (boundary still a hit)"
+        "packages/core/tests/server/sse.test.ts > sse · Last-Event-ID should send reset(events_expired) when the id fell out of the ring",
+        "packages/core/tests/server/unit-ring-diff.test.ts > createEventRing · 容量与补齐 should drop the oldest event when capacity is reached (boundary still a hit)"
       ]
     },
     {
@@ -75,7 +75,7 @@
       ],
       "status": "KILLED（1 例）",
       "killers": [
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/wire-http.test.ts > wire · 体大小与半截请求 should refuse a body over 1 MiB as invalid_request (400) and leave the file untouched"
+        "packages/core/tests/server/wire-http.test.ts > wire · 体大小与半截请求 should refuse a body over 1 MiB as invalid_request (400) and leave the file untouched"
       ]
     },
     {
@@ -90,7 +90,7 @@
       ],
       "status": "KILLED（1 例）",
       "killers": [
-        "/Users/liu/Documents/Project/hReader/packages/core/tests/server/unit-ring-diff.test.ts > revisionOf · 内容哈希前缀 should be a stable 16-char lowercase hex prefix of sha256"
+        "packages/core/tests/server/unit-ring-diff.test.ts > revisionOf · 内容哈希前缀 should be a stable 16-char lowercase hex prefix of sha256"
       ]
     }
   ]

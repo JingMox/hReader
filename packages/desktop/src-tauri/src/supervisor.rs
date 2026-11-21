@@ -1,9 +1,10 @@
 //! 平台副作用层：探活用的真实 syscall、拉起 `hr`、读它的启动信封、退出时收尸。
 //! 判断逻辑在 `spawn_decision`/`child_registry`，这里只负责"真的去做"。
 
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -50,13 +51,27 @@ impl Probe for SystemProbe {
     }
 
     fn process_alive(&self, pid: u32) -> bool {
-        Command::new("kill")
-            .arg("-0")
-            .arg(pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
+        #[cfg(unix)]
+        {
+            Command::new("kill")
+                .arg("-0")
+                .arg(pid.to_string())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+        }
+        #[cfg(windows)]
+        {
+            let filter = format!("PID eq {pid}");
+            let needle = format!("\"{pid}\"");
+            let mut command = Command::new("tasklist");
+            command.args(["/FI", &filter, "/FO", "CSV", "/NH"]);
+            suppress_console(&mut command);
+            command.output().is_ok_and(|out| {
+                out.status.success() && String::from_utf8_lossy(&out.stdout).contains(&needle)
+            })
+        }
     }
 
     fn health_pid(&self, port: u16) -> Option<u32> {
@@ -88,6 +103,41 @@ pub struct Daemon {
     registry: ChildRegistry,
 }
 
+/// 阻止 Windows 后台子进程（`node` / `tasklist`）弹出短暂的控制台黑框。
+fn suppress_console(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = command;
+    }
+}
+
+/// 若 CLI 是 `.mjs`/`.js`/`.cjs` 脚本，通过 `node` 启动，避免 Windows 无法直接执行 shebang 脚本。
+pub fn cli_command(cli: &Path) -> Command {
+    let is_js = cli
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("mjs")
+                || ext.eq_ignore_ascii_case("js")
+                || ext.eq_ignore_ascii_case("cjs")
+        });
+    let mut command = if is_js {
+        let mut cmd = Command::new("node");
+        cmd.arg(cli);
+        cmd
+    } else {
+        Command::new(cli)
+    };
+    suppress_console(&mut command);
+    command
+}
+
 impl Daemon {
     pub fn info(&self) -> &DaemonInfo {
         &self.info
@@ -113,11 +163,26 @@ impl Daemon {
         home: &Path,
         port: Option<u16>,
     ) -> Result<Self, SuperviseError> {
-        let mut command = Command::new(cli);
+        Self::spawn_with_app(cli, doc_id, workspace, home, port, None)
+    }
+
+    pub(crate) fn spawn_with_app(
+        cli: &Path,
+        doc_id: &str,
+        workspace: &Path,
+        home: &Path,
+        port: Option<u16>,
+        app_dir: Option<&Path>,
+    ) -> Result<Self, SuperviseError> {
+        let mut command = cli_command(cli);
+        command.args(serve_args(doc_id, workspace, home, port));
+        if let Some(dir) = app_dir {
+            command.arg("--app-dir").arg(dir);
+        }
         command
-            .args(serve_args(doc_id, workspace, home, port))
             // 子进程的 cwd 就是 workspace：`hr serve` 按 cwd 解析相对文档名，不这样传就会误判越界。
             .current_dir(workspace)
+            .env("PATH", enriched_path_env())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -157,19 +222,22 @@ impl Drop for Daemon {
         if !self.registry.should_kill(child.id()) {
             return;
         }
-        // 先礼后兵：SIGTERM 让 core 自己删 daemon.json，2s 不退再 SIGKILL。
-        let _ = Command::new("kill")
-            .arg("-TERM")
-            .arg(child.id().to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while Instant::now() < deadline {
-            if matches!(child.try_wait(), Ok(Some(_))) {
-                return;
+        #[cfg(unix)]
+        {
+            // 先礼后兵：SIGTERM 让 core 自己删 daemon.json，2s 不退再 SIGKILL。
+            let _ = Command::new("kill")
+                .arg("-TERM")
+                .arg(child.id().to_string())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while Instant::now() < deadline {
+                if matches!(child.try_wait(), Ok(Some(_))) {
+                    return;
+                }
+                std::thread::sleep(READY_INTERVAL);
             }
-            std::thread::sleep(READY_INTERVAL);
         }
         let _ = child.kill();
         let _ = child.wait();
@@ -257,6 +325,138 @@ fn wait_ready(info: &DaemonInfo) -> Result<(), SuperviseError> {
     Err(SuperviseError::NotReady(info.port))
 }
 
+/// 查找内置的 `@hreader/app/dist` 静态产物目录（用于启用完整排版界面）。
+pub fn default_app_dir() -> Option<PathBuf> {
+    if let Some(from_env) = std::env::var_os("HREADER_APP_DIR") {
+        let path = PathBuf::from(from_env);
+        if path.join("index.html").is_file() {
+            return Some(path);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            for rel in [
+                "../Resources/resources/app",
+                "../Resources/app",
+                "resources/app",
+            ] {
+                let bundled = exe_dir.join(rel);
+                if bundled.join("index.html").is_file() {
+                    return Some(bundled);
+                }
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    for sys_dir in [
+        "/usr/lib/hReader/resources/app",
+        "/usr/lib/hreader-desktop/resources/app",
+    ] {
+        let candidate = Path::new(sys_dir);
+        if candidate.join("index.html").is_file() {
+            return Some(candidate.to_path_buf());
+        }
+    }
+    let repo_app = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app/dist");
+    if repo_app.join("index.html").is_file() {
+        return repo_app.canonicalize().ok().or(Some(repo_app));
+    }
+    None
+}
+
+/// 补全桌面壳通过 Finder / Start Menu / AppImage 启动时常见的 Node 安装路径。
+pub fn enriched_path_env() -> OsString {
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|raw| std::env::split_paths(&raw).collect())
+        .unwrap_or_default();
+    #[cfg(unix)]
+    {
+        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+            let nvm_dir = home.join(".nvm/versions/node");
+            if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+                let mut versions: Vec<PathBuf> = entries
+                    .flatten()
+                    .map(|e| e.path().join("bin"))
+                    .filter(|p| p.is_dir())
+                    .collect();
+                versions.sort();
+                versions.reverse();
+                dirs.extend(versions);
+            }
+            for rel in [".fnm/aliases/default/bin", ".volta/bin"] {
+                let candidate = home.join(rel);
+                if candidate.is_dir() {
+                    dirs.push(candidate);
+                }
+            }
+        }
+        for fixed in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"] {
+            let path = PathBuf::from(fixed);
+            if !dirs.contains(&path) {
+                dirs.push(path);
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        for var in ["ProgramFiles", "ProgramW6432"] {
+            if let Some(root) = std::env::var_os(var) {
+                let candidate = PathBuf::from(root).join("nodejs");
+                if candidate.is_dir() && !dirs.contains(&candidate) {
+                    dirs.push(candidate);
+                }
+            }
+        }
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            let candidate = PathBuf::from(appdata).join("npm");
+            if candidate.is_dir() && !dirs.contains(&candidate) {
+                dirs.push(candidate);
+            }
+        }
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            let candidate = PathBuf::from(local).join("Programs/nodejs");
+            if candidate.is_dir() && !dirs.contains(&candidate) {
+                dirs.push(candidate);
+            }
+        }
+    }
+    std::env::join_paths(dirs).unwrap_or_default()
+}
+
+/// 同步执行一条短 CLI 子命令（`normalize` / `style` / `pdf` / `png` / `export`）。
+pub fn run_cli_task(cli: &Path, workspace: &Path, args: &[&str]) -> Result<String, String> {
+    let output = cli_command(cli)
+        .args(args)
+        .current_dir(workspace)
+        .env("PATH", enriched_path_env())
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| format!("无法执行 CLI：{error}"))?;
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Err(if !stderr.is_empty() { stderr } else { stdout })
+}
+
+/// 停止壳自己的旧 daemon（工作区切换或重建会话时使用）。
+pub fn stop_pid(pid: u32) {
+    #[cfg(unix)]
+    let _ = Command::new("kill")
+        .arg("-TERM")
+        .arg(pid.to_string())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    #[cfg(windows)]
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +487,17 @@ mod tests {
         assert_eq!(args.iter().filter(|arg| *arg == "--home").count(), 1);
         let port = args.iter().position(|arg| arg == "--port").expect("--port");
         assert_eq!(args[port + 1], "8123");
+    }
+
+    #[test]
+    fn cli_command_wraps_js_scripts_with_node() {
+        let mjs = cli_command(Path::new("/tmp/cli.mjs"));
+        assert_eq!(mjs.get_program(), "node");
+        let mjs_args: Vec<_> = mjs.get_args().collect();
+        assert_eq!(mjs_args, [std::ffi::OsStr::new("/tmp/cli.mjs")]);
+
+        let native = cli_command(Path::new("/usr/local/bin/hr"));
+        assert_eq!(native.get_program(), "/usr/local/bin/hr");
+        assert_eq!(native.get_args().count(), 0);
     }
 }

@@ -117,7 +117,7 @@ const patchIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
       : file === ""
         ? "patch 缺少 <file>"
         : nodeId === ""
-          ? "patch 缺少 <nodeId>"
+          ? "patch 缺少 <nodeId|selector>"
           : unusedFlag(raw, [
               "--action",
               "--html",

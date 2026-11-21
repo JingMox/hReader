@@ -40,15 +40,13 @@
         </div>
         <!-- 错误/提示放在编辑器外：跨块选区等提示在编辑器关着时也必须看得见。 -->
         <p id="hr-note-error" class="note-error" role="alert"></p>
-        <section id="hr-notes-pending" class="notes-group" aria-labelledby="hr-notes-pending-title">
+        <section class="notes-group" aria-labelledby="hr-notes-pending-title">
           <h4 id="hr-notes-pending-title">未处理</h4>
+          <ul id="hr-notes-pending" class="notes-list"></ul>
         </section>
-        <section
-          id="hr-notes-resolved"
-          class="notes-group"
-          aria-labelledby="hr-notes-resolved-title"
-        >
+        <section class="notes-group" aria-labelledby="hr-notes-resolved-title">
           <h4 id="hr-notes-resolved-title">已归档</h4>
+          <ul id="hr-notes-resolved" class="notes-list"></ul>
         </section>
         <div id="hr-notes-body" class="notes-body"></div>
         <section id="hr-diff" class="diff">

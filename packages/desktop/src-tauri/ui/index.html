@@ -1,10 +1,28 @@
 <!doctype html>
-<html lang="zh">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>hReader</title>
   </head>
-  <body>
-    <!-- 壳不在本地托管阅读器：webview 起来后立即导航到 daemon 的 /s/&lt;docId&gt;?t=…. -->
+  <body data-hrd-empty="true">
+    <div id="hr-root">
+      <aside id="hr-library" aria-label="工作区文件树与大纲">
+        <input id="hr-search" type="search" placeholder="过滤大纲或文件…" />
+        <ul id="hr-toc"></ul>
+      </aside>
+      <main id="hr-canvas">
+        <article id="hr-doc"></article>
+      </main>
+      <aside id="hr-notes" aria-label="批注">
+        <div id="hr-notes-body" style="padding: 14px 12px; font-size: 12px; color: var(--hr-muted)">
+          当前未打开文档，新建或打开任意 HTML 文档后可进行段落批注与历史对比。
+        </div>
+      </aside>
+    </div>
+    <footer id="hr-statusbar">
+      <span id="hr-conn">未打开文档</span>
+      <span id="hr-hint"></span>
+    </footer>
   </body>
 </html>

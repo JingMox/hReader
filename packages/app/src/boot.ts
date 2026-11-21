@@ -101,31 +101,39 @@ export const settleTheme = async (
 };
 
 /** 主题选择走 IO（`GET /api/theme/<id>`），所以单独接一条泵上任务。 */
-const themeSwitcher = (
-  deps: BootDeps,
-  pump: (task: () => Promise<void>) => void,
-): ((intent: Extract<ReaderIntent, { kind: "themeSelected" }>) => void) => {
-  return (intent) => {
+const themeSwitcher =
+  (deps: BootDeps, pump: (task: () => Promise<void>) => void) =>
+  (intent: Extract<ReaderIntent, { kind: "themeSelected" }>): void => {
     pump(async () => {
       await settleTheme(deps, { theme: intent.theme, previous: deps.store.get().theme });
     });
   };
+
+const dispatchLoaded = (
+  store: Store,
+  model: ModelResponse,
+  outline: OutlineResponse,
+  html: string,
+): readonly string[] => {
+  const blocks = blocksOfModel(model);
+  store.dispatch({
+    kind: "blocksLoaded",
+    blocks,
+    outline: outline.outline.nodes,
+    revision: model.revision,
+    html,
+  });
+  return blocks;
 };
 
-const reloadOf = (deps: BootDeps, store: Store): (() => Promise<void>) => {
-  return async () => {
+const reloadOf =
+  (deps: BootDeps, store: Store, refresh: () => Promise<void>) => async (): Promise<void> => {
     const [model, outline, html] = await Promise.all([
       deps.fetchModel(),
       deps.fetchOutline(),
       deps.fetchDocument(),
     ]);
-    const blocks = blocksOfModel(model);
-    store.dispatch({
-      kind: "blocksLoaded",
-      blocks,
-      outline: outline.outline.nodes,
-      revision: model.revision,
-    });
+    const blocks = dispatchLoaded(store, model, outline, html);
     store.dispatch({
       kind: "documentChanged",
       revision: model.revision,
@@ -133,19 +141,20 @@ const reloadOf = (deps: BootDeps, store: Store): (() => Promise<void>) => {
       changedNodes: [],
       html,
     });
+    await refresh();
   };
+
+const hydrateOf = (deps: BootDeps, store: Store) => async (): Promise<void> => {
+  const [model, outline] = await Promise.all([deps.fetchModel(), deps.fetchOutline()]);
+  dispatchLoaded(store, model, outline, deps.documentHtml);
 };
 
-const keyHandlerOf = (
-  store: Store,
-  dispatchIntent: (intent: ReaderIntent) => void,
-): ((raw: KeyLike) => void) => {
-  return (raw) => {
+const keyHandlerOf =
+  (store: Store, dispatchIntent: (intent: ReaderIntent) => void) =>
+  (raw: KeyLike): void => {
     const intent = intentOf(raw, store.get());
-    if (intent === undefined) return;
-    dispatchIntent(intent);
+    if (intent !== undefined) dispatchIntent(intent);
   };
-};
 
 const applyFirstTheme = (deps: BootDeps, pump: (task: () => Promise<void>) => void): void => {
   const first = deps.defaultTheme ?? deps.themes[0];
@@ -195,47 +204,25 @@ const bootedOf = (wired: ReturnType<typeof wireNotes> | undefined, stop: () => v
   destroy: stop,
 });
 
-interface Mounted {
-  readonly widgets: readonly Widget[];
-  readonly wired: ReturnType<typeof wireNotes> | undefined;
+interface FlowScope {
+  readonly deps: BootDeps;
+  readonly store: Store;
+  readonly pump: (task: () => Promise<void>) => void;
+  readonly dispatch: (intent: ReaderIntent) => void;
+  readonly reload: () => Promise<void>;
 }
 
-const wiredOf = (
-  deps: BootDeps,
-  store: Store,
-  pump: (task: () => Promise<void>) => void,
-  dispatch: (intent: ReaderIntent) => void,
-): ReturnType<typeof wireNotes> | undefined => {
+const wiredOf = (scope: FlowScope): ReturnType<typeof wireNotes> | undefined => {
+  const { deps, store, pump, dispatch, reload } = scope;
   if (deps.notes === undefined) return undefined;
-  const wired = wireNotes({
-    host: deps.host,
-    notes: deps.notes,
-    reload: reloadOf(deps, store),
-    store,
-    pump,
-    dispatch,
-  });
+  const wired = wireNotes({ host: deps.host, notes: deps.notes, reload, store, pump, dispatch });
   wired.wireDom();
   return wired;
 };
 
-const mountAllWithNotes = (
-  deps: BootDeps,
-  store: Store,
-  pump: (task: () => Promise<void>) => void,
-  dispatch: (intent: ReaderIntent) => void,
-): Mounted => {
-  const widgets = mountAll(deps, dispatch);
-  return { widgets, wired: wiredOf(deps, store, pump, dispatch) };
-};
-
-/** 首屏记账 + 主题 + SSE + 键盘：返回拆卸函数（`boot` 只保留调度与装配）。 */
-const startFlows = (
-  deps: BootDeps,
-  store: Store,
-  pump: (task: () => Promise<void>) => void,
-  dispatch: (intent: ReaderIntent) => void,
-): (() => void) => {
+/** 首屏记账 + 主题 + 目录与模型水合 + SSE + 键盘：返回拆卸函数（`boot` 只保留调度与装配）。 */
+const startFlows = (scope: FlowScope): (() => void) => {
+  const { deps, store, pump, dispatch, reload } = scope;
   store.dispatch({
     kind: "blocksLoaded",
     blocks: store.get().blocks,
@@ -243,10 +230,9 @@ const startFlows = (
     html: deps.documentHtml,
   });
   applyFirstTheme(deps, pump);
+  pump(hydrateOf(deps, store));
   const flash: { stop?: () => void } = {};
-  const sse = deps.openSse(
-    sseHandlersOf(deps, store, pump, { reload: reloadOf(deps, store), flash }),
-  );
+  const sse = deps.openSse(sseHandlersOf(deps, store, pump, { reload, flash }));
   const unbindKeys = deps.keySource(keyHandlerOf(store, dispatch));
   sse.start();
   return () => {
@@ -257,39 +243,49 @@ const startFlows = (
   };
 };
 
+const subscribeOf = (deps: BootDeps, widgets: readonly Widget[]): (() => void) =>
+  deps.store.subscribe(
+    syncView({
+      host: deps.host,
+      widgets,
+      ...(deps.notes === undefined
+        ? {}
+        : {
+            renderNotes: (state: ReaderState) => {
+              renderNotes(deps.host, state);
+            },
+          }),
+    }),
+  );
+
 export const boot = (deps: BootDeps): Booted => {
   const { host, store } = deps;
-  // 一个意图只有一个出口（G3-R3 #1 / G3-R5）。
   const pump = createPump();
   const selectTheme = themeSwitcher(deps, pump);
-  const notes = deps.notes;
+  const wiredRef: { current: ReturnType<typeof wireNotes> | undefined } = { current: undefined };
   function dispatchIntent(intent: ReaderIntent): void {
     // 守卫必须在 dispatch **之前**求值：`w` 的可用性取决于"此刻"面板是否开着（P0-2 的根因）。
-    if (wired !== undefined && !wired.before(intent)) return;
+    if (wiredRef.current !== undefined && !wiredRef.current.before(intent)) return;
     store.dispatch(intent);
     if (intent.kind === "themeSelected") selectTheme(intent);
     // `/` 只给可见提示：搜索框模板里是 `disabled`（不聚焦死控件）；同一句文案也写在它的 `title` 上。
     if (intent.kind === "searchOpened") host.text(`${ROOT} #hr-hint`, COPY.searchDeferred);
-    wired?.after(intent);
+    wiredRef.current?.after(intent);
   }
-  const { widgets, wired } = mountAllWithNotes(deps, store, pump, dispatchIntent);
+  const reload = reloadOf(deps, store, async () => {
+    await wiredRef.current?.load();
+  });
+  const scope: FlowScope = { deps, store, pump, dispatch: dispatchIntent, reload };
+  const widgets = mountAll(deps, dispatchIntent);
+  const wired = wiredOf(scope);
+  wiredRef.current = wired;
   host.attr(`${ROOT} #hr-search`, "title", COPY.searchDeferred);
-  // 模板缺锚点必须**可见地失败**（裁定 #1）：函数存在 ≠ 路径可达。
   if (host.has !== undefined) {
     reportMissingAnchors(host, deps.logger ?? (() => undefined), missingAnchorsOf(host));
   }
-  // state → DOM 的全量同步在 `wiring.ts`（与 `renderAnnotations`/`renderDiff` 同族）。
-  const renderNotesOf = (state: ReaderState): void => {
-    renderNotes(host, state);
-  };
-  const subscriber = syncView({
-    host,
-    widgets,
-    ...(notes === undefined ? {} : { renderNotes: renderNotesOf }),
-  });
-  const unsubscribe = store.subscribe(subscriber);
+  const unsubscribe = subscribeOf(deps, widgets);
   if (wired !== undefined) pump(wired.load);
-  const stopFlows = startFlows(deps, store, pump, dispatchIntent);
+  const stopFlows = startFlows(scope);
   return bootedOf(wired, () => {
     unsubscribe();
     stopFlows();

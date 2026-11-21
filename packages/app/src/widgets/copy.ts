@@ -4,7 +4,7 @@ export const COPY = {
   library: "书库",
   outline: "目录",
   sidenotes: "旁注",
-  sidenotesEmpty: "本章有 0 条批注（M2.3 启用）",
+  sidenotesEmpty: "本章暂无批注（划词或按 c 添加）",
   controlsTheme: "主题",
   controlsFocus: "专注",
   statusConnecting: "连接中…",

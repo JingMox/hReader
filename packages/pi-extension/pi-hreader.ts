@@ -431,6 +431,7 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   needs_normalize: "文档缺少 data-hr-id（先跑 hr normalize <file> --write）",
   port_in_use: "端口被别的进程占用（换一个 --port，或先停掉占它的进程）",
   content_model_conflict: "片段与目标容器内容模型冲突（换容器或改 --html）",
+  duplicate_id: "两个元素共用一个 data-hr-id（只命中第一个）：先跑 hr normalize <file> --write",
 };
 
 export const errorTextOf = (code: string, detail?: string): string => {

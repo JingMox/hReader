@@ -54,11 +54,12 @@ describe("patchFile · 写盘与快照", () => {
 
       expect(result.changed).toBe(true);
       expect(result.undoable).toBe(true);
-      expect(result.newIds).toHaveLength(1);
+      // docs/05:57：`replace` 的新根继承目标 id，所以这一条不再报新 id。
+      expect(result.newIds).toEqual([]);
       expect(result.bytes).toBe(after.length);
       expect(result.path).toBe(join(realDir, DOC_FILE));
       expect(sha256Of(after)).not.toBe(before);
-      expect(textIn(after.toString("utf8"), String(result.newIds[0]))).toBe("换");
+      expect(textIn(after.toString("utf8"), "p1")).toBe("换");
       await expectSnapshot(dir, result.historyPath, before);
     });
   });

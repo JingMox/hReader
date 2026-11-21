@@ -8,7 +8,7 @@ import {
   undoReply,
   type DocAnId,
 } from "./annotation-replies";
-import { requiredStringOf } from "./body";
+import { requiredStringOf, stringFieldOf } from "./body";
 import { HrError } from "../hr-error";
 import {
   annotationReply,
@@ -22,26 +22,35 @@ import { bodyRecordOf } from "./http-io";
 import { docQueueKey, withDocQueue } from "./queue";
 import { paramOf, type Route } from "./routes";
 
+const docIdOf = (
+  body: Readonly<Record<string, unknown>>,
+  params: Readonly<Record<string, string>>,
+): string => {
+  const pathDocId = params["docId"];
+  if (pathDocId === undefined) return requiredStringOf(body, "docId");
+  // 路径 `<docId>` 是唯一真相（裁定 #6）：browser 端可省略 body.docId，但给了不一致的值必须拒收。
+  const bodyDocId = stringFieldOf(body, "docId");
+  if (bodyDocId !== undefined && bodyDocId !== pathDocId) {
+    throw new HrError("invalid_payload", `body.docId（${bodyDocId}）与路径（${pathDocId}）不一致`);
+  }
+  return pathDocId;
+};
+
 const writeReplyOf = (
   context: HandlerContext,
   route: Route,
   body: Readonly<Record<string, unknown>>,
-  params: Readonly<Record<string, string>>,
+  ids: DocAnId,
 ): Promise<Written> => {
-  const docId = requiredStringOf(body, "docId");
-  // 路径 `<docId>` 是唯一真相（裁定 #6）：body 里给了不一致的 docId 就是**用户错误**，不是静默忽略。
-  const pathDocId = paramOf(params, "docId", docId);
-  if (pathDocId !== docId) {
-    throw new HrError("invalid_payload", `body.docId（${docId}）与路径（${pathDocId}）不一致`);
-  }
   if (route.kind === "patch") return patchReply(context, body, LOCK_WAIT_MS);
   if (route.kind === "style") return styleReply(context, body, LOCK_WAIT_MS);
-  if (route.kind === "annotationAdd") return annotationAddReply(context, docId, body, LOCK_WAIT_MS);
+  if (route.kind === "annotationAdd") {
+    return annotationAddReply(context, ids.docId, body, LOCK_WAIT_MS);
+  }
   if (route.kind === "annotationResolve") {
-    const ids: DocAnId = { docId, anId: paramOf(params, "anId", "") };
     return annotationResolveReply(context, ids, body, LOCK_WAIT_MS);
   }
-  if (route.kind === "undo") return undoReply(context, docId, LOCK_WAIT_MS);
+  if (route.kind === "undo") return undoReply(context, ids.docId, LOCK_WAIT_MS);
   return annotationReply(context, body, LOCK_WAIT_MS);
 };
 
@@ -58,6 +67,8 @@ export const dispatchWrite = async (
   request: WriteRequest,
 ): Promise<Written> => {
   const body = await bodyRecordOf(request.req, request.bodyMs);
-  const key = docQueueKey(context.workspace, requiredStringOf(body, "docId"));
-  return withDocQueue(key, () => writeReplyOf(context, route, body, params));
+  const docId = docIdOf(body, params);
+  const ids: DocAnId = { docId, anId: paramOf(params, "anId", "") };
+  const key = docQueueKey(context.workspace, docId);
+  return withDocQueue(key, () => writeReplyOf(context, route, body, ids));
 };

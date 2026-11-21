@@ -1,69 +1,50 @@
 # @hreader/desktop
 
-hReader 的桌面壳（Tauri v2）。它自己**不托管阅读器**：定位 `hr` CLI、拉起/复用本地 daemon，
-再把 webview 导航到 daemon 的 `/s/<docId>?t=<token>`。阅读器行为一行都不在这里。
+hReader 的桌面端工作台（Tauri v2）：内置独立的 `hr` CLI daemon 与前端阅读应用资源，提供类 Typora + Obsidian 的工作区文件树、大纲视图、批注抽屉、自定义 JSON 主题、空工作区引导以及原生导出能力。
 
-## 一次启动发生了什么
+## 启动链路
 
 1. 解析参数（`--home` / `--workspace` / `--cli-path` / `--port` / `--open` / `--smoke`）。
-2. 定位 `hr`：`--cli-path` > `HREADER_CLI` > `PATH`（`src/cli_locate.rs`）。
-3. 读 `<home>/.hreader/daemon.json`（`src/daemon_file.rs`）：可用 / 没有 / 存在但坏。
-4. 判三态（`src/spawn_decision.rs`）：`/healthz` 回的 pid 与文件一致才复用；端口被别的进程占着时报错而不是接管。
-5. 需要时拉起 `hr serve`（`src/supervisor.rs`），读它的启动信封、等 `/healthz` 就绪；失败先收尸再报错。
-6. webview 打开 `http://127.0.0.1:<port>/s/<docId>?t=<token>`（`src/url_build.rs`）。
+2. GUI 双击无参数启动时忽略文件系统根目录 `/`（Finder 默认 cwd），优先恢复上次工作区，其次回退到 `~/Documents/hReader`。
+3. 定位 `hr`：`--cli-path` > `HREADER_CLI` > `PATH` > 应用包内置 `resources/cli/cli.mjs`（`src/cli_locate.rs`）。
+4. 若工作区里已有 `.html` 文档：读 `<home>/.hreader/daemon.json` 并按三态决定复用/拉起 `hr serve`（`src/spawn_decision.rs` / `src/supervisor.rs`），打开本地服务页面并注入工作台交互层（`src/workbench.rs`），在 WKWebView 跨源首跳拦截 cookie 时自动触发 `/reauth` 完成同源鉴权。
+5. 若工作区尚无 `.html` 文档（或空文件夹）：直接加载内置空工作区页面（`LaunchTarget::Empty` -> `ui/index.html`），等待用户新建文档、打开 HTML 文件或切换工作区目录后再按需拉起 daemon，不会在硬盘上生成未请求的临时文件。
 
-第 6 步**不能**改成 `/?t=<token>`：只有 `/s/<docId>?t=` 会 302 到同名路径并 `Set-Cookie`，
-cookie 必须由 webview 自己收下；Rust 侧代拿没用，`core` 的认证语义也不许为壳改动。
+## 模块分工
 
-## 文件分工
+| 文件                         | 职责                                                                  |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `src/options.rs`             | 参数解析（纯逻辑）                                                    |
+| `src/open_arg.rs`            | `--open <file>` / 文件关联路径 -> workspace 相对 docId（纯逻辑）      |
+| `src/cli_locate.rs`          | `hr` CLI 与内置打包资源多级定位（纯逻辑）                             |
+| `src/daemon_file.rs`         | `daemon.json` 三态读取（纯逻辑）                                      |
+| `src/spawn_decision.rs`      | 复用 / 拉起 / 端口冲突判定（纯逻辑）                                  |
+| `src/child_registry.rs`      | 子进程注册表与优雅退出清理（纯逻辑）                                  |
+| `src/shortcut.rs`            | `accels.json` 全局快捷键校验与解析（纯逻辑）                          |
+| `src/url_build.rs`           | bootstrap / reader URL 转义与拼装（纯逻辑）                           |
+| `src/redact.rs`              | 日志与诊断输出 token 脱敏（纯逻辑）                                   |
+| `src/workbench.rs`           | 递归文件树、大纲自动跳转、底部悬停工具栏、自定义 JSON 主题、空状态 UI |
+| `src/supervisor.rs`          | 平台副作用：探活、`hr serve` 子进程管理与收尸                         |
+| `src/smoke.rs`               | `--smoke`：无窗口三层链路自检                                         |
+| `src/window.rs`              | 平台副作用：Tauri 窗口、原生菜单、文件选择、全局快捷键、`/reauth`     |
+| `src/lib.rs` / `src/main.rs` | 装配与进程入口                                                        |
 
-| 文件                         | 职责                                                        |
-| ---------------------------- | ----------------------------------------------------------- |
-| `src/options.rs`             | 壳自己的参数解析（纯逻辑）                                  |
-| `src/open_arg.rs`            | `--open <file>` / 双击路径 → workspace 相对 docId（纯逻辑） |
-| `src/cli_locate.rs`          | `hr` 三级定位（纯逻辑，存在性由调用方注入）                 |
-| `src/daemon_file.rs`         | `daemon.json` 三态读取（纯逻辑）                            |
-| `src/spawn_decision.rs`      | 复用/拉起/第三态的判断（纯逻辑，探针由调用方注入）          |
-| `src/child_registry.rs`      | 哪些 pid 是壳自己的孩子（纯逻辑）                           |
-| `src/shortcut.rs`            | 全局快捷键配置解析（纯逻辑）                                |
-| `src/url_build.rs`           | bootstrap URL 的转义与拼装（纯逻辑）                        |
-| `src/redact.rs`              | 输出脱敏（纯逻辑）                                          |
-| `src/supervisor.rs`          | 平台副作用：真实探活、拉起、收尸                            |
-| `src/smoke.rs`               | `--smoke`：无窗口跑一遍真实链路                             |
-| `src/window.rs`              | 平台副作用：建窗口、注册全局快捷键                          |
-| `src/lib.rs` / `src/main.rs` | 装配与进程入口                                              |
+`packages/desktop/scripts/check.sh` 静态门禁强制要求：`tauri::` / `use tauri` 仅能出现在 `src/{lib,main,window}.rs`，纯逻辑模块无需窗口或网络即可运行全部单元测试。
 
-纯逻辑模块**不碰 syscall**，所以 `cargo test` 不需要网络、不需要 `hr`、也不需要窗口。
-
-## 命令
+## 常用命令
 
 ```bash
-pnpm desktop:check   # cargo fmt --check + cargo clippy -- -D warnings + cargo test
-pnpm desktop:build   # tauri build（产物在 src-tauri/target/release/bundle/）
+pnpm desktop:check   # tauri 边界检查 + cargo fmt --check + cargo clippy --all-targets -- -D warnings + cargo test
+pnpm desktop:build   # 同步内置 app/cli/styles 资源并执行 tauri build
 ```
 
-`--smoke` 用真实 daemon 跑三层证据（healthz 的 pid / bootstrap 的 Set-Cookie / 带 cookie 取到文档页），
-stdout 只打一行 JSON，token 已脱敏：
+无头 `--smoke` 检查（stdout 输出单行已脱敏 JSON）：
 
 ```bash
 cd packages/desktop/src-tauri
 cargo run -- --smoke --home /tmp/hr-home --workspace /tmp/hr-ws --cli-path /path/to/hr
 ```
 
-## 全局快捷键
-
-`accels.json` 是唯一真源：值为 `null` 表示关掉全部全局快捷键；每条必须含 `CmdOrCtrl`/`Ctrl`/`Alt`
-（只有 `Shift` 不算，会抢阅读器的 `Shift+D`），且不许占用 `Escape`。
-
 ## daemon 的 home 隔离
 
-壳的 home 是**应用私有目录**，不是 `$HOME`（`default_home_for`）：macOS
-`~/Library/Application Support/com.hreader.desktop`，Windows `%APPDATA%/com.hreader.desktop`，
-Linux `~/.local/share/com.hreader.desktop`；daemon 记录落在 `<那个目录>/.hreader/daemon.json`。
-
-为什么不能用 `$HOME`：双击 `.app` 时 argv 里没有 `--home`，壳若把 `$HOME` 当归宿，就会读用户自己的
-`~/.hreader/daemon.json`，并在 spawn 时把 `--home $HOME` 透传给 `hr serve`——启动覆写、退出删掉用户那份记录。
-目录不存在时由壳先 `mkdir -p`（`hr serve --home` 要求目录已存在，否则打错字会变成隐形的新 home）。
-
-测试或并行实例请用 `--home <dir>` 指到独立的 home：那个目录下的 daemon 一定是"自己这台壳"拉起的，
-用户手动跑的 `hr serve` 不会被误判、更不会被误杀。
+桌面端默认将自身状态存于应用私有数据目录而非 `$HOME`（macOS `~/Library/Application Support/com.hreader.desktop`、Windows `%APPDATA%/com.hreader.desktop`、Linux `~/.local/share/com.hreader.desktop`），避免误读或覆盖用户在终端里手动启动的 `~/.hreader/daemon.json`。

@@ -5,6 +5,7 @@ import type { DefaultTreeAdapterTypes } from "parse5";
 
 import { HrError } from "../hr-error";
 import { tagBalanceDiagnostics } from "./balance";
+import { closeImplicitParagraphs } from "./implicitClose";
 import {
   COMPONENT_ATTRIBUTE,
   COMPONENT_WHITELIST,
@@ -286,5 +287,6 @@ export const parseHtml = (
   context.diagnostics.push(...tagBalanceDiagnostics(html));
   const root = buildTree(document, context);
   metaScriptDiagnostics(context);
-  return { root, diagnostics: context.diagnostics };
+  // 解析器的 quirks 文档会把 `<table>` 留在 `<p>` 里（HTML5 只在 no-quirks 下补隐式结束）：树建完再统一补。
+  return closeImplicitParagraphs({ root, diagnostics: context.diagnostics });
 };

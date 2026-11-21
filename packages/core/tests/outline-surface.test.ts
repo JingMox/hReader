@@ -97,11 +97,15 @@ describe("core public surface · M1.3 boundary", () => {
 });
 
 describe("ops facade", () => {
-  it("should expose exactly applyPatch/buildOutline/parseFragment/readNode at runtime（R1.4）", () => {
+  it("should expose exactly applyPatch/buildOutline/locateTarget/parseFragment/patchTargetIdOf/readNode at runtime（R1.4 + docs/05:98）", () => {
+    // `locateTarget` 是 `read`/`patch` 共用的 `<nodeId|selector>` 解析器（docs/05:98 AC9），
+    // 必须与它们同住一层，否则 `patch` 会自己再写一份重试链；`patchTargetIdOf` 是 F18 给 patch 的“取一个 id”收口。
     expect(Object.keys(opsEntry).sort()).toEqual([
       "applyPatch",
       "buildOutline",
+      "locateTarget",
       "parseFragment",
+      "patchTargetIdOf",
       "readNode",
     ]);
   });

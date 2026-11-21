@@ -1,0 +1,149 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  desktop-release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+            label: macos-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+            label: macos-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: msi,nsis
+            label: windows-x64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+            label: linux-x64
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+          targets: ${{ matrix.target }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: packages/desktop/src-tauri
+
+      - name: Install Linux Tauri system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -C packages/app build
+      - run: pnpm -C packages/cli build
+      - name: Build Tauri desktop bundles
+        env:
+          NO_STRIP: "true"
+        run: pnpm --filter @hreader/desktop exec tauri build --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Stage macOS release artifacts
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p release-staging
+          BUNDLE_DIR="packages/desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
+          cp "$BUNDLE_DIR"/dmg/*.dmg release-staging/
+          ditto -c -k --keepParent "$BUNDLE_DIR/macos/hReader.app" "release-staging/hReader-${{ matrix.label }}.app.zip"
+
+      - name: Stage Windows release artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-staging | Out-Null
+          $bundleDir = "packages/desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
+          Copy-Item "$bundleDir/msi/*.msi" -Destination release-staging/
+          Copy-Item "$bundleDir/nsis/*.exe" -Destination release-staging/
+
+      - name: Stage Linux release artifacts
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release-staging
+          BUNDLE_DIR="packages/desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
+          cp "$BUNDLE_DIR"/deb/*.deb release-staging/
+          cp "$BUNDLE_DIR"/appimage/*.AppImage release-staging/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hreader-${{ matrix.label }}
+          path: release-staging/*
+
+  plugins-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm skill:pack
+
+      - name: Package standalone CLI, Skill & MCP Server
+        run: |
+          mkdir -p release-staging
+          tar -czf release-staging/hreader-skill.tar.gz -C release-artifacts hreader-skill
+          (cd release-artifacts && zip -rq ../release-staging/hreader-skill.zip hreader-skill)
+          mkdir -p release-artifacts/hreader-mcp-server
+          cp -R packages/mcp-server/dist release-artifacts/hreader-mcp-server/dist
+          cp -R packages/mcp-server/styles release-artifacts/hreader-mcp-server/styles
+          cp packages/mcp-server/package.json LICENSE release-artifacts/hreader-mcp-server/
+          tar -czf release-staging/hreader-mcp-server.tar.gz -C release-artifacts hreader-mcp-server
+          mkdir -p release-artifacts/hreader-cli
+          cp -R packages/cli/dist release-artifacts/hreader-cli/dist
+          cp -R packages/cli/styles release-artifacts/hreader-cli/styles
+          cp packages/cli/package.json LICENSE release-artifacts/hreader-cli/
+          tar -czf release-staging/hreader-cli.tar.gz -C release-artifacts hreader-cli
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hreader-plugins
+          path: release-staging/*
+
+  release:
+    needs: [desktop-release, plugins-release]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true

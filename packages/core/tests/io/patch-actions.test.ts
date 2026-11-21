@@ -114,14 +114,15 @@ describe("replace · 内容相同即幂等", () => {
     expect(outcome.html).toBe(DOC);
   });
 
-  it("should swap the subtree and re-issue the id when content differs", () => {
+  it("should swap the subtree but keep the target's own id when content differs", () => {
+    // docs/05:57（M1.1 AC2「id 归产品所有」）：`replace` 的新根**继承目标自己的 id**，换内容不换锚点。
     const outcome = patch({ targetId: "p1", action: "replace", html: "<p>换掉</p>" });
-    const id = onlyNewId(outcome);
 
     expect(outcome.changed).toBe(true);
-    expect(childIds(outcome.html, "root")).toEqual(["h1", "empty", "box", id, "p2"]);
-    expect(elementById(outcome.html, "p1")).toBeUndefined();
-    expect(textIn(outcome.html, id)).toBe("换掉");
+    expect(outcome.newIds).toEqual([]);
+    expect(outcome.replacedIds).toEqual([]);
+    expect(childIds(outcome.html, "root")).toEqual(["h1", "empty", "box", "p1", "p2"]);
+    expect(textIn(outcome.html, "p1")).toBe("换掉");
   });
 });
 
@@ -226,25 +227,20 @@ describe("请求校验 · 非字符串 html", () => {
 });
 
 describe("ID 分配 · 只补新的、可复现", () => {
-  it("should allocate one id per new element in document order", () => {
+  it("should allocate one id per new element in document order, reusing the target's id", () => {
+    // docs/05:57：`replace` 的新根继承目标 id（`empty`），只有片段内部的节点才算新 id。
     const outcome = patch({
       targetId: "empty",
       action: "replace",
       html: "<section><p>甲</p><p>乙</p></section>",
     });
 
-    expect(outcome.newIds).toHaveLength(3);
-    expect(childIds(outcome.html, "root")).toEqual([
-      "h1",
+    expect(outcome.newIds).toHaveLength(2);
+    expect(childIds(outcome.html, "root")).toEqual(["h1", "empty", "box", "p1", "p2"]);
+    expect(textIn(outcome.html, "empty")).toBe("甲乙");
+    expect(childIds(outcome.html, "empty")).toEqual([
       String(outcome.newIds[0]),
-      "box",
-      "p1",
-      "p2",
-    ]);
-    expect(textIn(outcome.html, String(outcome.newIds[0]))).toBe("甲乙");
-    expect(childIds(outcome.html, String(outcome.newIds[0]))).toEqual([
-      outcome.newIds[1],
-      outcome.newIds[2],
+      String(outcome.newIds[1]),
     ]);
   });
 

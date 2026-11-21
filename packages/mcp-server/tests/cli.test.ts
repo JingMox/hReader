@@ -2,6 +2,7 @@
 // `main.ts` 那两行壳也在这里求值一次（真子进程验证在 `stdio.test.ts`，那是宿主看到的形态）。
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { tmpdir } from "node:os";
 
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
@@ -13,6 +14,7 @@ import {
   startHttp,
   USAGE,
   warningLinesOf,
+  workspaceWarningOf,
 } from "../src/cli";
 
 const stderrLines = (): string[] => {
@@ -57,6 +59,45 @@ describe("modeOf", () => {
   it("should reject unknown arguments instead of guessing", () => {
     expect(modeOf(["--serve"])).toEqual({ kind: "bad", reason: "无法识别的参数：--serve" });
     expect(modeOf(["--http"]).kind).toBe("bad");
+    expect(modeOf(["--http", "3000", "--http", "3001"])).toEqual({
+      kind: "bad",
+      reason: "重复的参数：--http",
+    });
+  });
+});
+
+describe("modeOf --workspace", () => {
+  it("should parse --workspace alongside stdio and --http and reject missing/duplicate values", () => {
+    expect(modeOf(["--workspace", "/tmp/ws"])).toEqual({ kind: "stdio", workspace: "/tmp/ws" });
+    expect(modeOf(["--workspace", "/tmp/ws", "--http", "3000"])).toEqual({
+      kind: "http",
+      port: 3000,
+      workspace: "/tmp/ws",
+    });
+    expect(modeOf(["--http", "3000", "--workspace", "/tmp/ws"])).toEqual({
+      kind: "http",
+      port: 3000,
+      workspace: "/tmp/ws",
+    });
+    expect(modeOf(["--workspace"])).toEqual({
+      kind: "bad",
+      reason: "缺少工作区路径：--workspace",
+    });
+    expect(modeOf(["--workspace", "   "]).kind).toBe("bad");
+    expect(modeOf(["--workspace", "/a", "--workspace", "/b"])).toEqual({
+      kind: "bad",
+      reason: "重复的参数：--workspace",
+    });
+  });
+});
+
+describe("workspaceWarningOf", () => {
+  it("should warn when workspace is filesystem root or HOME, and stay quiet otherwise", () => {
+    expect(workspaceWarningOf("/")).toContain("WARNING 工作区范围过大");
+    expect(workspaceWarningOf("/Users/demo-user", "/Users/demo-user")).toContain(
+      "WARNING 工作区范围过大",
+    );
+    expect(workspaceWarningOf("/tmp/project", "/Users/demo-user")).toBeUndefined();
   });
 });
 
@@ -103,6 +144,34 @@ describe("runMain · stdio", () => {
     const code = await runMain([], { startStdio: () => Promise.resolve(), startHttp: startHttpOf });
 
     expect(code).toBe(0);
+  });
+
+  it("should invoke custom chdir when --workspace is given", async () => {
+    const dirs: string[] = [];
+    const code = await runMain(["--workspace", "/tmp/custom-ws"], {
+      startStdio: () => Promise.resolve(),
+      startHttp: startHttpOf,
+      chdir: (dir) => {
+        dirs.push(dir);
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(dirs).toEqual(["/tmp/custom-ws"]);
+  });
+
+  it("should switch real process cwd with default chdir when --workspace is passed", async () => {
+    const saved = process.cwd();
+    const target = tmpdir();
+    try {
+      const code = await runMain(["--workspace", target], {
+        startStdio: () => Promise.resolve(),
+        startHttp: startHttpOf,
+      });
+      expect(code).toBe(0);
+    } finally {
+      process.chdir(saved);
+    }
   });
 });
 

@@ -35,7 +35,9 @@ declare const window: {
       readonly parentElement: { readonly closest: BlockElementLike["closest"] } | null;
     } | null;
     readonly anchorOffset: number;
-    readonly focusNode: unknown;
+    readonly focusNode: {
+      readonly parentElement?: { readonly closest: BlockElementLike["closest"] } | null;
+    } | null;
     readonly focusOffset: number;
     /** 有 Range 就用它量块内字符偏移（裁定 #11）；没有则退回 anchor/focus 偏移。 */
     readonly rangeCount?: number;
@@ -156,7 +158,11 @@ export const createHttpIo = (): AppIo => ({
     const response = await fetch(path, {
       method: "POST",
       credentials: "same-origin",
-      headers: { accept: "application/json", "content-type": "application/json" },
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "x-hr-csrf": "1",
+      },
       body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error(`${path} → ${String(response.status)}`);
@@ -196,10 +202,11 @@ export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
   const { docId, themes, documentHtml, io, host } = input;
   const encoded = encodeURIComponent(docId);
   const bind = bindOf(io);
-  const blockTextOf = textOfBlocks(host, documentHtml);
+  const store = createStore(initialState(docId, themes.default));
+  const blockTextOf = textOfBlocks(host, () => store.get().documentHtml);
   return boot({
     host,
-    store: createStore(initialState(docId, themes.default)),
+    store,
     openSse,
     style: createStyleSwitch({
       loadCss: (id) => io.text(`/api/theme/${encodeURIComponent(id)}`),

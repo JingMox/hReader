@@ -61,7 +61,9 @@ export interface SelectionLike {
   /** 焦点侧；`crossBlock` 用它比对**最近的块祖先**，而不是比节点身份（裁定 #11）。 */
   readonly focusNodeParent?: { readonly closest: BlockElementLike["closest"] } | null;
   readonly anchorOffset: number;
-  readonly focusNode: unknown;
+  readonly focusNode: {
+    readonly parentElement?: { readonly closest: BlockElementLike["closest"] } | null;
+  } | null;
   readonly focusOffset: number;
 }
 

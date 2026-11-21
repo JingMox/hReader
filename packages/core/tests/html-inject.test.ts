@@ -201,8 +201,9 @@ describe("injectNodeIds · 既有 ID", () => {
   });
 
   it("should append diagnostics after the parse-level ones instead of replacing them", () => {
+    // `1abc` 不合规（首位必须是字母）；`X` 在 R2-11 的新模式下是合法 id，不能当反例用。
     const injected = inject(
-      '<article><p data-hr-id="X">a</p><div data-hr-component="nope">b</div></article>',
+      '<article><p data-hr-id="1abc">a</p><div data-hr-component="nope">b</div></article>',
     );
 
     expect(codesOf(injected.parsed)).toEqual(["invalid_component", "invalid_hr_id"]);

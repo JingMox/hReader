@@ -244,7 +244,12 @@ const runRemaining = async (
 };
 
 const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
-  if (intent.kind === "outline") return outlineCommand({ ...intent, warn: io.stderr });
+  if (intent.kind === "outline")
+    return outlineCommand({
+      ...intent,
+      displayPath: displayedPathOf(intent.path, io.cwd),
+      warn: io.stderr,
+    });
   if (intent.kind === "read") return readCommand(intent);
   return intent.kind === "export" ? runExport(intent, io) : await runRemaining(intent, io);
 };
@@ -264,7 +269,7 @@ const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
     return EXIT_INTERNAL;
   }
   // 只走一条通道：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段（P2-3）。
-  if (json) io.stdout(jsonError(error.code, error.message));
+  if (json) io.stdout(jsonError(error.code, error.message, error.data));
   else io.stderr(`${error.message}\n`);
   return exitCodeOf(error.code);
 };

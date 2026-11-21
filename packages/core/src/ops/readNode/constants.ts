@@ -9,6 +9,9 @@ export const DEFAULT_MAX_BYTES = 65536;
 /** 硬顶：超过 16MB 的“单节点读取”几乎必然是调用方把单位写错了。 */
 export const MAX_BYTES_LIMIT = 16 * 1024 * 1024;
 
+/** 多义报文最多列这么多个候选 id：再多命令行就刷不下了，也点不过来。 */
+export const CANDIDATE_LIMIT = 5;
+
 /** 页面外壳：无论选择器怎么写都不对外。 */
 export const SHELL_TAGS: ReadonlySet<string> = new Set(["html", "body", "head"]);
 

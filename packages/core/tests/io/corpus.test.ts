@@ -26,7 +26,7 @@ const patchIn = async (
 const seeded = async (dir: string): Promise<void> => writeTextAt(join(dir, DOC_FILE), CORPUS_DOC);
 
 describe("真实结构文章 · patch 后仍可读", () => {
-  it("should let readNode read the replaced paragraph by its new id", async () => {
+  it("should let readNode read the replaced paragraph by the target's own id", async () => {
     await withWorkspace(async (dir) => {
       await seeded(dir);
       const { html, newIds } = await patchIn(dir, {
@@ -34,9 +34,10 @@ describe("真实结构文章 · patch 后仍可读", () => {
         action: "replace",
         html: "<p>改过</p>",
       });
-      const output = readAfter(html, String(newIds[0]));
+      // docs/05:57：`replace` 的新根继承目标 id ⇒ 老 id 仍可寻址，且不产新 id。
+      const output = readAfter(html, "p1");
 
-      expect(newIds).toHaveLength(1);
+      expect(newIds).toEqual([]);
       expect(output).toContain("改过");
       expect(output).not.toContain("第一段");
     });

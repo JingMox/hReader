@@ -5,6 +5,7 @@ import { HrError } from "../../hr-error";
 import { joinPath, pathSegment } from "../../html/path";
 import { drainStack } from "../../html/stack";
 import { identifierOf } from "./attrs";
+import { CANDIDATE_LIMIT } from "./constants";
 import type { Selector } from "./constants";
 
 interface Resolved {
@@ -12,6 +13,10 @@ interface Resolved {
   /** 节点的定位串，与解析层诊断的 `path` 同一写法（`article[0]>section[1]`）。 */
   readonly path: string;
   readonly matches: number;
+  /** 命中元素各自的 `data-hr-id`（没 id 的不收），文档序，最多 `CANDIDATE_LIMIT` 个。 */
+  readonly ids: readonly string[];
+  /** 命中且有 `data-hr-id` 的元素总数（只能 patch 这些）。 */
+  readonly addressable: number;
 }
 
 interface Entry {
@@ -68,11 +73,27 @@ const childNodesOf = (node: HtmlNode): readonly HtmlNode[] =>
 const pathOf = (segments: readonly string[], segment: string): string =>
   joinPath(segments.join(">"), segment);
 
-/** 单趟先序：`matches` 全量计数，节点/路径只给第一个匹配留。 */
+/** 命中元素自己的 `data-hr-id`（没 id 的不收）；只收前 `CANDIDATE_LIMIT` 个，但 `addressable` 是全量。 */
+interface Tally {
+  readonly ids: string[];
+  addressable: number;
+}
+
+const noteMatch = (node: HtmlElementNode, tally: Tally): void => {
+  const id = identifierOf(node);
+  if (id === undefined) return;
+  tally.addressable += 1;
+  if (tally.ids.length < CANDIDATE_LIMIT) {
+    tally.ids.push(id);
+  }
+};
+
+/** 单趟先序：`matches` 全量计数，节点/路径只给第一个匹配留；候选 id 只留前 `CANDIDATE_LIMIT` 个。 */
 export const resolveSelector = (root: HtmlNode, selector: Selector, source: string): Resolved => {
   const steps: Step[] = [];
   const segments: string[] = [];
   let first: { readonly node: HtmlElementNode; readonly path: string } | undefined;
+  const tally: Tally = { ids: [], addressable: 0 };
   let total = 0;
   seedChildren(childNodesOf(root), undefined, steps);
   for (const step of drainStack(steps)) {
@@ -83,6 +104,7 @@ export const resolveSelector = (root: HtmlNode, selector: Selector, source: stri
     const segment = pathSegment(step.entry.node.tag, step.entry.childIndex);
     if (matches(step.entry, selector)) {
       total += 1;
+      noteMatch(step.entry.node, tally);
       first ??= { node: step.entry.node, path: pathOf(segments, segment) };
     }
     segments.push(segment);
@@ -92,5 +114,11 @@ export const resolveSelector = (root: HtmlNode, selector: Selector, source: stri
   if (first === undefined) {
     throw new HrError("node_not_found", `选择器 ${JSON.stringify(source)} 没有匹配到任何节点`);
   }
-  return { node: first.node, path: first.path, matches: total };
+  return {
+    node: first.node,
+    path: first.path,
+    matches: total,
+    ids: tally.ids,
+    addressable: tally.addressable,
+  };
 };

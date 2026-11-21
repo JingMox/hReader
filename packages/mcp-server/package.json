@@ -1,9 +1,14 @@
 {
   "name": "@hreader/mcp-server",
-  "version": "0.0.0",
-  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
+  "private": false,
   "type": "module",
   "sideEffects": false,
+  "files": [
+    "dist",
+    "styles"
+  ],
   "bin": {
     "hreader-mcp": "./dist/main.js"
   },

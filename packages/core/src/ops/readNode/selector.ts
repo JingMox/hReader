@@ -1,5 +1,7 @@
 // 这层管：选择器的窄文法（逐字符扫描，只认 4 种形态）；不查树、不算字节。
-// BNF：`wsp`=空格/制表，`name`=[A-Za-z][A-Za-z0-9-]*，`id`=[a-z0-9-]+，`n`=十进制且 ≥1。
+// BNF：`wsp`=空格/制表，`name`=[A-Za-z][A-Za-z0-9-]*，`id`=[A-Za-z0-9_-]+，`n`=十进制且 ≥1。
+// `id` 的字符集与 `html/constants.ts` 的 `HR_ID_PATTERN` 同源：同一个合法 id 两种写法必须都能用，
+// 这里窄一个字就会变成“只有 `[data-hr-id=…]` 可达”的实现泄漏。首字母规则不在这里判：那是文档侧的约束。
 // selector := "#" id | "[" "data-hr-id" "=" value "]" | name | name wsp* ">" wsp* name wsp* ":nth-of-type(" n ")"；标签名与属性名比较不分大小写
 
 import { HrError } from "../../hr-error";
@@ -7,7 +9,7 @@ import type { Selector } from "./constants";
 
 const NAME_START = /[A-Za-z]/;
 const NAME_CHAR = /[A-Za-z0-9]/;
-const ID_CHAR = /[a-z0-9-]/;
+const ID_CHAR = /[A-Za-z0-9_-]/;
 const DIGIT = /[0-9]/;
 const SPACE = /[ \t\n\r]/;
 

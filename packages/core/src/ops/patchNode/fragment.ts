@@ -1,6 +1,7 @@
 // 这层管：片段校验（先按 HTML5 容错解析成树，再校验恰好一个根元素 + 表格上下文 + 可执行内容拒绝名单）并剥掉片段自带 ID；不分配 ID、不碰 IO。
 
 import type { Diagnostic, HtmlElementNode, HtmlNode } from "../../html/constants";
+import { HR_ID_ATTRIBUTE } from "../../html/constants";
 import { parseHtml } from "../../html/parse";
 import { drainStack } from "../../html/stack";
 import { HrError } from "../../hr-error";
@@ -223,16 +224,36 @@ function assertHtmlString(html: unknown): asserts html is string {
   }
 }
 
-/** 片段结果的返回面：`warnings` 是片段自己的解析诊断（不再静默丢弃）。 */
+/** 片段结果的返回面：`warnings` 是片段自己的解析诊断；`rootId` 是片段根**显式带过的** id（剥前取）。 */
 interface FragmentResult {
   readonly root: HtmlNode;
   readonly warnings: readonly Diagnostic[];
+  /** 片段自带、已被丢弃的 `data-hr-id`；没带就是 `undefined`。 */
+  readonly rootId: string | undefined;
 }
 
 /**
  * 片段根上自带的 `data-hr-id` 一律剥掉：ID 只能由注入器按整篇文档重新分配。
  * 这一版把解析诊断一并回给调用方（`applyPatch` 当 warning 上浮）；只要树的调用方用 `parseFragment`。
  */
+/**
+ * 片段自带的 id 一律被剥掉（id 由 hreader 生成）：真扔掉了一个不同的 id 就得说一声。
+ * `finalRootId` 是注入后新根的 id——与片段自带的一致时不算"忽略"。
+ */
+export const fragmentIdWarnings = (
+  fragmentRootId: string | undefined,
+  finalRootId: string | undefined,
+): readonly Diagnostic[] =>
+  fragmentRootId === undefined || fragmentRootId === finalRootId
+    ? []
+    : [
+        {
+          code: "fragment_ids_ignored",
+          severity: "warning",
+          message: `片段里的 data-hr-id="${fragmentRootId}" 已忽略：id 由 hreader 生成`,
+        },
+      ];
+
 export const parseFragmentWithDiagnostics = (html: string): FragmentResult => {
   // #13：空片段是"内容不成立"；非字符串走 M1.1 契约（invalid_html），与 parseHtml 同口径。
   assertHtmlString(html);
@@ -257,7 +278,10 @@ export const parseFragmentWithDiagnostics = (html: string): FragmentResult => {
   const context = ancestors.length === 0 ? undefined : contextOf(parsed.root, ancestors);
   const candidates =
     context === undefined ? contentNodesOf(parsed.root) : context.children.filter(isContentNode);
-  return { root: stripHrIds(singleElementOf(candidates)), warnings: parsed.diagnostics };
+  const root = singleElementOf(candidates);
+  // id 归产品所有：片段自带的 id 一律剥掉，但先记下它——调用方要靠它发 `fragment_ids_ignored`。
+  const rootId = attributeValueLoose(root.attrs, HR_ID_ATTRIBUTE);
+  return { root: stripHrIds(root), warnings: parsed.diagnostics, rootId };
 };
 
 /** 只要片段树的调用方（对外公开面）：诊断丢不丢由调用方自己决定。 */

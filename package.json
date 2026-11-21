@@ -1,14 +1,24 @@
 {
   "name": "hreader",
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Local-first single-file HTML reader, desktop notes workbench, and surgical DOM authoring protocol for AI agents.",
+  "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JingMox/hReader.git"
+  },
+  "homepage": "https://github.com/JingMox/hReader#readme",
+  "bugs": {
+    "url": "https://github.com/JingMox/hReader/issues"
+  },
   "type": "module",
   "packageManager": "pnpm@11.1.3",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm -C packages/app build && pnpm -C packages/mcp-server build && pnpm -C packages/dsh-bundle build",
+    "build": "pnpm -C packages/app build && pnpm -C packages/cli build && pnpm -C packages/mcp-server build && pnpm -C packages/dsh-bundle build",
     "check-ci-parity": "node scripts/check-ci-parity.mjs",
     "depcruise": "depcruise --config .dependency-cruiser.cjs packages",
     "desktop:build": "pnpm --dir packages/desktop run build",
@@ -19,6 +29,7 @@
     "lint:sh": "root=scripts; [ -d \"$root\" ] || { echo \"lint:sh: 目录不存在：$root\" >&2; exit 1; }; test -n \"$(find \"$root\" -name '*.sh' -print -quit)\" || { echo \"lint:sh: 没有可检查的 *.sh 脚本：$root\" >&2; exit 1; }; find \"$root\" -name '*.sh' -print0 | xargs -0 -n1 bash -n",
     "lint-sh-selftest": "bash scripts/lint-sh-selftest.sh",
     "lint": "eslint . --max-warnings=0 --report-unused-disable-directives",
+    "skill:pack": "node scripts/pack-skill.mjs",
     "smoke:dsh": "node scripts/smoke-dsh.ts",
     "smoke:pi": "node scripts/smoke-pi-extension.ts",
     "test": "vitest run",

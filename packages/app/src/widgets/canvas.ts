@@ -30,7 +30,7 @@ const paintControls = (deps: CanvasDeps): void => {
   );
 };
 
-/** 块级 diff：只写存在的块、删掉消失的块；`revision` 是幂等键。 */
+/** 块级 diff：只写存在的块、删掉消失的块，并同步新增/改标签块；`revision` 是幂等键。 */
 const diffBlocks = (host: Host, next: ReaderState, known: Set<string>): void => {
   const map = host.blocks(next.documentHtml);
   for (const id of known) if (!next.blocks.includes(id)) host.removeBlock(id);
@@ -38,6 +38,7 @@ const diffBlocks = (host: Host, next: ReaderState, known: Set<string>): void => 
     const markup = map.get(id);
     if (markup !== undefined) host.blockHtml(id, markup);
   }
+  host.syncBlocks?.(next.documentHtml);
 };
 
 export const mountCanvas = (deps: CanvasDeps): Widget => {
@@ -48,6 +49,11 @@ export const mountCanvas = (deps: CanvasDeps): Widget => {
   host.on(`${parent} #hr-theme-select`, "change", (target) => {
     if (target.value !== undefined && target.value !== "") {
       onIntent({ kind: "themeSelected", theme: target.value });
+    }
+  });
+  host.on(`${parent} #hr-doc`, "click", (target) => {
+    if (target.blockId !== undefined && target.blockId !== "") {
+      onIntent({ kind: "scrollTo", id: target.blockId });
     }
   });
 

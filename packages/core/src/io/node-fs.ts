@@ -1,6 +1,6 @@
 // 这层管：端口的真实实现（本包唯一 import node:fs 的文件）；不含任何业务规则。
 
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import {
   chmod,
   lstat,
@@ -72,6 +72,9 @@ const nodeFileSystem: FileSystem = {
 };
 
 const systemClock: Clock = { now: () => new Date() };
+
+/** 供默认依赖装配时同步探测内置资源目录是否存在。 */
+export const nodePathExists = (path: string): boolean => existsSync(path);
 
 /** CLI 与集成测试用的默认依赖；测试要换 fs/clock/sleep 就自己组一个 `PatchDeps`。 */
 export const nodePatchDeps: PatchDeps = {
