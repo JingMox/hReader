@@ -1,0 +1,19 @@
+{
+  "id": "nord-slate",
+  "name": "Nord Slate (自定义示例)",
+  "base": "dark",
+  "vars": {
+    "--hr-paper": "#1d222b",
+    "--hr-bg": "#1d222b",
+    "--hr-fg": "#e5e9f0",
+    "--hr-ink": "#eceff4",
+    "--hr-accent": "#88c0d0",
+    "--hr-rule": "#2e3440",
+    "--hr-border": "#2e3440",
+    "--hrd-panel-bg": "#171b22",
+    "--hrd-sb-bg": "rgba(23, 27, 34, 0.92)",
+    "--hrd-guide": "#323946",
+    "--hrd-card-bg": "#242933"
+  },
+  "css": ""
+}

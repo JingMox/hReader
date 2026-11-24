@@ -51,6 +51,9 @@
       "entry": ["tests/**/*.ts"],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@deepseek-ai/dsh-attachment", "@deepseek-ai/dsh-package-manifest"]
+    },
+    "packages/desktop": {
+      "entry": ["webview/*.js"]
     }
   },
   "ignoreIssues": {

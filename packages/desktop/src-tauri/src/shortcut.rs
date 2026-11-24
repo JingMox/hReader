@@ -1,6 +1,6 @@
 //! 全局快捷键配置的解析：可解析、可关闭（`null`）、默认值必含修饰键。
 
-use serde_json::Value;
+use std::collections::BTreeMap;
 
 /// 唯一真源：`packages/desktop/accels.json`（JS 侧的冲突检查也读同一份文件）。
 const ACCELS_JSON: &str = include_str!("../../accels.json");
@@ -89,17 +89,15 @@ pub fn parse_accel(text: &str) -> Result<Accel, AccelError> {
 
 /// `null` 配置 = 关闭全部全局快捷键（返回空列表，不是错误、也不许因此起不来）。
 pub fn accels_from_json(text: &str) -> Result<Vec<(String, Accel)>, AccelError> {
-    let value: Value = serde_json::from_str(text).map_err(|_| AccelError::InvalidConfig)?;
-    if value.is_null() {
+    let entries: Option<BTreeMap<String, String>> =
+        serde_json::from_str(text).map_err(|_| AccelError::InvalidConfig)?;
+    let Some(entries) = entries else {
         return Ok(Vec::new());
+    };
+    let mut accels = Vec::with_capacity(entries.len());
+    for (name, raw) in entries {
+        accels.push((name, parse_accel(&raw)?));
     }
-    let object = value.as_object().ok_or(AccelError::InvalidConfig)?;
-    let mut accels = Vec::new();
-    for (name, raw) in object {
-        let text = raw.as_str().ok_or(AccelError::InvalidConfig)?;
-        accels.push((name.clone(), parse_accel(text)?));
-    }
-    accels.sort_by(|left, right| left.0.cmp(&right.0));
     reject_duplicates(&accels)?;
     Ok(accels)
 }

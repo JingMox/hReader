@@ -4,15 +4,54 @@
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use serde::de::IgnoredAny;
+use serde::Deserialize;
 
 use crate::child_registry::ChildRegistry;
 use crate::daemon_file::DaemonInfo;
 use crate::spawn_decision::Probe;
+
+#[derive(Deserialize)]
+struct HealthResponse {
+    ok: bool,
+    pid: Option<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum MaybeData<T> {
+    Valid(T),
+    #[allow(dead_code)]
+    Invalid(IgnoredAny),
+}
+
+impl<T> MaybeData<T> {
+    fn valid(self) -> Option<T> {
+        match self {
+            Self::Valid(value) => Some(value),
+            Self::Invalid(_) => None,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ServeEnvelope {
+    ok: Option<bool>,
+    code: Option<String>,
+    data: Option<MaybeData<ServeEnvelopeData>>,
+}
+
+#[derive(Deserialize)]
+struct ServeEnvelopeData {
+    port: NonZeroU16,
+    token: String,
+    workspace: PathBuf,
+}
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
@@ -83,12 +122,8 @@ impl Probe for SystemProbe {
         let mut response = String::new();
         stream.read_to_string(&mut response).ok()?;
         let body = response.split_once("\r\n\r\n")?.1;
-        let parsed: Value = serde_json::from_str(body).ok()?;
-        if parsed.get("ok")?.as_bool()? {
-            u32::try_from(parsed.get("pid")?.as_u64()?).ok()
-        } else {
-            None
-        }
+        let parsed: HealthResponse = serde_json::from_str(body).ok()?;
+        parsed.ok.then_some(parsed.pid).flatten()
     }
 }
 
@@ -256,41 +291,29 @@ fn read_envelope(child: &mut Child, pid: u32) -> Result<DaemonInfo, SuperviseErr
     if read == 0 {
         return Err(SuperviseError::NoEnvelope);
     }
-    let parsed: Value =
+    let parsed: ServeEnvelope =
         serde_json::from_str(line.trim()).map_err(|_| SuperviseError::BadEnvelope)?;
-    if parsed.get("ok").and_then(Value::as_bool) != Some(true) {
-        let code = parsed
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        return Err(SuperviseError::Rejected(code.to_string()));
+    if parsed.ok != Some(true) {
+        let code = parsed.code.unwrap_or_else(|| "unknown".to_string());
+        return Err(SuperviseError::Rejected(code));
     }
-    let payload = parsed.get("data").ok_or(SuperviseError::BadEnvelope)?;
-    let port = payload
-        .get("port")
-        .and_then(Value::as_u64)
-        .and_then(|value| u16::try_from(value).ok())
-        .filter(|value| *value != 0)
+    let payload = parsed
+        .data
+        .and_then(MaybeData::valid)
         .ok_or(SuperviseError::BadEnvelope)?;
-    let token = payload
-        .get("token")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or(SuperviseError::BadEnvelope)?;
-    let workspace = payload
-        .get("workspace")
-        .and_then(Value::as_str)
-        .ok_or(SuperviseError::BadEnvelope)?;
+    if payload.token.is_empty() {
+        return Err(SuperviseError::BadEnvelope);
+    }
     // stdout 剩下的内容（正常为空）由后台线程清空，避免子进程写满管道后卡死；内容一律丢弃。
     std::thread::spawn(move || {
         let mut sink = Vec::new();
         let _ = reader.read_to_end(&mut sink);
     });
     Ok(DaemonInfo {
-        port,
-        token: token.to_string(),
+        port: payload.port.get(),
+        token: payload.token,
         pid,
-        workspace: workspace.into(),
+        workspace: payload.workspace,
     })
 }
 
