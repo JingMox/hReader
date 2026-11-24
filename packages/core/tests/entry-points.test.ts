@@ -43,6 +43,7 @@ const PUBLIC = [
   "applyPatch",
   "applyStyle",
   "assertThemeSafe",
+  "attributeOf",
   "buildOutline",
   "checkLayout",
   "compileTone",
@@ -52,8 +53,11 @@ const PUBLIC = [
   "extractStyleWithLlm",
   "findBuiltinStyle",
   "hasArticle",
+  "hasExternalResource",
   "injectNodeIds",
+  "isCountedImage",
   "isDocKind",
+  "isDroppedNode",
   "isInside",
   "isInsideOrSelf",
   "lintByStyle",
@@ -79,6 +83,7 @@ const PUBLIC = [
   "resolveAnnotation",
   "resolveThemePath",
   "revertLast",
+  "sanitizedAttributesOf",
   "saveStyleText",
   "serializeHtml",
   "startServer",
@@ -91,7 +96,7 @@ const PUBLIC = [
 ];
 
 describe("core entry · 精确集", () => {
-  it("should not leak internal symbols onto the public surface（63 项精确集）", () => {
+  it("should not leak internal symbols onto the public surface（68 项精确集）", () => {
     // 精确集而不是"至少含有"：多一个内部符号也红，报错直接点名多出来的那个。
 
     expect(Object.keys(coreEntry).sort()).toEqual(PUBLIC);

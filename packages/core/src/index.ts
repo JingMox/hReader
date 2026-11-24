@@ -3,6 +3,14 @@
 export { HrError } from "./hr-error";
 export type { HrErrorCode, HrErrorData } from "./hr-error";
 export { injectNodeIds, parseHtml, serializeHtml, hasArticle } from "./html";
+export {
+  attributeOf,
+  hasExternalResource,
+  isCountedImage,
+  isDroppedNode,
+  sanitizedAttributesOf,
+} from "./html";
+export type { SanitizePreset } from "./html";
 export { toDocumentModel, validateDocument } from "./model";
 export type { DocumentModel } from "./model";
 export { buildOutline, locateTarget, patchTargetIdOf, readNode } from "./ops";

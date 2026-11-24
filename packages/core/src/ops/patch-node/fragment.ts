@@ -3,6 +3,7 @@
 import type { Diagnostic, HtmlElementNode, HtmlNode } from "../../html/constants";
 import { HR_ID_ATTRIBUTE } from "../../html/constants";
 import { parseHtml } from "../../html/parse";
+import { isEventAttribute, normalizedUrl } from "../../html/sanitize";
 import { drainStack } from "../../html/stack";
 import { HrError } from "../../hr-error";
 import { checkLayout } from "../../layout/check";
@@ -126,13 +127,8 @@ const throughShells = (root: HtmlNode, tag: string): HtmlElementNode | undefined
 
 const forbidden = (message: string): HrError => new HrError("forbidden_content", message);
 
-/** URL 取值先剥空白与控制字符再小写：`java\tscript:` / `JaVaScRiPt:` 必须与 `javascript:` 同判。 */
-const IGNORABLE = /[\s\p{Cc}]/gu;
-
 /** `values` 的分隔符只认分号（SMIL 规范）：逗号/空白属于同一项，不能拿来切。 */
 const LIST_SEPARATOR = ";";
-
-const normalizedUrl = (value: string): string => value.replaceAll(IGNORABLE, "").toLowerCase();
 
 const assertTagAllowed = (node: HtmlElementNode): void => {
   if (FORBIDDEN_TAGS.has(node.tag)) {
@@ -164,7 +160,7 @@ const forbiddenInList = (raw: string): string | undefined => {
 
 const assertAttributesAllowed = (node: HtmlElementNode): void => {
   for (const [name, value] of node.attrs) {
-    if (name.toLowerCase().startsWith("on")) {
+    if (isEventAttribute(name)) {
       throw forbidden(`片段含事件属性 ${name}（<${node.tag}>），已拒绝`);
     }
     const prefix = forbiddenInList(value);
