@@ -1,5 +1,5 @@
-// M2.3 的写请求与乐观卡：纯接线（注入 IO），不碰 DOM。
-// 降级 diff 由服务端算（裁定 #8），浏览器只渲染 chunk —— 见 `notes-widgets.test.ts`。
+// 批注的写请求与乐观卡：纯接线（注入 IO），不碰 DOM。
+// 降级 diff 由服务端算，浏览器只渲染 chunk —— 见 `notes-widgets.test.ts`。
 
 import { describe, expect, it } from "vitest";
 

@@ -73,8 +73,8 @@ describe("boot · widget intent → store", () => {
     boot(h.deps);
     h.fake.fire(`${ROOT} #hr-theme-select`, "change", { value: "manuscript" });
     expect(h.store.get().themeRequested).toBe("manuscript");
-    // 已知缺陷（报告「待裁定 #2」）：widget 的 intent 只进 store，没接到 `themeSwitcher`，
-    // 所以 `style.select` 一次也不会被叫（G3-R3 时主题切换是死的；R4 起走 `dispatchIntent`，见 main-inject 的主题接线用例）。
+    // 已知缺陷：widget 的 intent 只进 store，没接到 `themeSwitcher`，
+    // 所以 `style.select` 一次也不会被叫（此前主题切换是死的；现在走 `dispatchIntent`，见 main-inject 的主题接线用例）。
     expect(h.selectCalls).toEqual([]);
   });
 });
@@ -94,7 +94,7 @@ describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）",
     expect(hints.at(-1)).toBe(COPY.searchDeferred);
     // 空串写进去等于没提示：文案本身必须非空。
     expect(COPY.searchDeferred.length).toBeGreaterThan(0);
-    // “没聚焦”由上面两条（写进 `#hr-hint` 的文案 + 非空）证明：`focus` op 已随 C1/L-04
+    // “没聚焦”由上面两条（写进 `#hr-hint` 的文案 + 非空）证明：`focus` op 已移除
     // 从 `Host` 上删除，`ops()` 结构上再也不可能含 `"focus"`，留着那条断言只会恒真。
     // 同一个 if 链的 false 臂：`/` 不是 scrollTo。
     expect(h.fake.ops()).not.toContain("scrollTo");
@@ -113,7 +113,7 @@ describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）",
 
     h.keyHandlers[0]?.({ key: "j" });
 
-    // `move` 走 store，不碰 host 唯一剩下的副作用出口 `scrollTo`（`focus` 已随 C1/L-04 移除）。
+    // `move` 走 store，不碰 host 唯一剩下的副作用出口 `scrollTo`（`focus` 已移除）。
     expect(h.fake.ops()).not.toContain("scrollTo");
     // 只有一个块：`j` 到顶后仍停在同一块（不越界、不抛）。
     expect(h.store.get().activeId).toBe("hr-a");
@@ -126,7 +126,7 @@ describe("boot · 键路由的意图集合（boot.ts:133 为何是死分支）",
     const keys = ["j", "k", "h", "/", "c", "Escape", "x", "Enter"];
 
     // `intentOf` 是 `keyHandlerOf` 唯一的意图来源；它产的 kind 里没有 `scrollTo`，
-    // 所以 `boot.ts:133` 的 scrollTo 副作用对键盘路径结构性不可达（G3-R5 §3）。
+    // 所以 `boot.ts:133` 的 scrollTo 副作用对键盘路径结构性不可达。
     expect(keys.map((key) => intentOf({ key }, state)?.kind ?? "none")).toEqual([
       "move",
       "move",

@@ -3,7 +3,7 @@
 // `keys.ts:24` 的 `modified()` = `metaKey||ctrlKey||altKey`（**不含 Shift**）是第一道闸，
 // 而 `shortcut.rs::parse_accel` 只保证全局键带 Cmd/Ctrl/Alt。任一侧单独改都自洽，合起来才会抢键。
 //
-// 断言口径（对应 M4.2 AC-7）：
+// 断言口径：
 // A1 每个 accelerator 必须带 `modified()` 认的修饰键（Cmd/Ctrl/Alt）：没有它们的全局键活在
 //    `modified()` 为 false 的世界里，与应用内保留键（Escape / Shift+D / w / j / k / h / c）同域，
 //    这正是 `Shift+K` 那种"看着无害、其实吃掉了 Shift 层"的键。

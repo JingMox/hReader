@@ -1,4 +1,4 @@
-// M2.3 UI 接线的共用夹具：真 `boot()` + 假 Host + 记录型 IO。
+// 批注 UI 接线的共用夹具：真 `boot()` + 假 Host + 记录型 IO。
 // 断言只读 `fake.calls` / `store.get()` / `posted`，不在中间层调私有函数。
 
 import { vi } from "vitest";

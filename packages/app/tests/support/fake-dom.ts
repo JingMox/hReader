@@ -1,5 +1,5 @@
 // 这层管：`dom.ts` 需要的最小假 `document`——按选择器查元素、记属性/文本/监听器。
-// 不够格当浏览器用，够格断言"哪个 API 被调用了几次"（AC2.2/AC2.4 的序列断言在 fake-host）。
+// 不够格当浏览器用，够格断言"哪个 API 被调用了几次"（"只写变化"的序列断言在 fake-host）。
 
 import type { ElementLike, TargetLike } from "../../src/dom.ts";
 

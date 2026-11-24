@@ -128,7 +128,7 @@ describe("main · 键盘与主题适配", () => {
   });
 });
 
-describe("main · 形状守卫与重连回调（G3-R 补）", () => {
+describe("main · 形状守卫与重连回调", () => {
   it("should reject model/outline payloads that miss their fields", async () => {
     install("doc.html", "http://x/", happy);
     await load();

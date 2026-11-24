@@ -1,4 +1,4 @@
-// 这层管：G3-R 复核补的接线边角——`notes-wire` 的早退分支、diff 面板的 nodeId 兜底、
+// 这层管：接线边角——`notes-wire` 的早退分支、diff 面板的 nodeId 兜底、
 // 提交失败的非 Error 路径、`load` 不带 `lost`。全部从 `boot()` 真入口进，不调私有闭包。
 import { describe, expect, it, vi } from "vitest";
 

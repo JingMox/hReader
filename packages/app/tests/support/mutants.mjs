@@ -9,15 +9,15 @@ const ROOT = new URL("../../../../", import.meta.url).pathname;
 /** @type {{id:string; file:string; find:string; replace:string; target:string; expect:string}[]} */
 const MUTANTS = [
   {
-    id: "M1-canvas-whole-reload",
+    id: "canvas-whole-reload",
     file: "packages/app/src/widgets/canvas.ts",
     find: "    if (markup !== undefined) host.blockHtml(id, markup);",
     replace: "    if (markup !== undefined) void markup;",
     target: "packages/app/tests/widgets.test.ts",
-    expect: "整篇重注入 → AC2.4 调用序列断言变红",
+    expect: "整篇重注入 → 调用序列断言变红",
   },
   {
-    id: "M2-store-always-notify",
+    id: "store-always-notify",
     file: "packages/app/src/store.ts",
     find: "    if (next === state) return;",
     replace: "    if (next === undefined) return;",
@@ -25,7 +25,7 @@ const MUTANTS = [
     expect: "同引用也通知 → 不通知断言变红",
   },
   {
-    id: "M3-keys-drop-editable-guard",
+    id: "keys-drop-editable-guard",
     file: "packages/app/src/keys.ts",
     find: "  if (modified(event) || isEditableTarget(event.target)) return undefined;",
     replace: "  if (modified(event)) return undefined;",
@@ -33,15 +33,15 @@ const MUTANTS = [
     expect: "输入框里也触发快捷键 → 抑制断言变红",
   },
   {
-    id: "M4-sse-drop-stale",
+    id: "sse-drop-stale",
     file: "packages/app/src/sse.ts",
     find: "    if (body === undefined || Number.isNaN(id) || isStale(ctl.lastSeen, id)) return;",
     replace: "    if (body === undefined || Number.isNaN(id)) return;",
     target: "packages/app/tests/sse.test.ts",
-    expect: "旧 revision 不再丢弃 → AC4.3 断言变红",
+    expect: "旧 revision 不再丢弃 → stale 断言变红",
   },
   {
-    id: "M5-style-switch-drop-apply",
+    id: "style-switch-drop-apply",
     file: "packages/app/src/style-switch.ts",
     find: "      deps.applyCss(css);",
     replace: "      void css;",
@@ -49,7 +49,7 @@ const MUTANTS = [
     expect: "CSS 不落进 DOM → apply 断言变红",
   },
   {
-    id: "R1-reverse-allow-traversal",
+    id: "reverse-allow-traversal",
     file: "packages/core/src/server/http-io.ts",
     find: '    (part) => part === "" || part === "." || part === ".." || part.length > MAX_SEGMENT_NAME,',
     replace: '    (part) => part === "" || part === "." || part.length > MAX_SEGMENT_NAME,',
