@@ -13,7 +13,7 @@
     "hreader-mcp": "./dist/main.js"
   },
   "scripts": {
-    "build": "rm -rf dist styles && tsc --noEmit -p tsconfig.build.json && esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --define:__filename=import.meta.filename --define:__dirname=import.meta.dirname --outfile=dist/main.js --sourcemap --banner:js='#!/usr/bin/env node\nimport { createRequire as __cr } from \"node:module\"; const require = __cr(import.meta.url);' && chmod +x dist/main.js && node --input-type=module -e \"import { cpSync, existsSync } from 'node:fs'; if (!existsSync('../../styles')) { console.error('[build] 缺少仓库根 styles/：本包构建需在源码树内执行，发行版自带 styles/'); process.exit(1) } cpSync('../../styles', 'styles', { recursive: true })\""
+    "build": "node scripts/build.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

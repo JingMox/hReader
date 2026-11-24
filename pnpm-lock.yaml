@@ -44,6 +44,9 @@ importers:
       dependency-cruiser:
         specifier: ^16.10.4
         version: 16.10.4
+      esbuild:
+        specifier: 'catalog:'
+        version: 0.28.2
       eslint:
         specifier: 'catalog:'
         version: 9.39.1(jiti@2.7.0)
