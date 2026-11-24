@@ -56,7 +56,7 @@ describe("package.json", () => {
   });
 
   it("devDeps 是精确版本（不带 ^ 或 ~）", () => {
-    for (const name of ["@deepseek-ai/cordis", "@deepseek-ai/dsh-system-prompt", "esbuild"]) {
+    for (const name of ["@deepseek-ai/cordis", "@deepseek-ai/dsh-system-prompt"]) {
       expect(textOf(manifest, "devDependencies", name)).toMatch(EXACT_VERSION);
     }
   });

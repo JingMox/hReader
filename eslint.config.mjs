@@ -167,7 +167,7 @@ export default tseslint.config(
   },
   {
     // 构建/测试配置必须 default export，白名单只覆盖这些文件。
-    files: ["*.config.ts"],
+    files: ["**/*.config.ts"],
     rules: { "import/no-default-export": "off" },
   },
   {
