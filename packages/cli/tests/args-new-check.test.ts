@@ -70,7 +70,52 @@ describe("parseArgs · check", () => {
   it("should build a check intent from one file", () => {
     expect(parse(["check", "a.html", "--json"])).toEqual({
       ok: true,
-      intent: { kind: "check", path: `${CWD}/a.html`, json: true, workspace: CWD },
+      intent: {
+        kind: "check",
+        path: `${CWD}/a.html`,
+        strict: undefined,
+        json: true,
+        workspace: CWD,
+      },
+    });
+  });
+
+  it("should parse bare --strict as error level", () => {
+    expect(parse(["check", "a.html", "--strict"])).toEqual({
+      ok: true,
+      intent: {
+        kind: "check",
+        path: `${CWD}/a.html`,
+        strict: "error",
+        json: false,
+        workspace: CWD,
+      },
+    });
+  });
+
+  it.each(["error", "warning"] as const)("should parse --strict=%s", (level) => {
+    expect(parse(["check", "a.html", `--strict=${level}`])).toEqual({
+      ok: true,
+      intent: {
+        kind: "check",
+        path: `${CWD}/a.html`,
+        strict: level,
+        json: false,
+        workspace: CWD,
+      },
+    });
+  });
+
+  it("should keep the file positional after a bare --strict", () => {
+    expect(parse(["check", "--strict", "a.html"])).toEqual({
+      ok: true,
+      intent: {
+        kind: "check",
+        path: `${CWD}/a.html`,
+        strict: "error",
+        json: false,
+        workspace: CWD,
+      },
     });
   });
 
@@ -78,5 +123,18 @@ describe("parseArgs · check", () => {
     expectFailure(["check"], "check 缺少 <file>", "check");
     expectFailure(["check", "a.html", "b.html"], "check 只接受 1 个位置参数，多出 1 个", "check");
     expectFailure(["check", "a.html", "--force"], "--force", "check");
+  });
+
+  it("should reject an unknown --strict value and list the choices", () => {
+    expectFailure(
+      ["check", "a.html", "--strict=foo"],
+      "未知的 --strict：foo（可选：error | warning）",
+      "check",
+    );
+    expectFailure(
+      ["check", "a.html", "--strict="],
+      "未知的 --strict：（可选：error | warning）",
+      "check",
+    );
   });
 });

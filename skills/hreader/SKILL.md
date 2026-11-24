@@ -69,6 +69,8 @@ node skills/hreader/scripts/hr.mjs check report.html               # 排版约�
 
 `patch` 不会因此拒写——片段照常落盘，问题出现在回执的 `warnings` 里；整篇用 `check <file>` 复查（`--json` 时看 `count`）。**看到 warning 就再 patch 一次改掉，`check` 干净了再说“完成”。**
 
+要把 `check` 当门禁用就加 `--strict`：有 error 级诊断时退出 1（报告照常先写 stdout）；`--strict=warning` 连 warning 也算失败。
+
 ## 安全区内不能做的事
 
 - 片段里**不允许** `<script>`、`<style>`、`<iframe>`、`<object>`、`<embed>`、`<link>`、`<meta http-equiv=refresh>`、`<form>`，不允许 `on*` 事件属性，不允许 `javascript:` / `data:text/html` 链接。会被 `forbidden_content` 拒绝，文件一个字节都不会变。

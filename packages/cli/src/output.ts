@@ -300,17 +300,23 @@ const issueJson = (issue: IssueShape): string =>
     path: issue.path ?? null,
   });
 
-export const dataCheck = (issues: readonly IssueShape[]): string =>
-  `{"issues":[${issues.map(issueJson).join(",")}],"count":${String(issues.length)}}`;
+/** `cls` 是外来 HTML 三档分类的 additive 字段；`reason` 只在 `foreign` 时给出（给人话原因）。 */
+export const dataCheck = (issues: readonly IssueShape[], cls: string, reason?: string): string =>
+  `{"issues":[${issues.map(issueJson).join(",")}],"count":${String(issues.length)},` +
+  `"cls":${quote(cls)}${reason === undefined ? "" : `,"reason":${quote(reason)}`}}`;
 
 const issueLine = (issue: IssueShape): string =>
   `${issue.severity}: ${issue.code} — ${issue.message}${issue.path === undefined ? "" : ` @ ${issue.path}`}\n`;
 
+/** 外来文档的说明行：跟在诊断输出之后，告诉用户「能看、不能按块改」。 */
+const FOREIGN_NOTE = "外来 HTML 文档：hReader 会以只读方式打开，不支持按块编辑\n";
+
 /** 没问题也要有一行：0 字节 stdout 读起来像“没跑”。 */
-export const humanCheck = (issues: readonly IssueShape[], path: string): string =>
-  issues.length === 0
+export const humanCheck = (issues: readonly IssueShape[], path: string, foreign = false): string =>
+  (issues.length === 0
     ? `ok ${path}（没有排版问题）\n`
-    : `${issues.map(issueLine).join("")}${path}：${String(issues.length)} 条问题\n`;
+    : `${issues.map(issueLine).join("")}${path}：${String(issues.length)} 条问题\n`) +
+  (foreign ? FOREIGN_NOTE : "");
 
 export const dataNew = (report: NewDocReport): string =>
   JSON.stringify({

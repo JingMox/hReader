@@ -8,6 +8,7 @@ import {
   absoluteOf,
   commonOf,
   failure,
+  strictOf,
   unusedFlag,
   type ParsedArgs,
   type StyleMode,
@@ -86,15 +87,25 @@ export const styleIntent = (raw: Raw, rest: readonly string[], cwd: string): Par
       ? `style 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
       : file === ""
         ? "style 缺少 <file>"
-        : unusedFlag(raw, ["--json", "--lint", "--tone", "--visual", "--workspace"]);
+        : unusedFlag(raw, ["--json", "--lint", "--strict", "--tone", "--visual", "--workspace"]);
   if (message !== undefined) return failure(message, "style");
   const mode = modeOf(raw);
   if (mode === undefined)
     return failure("style 需要 --visual <id> / --tone <id> / --lint 之一", "style");
   if (mode === "invalid") return failure("--visual / --tone / --lint 必须且只能给一个", "style");
+  const strict = strictOf(raw);
+  if (strict === "invalid") {
+    return failure(
+      `未知的 --strict：${String(raw.values.get("--strict"))}（可选：error | warning）`,
+      "style",
+    );
+  }
+  if (strict !== undefined && mode.kind !== "lint") {
+    return failure("--strict 只与 --lint 同用", "style");
+  }
   const common = commonOf(raw, cwd);
   return {
     ok: true,
-    intent: { kind: "style", path: absoluteOf(file, cwd), mode, ...common },
+    intent: { kind: "style", path: absoluteOf(file, cwd), mode, strict, ...common },
   };
 };

@@ -11,6 +11,9 @@ export type HtmlSource =
   | { readonly kind: "file"; readonly path: string }
   | { readonly kind: "stdin" };
 
+/** `--strict` 的失败门槛：`error` = 有 error 级诊断才失败（裸 `--strict` 的默认）；`warning` = 任何诊断都失败。 */
+export type StrictLevel = "error" | "warning";
+
 export type StyleMode =
   | { readonly kind: "visual"; readonly id: string }
   | { readonly kind: "tone"; readonly id: string }
@@ -43,7 +46,13 @@ export type Intent =
       readonly action: PatchAction;
       readonly html: HtmlSource | undefined;
     } & Common)
-  | ({ readonly kind: "style"; readonly path: string; readonly mode: StyleMode } & Common)
+  | ({
+      readonly kind: "style";
+      readonly path: string;
+      readonly mode: StyleMode;
+      /** 只有 `--lint` 模式会带；其它模式给 `--strict` 在意图层就拦下。 */
+      readonly strict: StrictLevel | undefined;
+    } & Common)
   | ({
       readonly kind: "styleExtract";
       /** 语料文件（绝对路径）；顺序即 argv 顺序，统计层对顺序不敏感但报告里要能复现。 */
@@ -101,7 +110,12 @@ export type Intent =
       readonly force: boolean;
     } & Common)
   | ({ readonly kind: "undo"; readonly path: string } & Common)
-  | ({ readonly kind: "check"; readonly path: string } & Common)
+  | ({
+      readonly kind: "check";
+      readonly path: string;
+      /** 未给 `--strict` 时保持既有的「发现问题也退出 0」。 */
+      readonly strict: StrictLevel | undefined;
+    } & Common)
   | ({
       readonly kind: "new";
       readonly path: string;
@@ -157,6 +171,18 @@ export const commonOf = (raw: Raw, cwd: string): Common => ({
 
 /** 路径一律先按 cwd 解成绝对路径；写命令到 workspace 的相对换算在 `run.ts`（那里能取真实路径）。 */
 export const absoluteOf = (file: string, cwd: string): string => resolve(cwd, file);
+
+/**
+ * `--strict` 的两态归一：裸旗标（switches）是 `error`，`=error|warning`（values）按值；
+ * 其它取值回 `"invalid"`，由调用方套「未知的 --X」文案报用法错误。
+ */
+export const strictOf = (raw: Raw): StrictLevel | undefined | "invalid" => {
+  const given = raw.values.get("--strict");
+  if (given !== undefined) {
+    return given === "error" || given === "warning" ? given : "invalid";
+  }
+  return raw.switches.has("--strict") ? "error" : undefined;
+};
 
 /** 解析闭区间整数参数；未传返回 `undefined`，非法或越界返回 `"invalid"`。 */
 export const intInRange = (

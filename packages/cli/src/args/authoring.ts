@@ -15,6 +15,7 @@ import {
   commonOf,
   failure,
   intInRange,
+  strictOf,
   unusedFlag,
   type HtmlSource,
   type ParsedArgs,
@@ -178,19 +179,36 @@ export const patchIntent = (raw: Raw, rest: readonly string[], cwd: string): Par
   };
 };
 
-export const plainIntent = (
-  raw: Raw,
-  rest: readonly string[],
-  cwd: string,
-  kind: "undo" | "check",
-): ParsedArgs => {
+export const plainIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
   const [file = "", ...extra] = rest;
   const problem =
     extra.length > 0
-      ? `${kind} 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
+      ? `undo 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
       : file === ""
-        ? `${kind} 缺少 <file>`
+        ? "undo 缺少 <file>"
         : unusedFlag(raw, ["--json", "--workspace"]);
-  if (problem !== undefined) return failure(problem, kind);
-  return { ok: true, intent: { kind, path: absoluteOf(file, cwd), ...commonOf(raw, cwd) } };
+  if (problem !== undefined) return failure(problem, "undo");
+  return { ok: true, intent: { kind: "undo", path: absoluteOf(file, cwd), ...commonOf(raw, cwd) } };
+};
+
+export const checkIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
+  const [file = "", ...extra] = rest;
+  const problem =
+    extra.length > 0
+      ? `check 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
+      : file === ""
+        ? "check 缺少 <file>"
+        : unusedFlag(raw, ["--json", "--strict", "--workspace"]);
+  if (problem !== undefined) return failure(problem, "check");
+  const strict = strictOf(raw);
+  if (strict === "invalid") {
+    return failure(
+      `未知的 --strict：${String(raw.values.get("--strict"))}（可选：error | warning）`,
+      "check",
+    );
+  }
+  return {
+    ok: true,
+    intent: { kind: "check", path: absoluteOf(file, cwd), strict, ...commonOf(raw, cwd) },
+  };
 };
