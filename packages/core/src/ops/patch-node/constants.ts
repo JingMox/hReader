@@ -1,6 +1,7 @@
 // 这层管：patch 的词表与裸数据类型；不含逻辑、不碰 IO、不分配 ID。
 
 import type { Diagnostic } from "../../html/constants";
+import { DANGEROUS_URL_PREFIXES, FORBIDDEN_CONTAINER_TAGS } from "../../html/sanitize";
 
 export type PatchAction = "replace" | "insert_before" | "insert_after" | "append" | "delete";
 
@@ -39,19 +40,11 @@ export const PATCH_ACTIONS: readonly PatchAction[] = [
   "delete",
 ];
 
-/** 可执行容器与外部资源容器：一条都不放过，报文里点名标签即可。 */
-export const FORBIDDEN_TAGS: ReadonlySet<string> = new Set([
-  "script",
-  "style",
-  "iframe",
-  "object",
-  "embed",
-  "link",
-  "base",
-]);
+/** 可执行容器与外部资源容器：词表与 sanitize 的整删名单同源（一份清单，两处不漂移）。 */
+export const FORBIDDEN_TAGS = FORBIDDEN_CONTAINER_TAGS;
 
 /** 这类值不是 URL 而是"能执行/能换文档"的协议，比较前要剥空白与控制字符再小写。 */
-export const FORBIDDEN_VALUE_PREFIXES: readonly string[] = ["javascript:", "data:text/html"];
+export const FORBIDDEN_VALUE_PREFIXES = DANGEROUS_URL_PREFIXES;
 
 /** 动画元素只在 `<svg>` 里能生效，判定要看 svg 上下文（`attributeName` 被 parse5 小写化）。 */
 export const SVG_CONTAINER = "svg";

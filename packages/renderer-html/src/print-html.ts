@@ -1,6 +1,15 @@
 // 这层管：把源文档与 outline 渲染成单文件可打印 HTML（封面 / 目录 / 正文三段）；不读盘、不碰进程。
 
-import { HrError, parseHtml, serializeHtml } from "@hreader/core";
+import {
+  attributeOf,
+  hasExternalResource,
+  HrError,
+  isCountedImage,
+  isDroppedNode,
+  parseHtml,
+  sanitizedAttributesOf,
+  serializeHtml,
+} from "@hreader/core";
 import type { HtmlElementNode, HtmlNode, OutlineNode } from "@hreader/core";
 
 import { attributeStringOf, utf8LengthOf } from "./markup";
@@ -9,14 +18,11 @@ import type { Numbering } from "./numbering";
 import type { PaperSize } from "./print-css";
 import { printSheetOf } from "./print-page";
 import type { TocItem } from "./print-page";
-import {
-  attributeOf,
-  hasExternalResource,
-  isCountedImage,
-  isDroppedNode,
-  sanitizedAttributesOf,
-} from "./sanitize";
-import type { Attribute } from "./sanitize";
+
+type Attribute = HtmlElementNode["attrs"][number];
+
+/** 本包只有打印稿一个用途；preset 参数化是 core 给 `hr import` 预留的面，这里恒为 print。 */
+const SANITIZE_PRESET = "print" as const;
 
 /**
  * 印什么、用哪个主题、正文是什么，全部由调用方给出：包内不找文件、不读环境，同输入必然同字节。
@@ -123,7 +129,7 @@ const anchorOf = (base: string, used: Set<string>): string => {
 
 /** 会被原样保留的 `id`（非标题/非容器的）先占位；等会儿生成的 `sec-…` 绕开它们走。 */
 const reservedIdsOf = (node: HtmlElementNode, numbering: Numbering, used: Set<string>): void => {
-  if (isDroppedNode(node) || hasExternalResource(node)) {
+  if (isDroppedNode(node, SANITIZE_PRESET) || hasExternalResource(node, SANITIZE_PRESET)) {
     return;
   }
   const sectionId = attributeOf(node, DOC_ID_ATTRIBUTE);
@@ -149,7 +155,7 @@ const attributesOf = (
   chapter: boolean,
   anchor: string | undefined,
 ): readonly Attribute[] => {
-  const kept = sanitizedAttributesOf(node).filter(
+  const kept = sanitizedAttributesOf(node, SANITIZE_PRESET).filter(
     ([name]) => !(anchor !== undefined && name === "id") && !(chapter && name === "class"),
   );
   const idAttribute: readonly Attribute[] = anchor === undefined ? [] : [["id", anchor]];
@@ -178,13 +184,13 @@ const rewrittenElementOf = (
   node: HtmlElementNode,
   state: RewriteState,
 ): HtmlElementNode | undefined => {
-  if (isDroppedNode(node)) {
+  if (isDroppedNode(node, SANITIZE_PRESET)) {
     if (isCountedImage(node)) {
       state.droppedImages += 1;
     }
     return undefined;
   }
-  if (hasExternalResource(node)) {
+  if (hasExternalResource(node, SANITIZE_PRESET)) {
     if (isCountedImage(node)) {
       state.droppedImages += 1;
     }
@@ -275,7 +281,7 @@ export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
     bodyClass: input.bodyClass,
     tocItems,
     tocIds,
-    articleOpen: `<article${attributeStringOf(sanitizedAttributesOf(article))}>`,
+    articleOpen: `<article${attributeStringOf(sanitizedAttributesOf(article, SANITIZE_PRESET))}>`,
     body,
   });
   return { html, bytes: utf8LengthOf(html), droppedImages: state.droppedImages };

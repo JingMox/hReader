@@ -35,7 +35,6 @@ const FORBIDDEN_LEAKS: readonly string[] = [
   "THEME_ANCHOR_ID",
   "ambiguousSelector",
   "annotationsFor",
-  "attributeOf",
   "fitSubtree",
   "identifierOf",
   "isForbiddenTarget",
