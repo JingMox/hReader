@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-import { exportPrintCommand } from "../src/commands/exportPrint";
+import { exportPrintCommand } from "../src/commands/export-print";
 import { keysOf, withTempDir } from "./harness";
 import {
   ARTICLE,

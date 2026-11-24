@@ -16,7 +16,7 @@ import {
 
 import { jsonOk } from "../output";
 import { dataNew, humanNew } from "../output-doc";
-import { assertTargetFreeOf, assertWritableDirOf, writeOutOf } from "./exportPrint";
+import { assertTargetFreeOf, assertWritableDirOf, writeOutOf } from "./export-print";
 
 const encoder = new TextEncoder();
 

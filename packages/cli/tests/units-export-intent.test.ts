@@ -1,10 +1,10 @@
-// 这层管：`hr export` 的 argv→intent、`printSkip` 三态、fs 错误归口；不落盘、不起 Chrome。
+// 这层管：`hr export` 的 argv→intent、`print-skip` 三态、fs 错误归口；不落盘、不起 Chrome。
 
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-import { ioFailureOf } from "../src/commands/exportPrint";
-import { skipLineOf, skipReasonOf } from "../src/commands/printSkip";
+import { ioFailureOf } from "../src/commands/export-print";
+import { skipLineOf, skipReasonOf } from "../src/commands/print-skip";
 import { exitCodeOf } from "../src/exit-codes";
 import { CWD, expectFailure, parse } from "./args-helpers";
 
@@ -82,7 +82,7 @@ describe("ioFailureOf", () => {
   });
 });
 
-describe("printSkip", () => {
+describe("print-skip", () => {
   it("should report the explicit skip", () => {
     expect(skipReasonOf({ HREADER_SKIP_CHROME: "1", CHROME_BIN: "/chrome" })).toBe(
       "HREADER_SKIP_CHROME=1（显式跳过）",

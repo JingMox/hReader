@@ -8,7 +8,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { skipLineOf, skipReasonOf } from "../packages/cli/src/commands/printSkip.ts";
+import { skipLineOf, skipReasonOf } from "../packages/cli/src/commands/print-skip.ts";
 import { longCheckOf } from "./print-e2e-png.ts";
 
 /** 走真 CLI：这条烟测要证的正是"仓内各层接起来还能打"，直接 import 渲染器会绕开接线。 */
@@ -43,7 +43,7 @@ const ARTICLE = [
   "</article>",
 ].join("");
 
-/** 探测结果经 `CHROME_BIN` 交回纯函数：判定与文案在 `printSkip.ts`（可单测），这里只管 fs 与退出。 */
+/** 探测结果经 `CHROME_BIN` 交回纯函数：判定与文案在 `print-skip.ts`（可单测），这里只管 fs 与退出。 */
 const chromeEnvOf = (
   env: Readonly<Record<string, string | undefined>>,
 ): Record<string, string | undefined> => ({

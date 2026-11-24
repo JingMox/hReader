@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 // `normalizeWhitespace` 不在 `@hreader/core` 的公开导出面里（不为了一个测试 oracle 去扩它）：
 // 跨包相对导入是仓里 `scripts/` 已有的做法，这里只用它的语义，不碰它的实现。
 import { normalizeWhitespace } from "../../core/src/html/text.ts";
-import { skipLineOf, skipReasonOf } from "../src/commands/printSkip";
+import { skipLineOf, skipReasonOf } from "../src/commands/print-skip";
 import { pdfScanOf, type PdfOutlineNode, type PdfScan } from "./helpers/pdf-scan";
 import { expectNoAnsi, fieldOf, runCli, withTempDir } from "./harness";
 
@@ -29,7 +29,7 @@ const SYSTEM_CHROME = [
 ];
 
 /**
- * 判定口径沿用 `printSkip.ts`：`CHROME_BIN` 传"探测结果"（`HREADER_CHROME` 是 CLI 的权威覆盖，
+ * 判定口径沿用 `print-skip.ts`：`CHROME_BIN` 传"探测结果"（`HREADER_CHROME` 是 CLI 的权威覆盖，
  * 给了就得存在，否则 CLI 会报 `chrome_missing`，这里跟着跳过没有意义）。
  */
 const chromeFoundOf = (): string | undefined => {

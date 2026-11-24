@@ -716,7 +716,7 @@ ERROR: Coverage for branches (96.87%) does not meet global threshold (100%) for 
 
 ### 11.34 写者自报"全量 verify 绿"必须由协调者复跑；守卫顺序是契约（M4.3 R4→R6，2026-11-17）
 
-**事故**：R4 收尾时写者报 `pnpm verify EXIT=0`，我照例复跑，实得 `2 failed | 2668 passed`。根因不是"测试少"，而是**守卫顺序**：`exportPrint.ts` 把「目标已存在（`file_exists`/exit 1）」判在「越界（`path_outside_workspace`/exit 3）」之前，于是 `--out ../escape.html` 先落到 exit 1，**还真的把 11243 字节产物写到了 workspace 外面**（`$TMPDIR/escape.html`）。这个脏文件又让一条毫不相干的旧用例（`cli-exit-codes.test.ts`「should exit 3 for ../x.html」）变红——因为两条用例都把落点取成 `$TMPDIR` 下的同名文件。修完后测试员又验出第三个缝隙：把 `isInside` 换成 `path.startsWith(workspace)` 全绿存活（共享前缀兄弟目录 `<base>/w` vs `<base>/w-evil/x.html` 正是 `startsWith` 的经典漏点）。
+**事故**：R4 收尾时写者报 `pnpm verify EXIT=0`，我照例复跑，实得 `2 failed | 2668 passed`。根因不是"测试少"，而是**守卫顺序**：`export-print.ts` 把「目标已存在（`file_exists`/exit 1）」判在「越界（`path_outside_workspace`/exit 3）」之前，于是 `--out ../escape.html` 先落到 exit 1，**还真的把 11243 字节产物写到了 workspace 外面**（`$TMPDIR/escape.html`）。这个脏文件又让一条毫不相干的旧用例（`cli-exit-codes.test.ts`「should exit 3 for ../x.html」）变红——因为两条用例都把落点取成 `$TMPDIR` 下的同名文件。修完后测试员又验出第三个缝隙：把 `isInside` 换成 `path.startsWith(workspace)` 全绿存活（共享前缀兄弟目录 `<base>/w` vs `<base>/w-evil/x.html` 正是 `startsWith` 的经典漏点）。
 
 **规矩**：
 1. **写者自报的全量绿只当线索**。收口前由协调者在仓库根亲跑 `pnpm verify`（§10.12 的延伸：不采信"我跑过了"）；写者被要求报 `Test Files`/`Tests`/`All files` 三行原始数字，而不是 `EXIT=0` 四个字符。

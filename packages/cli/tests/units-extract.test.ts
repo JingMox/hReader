@@ -10,7 +10,7 @@ import { extractStyle, type ExtractStyleResult } from "@hreader/core";
 import { fileSizeOf, readTextFile } from "../src/input";
 import { dataStyleExtract, humanStyleExtract } from "../src/output";
 import { run, type CliIo } from "../src/run";
-import { styleExtractCommand, type StyleExtractInput } from "../src/commands/styleExtract";
+import { styleExtractCommand, type StyleExtractInput } from "../src/commands/style-extract";
 import { parseJsonLine } from "./harness";
 
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "hr-extract-")));

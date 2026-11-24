@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { exportPrintCommand } from "../src/commands/exportPrint";
+import { exportPrintCommand } from "../src/commands/export-print";
 import { ARTICLE, inputOf } from "./export-print-fixtures";
 import { withTempDir } from "./harness";
 

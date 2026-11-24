@@ -15,7 +15,7 @@ import {
   assertWritableDirOf,
   printProductOf,
   writeOutOf,
-} from "./exportPrint";
+} from "./export-print";
 
 export type RenderPng = (input: {
   readonly html: string;
