@@ -75,7 +75,8 @@ const annotationOf = (
     return undefined;
   }
   const id = stringFieldOf(value, "id");
-  const targetId = stringFieldOf(value, "targetId");
+  // 阅读器写的是新字段（`nodeId`/`note`），旧版 meta 是 `targetId`/`comment`：两套都要读得出来。
+  const targetId = stringFieldOf(value, "targetId") ?? stringFieldOf(value, "nodeId");
   if (id === undefined || targetId === undefined) {
     diagnostics.push(invalidMeta(`annotations[${String(index)}] 缺少字符串 id/targetId，已跳过`));
     return undefined;
@@ -83,7 +84,7 @@ const annotationOf = (
   return {
     id,
     targetId,
-    comment: stringFieldOf(value, "comment") ?? "",
+    comment: stringFieldOf(value, "comment") ?? stringFieldOf(value, "note") ?? "",
     status: stringFieldOf(value, "status") ?? "",
   };
 };

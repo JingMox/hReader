@@ -5,6 +5,7 @@ import { HR_ID_ATTRIBUTE } from "../../html/constants";
 import { parseHtml } from "../../html/parse";
 import { drainStack } from "../../html/stack";
 import { HrError } from "../../hr-error";
+import { checkLayout } from "../../layout/check";
 import { attributeValueLoose, hasAttributeLoose } from "./attrs";
 import {
   FORBIDDEN_TAGS,
@@ -281,7 +282,10 @@ export const parseFragmentWithDiagnostics = (html: string): FragmentResult => {
   const root = singleElementOf(candidates);
   // id 归产品所有：片段自带的 id 一律剥掉，但先记下它——调用方要靠它发 `fragment_ids_ignored`。
   const rootId = attributeValueLoose(root.attrs, HR_ID_ATTRIBUTE);
-  return { root: stripHrIds(root), warnings: parsed.diagnostics, rootId };
+  const stripped = stripHrIds(root);
+  // 排版约束在写入时就查：片段照样落盘，但组件结构不对 / 带内联 style 会跟回执一起上浮。
+  const warnings = [...parsed.diagnostics, ...checkLayout(stripped)];
+  return { root: stripped, warnings, rootId };
 };
 
 /** 只要片段树的调用方（对外公开面）：诊断丢不丢由调用方自己决定。 */

@@ -117,11 +117,11 @@ describe("ops facade", () => {
 
 describe("meta facade", () => {
   it("should expose the reader and the status constant", () => {
-    expect(Object.keys(metaEntry).sort()).toEqual(["PENDING_ANNOTATION_STATUS", "readMeta"]);
-    expect(metaEntry.PENDING_ANNOTATION_STATUS).toBe("pending_ai");
+    expect(Object.keys(metaEntry).sort()).toEqual(["PENDING_ANNOTATION_STATUSES", "readMeta"]);
+    expect([...metaEntry.PENDING_ANNOTATION_STATUSES].sort()).toEqual(["pending", "pending_ai"]);
   });
 
   it("should not leak meta internals", () => {
-    expect(leaked(metaEntry, ["PENDING_ANNOTATION_STATUS", "readMeta"])).toEqual([]);
+    expect(leaked(metaEntry, ["PENDING_ANNOTATION_STATUSES", "readMeta"])).toEqual([]);
   });
 });

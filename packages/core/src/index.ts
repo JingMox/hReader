@@ -124,3 +124,16 @@ export { revertLast } from "./ops/revertOp";
 export type { RevertResult } from "./ops/revertOp";
 export { normalizeFile } from "./ops/normalizeFile";
 export type { NormalizeInput, NormalizeResult } from "./ops/normalizeFile";
+
+// ---- 排版约束：组件规约、写入时检查、文档形态骨架 ----
+export {
+  checkLayout,
+  COMPONENT_RULES,
+  DEFAULT_DOC_KIND,
+  DOC_KINDS,
+  isDocKind,
+  KIND_ATTRIBUTE,
+  LAYOUT_ISSUE_LIMIT,
+  newDocumentHtml,
+} from "./layout";
+export type { ComponentRule, DocKind, NewDocumentInput } from "./layout";

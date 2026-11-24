@@ -3,7 +3,8 @@
 
 /**
  * `docs/02-architecture-and-roadmap.md` 的 6 大组件列举出 7 个 `data-hr-component` 取值
- * （第 2 条 `callout-insight / warning` 是两个值）。白名单按取值计 7 个，冲突见 impl-M1.1.md。
+ * （第 2 条 `callout-insight / warning` 是两个值）；`media-card` 是后加的第 8 个（音视频统一外壳）。
+ * 每个取值的结构规约在 `layout/components.ts`，两边必须一一对应。
  */
 export const COMPONENT_WHITELIST: readonly string[] = [
   "kpi-bento",
@@ -13,6 +14,7 @@ export const COMPONENT_WHITELIST: readonly string[] = [
   "deep-dive",
   "step-timeline",
   "diagram-stage",
+  "media-card",
 ];
 
 /** 文档容器标签：模型根、注入目标的锚点（M1.2 v2 起 `<article>` 自身也注入）。 */
@@ -222,7 +224,11 @@ export type DiagnosticCode =
   | "invalid_meta"
   | "ambiguous_selector"
   | "stripped_shell"
-  | "truncated_output";
+  | "truncated_output"
+  // 排版约束（`layout/check.ts`）：组件根标签不对 / 组件结构不全 / 内联 style
+  | "component_root"
+  | "component_shape"
+  | "inline_style";
 
 export type DiagnosticSeverity = "error" | "warning";
 
@@ -251,6 +257,9 @@ export const DIAGNOSTIC_SEVERITY: Readonly<Record<DiagnosticCode, DiagnosticSeve
   ambiguous_selector: "warning",
   stripped_shell: "warning",
   truncated_output: "warning",
+  component_root: "warning",
+  component_shape: "warning",
+  inline_style: "warning",
 };
 
 export interface Diagnostic {
