@@ -54,9 +54,6 @@
     }
   },
   "ignoreIssues": {
-    "packages/core/src/io/atomic.ts": ["exports"],
-    "packages/core/src/io/history.ts": ["exports"],
-    "packages/core/src/io/lock.ts": ["exports"],
     "packages/core/src/ops/patchNode/attrs.ts": ["exports"],
     "packages/app/src/boot.ts": ["exports"],
     "packages/app/src/main.ts": ["exports"]

@@ -98,7 +98,11 @@ describe("io 端口的失败翻译（走假 fs，不碰真盘）", () => {
     for (const dir of dirs) fake.state.dirs.add(dir);
     fake.fail("lstat", systemError("EPERM"), (path) => path === tmp);
 
-    await removeStaleTmp(depsOf(fake.port, fixedClock(NOW).clock, recordingSleep().sleep), "/ws");
+    await removeStaleTmp(
+      depsOf(fake.port, fixedClock(NOW).clock, recordingSleep().sleep),
+      "/ws",
+      "a.html",
+    );
 
     expect(fake.state.files.has(tmp)).toBe(true);
     expect(fake.state.files.has("/ws/a.html")).toBe(true);

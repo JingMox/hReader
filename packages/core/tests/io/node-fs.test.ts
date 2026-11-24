@@ -1,5 +1,6 @@
-// 这层管：node-fs 端口的真实行为（wx 独占、sync、关闭幂等）与默认 deps 的形状；不测业务编排。
+// 这层管：node-fs 端口的真实行为（wx 独占、sync、关闭幂等、writeFileAtomic 落盘）与默认 deps 的形状；不测业务编排。
 
+import { chmodSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -23,7 +24,6 @@ const fsApi = nodePatchDeps.fs;
 describe("nodePatchDeps · 默认依赖", () => {
   it("should expose the full port and a real clock and sleep", async () => {
     expect(Object.keys(fsApi).sort()).toEqual([
-      "chmod",
       "close",
       "lstat",
       "mkdir",
@@ -34,6 +34,7 @@ describe("nodePatchDeps · 默认依赖", () => {
       "rename",
       "unlink",
       "writeFile",
+      "writeFileAtomic",
     ]);
     const now = nodePatchDeps.clock.now();
     expect(now instanceof Date).toBe(true);
@@ -46,19 +47,19 @@ describe("node-fs · 独占打开", () => {
   it("should create, fsync and close a file exactly once", async () => {
     await withWorkspace(async (dir) => {
       const file = join(dir, "a.html");
-      const handle = await fsApi.open(file, "wx");
+      const handle = await fsApi.open(file);
       await handle.write(encodeUtf8("正文"));
       await handle.sync();
       await fsApi.close(handle);
 
       expect(await readTextAt(file)).toBe("正文");
-      expect(await codeOfAsync(() => fsApi.open(file, "wx"))).toBe("EEXIST");
+      expect(await codeOfAsync(() => fsApi.open(file))).toBe("EEXIST");
     });
   });
 
   it("should make close idempotent and ignore foreign handles", async () => {
     await withWorkspace(async (dir) => {
-      const handle = await fsApi.open(join(dir, "a.html"), "wx");
+      const handle = await fsApi.open(join(dir, "a.html"));
       const foreign: OpenFile = {
         write: () => Promise.resolve(),
         sync: () => Promise.resolve(),
@@ -66,6 +67,32 @@ describe("node-fs · 独占打开", () => {
       await fsApi.close(handle);
       await expect(fsApi.close(handle)).resolves.toBeUndefined();
       await expect(fsApi.close(foreign)).resolves.toBeUndefined();
+    });
+  });
+});
+
+describe("node-fs · writeFileAtomic", () => {
+  it("should write a new file and leave no tmp residue beside it", async () => {
+    await withWorkspace(async (dir) => {
+      const file = join(dir, "a.html");
+      await fsApi.writeFileAtomic(file, encodeUtf8("落盘"));
+
+      expect(await readTextAt(file)).toBe("落盘");
+      // write-file-atomic 的 tmp 是 `a.html.<数字>`：落盘成功后必须清干净。
+      expect(readdirSync(dir)).toEqual(["a.html"]);
+    });
+  });
+
+  it("should replace an existing file and keep its permission bits", async () => {
+    await withWorkspace(async (dir) => {
+      const file = join(dir, "a.html");
+      await writeTextAt(file, "old");
+      chmodSync(file, 0o640);
+      await fsApi.writeFileAtomic(file, encodeUtf8("new"));
+
+      expect(await readTextAt(file)).toBe("new");
+      expect(statSync(file).mode & 0o777).toBe(0o640);
+      expect(readdirSync(dir)).toEqual(["a.html"]);
     });
   });
 });

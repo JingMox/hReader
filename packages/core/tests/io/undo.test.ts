@@ -74,7 +74,7 @@ describe("undoPatch · 还原", () => {
 describe("undoPatch · 失败时原文件不动", () => {
   it("should keep the file when the restore write fails", async () => {
     const fake = fakeFs({ [DOC]: "now", [SNAPSHOT]: "orig" });
-    fake.fail("rename", systemError("EXDEV"));
+    fake.fail("writeFileAtomic", systemError("EXDEV"));
 
     expect(await codeOfAsync(() => undoAt(fake))).toBe("io_failure");
     expect(fake.textAt(DOC)).toBe("now");

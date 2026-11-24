@@ -70,7 +70,9 @@ export const lockPathAt = async (dir: string, relFile: string): Promise<string> 
 export const historyNamesOf = async (dir: string, relFile: string): Promise<string[]> =>
   namesInOrEmpty(await historyDirAt(dir, relFile));
 export const tmpLeftovers = async (dir: string): Promise<string[]> =>
-  (await namesInOrEmpty(dir)).filter((name) => name.startsWith(".hr-tmp."));
+  (await namesInOrEmpty(dir)).filter(
+    (name) => name.startsWith(".hr-tmp.") || /\.\d{6,}$/u.test(name),
+  );
 const codeOfError = (error: unknown): string => {
   if (typeof error !== "object" || error === null) return "non_object_error";
   const code: unknown = Reflect.get(error, "code");

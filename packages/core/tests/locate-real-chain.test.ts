@@ -146,6 +146,13 @@ describe("locateTarget · 两跳都失败时的码由目标形态定", () => {
     expect(error.code).toBe("node_not_found");
     expect(error.message).toContain('"hr-zz"');
   });
+
+  it("should report a valid selector with no match as node_not_found", () => {
+    const error = errorOf(() => locateTarget(PLAIN, "table"));
+
+    expect(error.code).toBe("node_not_found");
+    expect(error.message).toContain('"table"');
+  });
 });
 
 describe("patchTargetIdOf · patch 只接受一个 id（docs/05:99 AC9）", () => {

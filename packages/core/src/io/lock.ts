@@ -6,8 +6,7 @@ import { HrError } from "../hr-error";
 import { mkdirOrFail } from "./atomic";
 import { decodeUtf8, encodeUtf8 } from "./bytes";
 import { nonce as randomNonce } from "./digest";
-import { failureOf, ioFailure, isExists, isMissing } from "./errors";
-import { unlinkQuiet } from "./fs-ops";
+import { failureOf, ioFailure, isExists, isMissing, unlinkQuiet } from "./errors";
 import type { FileSystem, PatchDeps } from "./ports";
 import { isProcessAlive } from "./process";
 
@@ -83,7 +82,7 @@ const isStale = (payload: LockPayload | undefined, age: number): boolean => {
 /** 一次 `open(wx)` + 一次写入：文件出现时内容就是完整 JSON，没有"空锁体"窗口。 */
 const tryCreate = async (deps: PatchDeps, path: string, payload: Uint8Array): Promise<boolean> => {
   try {
-    const file = await deps.fs.open(path, "wx");
+    const file = await deps.fs.open(path);
     try {
       await file.write(payload);
       await file.sync();

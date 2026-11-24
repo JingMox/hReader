@@ -1,8 +1,7 @@
-// 这层管：端口的真实实现（本包唯一 import node:fs 的文件）；不含任何业务规则。
+// 这层管：端口的真实实现（本包唯一 import node:fs 与 write-file-atomic 的文件）；不含任何业务规则。
 
-import { constants, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import {
-  chmod,
   lstat,
   mkdir,
   open,
@@ -16,18 +15,14 @@ import {
 } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
-import type { Clock, FileSystem, OpenFile, OpenMode, PatchDeps } from "./ports";
+import writeFileAtomic from "write-file-atomic";
+
+import type { Clock, FileSystem, OpenFile, PatchDeps } from "./ports";
 
 const handles = new WeakMap<OpenFile, FileHandle>();
 
-/** `wx-nofollow` = `O_CREAT|O_EXCL|O_NOFOLLOW`：tmp 名被预先放成符号链接时直接失败（P0-1）。 */
-const flagsOf = (mode: OpenMode): string | number =>
-  mode === "wx"
-    ? "wx"
-    : constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
-
-const openExclusive = async (path: string, mode: OpenMode): Promise<OpenFile> => {
-  const handle = await open(path, flagsOf(mode));
+const openExclusive = async (path: string): Promise<OpenFile> => {
+  const handle = await open(path, "wx");
   const file: OpenFile = {
     write: async (data) => {
       await handle.write(data);
@@ -62,13 +57,13 @@ const nodeFileSystem: FileSystem = {
     await mkdir(path, { recursive: true });
   },
   lstat: async (path) => lstat(path),
-  chmod: async (path, mode) => {
-    await chmod(path, mode);
-  },
   readdir: async (path) => readdir(path),
   realpath: async (path) => realpath(path),
   open: openExclusive,
   close: closeExclusive,
+  writeFileAtomic: async (path, data) => {
+    await writeFileAtomic(path, Buffer.from(data));
+  },
 };
 
 const systemClock: Clock = { now: () => new Date() };

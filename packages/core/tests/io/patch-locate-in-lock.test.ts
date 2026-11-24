@@ -47,12 +47,12 @@ const swappingDeps = (staging: string, file: string, swapped: () => void): Patch
   const base = nodePatchDeps;
   return depsWith({
     ...base.fs,
-    open: (path, mode) => {
+    open: (path) => {
       if (path.endsWith(".lock")) {
         swapped();
         renameSync(staging, file);
       }
-      return base.fs.open(path, mode);
+      return base.fs.open(path);
     },
   });
 };
