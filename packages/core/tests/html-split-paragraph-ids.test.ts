@@ -1,6 +1,6 @@
 // R2-06a（docs/05:60 末句）：`<p>甲<table>…</table>乙</p>` 拆成两段时，**"原来那个元素"是首段**——
 // 首段留原 `data-hr-id`，后续段不带 id、由注入阶段分配。这层管 `parseHtml` 的产树结果；
-// 落盘之后"删首段只删首段"还在 `packages/cli/tests/r2-split-paragraph-id.test.ts` 里钉一遍。
+// 落盘之后"删首段只删首段"还在 `packages/cli/tests/implicit-end-tags.test.ts` 里钉一遍。
 //
 // 为什么要单独钉 `data-hr-id` 的归属：注入阶段会把重复 id 改名，所以"照抄原 id"在**最终字节**上
 // 可能看不出差别（第二个分段照样拿到一个合法新 id）——只有直接看解析产树才能证明第二个分段

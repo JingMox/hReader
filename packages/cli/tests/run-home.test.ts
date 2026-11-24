@@ -1,5 +1,5 @@
 // 这层管：`run(["serve", …])` 不带 `--home` 时的落点。
-// 为什么单独成文件：这条用例要真起一次服务，和 `units-run` 的假 io 用例不同源（同 `units-run-paths` 的分法）。
+// 为什么单独成文件：这条用例要真起一次服务，和 `run.test.ts` 的假 io 用例不同源（同 `run-paths.test.ts` 的分法）。
 
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";

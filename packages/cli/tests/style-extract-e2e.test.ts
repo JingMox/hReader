@@ -146,7 +146,7 @@ const firstSentenceOf = (persona: string): string => {
   return (first ?? persona).trim();
 };
 
-describe("style extract · AC-5 端到端（LLM 版）", () => {
+describe("style extract · 端到端（LLM 版）", () => {
   it("should write a yaml that carries every merged field and can be consumed", async () => {
     const sent = sentOf();
     const result = await extractOf("e2e-llm", [], { key: CANARY, fetch: replayOf(sent) });
@@ -175,7 +175,7 @@ describe("style extract · AC-5 端到端（LLM 版）", () => {
   });
 });
 
-describe("style extract · AC-5 端到端（请求体）", () => {
+describe("style extract · 端到端（请求体）", () => {
   it("should send all three corpora in argv order", async () => {
     const sent = sentOf();
     await extractOf("e2e-order", [], { key: CANARY, fetch: replayOf(sent) });
@@ -208,7 +208,7 @@ describe("style extract · AC-5 端到端（请求体）", () => {
   });
 });
 
-describe("style extract · AC-5 端到端（纯统计版）", () => {
+describe("style extract · 端到端（纯统计版）", () => {
   it("should produce an equally consumable yaml with --no-llm and never touch the network", async () => {
     const sent = sentOf();
     const result = await extractOf("e2e-stat", ["--no-llm"], {
@@ -237,7 +237,7 @@ describe("style extract · AC-5 端到端（纯统计版）", () => {
   });
 });
 
-describe("style extract · AC-5 反向", () => {
+describe("style extract · 端到端反向", () => {
   it("should reject a yaml whose persona line was deleted", async () => {
     const source = await extractOf("e2e-broken", ["--no-llm"]);
     const text = readFileSync(source.path, "utf8");

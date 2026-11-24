@@ -19,7 +19,7 @@ const MUTANTS = [
     file: "packages/cli/src/output.ts",
     find: 'export const jsonOk = (data: string): string => `{"ok":true,"data":${data}}\\n`;',
     replace: 'export const jsonOk = (data: string): string => `{"ok":true,"data":${data}}`;',
-    tests: ["packages/cli/tests/units-output.test.ts", "packages/cli/tests/cli-exit-codes.test.ts"],
+    tests: ["packages/cli/tests/output.test.ts", "packages/cli/tests/cli-exit-codes.test.ts"],
   },
   {
     id: "C2",
@@ -43,7 +43,7 @@ const MUTANTS = [
     file: "packages/cli/src/input.ts",
     find: 'const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });',
     replace: 'const decoder = new TextDecoder("utf-8", { fatal: false, ignoreBOM: true });',
-    tests: ["packages/cli/tests/cli-exit-codes.test.ts", "packages/cli/tests/units-input.test.ts"],
+    tests: ["packages/cli/tests/cli-exit-codes.test.ts", "packages/cli/tests/input.test.ts"],
   },
   {
     id: "C5",
@@ -51,7 +51,7 @@ const MUTANTS = [
     file: "packages/cli/src/run.ts",
     find: "  return exitCodeOf(error.code);",
     replace: "  return EXIT_INTERNAL;",
-    tests: ["packages/cli/tests/cli-exit-codes.test.ts", "packages/cli/tests/units-input.test.ts"],
+    tests: ["packages/cli/tests/cli-exit-codes.test.ts", "packages/cli/tests/input.test.ts"],
   },
   {
     id: "C6",

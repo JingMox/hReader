@@ -76,7 +76,7 @@ const expectConflictKeepingBytes = async (
   return result;
 };
 
-describe("F6 · 往 <p> 里 append 块级片段", () => {
+describe("往 <p> 里 append 块级片段", () => {
   it("should leave the file byte-identical, not just throw", async () => {
     await withTempDir(async (dir) => {
       const file = seedIn(dir, join("sub", "b.html"), SUB_DOC);
@@ -97,7 +97,7 @@ describe("F6 · 往 <p> 里 append 块级片段", () => {
   });
 });
 
-describe("F6 · 各容器拒块级 / 收行内", () => {
+describe("各容器拒块级 / 收行内", () => {
   it.each(CONTAINERS)("should reject a block child inside $tag", async ({ tag, id }) => {
     await withTempDir(async (dir) => {
       const file = seedIn(dir, "doc.html", DOC);
@@ -136,7 +136,7 @@ describe("F6 · 各容器拒块级 / 收行内", () => {
   });
 });
 
-describe("F6 · replace 只看直接父容器", () => {
+describe("replace 只看直接父容器", () => {
   it("should allow a div where the paragraph was, because the article holds it", async () => {
     await withTempDir(async (dir) => {
       const file = seedIn(dir, "doc.html", SUB_DOC);
@@ -158,7 +158,7 @@ describe("F6 · replace 只看直接父容器", () => {
   });
 });
 
-describe("F6 · 回执里的路径", () => {
+describe("回执里的路径", () => {
   it("should echo the typed path and never an absolute one", async () => {
     await withTempDir(async (dir) => {
       seedIn(dir, join("sub", "b.html"), SUB_DOC);
@@ -178,7 +178,7 @@ describe("F6 · 回执里的路径", () => {
   });
 });
 
-describe("F6 · 目标容器装不下自己的同名子节点", () => {
+describe("目标容器装不下自己的同名子节点", () => {
   // 目标标签是块级、但解析器会把子节点拆成兄弟的那一种。`table` 的同类子标签（`tr`/`td`/`caption`/…）
   // 在片段校验层就先被拒（见下一条）；其余同类容器（`a`/`button`/`form`/`option`/`dd`/`dt`）
   // 选不成 patch 目标——它们由纯层测试守着。
@@ -200,7 +200,7 @@ describe("F6 · 目标容器装不下自己的同名子节点", () => {
   });
 });
 
-describe("F6 · 表格结构片段写错位置", () => {
+describe("表格结构片段写错位置", () => {
   it("should refuse a bare table-row fragment and keep the bytes", async () => {
     await withTempDir(async (dir) => {
       const file = seedIn(dir, "doc.html", NESTED_DOC);

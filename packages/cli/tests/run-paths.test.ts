@@ -63,7 +63,7 @@ describe("run · 缺失目标/缺失 workspace 的路径换算", () => {
   });
 });
 
-describe("run · 大纲旗标（AC-3：exit 1 且不落盘）", () => {
+describe("run · 大纲旗标（exit 1 且不落盘）", () => {
   it("should reject --outline with --no-outline as invalid_input without writing", async () => {
     writeFileSync(join(dir, "conflict.html"), DOC);
     const { io, err } = ioAt();

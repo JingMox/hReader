@@ -23,7 +23,7 @@ const bigDoc = (): string => {
   ].join("\n");
 };
 
-describe("hr export · 4 MiB 上限（F16-5）", () => {
+describe("hr export · 4 MiB 上限", () => {
   it("should state the 4 MiB limit in `hr export --help`", async () => {
     const help = checked(await runCli(["export", "--help"]));
 

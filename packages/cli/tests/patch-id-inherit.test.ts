@@ -41,7 +41,7 @@ const readTextOf = async (dir: string, id: string): Promise<string> => {
   return read.stdout;
 };
 
-describe("patch replace · id 继承（R2-04）", () => {
+describe("patch replace · id 继承", () => {
   it("should keep the target's id so `read <old id>` still hits the new content", async () => {
     await withTempDir(async (dir) => {
       const id = await normalizedPhrasedId(dir);
@@ -79,7 +79,7 @@ describe("patch replace · id 继承（R2-04）", () => {
   });
 });
 
-describe("patch replace · 片段自带的 id 不采用（R2-04 / docs/05:56）", () => {
+describe("patch replace · 片段自带的 id 不采用", () => {
   it("should ignore the fragment's own data-hr-id and warn about it", async () => {
     await withTempDir(async (dir) => {
       const id = await normalizedPhrasedId(dir);

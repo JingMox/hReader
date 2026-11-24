@@ -1,15 +1,20 @@
-// 这层管：四个 command 的编排（文件 → core → 文本/JSON）；真 fs + 真 core，不跑子进程。
+// 这层管：command 层的编排与兜底分支（文件 → core → 文本/JSON）；真 fs + 真 core，不跑子进程。
 //
 // 坑：workspace 与 cwd 在 core 里是 realpath 的，而 `--workspace` 是用户原文；
-// macOS 的 /tmp → /private/tmp 会让两者不一致（见报告的"真实发现"），所以这里一律用 realpath。
+// 不把 cwd 也 realpath 会拿到两个不同的串去比同一个目录。
 
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+  readdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-
 import { DEFAULT_STYLE_ID } from "@hreader/core";
-
 import { outlineCommand } from "../src/commands/outline";
 import { patchCommand } from "../src/commands/patch";
 import { readCommand } from "../src/commands/read";
@@ -248,7 +253,7 @@ describe("styleCommand · visual", () => {
 });
 
 describe("styleCommand · visual 的 id 校验", () => {
-  it("should refuse a tone id on --visual (B-16：两套 id 空间)", async () => {
+  it("should refuse a tone id on --visual （两套 id 空间）", async () => {
     fileOf("s4.html", DOC);
 
     // 把语言基调 id 交给 `--visual` 会静默换错主题，所以要在应用前就拦住并指着剩下的那条路。
@@ -290,5 +295,118 @@ describe("styleCommand · visual 的未知 id", () => {
         json: false,
       }),
     ).rejects.toMatchObject({ code: "unknown_style" });
+  });
+});
+const edgeDir = realpathSync(mkdtempSync(join(tmpdir(), "hr-edge-")));
+afterAll(() => {
+  rmSync(edgeDir, { recursive: true, force: true });
+});
+
+const EDGE_DOC = [
+  "<!doctype html><html><body>",
+  '<article data-hr-id="hr-a"><h2 data-hr-id="hr-b">标题</h2>',
+  '<style>p{color:red}</style><p data-hr-id="hr-c">正文</p></article>',
+  "</body></html>",
+].join("\n");
+
+const edgeFileOf = (name: string, html: string): string => {
+  const path = join(edgeDir, name);
+  writeFileSync(path, html);
+  return path;
+};
+
+/** 把拒绝结果收敛成“码 + 消息 + data.reason”，避免每处都写 `await expect(...).rejects`。 */
+const rejectionOf = async (
+  promise: Promise<string>,
+): Promise<{ code: string; message: string; reason: string }> => {
+  try {
+    await promise;
+  } catch (error: unknown) {
+    const code: unknown = Reflect.get(Object(error), "code");
+    const message: unknown = Reflect.get(Object(error), "message");
+    const data: unknown = Reflect.get(Object(error), "data");
+    const reason: unknown = Reflect.get(Object(data), "reason");
+    return { code: String(code), message: String(message), reason: String(reason) };
+  }
+  throw new Error("期望被拒绝，但命令成功了");
+};
+
+describe("readCommand · 选择器失败后按 node id 重试", () => {
+  it("should retry a plain node id as [data-hr-id] and succeed", async () => {
+    const path = edgeFileOf("e1.html", EDGE_DOC);
+    const text = await readCommand({ path, target: "hr-b", maxBytes: undefined, json: true });
+
+    expect(JSON.parse(text.trim())).toMatchObject({
+      ok: true,
+      data: { ids: ["hr-b"] },
+    });
+  });
+
+  it("should report invalid_selector when the target is not a legal selector", async () => {
+    const path = edgeFileOf("e2.html", EDGE_DOC);
+    const failed = await rejectionOf(
+      readCommand({ path, target: '">', maxBytes: undefined, json: false }),
+    );
+
+    // F19 D1：两跳都会失败时，码与报文都由目标形态定——`">` 不是合规 id，所以是 syntax 那一句。
+    expect(failed.code).toBe("invalid_selector");
+    expect(failed.reason).toBe("syntax");
+    expect(failed.message).toContain('选择器 "\\">" 无法解析：');
+  });
+
+  it("should prefer node_not_found when only the id lookup is well-formed", async () => {
+    const path = edgeFileOf("e3.html", EDGE_DOC);
+    // `hr-NOPE` 是合规 id 形态（`HR_ID_PATTERN` 允许大写）且文档里没有：只走 id 那一跳的失败，
+    // 用来证明“两跳只有 id 那跳成立时给 node_not_found”这条原始意图没有随 `p[` 改判 syntax 丢掉。
+    const failed = await rejectionOf(
+      readCommand({ path, target: "hr-NOPE", maxBytes: undefined, json: false }),
+    );
+
+    expect(failed.code).toBe("node_not_found");
+    expect(failed.message).toContain('文档里没有 id 为 "hr-NOPE" 的节点。');
+  });
+});
+
+describe("patchCommand · 目标尚不存在", () => {
+  it("should resolve the deepest existing ancestor and fail node_not_found without creating it", async () => {
+    const failed = await rejectionOf(
+      patchCommand({
+        path: "missing/deep.html",
+        nodeId: "hr-a",
+        action: "append",
+        html: "<p>x</p>",
+        workspace: edgeDir,
+        json: false,
+      }),
+    );
+
+    expect(failed.code).toBe("not_a_file");
+    expect(readdirSync(edgeDir).includes("missing")).toBe(false);
+  });
+});
+
+describe("styleCommand · lint 模式", () => {
+  it("should print the human lint summary", async () => {
+    edgeFileOf("e4.html", EDGE_DOC);
+    const text = await styleCommand({
+      path: "e4.html",
+      mode: { kind: "lint" },
+      workspace: edgeDir,
+      json: false,
+    });
+
+    expect(text).toBe("");
+  });
+
+  it("should return the hits array in JSON mode", async () => {
+    edgeFileOf("e5.html", EDGE_DOC);
+    const text = await styleCommand({
+      path: "e5.html",
+      mode: { kind: "lint" },
+      workspace: edgeDir,
+      json: true,
+    });
+
+    expect(JSON.parse(text.trim())).toMatchObject({ ok: true, data: { hits: [] } });
   });
 });

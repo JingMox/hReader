@@ -14,7 +14,7 @@ export const parse = (argv: readonly string[], cwd: string = CWD) => parseArgs(a
 
 /**
  * 失败信封**恒定**是 `{ ok:false, message, topic }`：`parseArgs` 的类型里没有 json，
- * "错误也要带 --json"由 `run.ts` 依据 argv 自己决定（见 units-run 的用例）。
+ * "错误也要带 --json"由 `run.ts` 依据 argv 自己决定（见 `run.test.ts` 的用例）。
  * 所以这里只断"信封里恰好是这三个字段"。
  */
 export const expectFailure = (

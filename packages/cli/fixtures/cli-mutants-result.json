@@ -7,10 +7,7 @@
       "file": "packages/cli/src/output.ts",
       "find": "export const jsonOk = (data: string): string => `{\"ok\":true,\"data\":${data}}\\n`;",
       "replace": "export const jsonOk = (data: string): string => `{\"ok\":true,\"data\":${data}}`;",
-      "tests": [
-        "packages/cli/tests/units-output.test.ts",
-        "packages/cli/tests/cli-exit-codes.test.ts"
-      ],
+      "tests": ["packages/cli/tests/output.test.ts", "packages/cli/tests/cli-exit-codes.test.ts"],
       "status": "KILLED（1 例）",
       "killers": [
         "output · JSON 信封 should wrap data with a fixed ok-first envelope and a single newline"
@@ -44,10 +41,7 @@
       "file": "packages/cli/src/input.ts",
       "find": "const decoder = new TextDecoder(\"utf-8\", { fatal: true, ignoreBOM: true });",
       "replace": "const decoder = new TextDecoder(\"utf-8\", { fatal: false, ignoreBOM: true });",
-      "tests": [
-        "packages/cli/tests/cli-exit-codes.test.ts",
-        "packages/cli/tests/units-input.test.ts"
-      ],
+      "tests": ["packages/cli/tests/cli-exit-codes.test.ts", "packages/cli/tests/input.test.ts"],
       "status": "KILLED（3 例）",
       "killers": [
         "decodeStrict should reject invalid byte sequences with invalid_utf8",
@@ -61,10 +55,7 @@
       "file": "packages/cli/src/run.ts",
       "find": "  return exitCodeOf(error.code);",
       "replace": "  return EXIT_INTERNAL;",
-      "tests": [
-        "packages/cli/tests/cli-exit-codes.test.ts",
-        "packages/cli/tests/units-input.test.ts"
-      ],
+      "tests": ["packages/cli/tests/cli-exit-codes.test.ts", "packages/cli/tests/input.test.ts"],
       "status": "KILLED（7 例）",
       "killers": [
         "退出码 1 · 业务失败 should fail node_not_found without touching the file",

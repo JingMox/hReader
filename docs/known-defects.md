@@ -26,8 +26,8 @@
 | KD-05 | 截断切坏孤悬组合符 / ZWJ 家族 | `packages/core/tests/read-node-truncate.test.ts:131`、`:168` | M2.4 | 待修 |
 | KD-06 | `\0` 在路径里应 400 而非 404 | `packages/core/tests/server/paths.test.ts:78` | M2.4 | 待修 |
 | KD-08 | 鉴权边界（见测试注释） | `packages/core/tests/server/auth.test.ts:68` | M2.4 | 待修 |
-| KD-09 | `--json` 下 usage 信封形状不一致 | `packages/cli/tests/units-run.test.ts:103` | M2.4 | 待修 |
-| KD-10 | 空 `--html-stdin` 未报错 | `packages/cli/tests/units-run.test.ts:114` | M2.4 | 待修 |
+| KD-09 | `--json` 下 usage 信封形状不一致 | `packages/cli/tests/run.test.ts:142` | M2.4 | 待修 |
+| KD-10 | 空 `--html-stdin` 未报错 | `packages/cli/tests/run.test.ts:163` | M2.4 | 待修 |
 
 > KD-07（EOF 截断挂住）已于 M4.7 R3 退表：缺陷不再成立——半截请求 3ms 内回 `HTTP/1.1 400`（Node 内置 `clientError` 的 Parse Error 抢先，`chunksOf` 的 408 分支线上不可达），用例已由 `it.fails` 转成 `wire-http.test.ts` 的正向 `it`（断言 400 + 耗时 < 1000ms）。
 >

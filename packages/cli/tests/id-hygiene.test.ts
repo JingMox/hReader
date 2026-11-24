@@ -23,7 +23,7 @@ const docOf = (body: string): string =>
 const idAttributesIn = (html: string): readonly string[] =>
   [...html.matchAll(/data-hr-id="([^"]*)"/gu)].map((match) => String(match[1]));
 
-describe("normalize · id 卫生（R2-11）", () => {
+describe("normalize · id 卫生", () => {
   it("should reassign every id outside the pattern and leave valid ones alone", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, docOf(`<article>${REASSIGNED}</article>`));
@@ -82,7 +82,7 @@ const expectDuplicateRefusalOf = async (dir: string, args: readonly string[]): P
   expect(String(fieldOf(envelope, "message"))).toContain(NEED_NORMALIZE_HINT);
 };
 
-describe("read/outline/patch · 重复 id 的加载侧（R2-11）", () => {
+describe("read/outline/patch · 重复 id 的加载侧", () => {
   it("should refuse `read` on both human and --json channels", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, DUPLICATED);

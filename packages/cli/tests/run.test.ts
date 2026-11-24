@@ -135,7 +135,7 @@ describe("run · 用法错误（exit 2）", () => {
   });
 });
 
-describe("run · 用法错误在 --json 下的信封（F1 缺口）", () => {
+describe("run · 用法错误在 --json 下的信封", () => {
   // 待裁定 F1：卡片 §3 要求"错误也遵守 --json"，但 args 失败信封里没有 json 字段，
   // usageFailure 拿不到 --json，于是 usage 错误在 --json 下只写 stderr。断言保留，用 it.fails 固定缺口。
   // KD-09

@@ -26,7 +26,7 @@ const pidAliveOf = (pid: number): boolean => {
   }
 };
 
-describe("hr pdf · chrome 缺失 (AC-5)", () => {
+describe("hr pdf · chrome 缺失", () => {
   it("--json 时 stdout 给 chrome_missing 包络、exit 3", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -99,7 +99,7 @@ const runHygieneOf = (
     env: { HREADER_CHROME: FAKE_CHROME, TMPDIR: setup.tmpRoot, ...extraEnv },
   });
 
-describe("hr pdf · 进程卫生 (AC-9)", () => {
+describe("hr pdf · 进程卫生", () => {
   it("超时路径：exit 3、进程组无存活、TMPDIR 无 hr-chrome-*", async () => {
     await docDirOf(async (dir) => {
       const setup = hygieneOf(dir);

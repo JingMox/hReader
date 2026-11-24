@@ -55,7 +55,7 @@ describe("hr png · 取值越界 (exit 1)", () => {
   });
 });
 
-describe("hr png · chrome 缺失 (AC-5)", () => {
+describe("hr png · chrome 缺失", () => {
   it("--json 时 stdout 给 chrome_missing 包络、exit 3、零残留", async () => {
     await docDirOf(async (dir) => {
       const result = await runCli(["png", "a.html", "--out", "a.png", "--json"], {
@@ -120,7 +120,7 @@ describe("hr png · 显式 max-height 面积预检", () => {
   }, 20_000);
 });
 
-describe("hr png · 进程卫生 (AC-9)", () => {
+describe("hr png · 进程卫生", () => {
   it("超时路径：exit 3、进程组无存活、TMPDIR 无残留、盘上零残留", async () => {
     await withHygieneOf(async (setup) => {
       const result = await runHygieneOf(

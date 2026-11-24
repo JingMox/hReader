@@ -3,7 +3,7 @@
 // 落在 `newIds` 里。两件事同时发生，人读回执就必须把两段提示都印出来——
 // 只印 "id 变更" 会让用户不知道文档里凭空多了两个 id，只印 "+N ids" 又看不出锚点被换了。
 //
-// 这层管 CLI 落盘 + 人读输出；`replacedIds` 的语义本身在 `r2-patch-id-inherit.test.ts`。
+// 这层管 CLI 落盘 + 人读输出；`replacedIds` 的语义本身在 `patch-id-inherit.test.ts`。
 
 import { readFileSync } from "node:fs";
 

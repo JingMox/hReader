@@ -101,7 +101,7 @@ const initialDoc = (): string =>
     "</article></body></html>",
   ].join("\n");
 
-describe("AC5a · 断链即红", () => {
+describe("端到端 · 断链即红", () => {
   it("should run the whole chain on one real document", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);

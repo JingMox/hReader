@@ -86,7 +86,7 @@ describe("llm/client · 请求形状", () => {
   });
 });
 
-describe("llm/client · AC-4 失败面", () => {
+describe("llm/client · 失败面", () => {
   it("should fail with llm_failure on a 500", async () => {
     const error = await failureOf(responseOf('{"error":"boom"}', 500));
 

@@ -39,7 +39,7 @@ const DUP = [
   "</article></body></html>",
 ].join("\n");
 
-describe("AC-4 · 过期文案零命中", () => {
+describe("过期文案零命中", () => {
   it.each(SCOPES)("should not keep the obsolete wording under %s", (scope) => {
     const offenders = filesUnder(join(ROOT, scope)).filter((path) =>
       readFileSync(path, "utf8").includes(OBSOLETE),
@@ -49,7 +49,7 @@ describe("AC-4 · 过期文案零命中", () => {
   });
 });
 
-describe("AC-4 · duplicate_id 报文给出可执行的那一步", () => {
+describe("duplicate_id 报文给出可执行的那一步", () => {
   it("should tell the user to run `hr normalize <file> --write` (read)", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, DUP);

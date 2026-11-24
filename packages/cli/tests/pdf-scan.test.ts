@@ -146,7 +146,7 @@ describe("pdfScanOf · 文本串与目的地解码", () => {
 });
 
 describe("pdfScanOf · 页序只认 /Kids 顺序", () => {
-  it("四层页树：递归摊平，中间 `/Pages` 不进页序（MV-11：只摊一层 / 中间节点追加末尾）", () => {
+  it("四层页树：递归摊平，中间 `/Pages` 不进页序（只摊一层、中间节点追加到页序末尾都是错的）", () => {
     const scan = pdfScanOf(bytesOf(CHAIN_PAGES));
     expect(scan.pages).toEqual([4, 5]);
     expect(scan.pages).not.toContain(3);

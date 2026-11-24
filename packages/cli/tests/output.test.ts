@@ -1,15 +1,6 @@
 // 这层管：`output.ts` / `usage.ts` / `exit-codes.ts` 的纯函数与冻结表；不跑子进程。
 
 import { describe, expect, it } from "vitest";
-
-import type {
-  ApplyStyleResult,
-  LintReport,
-  Outline,
-  PatchResult,
-  ReadNodeResult,
-} from "@hreader/core";
-
 import { EXIT_FAILURE, EXIT_IO, EXIT_OK, EXIT_USAGE, exitCodeOf } from "../src/exit-codes";
 import {
   dataLint,
@@ -29,7 +20,14 @@ import {
 } from "../src/output";
 import { COMMAND_NAMES, isCommandName, usageText } from "../src/usage";
 import type { CommandName } from "../src/usage";
-import { atOf, fieldOf, keysOf } from "./harness";
+import { atOf, fieldOf, keysOf, listOf, parseJsonLine } from "./harness";
+import type {
+  ApplyStyleResult,
+  LintReport,
+  Outline,
+  PatchResult,
+  ReadNodeResult,
+} from "@hreader/core";
 
 const OUTLINE: Outline = {
   nodes: [
@@ -91,7 +89,7 @@ describe("output · JSON 信封", () => {
     );
   });
 
-  it("should keep the §3 key order for every data payload", () => {
+  it("should keep the frozen key order for every data payload", () => {
     expect(keysOf(JSON.parse(dataPatch(PATCHED)))).toEqual([
       "path",
       "bytes",
@@ -252,7 +250,7 @@ describe("usage · 字面量清单", () => {
   });
 });
 
-describe("exit-codes · AC2 冻结表", () => {
+describe("exit-codes · 冻结表", () => {
   it("should expose the five constants", () => {
     expect([EXIT_OK, EXIT_FAILURE, EXIT_USAGE, EXIT_IO]).toEqual([0, 1, 2, 3]);
   });
@@ -287,5 +285,88 @@ describe("exit-codes · AC2 冻结表", () => {
     ["render_empty", 3],
   ] as const)("should map %s to exit %d", (code, expected) => {
     expect(exitCodeOf(code)).toBe(expected);
+  });
+});
+describe("output · JSON 错误信封的 data 键", () => {
+  it("should emit data verbatim after message when the error carries machine-readable causes", () => {
+    expect(jsonError("invalid_selector", "无法解析：p[", { reason: "syntax" })).toBe(
+      '{"ok":false,"code":"invalid_selector","message":"无法解析：p[","data":{"reason":"syntax"}}\n',
+    );
+  });
+
+  it("should keep the data key out entirely when there is nothing machine-readable to say", () => {
+    // `node_not_found` 不带 `data`：多一个空对象会让调用方的 `data.reason` 分支走向"有成因"。
+    expect(jsonError("node_not_found", "没有这个节点")).toBe(
+      '{"ok":false,"code":"node_not_found","message":"没有这个节点"}\n',
+    );
+  });
+});
+/** 片段根 id 被忽略、落回目标 id，片段内部还带出两个新 id。 */
+const WITH_EXTRAS: PatchResult = {
+  path: "b.html",
+  bytes: 149,
+  newIds: ["p-1-2", "hr-x1", "hr-x2"],
+  replacedIds: [{ from: "hr-a392514c", to: "p-1-2" }],
+  changed: true,
+  historyPath: null,
+  undoable: false,
+};
+
+/** 同样是一次"片段 id 被忽略"，但片段里没有更深层的可寻址节点。 */
+const NO_EXTRAS: PatchResult = { ...WITH_EXTRAS, newIds: ["p-1-2"] };
+
+describe("output · replace 之后的人读回执（docs/05:57）", () => {
+  it("should print the mapping and then the extra ids the fragment brought along", () => {
+    expect(humanPatch(WITH_EXTRAS)).toBe(
+      "patched b.html (149 bytes, id 变更: hr-a392514c → p-1-2, +2 ids: hr-x1, hr-x2)\n",
+    );
+  });
+
+  it("should drop the extra-ids tail entirely when every new id is already mapped", () => {
+    expect(humanPatch(NO_EXTRAS)).toBe(
+      "patched b.html (149 bytes, id 变更: hr-a392514c → p-1-2)\n",
+    );
+  });
+});
+/** `dataPatch` 只给 payload，行尾的 `\n` 由 `runCli` 那份输出契约负责，这里补齐后复用同一套解析。 */
+const decode = (payload: string): unknown => parseJsonLine(`${payload}\n`);
+
+const WARNED: PatchResult = {
+  path: "a.html",
+  bytes: 42,
+  newIds: ["hr-9"],
+  replacedIds: [],
+  changed: true,
+  historyPath: ".hreader/history/a/2026.html",
+  undoable: true,
+  warnings: [
+    {
+      code: "duplicate_attribute",
+      severity: "warning",
+      message: "<p> 上重复的 title 已丢弃前一个",
+    },
+  ],
+};
+
+const CLEAN: PatchResult = { ...WARNED, warnings: [] };
+
+describe("dataPatch · warnings 键只在非空时出现", () => {
+  it("should append a warnings key and carry the diagnostic through", () => {
+    const parsed = decode(dataPatch(WARNED));
+
+    expect(keysOf(parsed)).toEqual([
+      "path",
+      "bytes",
+      "newIds",
+      "changed",
+      "historyPath",
+      "warnings",
+    ]);
+    expect(listOf(fieldOf(parsed, "warnings"))).toHaveLength(1);
+  });
+
+  it("should not print the key at all when the list is empty", () => {
+    expect(keysOf(decode(dataPatch(CLEAN)))).not.toContain("warnings");
+    expect(dataPatch(CLEAN)).not.toContain("warnings");
   });
 });

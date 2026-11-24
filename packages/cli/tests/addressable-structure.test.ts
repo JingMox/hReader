@@ -45,7 +45,7 @@ const readOf = async (dir: string, nodeId: string): Promise<CliResult> =>
 const htmlOf = (result: CliResult): string =>
   textOf(fieldOf(fieldOf(parseJsonLine(result.stdout), "data"), "html"));
 
-describe("F10 · div 可寻址、可作目标", () => {
+describe("div 可寻址、可作目标", () => {
   it("should give the div an id on normalize and accept it as a patch target", async () => {
     await withTempDir(async (dir) => {
       const file = await seedNormalized(dir, MIXED_DOC);
@@ -93,7 +93,7 @@ const appendRowIntoTbody = async (dir: string): Promise<void> => {
   expect(after).toMatch(/<td data-hr-id="hr-[0-9a-f]{8}">b<\/td>/u);
 };
 
-describe("F10 · 表格内部可寻址", () => {
+describe("表格内部可寻址", () => {
   it("should give tbody/tr/td ids and append a row into the tbody", async () => {
     await withTempDir(appendRowIntoTbody);
   });
@@ -141,7 +141,7 @@ const replaceTableWithTwoRows = async (dir: string): Promise<void> => {
   expect(after).toMatch(/<td data-hr-id="hr-[0-9a-f]{8}">b<\/td>/u);
 };
 
-describe("F10 · 整表 replace 保住老行 id", () => {
+describe("整表 replace 保住老行 id", () => {
   it("should keep the old tr and td ids while new rows get fresh ones", async () => {
     await withTempDir(replaceTableWithTwoRows);
   });
@@ -210,7 +210,7 @@ const appendDivIntoCell = async (dir: string): Promise<void> => {
   expect(readFileSync(file, "utf8")).toMatch(/<div data-hr-id="hr-[0-9a-f]{8}">块<\/div>/u);
 };
 
-describe("F10 · 内容模型报文指得出下一步", () => {
+describe("内容模型报文指得出下一步", () => {
   it("should tell the user a <p> is a paragraph and name a container that holds one", async () => {
     await withTempDir(appendParagraphIntoParagraph);
   });
@@ -224,7 +224,7 @@ describe("F10 · 内容模型报文指得出下一步", () => {
   });
 });
 
-describe("F10 · normalize 幂等", () => {
+describe("normalize 幂等", () => {
   it("should report unchanged on a document that already carries every id", async () => {
     await withTempDir(async (dir) => {
       const file = await seedNormalized(dir, TABLE_DOC);

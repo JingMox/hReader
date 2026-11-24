@@ -34,7 +34,7 @@ const SHORT: string = [
 
 const TRUNCATED_FLAG = "truncated";
 
-describe("AC-7 · read --json 的 data 四键恒定", () => {
+describe("read --json 的 data 四键恒定", () => {
   it("should always carry html/ids/truncated/diagnostics, with false/[] when nothing was cut", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, SHORT);
@@ -65,7 +65,7 @@ describe("AC-7 · read --json 的 data 四键恒定", () => {
   });
 });
 
-describe("AC-7 · 人读模式也要说截断", () => {
+describe("人读模式也要说截断", () => {
   it("should print a `（已截断：` line in human mode", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, LONG);

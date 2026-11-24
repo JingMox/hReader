@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 import { fieldOf, keysOf, parseJsonLine, runCli, withTempDir } from "./harness";
 import { checked, seed, sha } from "./cli-support";
 
-describe("--json 契约（AC3）", () => {
-  it("should keep the §3 key order for patch and expose historyPath", async () => {
+describe("--json 契约", () => {
+  it("should keep the frozen key order for patch and expose historyPath", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
       seed(dir);
