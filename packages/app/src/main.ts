@@ -11,8 +11,6 @@ import { textOfBlocks } from "./widgets/blocks-text.ts";
 import { createSse, type SseHandlers, type SourceLike } from "./sse.ts";
 import { measureSelection } from "./measure.ts";
 import { errorLogger } from "./log.ts";
-import { docIdOf } from "./doc-id.ts";
-export { docIdOf, type DocIdSource } from "./doc-id.ts";
 import { initialState } from "./state.ts";
 import { keySourceOf, type KeyboardLike } from "./wiring.ts";
 export {
@@ -29,7 +27,7 @@ import { createStyleSwitch } from "./style-switch.ts";
 declare const document: DocumentLike;
 declare const window: {
   readonly location: { readonly href: string };
-  /** 划词（AC5.1）：只读 `anchorNode/anchorOffset/focusNode/focusOffset` 四项。 */
+  /** 划词：只读 `anchorNode/anchorOffset/focusNode/focusOffset` 四项。 */
   readonly getSelection?: () => {
     readonly anchorNode: {
       readonly parentElement: { readonly closest: BlockElementLike["closest"] } | null;
@@ -39,7 +37,7 @@ declare const window: {
       readonly parentElement?: { readonly closest: BlockElementLike["closest"] } | null;
     } | null;
     readonly focusOffset: number;
-    /** 有 Range 就用它量块内字符偏移（裁定 #11）；没有则退回 anchor/focus 偏移。 */
+    /** 有 Range 就用它量块内字符偏移；没有则退回 anchor/focus 偏移。 */
     readonly rangeCount?: number;
     readonly getRangeAt?: (index: number) => {
       readonly startContainer: unknown;
@@ -226,7 +224,7 @@ export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
       io,
       fetchAnnotations: async () =>
         await io.json(`/api/doc/${encoded}/annotations`, isAnnotationList),
-      // 裁定 #8：diff 由服务端算（复用 core 的 `diffText`），浏览器只渲染 chunk。
+      // diff 由服务端算（复用 core 的 `diffText`），浏览器只渲染 chunk。
       fetchDiff: async (annotationId: string) =>
         await io.json(
           `/api/doc/${encoded}/notes/${encodeURIComponent(annotationId)}/diff`,
@@ -237,7 +235,7 @@ export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
   });
 };
 
-/** 顶层兜底（裁定 #13）：任何失败都在中栏写一条可读文案，不白屏（`@internal` 便于单测）。 */
+/** 顶层兜底：任何失败都在中栏写一条可读文案，不白屏（`@internal` 便于单测）。 */
 export const reportFailure = (host: Host, error: unknown): void => {
   const message = error instanceof Error ? error.message : String(error);
   host.text("#hr-doc", `打开失败：${message}`);
@@ -245,6 +243,18 @@ export const reportFailure = (host: Host, error: unknown): void => {
 
 /** 缺省的可视面：真 `document`。测试注入假 host 时完全不读全局。 */
 const defaultHost = (): Host => createDomHost(document);
+
+export interface DocIdSource {
+  readonly attr: string | null;
+  readonly href: string;
+}
+
+/** 从页面注入点取 docId：`data-doc-id` 优先，其次 `?doc=`。 */
+export const docIdOf = (source: DocIdSource): string => {
+  if (source.attr !== null && source.attr !== "") return source.attr;
+  const fromUrl = new URL(source.href).searchParams.get("doc");
+  return fromUrl ?? "";
+};
 
 export const main = async (options: MainOptions = {}): Promise<void> => {
   const host = options.host ?? defaultHost();
@@ -264,12 +274,12 @@ export const main = async (options: MainOptions = {}): Promise<void> => {
     io.text(`/s/${encoded}`),
   ]);
   const booted = bootWith({ docId, themes, documentHtml: html, io, host });
-  // 划词 → 选区描述（AC5.1）：字符偏移用 Range 量（裁定 #11），跨块用"最近块祖先"判定。
+  // 划词 → 选区描述：字符偏移用 Range 量，跨块用"最近块祖先"判定。
   window.addEventListener("mouseup", () => {
     const raw = rawSelectionOf(window.getSelection?.() ?? null, measureSelection());
     if (raw !== undefined) booted.selection?.(raw);
   });
-  // 真页面卸载时拆掉监听与连接（`main.ts` 的 destroy 因此可达，P0-4）。
+  // 真页面卸载时拆掉监听与连接（`main.ts` 的 destroy 因此可达）。
   window.addEventListener("pagehide", () => {
     booted.destroy();
   });
