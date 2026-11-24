@@ -209,8 +209,8 @@ describe("serveCommand · --app-dir 的两条分支", () => {
     try {
       const { code, err } = await runServeWith(dir, join(dir.workspace, "no-such-app"));
 
-      // 规格（impl R2 §R2.1）声称 exit 2；实际 `invalid_input` 映射到 EXIT_FAILURE（1），
-      // 只有 `daemon_already_running` 是 2。差异已写进报告「待裁定 #3」，断言按实现钉住当前行为。
+      // 文档规格声称 exit 2；实际 `invalid_input` 映射到 EXIT_FAILURE（1），
+      // 只有 `daemon_already_running` 是 2。断言按实现钉住当前行为。
       expect(code).toBe(EXIT_FAILURE);
       expect(err).toContain("--app-dir 目录不存在");
       expect(existsSync(join(dir.home, ".hreader", "daemon.json"))).toBe(false);

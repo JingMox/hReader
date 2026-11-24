@@ -41,7 +41,7 @@ describe("assertUniqueIds", () => {
   });
 
   it("should reject a document where two elements share one id, naming file/id/count", () => {
-    // docs/05:452：重复 id 在**加载侧**就要拒（read/patch 只命中第一个，第二个既改不到也删不掉）。
+    // 重复 id 在**加载侧**就要拒（read/patch 只命中第一个，第二个既改不到也删不掉）。
     let thrown: unknown;
     try {
       assertUniqueIds(duplicated, "/ws/a.html");

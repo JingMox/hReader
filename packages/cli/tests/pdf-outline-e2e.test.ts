@@ -1,8 +1,8 @@
-// 这层管：AC-5 / AC-6 的三条硬不变量在**真 Chrome** 上成立——①大纲条目数 = 打印稿 heading 数、
+// 这层管：三条硬不变量在**真 Chrome** 上成立——①大纲条目数 = 打印稿 heading 数、
 // ②每条 `/Dest` 经 `/Kids` 换算的页序与 heading 所在页一致、③同输入两次渲染的标题序列与页序相等。
 //
 // 规矩（与 `scripts/print-e2e.ts` 一致）：Chrome 缺失或 `HREADER_SKIP_CHROME=1` 时**打印** SKIPPED + 原因
-// 再跳过——静默跳过等于假装跑过（§13），所以这里不用 `describe.skip` 的裸形式。
+// 再跳过——静默跳过等于假装跑过，所以这里不用 `describe.skip` 的裸形式。
 // oracle 一律走 `normalizeWhitespace`：夹具标题里刻意埋了换行与连续空格，退化成 `trim()` 就会红。
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -199,7 +199,7 @@ const writtenCountOf = async (html: string, name: string): Promise<number> => {
   return count;
 };
 
-describe.skipIf(SKIP_REASON !== null)("AC-5 / AC-6 · 真 Chrome 的大纲不变量", () => {
+describe.skipIf(SKIP_REASON !== null)("真 Chrome 的大纲不变量", () => {
   it("should keep outline count, heading pages and repeat runs in step with the real PDF", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(join(dir, "source.html"), docOf());

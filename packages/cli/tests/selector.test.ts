@@ -16,7 +16,7 @@ const DOC = [
   "</article></body></html>",
 ].join("\n");
 
-/** D1 表左列：五个"看起来像选择器、文法却不合法"的字面，外加一个以 `"` 开头的字面。 */
+/** 五个"看起来像选择器、文法却不合法"的字面，外加一个以 `"` 开头的字面。 */
 const SYNTAX_SELECTORS = ["p[", "p[0]", "a b", "*", "div>p", '"hr-a1"'] as const;
 
 const seed = (dir: string): string => {

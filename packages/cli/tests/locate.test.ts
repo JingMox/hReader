@@ -127,7 +127,7 @@ describe("patch · 两跳都失败时的码与 `data`", () => {
       expect(fieldOf(envelope, "code")).toBe("invalid_selector");
       // 唯一能让 `[data-hr-id="…"]` 本身非法的形态：`"`/`\`/换行。码在这里反过来（不是 node_not_found）。
       expect(fieldOf(fieldOf(envelope, "data"), "reason")).toBe("syntax");
-      // F19 起报文只有一句：目标不是合规 id（`"` 让 `[data-hr-id="…"]` 本身非法），报 syntax 那一句。
+      // 报文只有一句：目标不是合规 id（`"` 让 `[data-hr-id="…"]` 本身非法），报 syntax 那一句。
       expect(String(fieldOf(envelope, "message"))).toContain('选择器 "a\\"b" 无法解析：');
       expect(readFileSync(file).equals(before)).toBe(true);
     });
@@ -430,7 +430,7 @@ describe("同一串 locateTarget 与 readNode 必须同码（防两层漂移）"
   });
 
   it("should diverge on a bare id: locateTarget falls back, readNode does not", () => {
-    // `hr-NOPE` 符合 `HR_ID_PATTERN`，所以 locateTarget 会走第二跳（裸 id 回退，F1 的主路径）；
+    // `hr-NOPE` 符合 `HR_ID_PATTERN`，所以 locateTarget 会走第二跳（裸 id 回退主路径）；
     // `readNode` 只是选择器求值器，`hr-NOPE` 在它那里是文法错。两边"不同码"是对的——
     // 硬要一致就得让 readNode 偷偷实现回退，那才是把两条数据流塞回一个函数。
     expect(codeOf(() => locateTarget(parsed, "hr-NOPE"))).toBe("node_not_found");

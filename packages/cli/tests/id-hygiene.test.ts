@@ -1,4 +1,4 @@
-// R2-11（docs/05:68）：`data-hr-id` 必须匹配 `^[A-Za-z][A-Za-z0-9_-]{0,63}$` 且全文唯一。
+// `data-hr-id` 必须匹配 `^[A-Za-z][A-Za-z0-9_-]{0,63}$` 且全文唯一。
 // 两侧分工：`normalize` 把不合规/重复的 id 改名（保留第一个），读/写入口（`read`/`outline`/`patch`）
 // 遇到重复 id 直接报 `duplicate_id`（exit 2）并点名 `hr normalize <file> --write`。
 

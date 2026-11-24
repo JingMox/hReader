@@ -1,5 +1,5 @@
 // 这层管：`hr export`（读文档 → 大纲 → 主题 → 打印稿 → stdout 或原子写）；不判参数、不定退出码。
-// `hr pdf` 复用同一份打印稿与同一套 `--out` 规矩，避免第二套路径判定（D5）。
+// `hr pdf` 复用同一份打印稿与同一套 `--out` 规矩，避免第二套路径判定。
 
 import { basename, dirname, extname, resolve } from "node:path";
 
@@ -58,7 +58,7 @@ export const assertWritableDirOf = async (dir: string, deps: PatchDeps): Promise
 /**
  * 越界必须**先于**"目标已存在"判：`file_exists`（exit 1）抢在前面会把"写到 workspace 外面"报成"已存在"，
  * 还顺带探一次外面那个路径（脏文件就是这么留下的）。这里只做词法那道（`run.ts` 已把两侧换成真实路径），
- * 符号链接逃逸交给 `writeAtomic` 落盘前的 realpath 复核（P0-1），不在这里再写一份。
+ * 符号链接逃逸交给 `writeAtomic` 落盘前的 realpath 复核，不在这里再写一份。
  */
 export const assertOutInsideOf = (path: string, workspace: string): void => {
   if (!isInside(workspace, resolve(path))) {
@@ -83,7 +83,7 @@ export const assertTargetFreeOf = async (
 export interface PrintSourceInput {
   readonly path: string;
   readonly visual: string;
-  /** 纸张必填：`hr export`/`hr png` 固定 a4，`hr pdf` 传 `--page-size`（§15.1）。 */
+  /** 纸张必填：`hr export`/`hr png` 固定 a4，`hr pdf` 传 `--page-size`。 */
   readonly paper: PaperSize;
   readonly workspace: string;
   readonly warn: (message: string) => void;
@@ -94,7 +94,7 @@ export const printProductOf = async (input: PrintSourceInput): Promise<PrintHtml
   // 不注入 id（BUG-02）：源里没有 `data-hr-id`，产物就不带——否则用户从打印稿里拄下的 id
   // 在源文件里不存在，拿去 `patch` 只会得到 `node_not_found`。
   const parsed = parseHtml(await readTextFile(input.path));
-  // 主题走 core：`loadThemeCss` 内部已过 `assertThemeSafe`，这一层不重复实现闸门（裁定 A）。
+  // 主题走 core：`loadThemeCss` 内部已过 `assertThemeSafe`，这一层不重复实现闸门。
   const report = printHtmlReportOf({
     docId: basename(input.path, extname(input.path)),
     visualId: input.visual,
@@ -104,7 +104,7 @@ export const printProductOf = async (input: PrintSourceInput): Promise<PrintHtml
     outline: buildOutline(parsed).nodes,
     themeCss: await loadThemeCss(input.visual, nodeStyleDeps(input.workspace)),
   });
-  // 4 MiB 上限（§11.4）只在渲染层剥一次（`print-page.ts` 的 `MAX_PRODUCT_BYTES`，判据 `>`）：
+  // 4 MiB 上限只在渲染层剥一次（`print-page.ts` 的 `MAX_PRODUCT_BYTES`，判据 `>`）：
   // 同一道闸在两层各写一遍会得到一条永远跑不到的支路，而 `HrError("invalid_input")`
   // 已经能穿到 `run.ts` 的退出码映射里。这里的 `bytes` 只用于人读行与 `--json`。
   if (report.droppedImages > 0) {
@@ -132,7 +132,7 @@ export const writeOutOf = async (input: WriteOutInput): Promise<void> => {
 };
 
 export const exportPrintCommand = async (input: ExportPrintInput): Promise<string> => {
-  // `hr export` 的纸固定 a4：它是 M4.3 的产物契约，换纸只能走 `hr pdf --page-size`。
+  // `hr export` 的纸固定 a4：它是 `hr export` 的产物契约，换纸只能走 `hr pdf --page-size`。
   const report = await printProductOf({ ...input, paper: "a4" });
   if (input.out === undefined) {
     return input.json ? jsonOk(dataExport(report, null)) : humanExport(report);

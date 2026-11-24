@@ -105,7 +105,7 @@ describe("output · JSON 信封", () => {
       "historyPath",
       "replacedIds",
     ]);
-    const readKeys = ["html", "ids", "truncated", "diagnostics"]; // AC-7（docs/05:98）：四键恒在
+    const readKeys = ["html", "ids", "truncated", "diagnostics"]; // 四键恒在
     expect(keysOf(JSON.parse(dataRead(READ, ["hr-1"])))).toEqual(readKeys);
     expect(keysOf(JSON.parse(dataStyle(STYLE)))).toEqual(["path", "changed"]);
     expect(keysOf(JSON.parse(dataTone("p")))).toEqual(["prompt"]);
@@ -287,6 +287,8 @@ describe("exit-codes · 冻结表", () => {
     expect(exitCodeOf(code)).toBe(expected);
   });
 });
+// `invalid_selector` 的机器可读成因（`reason`/`count`/`candidates`）从 `jsonError` 的 `data`
+// 出去，调用方靠 `data.reason` 分支——所以这里钉的是键集而不是整段报文。
 describe("output · JSON 错误信封的 data 键", () => {
   it("should emit data verbatim after message when the error carries machine-readable causes", () => {
     expect(jsonError("invalid_selector", "无法解析：p[", { reason: "syntax" })).toBe(
@@ -315,7 +317,10 @@ const WITH_EXTRAS: PatchResult = {
 /** 同样是一次"片段 id 被忽略"，但片段里没有更深层的可寻址节点。 */
 const NO_EXTRAS: PatchResult = { ...WITH_EXTRAS, newIds: ["p-1-2"] };
 
-describe("output · replace 之后的人读回执（docs/05:57）", () => {
+// `replace` 的片段根自带 `data-hr-id` 算"被忽略"，片段内部其它可寻址节点由产品重新分配——
+// 人读回执要把"id 变更"与"顺带新增的 id"两段都印出来，映射之外为空时整段必须消失
+//（留下 ", +0 ids: " 等于凭空报了个空列表）。
+describe("output · replace 之后的人读回执", () => {
   it("should print the mapping and then the extra ids the fragment brought along", () => {
     expect(humanPatch(WITH_EXTRAS)).toBe(
       "patched b.html (149 bytes, id 变更: hr-a392514c → p-1-2, +2 ids: hr-x1, hr-x2)\n",
@@ -350,6 +355,8 @@ const WARNED: PatchResult = {
 
 const CLEAN: PatchResult = { ...WARNED, warnings: [] };
 
+// 片段解析诊断不再静默丢弃：`duplicate_attribute` 这类"字节里少了一个属性"必须能被机器读到，
+// 所以 `warnings` 在诊断非空时出现在 `dataPatch` 信封上。
 describe("dataPatch · warnings 键只在非空时出现", () => {
   it("should append a warnings key and carry the diagnostic through", () => {
     const parsed = decode(dataPatch(WARNED));

@@ -1,4 +1,4 @@
-// 这层管：AC-5 端到端——CLI 真跑一遍把 yaml 写到盘，再用公开的 loadStyle/compileTone/lintByStyle 消费它。
+// 这层管：端到端——CLI 真跑一遍把 yaml 写到盘，再用公开的 loadStyle/compileTone/lintByStyle 消费它。
 // LLM 版与纯统计版各走一遍：产物是"用户下一次写作的全部输入"。断言要能证伪链路（条数/人设/请求体），
 // 只证"能 load"的套话对"合并层丢字段""--no-llm 仍联网"这类错误全盲。
 
@@ -14,7 +14,7 @@ import { run, type CliIo } from "../src/run";
 
 const REPO = join(import.meta.dirname, "../../..");
 
-/** D11：三篇 fixture 是统计层的真值来源，端到端必须用同一份语料，否则"能消费"只是对合成输入成立。 */
+/** 三篇 fixture 是统计层的真值来源，端到端必须用同一份语料，否则"能消费"只是对合成输入成立。 */
 const CORPUS = ["docs-03-section11.md", "docs-05-m33.md", "style-authoring.md"].map((name) =>
   join(REPO, "fixtures/extract", name),
 );

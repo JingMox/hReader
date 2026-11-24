@@ -1,4 +1,4 @@
-// 这层管：`needs_normalize` 的**所有入口**（B-01/B-02/B-03 的共同根因）。
+// 这层管：`needs_normalize` 的**所有入口**。
 //
 // 判据来自用户症状，不是实现形状：手写文档（无 `data-hr-id`）交给任何一条读命令，
 // 都必须**报同一个码、给同一句可执行的下一步**，不许一个入口静默空转、另一个换一句措辞。
@@ -111,10 +111,10 @@ describe("needs_normalize · serve 的 CLI 与 HTTP 两面", () => {
       expect(result.code).toBe(2);
       const envelope = parseJsonLine(result.stdout);
       expect(fieldOf(envelope, "code")).toBe("needs_normalize");
-      // `--json` 只有一条通道（P2-3）：可粘贴的命令与文件名都在 message 里，stderr 留空。
+      // `--json` 只有一条通道：可粘贴的命令与文件名都在 message 里，stderr 留空。
       expect(fieldOf(envelope, "message")).toMatch(/hr normalize \S*draft\.html --write/u);
       expect(result.stderr).toBe("");
-      // 不许把内部函数名丢给用户（B-02 的原始症状）。
+      // 不许把内部函数名丢给用户（原始症状）。
       expect(fieldOf(envelope, "message")).not.toContain("injectNodeIds");
     });
   });

@@ -8,7 +8,7 @@ import { resolveFallback } from "./resolve-hook.ts";
 registerHooks({ resolve: resolveFallback });
 
 // 必须在任何 `await` 之前读：壳可能在 spawn 之后立刻死掉，一旦被 re-parent 到 1 再读，
-// "原来的父进程"和"init"就分不出来了（`--exit-with-parent` 的 B5 就是这么漏的）。
+// "原来的父进程"和"init"就分不出来了（`--exit-with-parent` 曾经就漏在这里）。
 const launchParentPid = process.ppid;
 
 const { run } = await import("./run");

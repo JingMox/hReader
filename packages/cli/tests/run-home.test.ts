@@ -9,7 +9,7 @@ import { afterAll, expect, it } from "vitest";
 import { run, type CliIo } from "../src/run";
 
 // 模块顶层先把 `HOME` 指到沙箱：`run()` 的落点是 `io.home ?? homedir()`，接线一断就会落回
-// `homedir()`；不重定向的话，这条文件会先写掉真实 `~/.hreader/daemon.json` 再断言失败（R2 事故）。
+// `homedir()`；不重定向的话，这条文件会先写掉真实 `~/.hreader/daemon.json` 再断言失败（真实事故）。
 // 模块顶层改写 `process.env` 必须自己还原：`afterAll` 会删掉沙箱，不还原的话同 worker 里后续
 // 测试文件的 `homedir()` 会指向一个已删除的目录（vitest `maxWorkers: 2`，见 vitest.config.ts:31）。
 const previousHome = process.env["HOME"];

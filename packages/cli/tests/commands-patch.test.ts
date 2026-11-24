@@ -28,7 +28,7 @@ describe("patchCommand · 人读行", () => {
     fileOf("p6.html", DOC);
     const text = await patchCommand({
       path: "p6.html",
-      // 目标是容器 <article>：段落落在它的内容模型内（往 <p> 里 append 段落会被 F6 拒）。
+      // 目标是容器 <article>：段落落在它的内容模型内（往 <p> 里 append 段落会被拒）。
       nodeId: "hr-a",
       action: "append",
       html: "<p>新</p>",
@@ -68,7 +68,7 @@ describe("patchCommand · replace 的人读行（id 不再变）", () => {
       json: false,
     });
 
-    // docs/05:57：新根继承 `hr-c`（不算新分配），片段里更深的三个块才是新 id——它们同样要能被后续 patch 引用。
+    // 新根继承 `hr-c`（不算新分配），片段里更深的三个块才是新 id——它们同样要能被后续 patch 引用。
     expect(text).toMatch(/^patched .*p7\.html \(\d+ bytes, \+3 ids: [\w-]+, [\w-]+, [\w-]+\)\n$/u);
     expect(text).not.toContain("id 变更");
     expect(readFileSync(join(dir, "p7.html"), "utf8")).toContain('<section data-hr-id="hr-c">');

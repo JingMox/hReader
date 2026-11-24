@@ -1,4 +1,4 @@
-// R2-04（docs/05:57「id 归产品所有」）：`patch --action replace` 的新根**继承目标自己的 id**。
+// 「id 归产品所有」：`patch --action replace` 的新根**继承目标自己的 id**。
 // 这层管：改完内容后老 id 仍可 read、连续 replace 同一个 id 都成立、片段自带的 id 一律不采用。
 
 import { readFileSync } from "node:fs";

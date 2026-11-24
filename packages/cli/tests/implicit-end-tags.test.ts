@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { checked, seed } from "./cli-support";
 import { runCli, withTempDir, fieldOf, parseJsonLine } from "./harness";
 
-/** 只有一个 `<article>`、里面一个裸 `<p>` + 一段内联的块：正是 R2-06a 的输入形态。 */
+/** 只有一个 `<article>`、里面一个裸 `<p>` + 一段内联的块：正是这条分支的输入形态。 */
 const nestingDoc = (inner: string): string =>
   [
     "<!doctype html>",

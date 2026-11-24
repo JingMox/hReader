@@ -1,6 +1,6 @@
 // 这层管：`hr patch`（片段文本已解析好 → core 落盘 → 文本/JSON）；不做参数校验、不读 stdin。
 // 入口做与 `outline`/`read` 同一道「文档已 normalize」前置判定：patch 消耗 `data-hr-id`，
-// 半规范化（根有 id、子节点没有）的文档在这里就要收，否则用户会拿到 `node_not_found` 这种猜字式的报错（P2-2）。
+// 半规范化（根有 id、子节点没有）的文档在这里就要收，否则用户会拿到 `node_not_found` 这种猜字式的报错。
 // `<nodeId|选择器>` 的解释与 `read` 同一处实现（core 的 `locateTarget`）：两条命令同输入必须同 id。
 
 import {

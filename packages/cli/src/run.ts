@@ -42,16 +42,16 @@ export interface CliIo {
   readonly fetch?: typeof globalThis.fetch;
   /** serve 靠它感知 SIGTERM/SIGINT；其它命令不需要（测试里构造 io 时可省）。 */
   readonly stop?: Promise<void>;
-  /** 启动时父进程的 pid：**必填**，只有 `main.ts` 能在首个 `await` 之前采集它（`?? process.ppid` 兜底 = 重开 W2 的洞）。 */
+  /** 启动时父进程的 pid：**必填**，只有 `main.ts` 能在首个 `await` 之前采集它（`?? process.ppid` 兜底 = 又把"晚读"写回来）。 */
   readonly launchParentPid: number;
   readonly home?: string;
 }
 
-/** stdin 解码成功但为空：卡片 §7.4 定为用法错误（而不是 core 的 `invalid_fragment`）。 */
+/** stdin 解码成功但为空：定为用法错误（而不是 core 的 `invalid_fragment`）。 */
 class UsageError extends Error {}
 
 type Runnable = Exclude<Intent, { readonly kind: "help" }>;
-/** 写命令入参：两边都取真实路径再算相对（R1-P1-2）；workspace 不存在时同走一条基准，`ENOENT` 交给 core。 */
+/** 写命令入参：两边都取真实路径再算相对；workspace 不存在时同走一条基准，`ENOENT` 交给 core。 */
 const workspaceRealpathOf = (workspace: string): string => {
   const real = attemptRealpath(workspace);
   if (real === undefined) throw new UsageError(`--workspace 不存在：${workspace}`);
@@ -145,7 +145,7 @@ const runExtract = async (
 ): Promise<string> => {
   const env = io.env;
   const key = apiKeyOf(env);
-  // D2：没 key 是正常路径，不是错误——只在 stderr 说明一句，产物与 --no-llm 完全一致。
+  // 没 key 是正常路径，不是错误——只在 stderr 说明一句，产物与 --no-llm 完全一致。
   if (key === undefined) io.stderr(`未设置 ${LLM_KEY_ENV}，仅用统计结果\n`);
   const llm = key === undefined || intent.noLlm ? undefined : llmOf(intent, io.fetch, env, key);
   if (!intent.idGiven) io.stderr(`未给 --id，使用默认值：${intent.id}\n`); // 默认值只提示，不拦
@@ -326,7 +326,7 @@ const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
     if (io.debug && error instanceof Error) io.stderr(`${error.stack ?? ""}\n`);
     return EXIT_INTERNAL;
   }
-  // 只走一条通道：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段（P2-3）。
+  // 只走一条通道：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段。
   if (json) io.stdout(jsonError(error.code, error.message, error.data));
   else io.stderr(`${error.message}\n`);
   return exitCodeOf(error.code);

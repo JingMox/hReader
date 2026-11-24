@@ -1,4 +1,4 @@
-// F16-5（docs/05:114 / AC「4 MiB 硬上限」）：`hr export` 帮助里必须写明 4 MiB，超限时必须拒绝拼接
+// `hr export` 帮助里必须写明 4 MiB，超限时必须拒绝拼接
 // 并给出「按章拆分」的出路。两半都钉：只说上限不给办法、或只报错不说上限，都算红。
 
 import { existsSync, writeFileSync } from "node:fs";

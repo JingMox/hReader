@@ -136,7 +136,7 @@ describe("run · 用法错误（exit 2）", () => {
 });
 
 describe("run · 用法错误在 --json 下的信封", () => {
-  // 待裁定 F1：卡片 §3 要求"错误也遵守 --json"，但 args 失败信封里没有 json 字段，
+  // 已知缺口：契约要求"错误也遵守 --json"，但 args 失败信封里没有 json 字段，
   // usageFailure 拿不到 --json，于是 usage 错误在 --json 下只写 stderr。断言保留，用 it.fails 固定缺口。
   // KD-09
   it.fails("should also emit a usage JSON envelope on stdout under --json", async () => {
@@ -148,7 +148,7 @@ describe("run · 用法错误在 --json 下的信封", () => {
     expect(err.join("")).toContain("outline 缺少 <file>");
   });
 
-  // 同上 F1：空 stdin 走 UsageError 分支，--json 下没有 stdout 信封。
+  // 同上：空 stdin 走 UsageError 分支，--json 下没有 stdout 信封。
   // KD-10
   it("should treat empty --html-stdin as a usage error in plain mode", async () => {
     const plain = capture();
@@ -192,7 +192,7 @@ describe("run · core 错误与内部错误", () => {
         join(dir, "missing.html") +
         '"}\n',
     );
-    // 只走一条通道（P2-3）：`2>&1` 的消费者不会再收到第二段。
+    // 只走一条通道：`2>&1` 的消费者不会再收到第二段。
     expect(err).toEqual([]);
   });
 

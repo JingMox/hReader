@@ -1,7 +1,7 @@
 // 这层管：真 Chrome 跑一遍打印稿（出 PDF → 断分页/纸张/背景/无外链；长图那半在 `print-e2e-png.ts`）；不进 `test:unit`。
 //
 // 规矩：Chrome 缺失或 `HREADER_SKIP_CHROME=1` 时**打印** SKIPPED + 原因并以 0 退出——
-// 静默跳过等于假装跑过（§13 / 卡片 AC-6）。需要真跑的 CI 请显式给 `CHROME_BIN`。
+// 静默跳过等于假装跑过。需要真跑的 CI 请显式给 `CHROME_BIN`。
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -112,7 +112,7 @@ const endsOnWhiteOf = (html: string): boolean => {
   return backgrounds.at(-1) === "#ffffff";
 };
 
-/** PDF 那一半（AC-6）：分页 / 纸张 / 白底 / 无外链。返回 OK 行用的一段。 */
+/** PDF 那一半：分页 / 纸张 / 白底 / 无外链。返回 OK 行用的一段。 */
 const pdfChecksOf = (dir: string, html: string): string => {
   const pdf = pdfOf(html, dir).toString("latin1");
 
@@ -122,10 +122,10 @@ const pdfChecksOf = (dir: string, html: string): string => {
   check(isA4Of(pdf), "纸张不是 A4");
   check(endsOnWhiteOf(html), "纸面背景不是白色（暗色块压过了打印块）");
   check(/background:\s*#ffffff/iu.test(html), "缺少显式白底");
-  // AC-11：产物里不得有可联网的绝对地址。
+  // 产物里不得有可联网的绝对地址。
   check(!/https?:\/\//iu.test(html), "产物含 http(s):// 残留");
 
-  // AC-6 的直接证据：同一篇稿子抽掉分页规则后页数必须变，否则"2 页"只是恰好。
+  // 分页规则的直接证据：同一篇稿子抽掉分页规则后页数必须变，否则"2 页"只是恰好。
   const stripped = html.replaceAll(
     /(?:^|[;{\s])(?:page-)?break-(?:before|after|inside)\s*:[^;}]*;?/giu,
     "",

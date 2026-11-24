@@ -1,4 +1,4 @@
-// 这层管：AC5a 端到端链路（一份真实文档跑完 outline/read/patch/style/lint/visual）；不 mock。
+// 这层管：端到端链路（一份真实文档跑完 outline/read/patch/style/lint/visual）；不 mock。
 
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";

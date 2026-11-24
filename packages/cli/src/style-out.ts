@@ -10,7 +10,7 @@ import { realpathThroughAncestors } from "./canonical";
 /**
  * 发现链只有两条（`packages/core/src/style/load.ts` 的 `resolveStyle`）：项目级
  * `<projectRoot>/.hreader/style.yaml` 与用户级 `<home>/.hreader/styles/<id>/style.yaml`。
- * 路径常量从 core 借用：`L-13` 的教训是抄一份字面量迟早与解析链分叉。
+ * 路径常量从 core 借用：抄一份字面量迟早与解析链分叉。
  */
 export const isDiscoveredStylePath = (path: string, id: string, deps: StyleDeps): boolean => {
   const target = realpathThroughAncestors(path);

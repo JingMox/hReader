@@ -1,4 +1,4 @@
-// R3-AC-4（.workflow/cards/R3.md AC-4 + docs/05:453）：重复 `data-hr-id` 的文案归一。
+// 重复 `data-hr-id` 的文案归一。
 //
 // 老文案说"`read`/`patch` 只会命中第一个"，而实现是**进定位之前就退出 2**（`duplicate_id`）——
 // 报文让人预测到的行为与实测相反，这是用户唯一能读到的契约，所以两侧都要钉：
@@ -20,7 +20,7 @@ const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
 const OBSOLETE = "只会命中第一个";
 
-/** 文案归一的作用域：实现与文档（`.workflow/` 的历史报告不算，它们记录的是改动前的事实）。 */
+/** 文案归一的作用域：实现与文档（历史评审归档不算，它们记录的是改动前的事实）。 */
 const SCOPES = ["packages/core/src", "packages/cli/src", "docs"] as const;
 
 const filesUnder = (dir: string): readonly string[] =>

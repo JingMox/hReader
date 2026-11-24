@@ -111,7 +111,7 @@ describe("readCommand", () => {
   });
 });
 
-/** 预算只管内容：`data.html` 的 UTF-8 字节数 ≤ 80；`（已截断：…）` 是元信息，不计入预算（docs/05 AC4）。 */
+/** 预算只管内容：`data.html` 的 UTF-8 字节数 ≤ 80；`（已截断：…）` 是元信息，不计入预算。 */
 describe("readCommand · --max-bytes 的预算边界", () => {
   it("should apply --max-bytes to the content and leave the truncation line outside it", async () => {
     const path = fileOf("r2.html", DOC);
@@ -134,7 +134,7 @@ describe("patchCommand", () => {
     fileOf("p1.html", DOC);
     const text = await patchCommand({
       path: "p1.html",
-      // 目标换成容器 <article>：往 <p>（hr-d）里 append 段落会被 F6 拒（内容模型冲突），
+      // 目标换成容器 <article>：往 <p>（hr-d）里 append 段落会被拒（内容模型冲突），
       // 而这条用例只关心“写入成功且回报 changed/newIds/historyPath”。
       nodeId: "hr-a",
       action: "append",
@@ -160,7 +160,7 @@ describe("patchCommand", () => {
       json: false,
     });
 
-    // docs/05:57（R2-04）：`replace` 的新根继承目标 id ⇒ 没有「旧 → 新」可说，行尾是干净的 `+0)`；
+    // `replace` 的新根继承目标 id ⇒ 没有「旧 → 新」可说，行尾是干净的 `+0)`；
     // 老 id `hr-c` 仍是盘上那个节点的锚点（下一行断言从这里读回来）。
     expect(text).toMatch(/^patched .*p2\.html \(\d+ bytes, \+0\)\n$/u);
     expect(text).not.toContain("id 变更");
@@ -348,7 +348,7 @@ describe("readCommand · 选择器失败后按 node id 重试", () => {
       readCommand({ path, target: '">', maxBytes: undefined, json: false }),
     );
 
-    // F19 D1：两跳都会失败时，码与报文都由目标形态定——`">` 不是合规 id，所以是 syntax 那一句。
+    // 两跳都会失败时，码与报文都由目标形态定——`">` 不是合规 id，所以是 syntax 那一句。
     expect(failed.code).toBe("invalid_selector");
     expect(failed.reason).toBe("syntax");
     expect(failed.message).toContain('选择器 "\\">" 无法解析：');

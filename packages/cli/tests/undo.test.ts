@@ -1,4 +1,4 @@
-// 这层管：`hr undo`（M2.3 新命令，裁定 #2）——参数、退出码、两种输出，以及真子进程下"改一次再撤一次"。
+// 这层管：`hr undo`——参数、退出码、两种输出，以及真子进程下"改一次再撤一次"。
 // `undo` 是 CLI 侧唯一新增的可写命令，之前零用例（src 里 50% 死码），这里补齐。
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";

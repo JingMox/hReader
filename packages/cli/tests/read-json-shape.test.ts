@@ -1,4 +1,4 @@
-// R3-AC-7（docs/05:98 + packages/cli/src/output.ts `dataRead`）：`read --json` 的 `data` 形状恒定。
+// `read --json` 的 `data` 形状恒定（`src/output.ts` 的 `dataRead`）。
 // ① 四键恒在：`html` / `ids` / `truncated` / `diagnostics`；未截断时 `truncated === false`、
 //    `diagnostics === []`——不是"键不存在"，也不是省略空数组；
 // ② 截断时 `truncated === true` 且 `diagnostics` 里带 `truncated_output`（键集不变）；

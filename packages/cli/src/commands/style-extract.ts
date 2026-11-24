@@ -20,7 +20,7 @@ import { existsOf, fileSizeOf, readTextFile } from "../input";
 import type { LlmPort } from "../llm/client";
 import { dataStyleExtract, humanStyleExtract, jsonOk } from "../output";
 
-/** D9：单篇 1 MiB、总量 4 MiB。先看字节数再解码，别让 CLI 替用户把超限语料读成字符串。 */
+/** 单篇 1 MiB、总量 4 MiB。先看字节数再解码，别让 CLI 替用户把超限语料读成字符串。 */
 export const MAX_CORPUS_FILE_BYTES = 1024 * 1024;
 
 export const MAX_CORPUS_BYTES = 4 * 1024 * 1024;
@@ -73,13 +73,13 @@ export interface StyleExtractInput {
   readonly displayOut?: string | undefined;
   readonly force: boolean;
   readonly json: boolean;
-  /** 有 key 且没给 `--no-llm` 时的传输层；`undefined` = 纯统计版（D2 的降级，不是错误）。 */
+  /** 有 key 且没给 `--no-llm` 时的传输层；`undefined` = 纯统计版（纯统计版，不是错误）。 */
   readonly llm: LlmPort | undefined;
 }
 
 /**
  * `llm_failure` 在这里补上 CLI 的出路：core 不认识 `--no-llm`（那是本进程的旗标）。
- * D7 禁的是**自动**重试（写盘非幂等 + 费用不可控），不是禁止提示用户手动重跑一次。
+ * 禁的是**自动**重试（写盘非幂等 + 费用不可控），不是禁止提示用户手动重跑一次。
  */
 const withNoLlmHint = (error: unknown): unknown =>
   error instanceof HrError && error.code === "llm_failure"
@@ -135,7 +135,7 @@ const assertOutWritable = async (input: StyleExtractInput): Promise<void> => {
     throw new HrError("path_outside_workspace", `风格只能写到 workspace 内：${out}`);
   }
   const target = resolve(input.workspace, out);
-  // `--force` 只放开"覆盖"这一件事：父目录依旧不自动建（AC-6）。
+  // `--force` 只放开"覆盖"这一件事：父目录依旧不自动建。
   if (!input.force && (await existsOf(target))) {
     throw new HrError("file_exists", `目标已存在：${target}（加 --force 覆盖）`);
   }

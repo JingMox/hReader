@@ -1,5 +1,5 @@
 // 这层管：**SSE 契约**——服务器真实帧 → 客户端真实解析器。
-// 规矩（execution-manual §10.5）：假件只能控时序，不能定义格式；帧格式必须与真服务器对一次。
+// 规矩：假件只能控时序，不能定义格式；帧格式必须与真服务器对一次。
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

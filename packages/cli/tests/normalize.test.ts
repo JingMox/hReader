@@ -1,4 +1,4 @@
-// 这层管：`hr normalize`（B-01/B-02/B-03 的兑现物）——先补 id 才能 outline/read/patch/serve。
+// 这层管：`hr normalize`——先补 id 才能 outline/read/patch/serve。
 //
 // 用户视角的三件事，一条不能少：
 //   1. 不加 `--write` 时只看不写（把结果打到 stdout，文件一个字节不动）；
@@ -131,7 +131,7 @@ describe("hr normalize · 不是文档", () => {
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain("<article>");
-      // 别再让用户看到 `injectNodeIds` 这类内部函数名（B-02）。
+      // 别再让用户看到 `injectNodeIds` 这类内部函数名。
       expect(result.stderr).not.toContain("injectNodeIds");
     });
   });

@@ -106,7 +106,7 @@ const appendOmitted = async (dir: string, item: OmittedEndTagCase): Promise<void
   expect(patched.code).toBe(0);
   expect(readFileSync(file, "utf8")).toMatch(item.onDisk);
 
-  // F9 的核心性质：写出去的字节与解析回来的树一致 —— 再跑一次 normalize 只报 unchanged、字节不差。
+  // 核心性质：写出去的字节与解析回来的树一致 —— 再跑一次 normalize 只报 unchanged、字节不差。
   const written = sha(file);
   const second = checked(await runCli(["normalize", "doc.html", "--write"], { cwd: dir }));
   expect(second.code).toBe(0);

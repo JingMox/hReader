@@ -1,4 +1,4 @@
-// 这层管：`hr pdf` 真子进程的退出码与进程卫生（假 Chrome 脚本，不碰真 Chrome）；AC-5 / AC-9。
+// 这层管：`hr pdf` 真子进程的退出码与进程卫生（假 Chrome 脚本，不碰真 Chrome）。
 import {
   existsSync,
   mkdirSync,
@@ -39,7 +39,7 @@ describe("hr pdf · chrome 缺失", () => {
       const envelope: unknown = JSON.parse(result.stdout);
       expect(Reflect.get(Object(envelope), "ok")).toBe(false);
       expect(Reflect.get(Object(envelope), "code")).toBe("chrome_missing");
-      // 一次性报错只走 stdout（P2-3），HREADER_CHROME 的实际情况跟着 message 一起出来。
+      // 一次性报错只走 stdout，HREADER_CHROME 的实际情况跟着 message 一起出来。
       expect(Reflect.get(Object(envelope), "message")).toContain("HREADER_CHROME=");
       expect(result.stderr).toBe("");
       expect(existsSync(join(dir, "a.pdf"))).toBe(false);

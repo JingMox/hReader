@@ -97,7 +97,7 @@ describe("serveCommand · stop 撤回看门狗", () => {
     const handle = stopHandle();
     try {
       const { clearSpy, timer } = await startWatched(dir, handle.stopped);
-      // 只 `close()` 不撤看门狗 = `--exit-with-parent` 收到 SIGTERM 后靠 1s 定时器续命（R3 P1-A）。
+      // 只 `close()` 不撤看门狗 = `--exit-with-parent` 收到 SIGTERM 后靠 1s 定时器续命。
       handle.stop();
       await vi.waitFor(() => {
         expect(clearSpy.mock.calls.some((call) => call[0] === timer)).toBe(true);

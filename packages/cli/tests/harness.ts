@@ -1,6 +1,6 @@
 // 这层管：CLI 的真子进程执行器与临时工作区（测试专用）；不做断言。
 //
-// 规矩（docs/03 §11）：每个子进程 `stdio: ["ignore"|fd, "pipe", "pipe"]` + 10s 硬超时，
+// 规矩：每个子进程 `stdio: ["ignore"|fd, "pipe", "pipe"]` + 10s 硬超时，
 // 否则子进程等 stdin、父进程等子进程，会静默挂死整棵套件。
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -95,7 +95,7 @@ export const expectNoAnsi = (result: CliResult): void => {
 
 /**
  * 临时工作区统一 `realpathSync`：macOS 的 `$TMPDIR` 是 `/var/...` 而内核返回 `/private/var/...`，
- * 不归一就会让合法路径被判成 `path_outside_workspace`（§17.2）。
+ * 不归一就会让合法路径被判成 `path_outside_workspace`。
  */
 export const withTempDir = async <T>(
   run: (dir: string) => Promise<T>,

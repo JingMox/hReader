@@ -17,5 +17,5 @@ export const skipReasonOf = (env: ChromeEnv): string | null => {
   return null;
 };
 
-/** 跳过必须以非 0 信息出门：静默跳过等于假装跑过（§13），所以这行不许省掉原因。 */
+/** 跳过必须以非 0 信息出门：静默跳过等于假装跑过，所以这行不许省掉原因。 */
 export const skipLineOf = (reason: string): string => `SKIPPED: ${reason}\n`;
