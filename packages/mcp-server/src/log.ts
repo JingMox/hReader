@@ -1,4 +1,4 @@
-// 这层管：日志（只写 stderr）。stdout 是 JSON-RPC 通道，任何一行多余输出都会毒化协议（AC-4）。
+// 这层管：日志（只写 stderr）。stdout 是 JSON-RPC 通道，任何一行多余输出都会毒化协议。
 
 export const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -19,7 +19,7 @@ const stackChainOf = (error: unknown): readonly string[] => {
   return stacks.length > 0 ? stacks : [messageOf(error)];
 };
 
-/** 堆栈只进 stderr：正文里出现堆栈等于把实现细节倒给模型（AC-3）。 */
+/** 堆栈只进 stderr：正文里出现堆栈等于把实现细节倒给模型。 */
 export const logFailure = (where: string, error: unknown): void => {
   const stacks = stackChainOf(error);
   logLine(`${where} 失败：${stacks.join("\n    caused by: ")}`);

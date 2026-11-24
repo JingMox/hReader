@@ -31,7 +31,7 @@ export const createDocShape = {
     .string()
     .min(1)
     // 块的 id 由内容派生（core `inject.ts` 的 `seedOf`：标签 + 兄弟序号 + 文本前 64 字符），而 `replace`
-    // 会让被替换节点换 id（`L-02` 的既有设计，为了 patch 幂等）——所以这里必须提前说清，别让宿主缓存。
+    // 会让被替换节点换 id（为了 patch 幂等）——所以这里必须提前说清，别让宿主缓存。
     .describe(
       "文档标题（写进 `<title>` 与 `<h1>`）；正文之后再靠 patch 补。" +
         "新建文档的块 id 由内容派生：首次写入正文后 id 会变，" +
@@ -49,7 +49,7 @@ export const createDocShape = {
 
 type CreateDocArgs = z.infer<z.ZodObject<typeof createDocShape>>;
 
-/** 裁定 #5：最小合法文档 = `<article>` + `<h1>` + 一个 `<section>`，不做模板系统。
+/** 最小合法文档 = `<article>` + `<h1>` + 一个 `<section>`，不做模板系统。
  * 骨架里只写 `<article data-hr-id="root">`：`validateDocument` 要求它存在，后续整篇替换也以它为靶。
  * 其余节点的 id 一律交给 core 的 `injectNodeIds`——本包不手写 id 规则（手写的结论必然是
  * “新建的文档对 `hr_patch_node` 只有一个靶子 `root`、大纲为空”，与 core 漂移一次就断一条链路）。 */
@@ -88,7 +88,7 @@ const writeNewDocOf = async (
   htmlOf: (title: string) => string,
 ): Promise<CallToolResult> => {
   const target = documentTargetOf(args.filePath, process.cwd());
-  // 形态骨架来自 core（与 `hr new` 同一份）；不给 `kind` 时仍是裁定 #5 的最小文档，行为不变。
+  // 形态骨架来自 core（与 `hr new` 同一份）；不给 `kind` 时仍是最小合法文档，行为不变。
   const html =
     args.kind === undefined
       ? htmlOf(args.title)
