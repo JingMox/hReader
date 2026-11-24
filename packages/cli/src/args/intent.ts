@@ -1,10 +1,10 @@
-// 这层管：argv 解析的公共类型与四个小工具（失败信封 / 未用 flag / 公共字段 / 绝对路径）；不含具体命令。
+// 这层管：argv 解析的公共类型与共享校验辅助函数；不含具体命令。
 
 import { resolve } from "node:path";
 import type { DocKind, PatchAction } from "@hreader/core";
 
-import type { Raw } from "./tokens";
-import type { CommandName } from "./usage";
+import type { CommandName } from "../usage";
+import type { Raw } from "./raw";
 
 export type HtmlSource =
   | { readonly kind: "inline"; readonly text: string }
@@ -50,7 +50,7 @@ export type Intent =
       readonly files: readonly string[];
       readonly id: string;
       readonly name: string;
-      /** 是否由文件名 slug 兜底：`run.ts` 据此在 stderr 说明"用了默认值"（D10）。 */
+      /** 是否由文件名 slug 兜底：`run.ts` 据此在 stderr 说明"用了默认值"。 */
       readonly idGiven: boolean;
       readonly nameGiven: boolean;
       readonly out: string | undefined;
@@ -78,7 +78,7 @@ export type Intent =
       readonly timeoutMs: number;
       /** 大纲默认开（`--outline` 缺省即开），`--no-outline` 置 false。 */
       readonly outline: boolean;
-      /** 两个大纲旗标同传：用法层只分得清“给没给”，互斥是语义错误（命令层报 `invalid_input`）。 */
+      /** 两个大纲旗标同传：用法层只分得清"给没给"，互斥是语义错误（命令层报 `invalid_input`）。 */
       readonly outlineConflict: boolean;
       /** `--out` 必填（写文件是这条命令的唯一产物）。 */
       readonly out: string;
@@ -116,13 +116,13 @@ export type Intent =
       readonly path: string;
       readonly port: number;
       readonly allowHosts: readonly string[] | undefined;
-      /** 显式 `--app-dir` 的绝对路径；未给就是 `undefined`（让 core 走 M2.1 的 200 兜底）。 */
+      /** 显式 `--app-dir` 的绝对路径；未给就是 `undefined`（由 core 兜底）。 */
       readonly appDir: string | undefined;
       /** 用户是否显式给了 `--app-dir`：`run.ts` 据此决定"目录不存在就 exit 2"。 */
       readonly appDirGiven: boolean;
       /** `--home` 的绝对路径；`undefined` = 走 `homedir()`（默认行为不变）。 */
       readonly home: string | undefined;
-      /** `--exit-with-parent`：父进程（壳）消失就自杀；默认 false，用户自己起的 daemon 行为不变。 */
+      /** `--exit-with-parent`：父进程（壳）消失就退出；默认 false，用户自己起的 daemon 行为不变。 */
       readonly exitWithParent: boolean;
     } & Common);
 
@@ -157,3 +157,16 @@ export const commonOf = (raw: Raw, cwd: string): Common => ({
 
 /** 路径一律先按 cwd 解成绝对路径；写命令到 workspace 的相对换算在 `run.ts`（那里能取真实路径）。 */
 export const absoluteOf = (file: string, cwd: string): string => resolve(cwd, file);
+
+/** 解析闭区间整数参数；未传返回 `undefined`，非法或越界返回 `"invalid"`。 */
+export const intInRange = (
+  raw: Raw,
+  flag: string,
+  min: number,
+  max: number,
+): number | undefined | "invalid" => {
+  const value = raw.values.get(flag);
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : "invalid";
+};
