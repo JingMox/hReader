@@ -1,57 +1,82 @@
 // 这层管：`src/server/body.ts` 与 `routes.ts` 的纯函数（JSON 取字段 / 路由匹配 / 参数解码）。
 
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { codeOf } from "../io/harness";
+import { HrError } from "../../src/hr-error";
 import {
-  integerFieldOf,
-  jsonBodyOf,
+  integer,
   MAX_BODY_BYTES,
-  numberFieldOf,
-  requiredStringOf,
-  stringFieldOf,
+  optionalString,
+  parseBody,
+  requiredString,
 } from "../../src/server/body";
 import { decodeParams, matchRoute, ROUTES } from "../../src/server/routes";
 
-describe("jsonBodyOf · 只接受对象", () => {
-  it("should accept a JSON object", () => {
-    expect(jsonBodyOf('{"a":1}')).toEqual({ ok: true, value: { a: 1 } });
-  });
-
-  it.each([["[]"], ["null"], ["1"], ['"x"'], ["{"], ["{}x"]])(
-    "should reject %j as invalid",
-    (text) => {
-      expect(jsonBodyOf(text)).toEqual({ ok: false });
-    },
-  );
+const schema = z.object({
+  s: requiredString,
+  n: integer,
+  o: optionalString,
+  kind: requiredString.pipe(z.enum(["a", "b"])),
 });
 
-describe("字段取值 · 缺/错类型", () => {
-  const record = { s: "x", n: 2, i: 3, bad: 1.5, nan: Number.NaN, inf: Number.POSITIVE_INFINITY };
+const GOOD = { s: "x", n: 3, kind: "a" };
 
-  it("should return strings and finite numbers only", () => {
-    expect(stringFieldOf(record, "s")).toBe("x");
-    expect(stringFieldOf(record, "n")).toBeUndefined();
-    expect(numberFieldOf(record, "n")).toBe(2);
-    expect(numberFieldOf(record, "nan")).toBeUndefined();
-    expect(numberFieldOf(record, "inf")).toBeUndefined();
-    expect(stringFieldOf(record, "missing")).toBeUndefined();
+const messageOf = (body: unknown): string => {
+  try {
+    parseBody(schema, body);
+  } catch (error: unknown) {
+    if (error instanceof HrError) return error.message;
+    throw error;
+  }
+  throw new Error("期望 invalid_request 但没有抛");
+};
+
+describe("parseBody · 字段取值与错误口径", () => {
+  it("should return the typed fields and ignore unknown ones", () => {
+    expect(parseBody(schema, { ...GOOD, extra: 1 })).toEqual(GOOD);
+    expect(parseBody(schema, { ...GOOD, o: "note" }).o).toBe("note");
   });
 
-  it("should return integers and reject everything else with invalid_request", () => {
-    expect(integerFieldOf(record, "i")).toBe(3);
-    expect(codeOf(() => integerFieldOf(record, "bad"))).toBe("invalid_request");
-    expect(codeOf(() => integerFieldOf(record, "missing"))).toBe("invalid_request");
+  it("should treat a wrongly-typed optional string as absent", () => {
+    expect(parseBody(schema, { ...GOOD, o: 5 }).o).toBeUndefined();
   });
 
-  it("should treat an empty required string as missing", () => {
-    expect(requiredStringOf(record, "s")).toBe("x");
-    expect(codeOf(() => requiredStringOf({ s: "" }, "s"))).toBe("invalid_request");
-    expect(codeOf(() => requiredStringOf(record, "missing"))).toBe("invalid_request");
+  it("should reject every failure with invalid_request", () => {
+    expect(codeOf(() => parseBody(schema, { ...GOOD, n: 1.5 }))).toBe("invalid_request");
   });
 
   it("should pin the 1 MiB body limit", () => {
     expect(MAX_BODY_BYTES).toBe(1_048_576);
+  });
+});
+
+describe("parseBody · 报错文案", () => {
+  it.each([
+    ["缺失", { n: 3, kind: "a" }],
+    ["空串", { ...GOOD, s: "" }],
+    ["类型不对", { ...GOOD, s: 7 }],
+  ])("should report a %s required string as missing", (_label, body) => {
+    expect(messageOf(body)).toBe("缺少字符串字段 `s`");
+  });
+
+  it.each([
+    ["小数", 1.5],
+    ["字符串", "3"],
+    ["无穷", Number.POSITIVE_INFINITY],
+    ["缺失", undefined],
+  ])("should report a %s integer as invalid", (_label, n) => {
+    expect(messageOf({ ...GOOD, n })).toBe("字段 `n` 必须是整数");
+  });
+
+  it("should name an unknown enum value but treat an empty one as missing", () => {
+    expect(messageOf({ ...GOOD, kind: "c" })).toBe("未知 kind：c");
+    expect(messageOf({ ...GOOD, kind: "" })).toBe("缺少字符串字段 `kind`");
+  });
+
+  it("should report only the first failure", () => {
+    expect(messageOf({})).toBe("缺少字符串字段 `s`");
   });
 });
 

@@ -2,7 +2,8 @@
 
 export { startServer } from "./server";
 export type { RunningServer, ServerDeps } from "./server";
-export type { DaemonInfo, ServerOptions } from "./contracts";
+export type { ServerOptions } from "./contracts";
+export type { DaemonInfo } from "./daemon";
 export { matchRoute } from "./routes";
 export { statusOf } from "./status";
 export { READY_FRAME, createEventRing } from "./event-ring";

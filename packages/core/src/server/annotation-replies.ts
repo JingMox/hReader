@@ -1,13 +1,16 @@
 // 这层管：M2.3 的四个批注/撤销处理器（AC3.1–AC3.4）；只产出 `Reply`/`Written`，不碰 socket。
 
+import { z } from "zod";
+
 import type { ResolvedTarget } from "../io/paths";
 import { diffText, resolveAnchor, type Annotation, type TextAnchor } from "../annotations";
 import { HrError } from "../hr-error";
+import { jsonObject } from "../schema";
 import type { DocumentModel } from "../model/constants";
 import { addAnnotation, listAnnotations, resolveAnnotation } from "../ops/annotationOps";
 import { revertLast } from "../ops/revertOp";
 import { blockBasisOf, flattenOf, modelOf } from "./annotation-basis";
-import { integerFieldOf, requiredStringOf, stringFieldOf } from "./body";
+import { integer, optionalString, parseBody, requiredString } from "./body";
 import type { AnnotationDiffBody, Reply } from "./contracts";
 import { busy, jsonReply, targetOf, type HandlerContext, type Written } from "./handlers";
 import { revisionOf } from "./revision";
@@ -44,16 +47,19 @@ export const annotationsReply = async (ctx: HandlerContext, docId: string): Prom
   });
 };
 
-const anchorOf = (body: Readonly<Record<string, unknown>>): TextAnchor => {
-  const raw = body["anchor"];
-  if (typeof raw !== "object" || raw === null) throw new HrError("invalid_payload", "anchor 缺失");
-  const record: Readonly<Record<string, unknown>> = { ...raw };
-  return {
-    exact: requiredStringOf(record, "exact"),
-    prefix: stringFieldOf(record, "prefix") ?? "",
-    suffix: stringFieldOf(record, "suffix") ?? "",
-    start: integerFieldOf(record, "start"),
-  };
+const anchorBody = z.object({
+  exact: requiredString,
+  prefix: z.string().catch(""),
+  suffix: z.string().catch(""),
+  start: integer,
+});
+
+const addBody = z.object({ nodeId: requiredString, note: optionalString });
+
+/** 缺 `anchor` 是 payload 形状错（`invalid_payload`），`anchor` 里的字段错才是请求错。 */
+const anchorOf = (raw: unknown): TextAnchor => {
+  if (!jsonObject.safeParse(raw).success) throw new HrError("invalid_payload", "anchor 缺失");
+  return parseBody(anchorBody, raw);
 };
 
 export const annotationAddReply = async (
@@ -63,15 +69,11 @@ export const annotationAddReply = async (
   lockMs: number,
 ): Promise<Written> => {
   const target = await targetOf(ctx, docId);
+  const { nodeId, note } = parseBody(addBody, body);
+  const anchor = anchorOf(body["anchor"]);
   const result = await busy(() =>
     addAnnotation(
-      {
-        workspace: ctx.workspace,
-        file: docId,
-        nodeId: requiredStringOf(body, "nodeId"),
-        anchor: anchorOf(body),
-        note: stringFieldOf(body, "note") ?? "",
-      },
+      { workspace: ctx.workspace, file: docId, nodeId, anchor, note: note ?? "" },
       ctx.deps,
       { lockTimeoutMs: lockMs },
     ),
@@ -91,6 +93,8 @@ export interface DocAnId {
   readonly anId: string;
 }
 
+const resolveBody = z.object({ resolutionNote: optionalString });
+
 export const annotationResolveReply = async (
   ctx: HandlerContext,
   ids: DocAnId,
@@ -98,7 +102,7 @@ export const annotationResolveReply = async (
   lockMs: number,
 ): Promise<Written> => {
   const target = await targetOf(ctx, ids.docId);
-  const resolutionNote = stringFieldOf(body, "resolutionNote");
+  const { resolutionNote } = parseBody(resolveBody, body);
   const result = await busy(() =>
     resolveAnnotation(
       {

@@ -5,7 +5,7 @@
 import { createServer, get, type Server } from "node:http";
 
 import { HrError } from "../hr-error";
-import type { DaemonInfo } from "./contracts";
+import type { DaemonInfo } from "./daemon";
 
 /** 端口上那个东西到底是不是我们的：记录里的 pid 可能被无关进程复用，只能问它自己的 `/healthz`。 */
 type PortOwner = "ours" | "other" | "unknown";

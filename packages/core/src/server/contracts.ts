@@ -30,14 +30,6 @@ export interface ServerOptions {
   readonly timeouts?: Partial<Timeouts>;
 }
 
-/** `daemon.json` 的形状：CLI 与浏览器都靠它拿端口与一次性 token。 */
-export interface DaemonInfo {
-  readonly port: number;
-  readonly token: string;
-  readonly pid: number;
-  readonly workspace: string;
-}
-
 export interface SseEvent {
   readonly id: number;
   readonly type: string;

@@ -89,11 +89,15 @@ describe("GET annotations · lost 计算", () => {
 });
 
 describe("POST annotations · anchor 结构校验", () => {
-  it("should reject a string anchor with invalid_payload", async () => {
+  it.each([
+    ["字符串", "正文"],
+    ["数组", []],
+    ["null", null],
+  ])("should reject a %s anchor with invalid_payload", async (_label, anchor) => {
     await withServer(async (ctx) => {
       const before = sha256Of(readFileSync(ctx.file));
       const response = await postTo(ctx, `/api/doc/${ctx.docId}/annotations`, {
-        anchor: "正文",
+        anchor,
       });
 
       expect(response.status).toBe(400);

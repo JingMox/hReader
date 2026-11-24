@@ -2,13 +2,15 @@
 
 import type { IncomingMessage } from "node:http";
 
+import { z } from "zod";
+
 import {
   annotationAddReply,
   annotationResolveReply,
   undoReply,
   type DocAnId,
 } from "./annotation-replies";
-import { requiredStringOf, stringFieldOf } from "./body";
+import { optionalString, parseBody, requiredString } from "./body";
 import { HrError } from "../hr-error";
 import {
   annotationReply,
@@ -22,14 +24,17 @@ import { bodyRecordOf } from "./http-io";
 import { docQueueKey, withDocQueue } from "./queue";
 import { paramOf, type Route } from "./routes";
 
+const requiredDocId = z.object({ docId: requiredString });
+const optionalDocId = z.object({ docId: optionalString });
+
 const docIdOf = (
   body: Readonly<Record<string, unknown>>,
   params: Readonly<Record<string, string>>,
 ): string => {
   const pathDocId = params["docId"];
-  if (pathDocId === undefined) return requiredStringOf(body, "docId");
+  if (pathDocId === undefined) return parseBody(requiredDocId, body).docId;
   // 路径 `<docId>` 是唯一真相（裁定 #6）：browser 端可省略 body.docId，但给了不一致的值必须拒收。
-  const bodyDocId = stringFieldOf(body, "docId");
+  const { docId: bodyDocId } = parseBody(optionalDocId, body);
   if (bodyDocId !== undefined && bodyDocId !== pathDocId) {
     throw new HrError("invalid_payload", `body.docId（${bodyDocId}）与路径（${pathDocId}）不一致`);
   }

@@ -5,7 +5,6 @@
 import { describe, expect, it } from "vitest";
 
 import { defaultHostsOf } from "../../src/server/auth";
-import { numberFieldOf } from "../../src/server/body";
 import { daemonAlive, parseDaemon } from "../../src/server/daemon";
 import { frameTokenOf } from "../../src/server/event-ring";
 import { CONNECT_COMMENT, MAX_CLIENTS, RETRY_AFTER_MS, createHub } from "../../src/server/hub";
@@ -20,15 +19,9 @@ import { REVISION_CHARS } from "../../src/server/revision";
 import { ROUTES } from "../../src/server/routes";
 import { DEBOUNCE_MS, ECHO_MS, createWatcher } from "../../src/server/watcher";
 
-describe("auth/body · 小工具", () => {
+describe("auth · 小工具", () => {
   it("should list both loopback hosts for the given port", () => {
     expect(defaultHostsOf(7421)).toEqual(["127.0.0.1:7421", "localhost:7421"]);
-  });
-
-  it("should accept finite numbers only and reject NaN / numeric strings", () => {
-    expect(numberFieldOf({ n: 3, s: "3", nan: Number.NaN }, "n")).toBe(3);
-    expect(numberFieldOf({ n: 3, s: "3", nan: Number.NaN }, "s")).toBeUndefined();
-    expect(numberFieldOf({ n: 3, s: "3", nan: Number.NaN }, "nan")).toBeUndefined();
   });
 });
 

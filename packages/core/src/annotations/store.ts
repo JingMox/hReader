@@ -6,6 +6,7 @@ import { spanOf } from "../html/span";
 import type { HtmlElementNode, HtmlNode } from "../html/constants";
 import { META_SCRIPT_ID } from "../html/constants";
 import { attributeOf } from "../model/attrs";
+import { jsonArray, jsonObject, parseJson } from "../schema";
 import { insertMeta } from "./meta-insert";
 import { parseAnnotationOf, unknownFieldsOf, type Annotation } from "./model";
 
@@ -14,18 +15,6 @@ export interface ReadResult {
   /** 每条都是**人话**诊断：调用方直接展示，不再自己拼（AC2.4）。 */
   readonly diagnostics: readonly string[];
 }
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const parseJson = (text: string): unknown => {
-  try {
-    const value: unknown = JSON.parse(text);
-    return value;
-  } catch {
-    return undefined;
-  }
-};
 
 const isMetaScript = (node: HtmlNode): node is HtmlElementNode =>
   node.kind === "element" && node.tag === "script" && attributeOf(node, "id") === META_SCRIPT_ID;
@@ -52,14 +41,17 @@ export const readAnnotations = (html: string): ReadResult => {
   const script = metaScriptOf(parsed.root);
   const scriptSpan = spanOf(script);
   if (scriptSpan === null) return { annotations: [], diagnostics: [] };
-  const payload = parseJson(html.slice(scriptSpan.innerStart, scriptSpan.innerEnd).trim());
-  if (!isRecord(payload)) {
+  const payload = jsonObject.safeParse(
+    parseJson(html.slice(scriptSpan.innerStart, scriptSpan.innerEnd).trim()),
+  );
+  if (!payload.success) {
     return { annotations: [], diagnostics: ["hr-meta 不是合法 JSON 对象，按空批注处理"] };
   }
-  const raw = payload["annotations"];
-  if (!Array.isArray(raw)) {
+  const list = jsonArray.safeParse(payload.data["annotations"]);
+  if (!list.success) {
     return { annotations: [], diagnostics: ["hr-meta.annotations 不是数组，按空批注处理"] };
   }
+  const raw = list.data;
   const annotations: Annotation[] = [];
   const diagnostics: string[] = [];
   const unknown = new Set<string>();
