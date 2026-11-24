@@ -1,4 +1,4 @@
-// 这层管：`hr_resolve_annotation`（把 pending_ai 批注标成 resolved）；写回走 core 的 patch 管线。
+// 这层管：`hr_resolve_annotation`（把未处理的批注标成 resolved）；写回走 core 的 patch 管线。
 
 import { nodePatchDeps, resolveAnnotation } from "@hreader/core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";

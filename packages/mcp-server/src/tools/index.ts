@@ -76,7 +76,7 @@ const registerEditingTools = (server: McpServer): void => {
     {
       title: "结掉一条批注",
       description:
-        "把某条 `pending_ai` 批注标成 resolved（可附一句话说明）。真正改完正文之后再调它，否则清单里会显示已处理但正文没变",
+        "把某条未处理的批注标成 resolved（可附一句话说明）。真正改完正文之后再调它，否则清单里会显示已处理但正文没变",
       inputSchema: resolveAnnotationShape,
     },
     resolveAnnotationCall,

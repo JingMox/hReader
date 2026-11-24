@@ -89,7 +89,7 @@ Single-file extension [`packages/pi-extension/pi-hreader.ts`](../packages/pi-ext
 
 - `/hreader <doc.html>` — Start/attach to `hr serve`, show local reader link, and subscribe to live reader SSE annotations.
 - `/hr-style <style-id>` — Switch or inspect active writing-style rules (`atelier-editorial` or `.hreader/style.yaml`).
-- Pending `pending_ai` annotations made in the browser or desktop app are formatted into the agent session context automatically.
+- Pending annotations made in the browser or desktop app are formatted into the agent session context automatically.
 
 Smoke test in repo:
 

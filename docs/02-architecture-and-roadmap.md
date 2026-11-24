@@ -188,7 +188,7 @@ language_style:
 | 原语名称 | 输入参数 | Token 消耗与作用说明 |
 | :--- | :--- | :--- |
 | `hr_create_doc` | `filePath`, `title`, `kind?` | **建稿**。不给 `kind` 时写一份最小合法文档（`<article data-hr-id="root">` + `<h1>` + 一个 `<section>`）；给 `kind`（`note` / `report` / `minutes` / `brief` / `slides`）时写对应形态的骨架（与 `hr new --kind` 同一份）。节点 id 交给 `injectNodeIds` 派生；已存在的文件不覆盖。 |
-| `hr_outline` | `filePath` | **~150 Tokens**。返回文档的 `<section>` / `<h1~h4>` 骨骼树、各节点 `data-hr-id`、字数统计、以及**所有未处理的 `pending_ai` 用户划词批注**。 |
+| `hr_outline` | `filePath` | **~150 Tokens**。返回文档的 `<section>` / `<h1~h4>` 骨骼树、各节点 `data-hr-id`、字数统计、以及**所有未处理的用户划词批注**（`pending_ai` 与 `pending` 两态都算）。 |
 | `hr_read_node` | `filePath`, `nodeId` (或 CSS Selector) | **~200 Tokens**。仅提取目标节点及其子树的 HTML 源码与关联批注，避免读取整篇文件。 |
 | `hr_patch_node` | `filePath`, `nodeId`, `action` (`replace` \| `insert_after` \| `insert_before` \| `append` \| `delete`), `htmlContent` | **极速局部写入**。解析 HTML 片段，自动为新增块级元素注入 `data-hr-id`，校验标签闭合与禁用词，更新文件并触发 WebSocket 局部热更新；回执带 `warnings`（组件结构 / 内联 `style` 的排版检查，只警告不拒写）。 |
 | `hr_apply_style` | `filePath`, `visualId?`, `toneId?` | 若仅切换 `visualId`，引擎直接替换 `<style id="hr-theme">`（**0 LLM Token**）；若切换 `toneId`，返回该语言风格的完整规约供 Agent 改写正文。 |
