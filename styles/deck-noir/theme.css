@@ -376,6 +376,7 @@ article[data-hr-kind="slides"] > section {
   box-shadow: 0 calc(0.3 * var(--du)) calc(0.9 * var(--du)) rgba(0, 0, 0, 0.45);
 }
 
+article[data-hr-kind="slides"] > h1,
 article[data-hr-kind="slides"] > section {
   counter-increment: hr-deck-page;
 }
@@ -386,6 +387,18 @@ article[data-hr-kind="slides"] > section::after {
   right: calc(0.8 * var(--du));
   bottom: calc(0.45 * var(--du));
   font-size: calc(0.22 * var(--du));
+  color: var(--hr-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 封面页（h1）也是一页：页码口径与 section 一致，和阅读器 pager（1 / N）对齐。 */
+article[data-hr-kind="slides"] > h1::before {
+  content: counter(hr-deck-page);
+  position: absolute;
+  right: calc(0.8 * var(--du));
+  bottom: calc(0.45 * var(--du));
+  font-size: calc(0.22 * var(--du));
+  font-weight: 400;
   color: var(--hr-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -485,9 +498,42 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
   display: none;
 }
 
-/* 逐条出现：hidden 占位不撤（版面不跳），只是不可见。 */
-[data-hr-present] [data-hr-step-state="hidden"],
-[data-hr-slide-state] [data-hr-step-state="hidden"] {
+/* ---------- 阅读器宿主内的协作：寻址描边、当前块高亮、演示壳内边距 ----------
+   以下选择器只在 #hr-doc（阅读器正文区）里生效；standalone/打印稿没有 #hr-doc，自然不命中。 */
+
+/* 阅读器给每个可寻址块加左侧透明描边 + 8px 内缩（阅读辅助）；slides 里是噪声，压掉。
+   注意用「页的后代」而不是「页内的可寻址块」做选择器：页根（h1/section）自己也是
+   [data-hr-id]，命中它会把页的内边距清零。组件根本身留着（callout 的 accent 描边归主题）。 */
+#hr-doc article[data-hr-kind="slides"] > h1 [data-hr-id]:not(article):not([data-hr-component]),
+#hr-doc
+  article[data-hr-kind="slides"]
+  > section
+  [data-hr-id]:not(article):not([data-hr-component]) {
+  padding-left: 0;
+  border-left: 0;
+}
+
+/* 「当前块」高亮（.doc__block--on）会把命中的块涂成浅色：落在页内元素上恢复透明，
+   落在「页」本身（h1/section）上恢复页本身的深色渐变底。 */
+#hr-doc article[data-hr-kind="slides"] .doc__block--on {
+  background: transparent;
+}
+
+#hr-doc article[data-hr-kind="slides"] > h1.doc__block--on,
+#hr-doc article[data-hr-kind="slides"] > section.doc__block--on {
+  background: linear-gradient(155deg, var(--hr-surface), #0d1119 65%);
+}
+
+/* 演示壳给 current 页套 8vh/8vw 内边距与 100vh 最小高（为普通文档设计）；
+   slides 版心用 --du 定死，内边距与高度都按主题自己的口径来。 */
+#hr-doc article[data-hr-kind="slides"] > [data-hr-slide-state] {
+  min-height: 0;
+  padding: calc(0.55 * var(--du)) calc(0.8 * var(--du));
+}
+
+/* 逐条出现：future 占位不撤（版面不跳），只是不可见。 */
+[data-hr-present] [data-hr-step-state="future"],
+[data-hr-slide-state] [data-hr-step-state="future"] {
   visibility: hidden;
   opacity: 0;
   transform: translateY(0.45em);
@@ -519,7 +565,10 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
       visibility 0s linear 0.4s;
   }
 
-  [data-hr-step-state="shown"] {
+  /* current 是刚放出的那一条：visibility 零延迟，opacity/transform 照常播；
+     past 已播完，同样不能被 0.4s 的 visibility 延迟再藏一次。 */
+  [data-hr-step-state="current"],
+  [data-hr-step-state="past"] {
     transition:
       opacity 0.4s ease,
       transform 0.4s ease,
