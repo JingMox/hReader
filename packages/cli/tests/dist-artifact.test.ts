@@ -22,12 +22,16 @@ const runDist = async (args: readonly string[], cwd: string): Promise<CliResult>
     });
     let stdout = "";
     let stderr = "";
-    child.stdout?.setEncoding("utf8");
-    child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => {
+    if (child.stdout === null || child.stderr === null) {
+      reject(new Error("子进程的 stdout/stderr 不是管道：检查 spawn 的 stdio"));
+      return;
+    }
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
       stdout += chunk;
     });
-    child.stderr?.on("data", (chunk: string) => {
+    child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
     });
     child.on("error", reject);
