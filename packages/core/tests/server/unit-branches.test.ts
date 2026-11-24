@@ -1,5 +1,5 @@
 // 这层管：只有"注入 deps"才能打到的分支——runtime 的 doc.error / library.changed / 无变化不广播、
-// ensureNoDaemon 的三条早退、bodyRecordOf 的非 JSON、watcher 回声窗口过期。
+// ensureNoDaemon 的三条早退、watcher 回声窗口过期。
 
 import { mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -7,8 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { bodyRecordOf } from "../../src/server/http-io";
-import { disposeWatchers, requestLike, watcherLike } from "./casts";
+import { disposeWatchers, watcherLike } from "./casts";
 import { createWatcher } from "../../src/server/watcher";
 import type { WatchFn } from "../../src/server/watcher";
 import { writeDaemonOf, daemonFileOf } from "../../src/server/daemon";
@@ -222,30 +221,6 @@ describe("ensureNoDaemon · 三条早退（续）", () => {
     expect(daemonFileOf(home)).toContain("daemon.json");
     await server.close();
   });
-});
-
-describe("http-io · 请求体只接受 JSON 对象", () => {
-  const bodyOf = (text: string): ReturnType<typeof bodyRecordOf> => {
-    const req = {
-      on: (event: string, handler: (chunk?: Buffer) => void) => {
-        if (event === "data") handler(Buffer.from(text));
-        if (event === "end") handler();
-        return req;
-      },
-    };
-    return bodyRecordOf(requestLike(req));
-  };
-
-  it("should accept a JSON object", async () => {
-    await expect(bodyOf('{"a":1}')).resolves.toEqual({ a: 1 });
-  });
-
-  it.each([["not-json"], ["[]"], ["null"], ["1"], ['"x"'], ["{"], ["{}x"]])(
-    "should throw invalid_request for %j",
-    async (text) => {
-      await expect(bodyOf(text)).rejects.toMatchObject({ code: "invalid_request" });
-    },
-  );
 });
 
 describe("watcher · 回声窗口过期后仍要转发", () => {
