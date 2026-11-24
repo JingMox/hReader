@@ -269,7 +269,6 @@ Cordis 插件 [`packages/dsh-bundle/src/index.ts`](packages/dsh-bundle/src/index
 | 包路径                   | 职责                                                                              |
 | ------------------------ | --------------------------------------------------------------------------------- |
 | `@hreader/core`          | 语义化 HTML 解析、`data-hr-id` 树、大纲、精准修补、风格编译器与本地 HTTP/SSE 服务 |
-| `@hreader/protocol`      | 共享 MCP / 工具 Schema 与协议契约                                                 |
 | `@hreader/renderer-html` | 基于无头 Chromium 的 PDF / PNG / 打印版 HTML 导出渲染器                           |
 | `@hreader/app`           | 桌面端与浏览器共用的阅读/批注交互前端（`dist/`）                                  |
 | `@hreader/cli`           | 独立 `hr` 命令行与本地 daemon 服务                                                |

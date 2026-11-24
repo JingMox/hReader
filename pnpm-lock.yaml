@@ -208,15 +208,6 @@ importers:
         specifier: 'catalog:'
         version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
 
-  packages/protocol:
-    devDependencies:
-      '@hreader/core':
-        specifier: workspace:*
-        version: link:../core
-      vitest:
-        specifier: 3.2.4
-        version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
-
   packages/renderer-html:
     devDependencies:
       '@hreader/core':

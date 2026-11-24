@@ -9,7 +9,6 @@ const fromRepoRoot = (path: string): string => fileURLToPath(new URL(path, impor
 // 包名 → 源码入口：测试与运行期都解析到同一份源码，避免 dist 产物与源码类身份不一致。
 const ALIASES = [
   "@hreader/core",
-  "@hreader/protocol",
   "@hreader/renderer-html",
   "@hreader/app",
   "@hreader/mcp-server",

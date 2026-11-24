@@ -14,9 +14,6 @@
     "packages/core": {
       "entry": ["fixtures/*.mjs", "tests/**/*.ts"]
     },
-    "packages/protocol": {
-      "entry": ["tests/**/*.ts"]
-    },
     "packages/cli": {
       "entry": [
         "src/args/index.ts",
