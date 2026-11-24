@@ -11,8 +11,8 @@ export {
   sanitizedAttributesOf,
 } from "./html";
 export type { SanitizePreset } from "./html";
-export { toDocumentModel, validateDocument } from "./model";
-export type { DocumentModel } from "./model";
+export { classifyDocument, loadDocument, toDocumentModel, validateDocument } from "./model";
+export type { Classification, DocClass, DocumentLoad, DocumentModel } from "./model";
 export { buildOutline, locateTarget, patchTargetIdOf, readNode } from "./ops";
 export type { LocatedTarget, Outline, OutlineNode, PendingAnnotation, ReadNodeResult } from "./ops";
 export { applyPatch, parseFragment } from "./ops";
