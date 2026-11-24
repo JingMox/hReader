@@ -5,7 +5,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { fieldOf } from "../packages/cli/src/chrome/protocol.ts";
+/** 从 `--json` 信封里按键取值，避免在脚本里写 `as` 断言。 */
+const fieldOf = (value: unknown, key: string): unknown => Reflect.get(Object(value), key);
 
 interface Pixels {
   readonly width: number;

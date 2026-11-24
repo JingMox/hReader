@@ -14,10 +14,9 @@ import { describe, expect, it } from "vitest";
 // `normalizeWhitespace` 不在 `@hreader/core` 的公开导出面里（不为了一个测试 oracle 去扩它）：
 // 跨包相对导入是仓里 `scripts/` 已有的做法，这里只用它的语义，不碰它的实现。
 import { normalizeWhitespace } from "../../core/src/html/text.ts";
-import { fieldOf } from "../src/chrome/protocol";
 import { skipLineOf, skipReasonOf } from "../src/commands/printSkip";
 import { pdfScanOf, type PdfOutlineNode, type PdfScan } from "./helpers/pdf-scan";
-import { expectNoAnsi, runCli, withTempDir } from "./harness";
+import { expectNoAnsi, fieldOf, runCli, withTempDir } from "./harness";
 
 type HtmlNode = ReturnType<typeof parseHtml>["root"];
 

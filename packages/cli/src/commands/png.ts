@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 
 import { DEFAULT_STYLE_ID, HrError, nodePatchDeps } from "@hreader/core";
 
-import type { LongImage } from "../chrome/cdp";
+import type { LongImage } from "../chrome/types";
 import { assertPixelRequestOf } from "../chrome/pixels";
 import { assertPngOf, pngSizeOf } from "../chrome/png";
 import { dataPng, humanPng, jsonOk, type PngReport } from "../output";

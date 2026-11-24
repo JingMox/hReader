@@ -4,9 +4,9 @@ import { dirname } from "node:path";
 
 import { DEFAULT_STYLE_ID, HrError, nodePatchDeps } from "@hreader/core";
 
-import { isPdfPageSize, type PdfPageSize } from "../chrome/cdp";
+import { isPdfPageSize, type PdfPageSize } from "../chrome/types";
 import { dataPdf, humanPdf, jsonOk, type PdfReport } from "../output";
-import { bookmarkCountOf } from "../pdf/bookmarks";
+import { inspectPdfOf } from "../pdf/report";
 import {
   assertOutInsideOf,
   assertTargetFreeOf,
@@ -45,15 +45,9 @@ export interface PdfCommandInput {
   readonly render: RenderPdf;
 }
 
-/** `\/Type\s*\/Page\b(?!s)`：旧写法 `[^s]` 在文件以 `/Type /Page` 结尾时会漏数最后一页。 */
-const PDF_PAGE = /\/Type\s*\/Page\b(?!s)/gu;
-
 const PDF_MAGIC = "%PDF-";
 
 const decoder = new TextDecoder("latin1");
-
-export const pdfPagesOf = (bytes: Uint8Array): number =>
-  decoder.decode(bytes).match(PDF_PAGE)?.length ?? 0;
 
 const pageSizeOf = (value: string): PdfPageSize => {
   if (!isPdfPageSize(value)) {
@@ -62,12 +56,11 @@ const pageSizeOf = (value: string): PdfPageSize => {
   return value;
 };
 
-const assertPdfOf = (bytes: Uint8Array, pages: number): void => {
+const assertPdfHeaderOf = (bytes: Uint8Array): void => {
   if (bytes.length === 0) throw new HrError("render_empty", "Chrome 没有返回 PDF 字节");
   if (decoder.decode(bytes.slice(0, PDF_MAGIC.length)) !== PDF_MAGIC) {
     throw new HrError("render_empty", "Chrome 返回的产物不是 PDF");
   }
-  if (pages === 0) throw new HrError("render_empty", "PDF 里没有页面");
 };
 
 /** 落盘三连与 `hr export` 同序同语义（io → 越界 → 已存在）：先判掉必然失败的写，再花时间渲染。 */
@@ -101,11 +94,13 @@ export const pdfCommand = async (input: PdfCommandInput): Promise<string> => {
   }
   await assertPdfOutOf(input);
   const bytes = await productPdfOf(input, pageSize);
-  const pages = pdfPagesOf(bytes);
-  assertPdfOf(bytes, pages);
-  // 大纲数只在产物校验通过之后读：空字节/非 PDF 的既有文案不该被结构解析的报错顶掉。
-  // `--no-outline` 的产物里没有 `/Outlines` 键，自然得 0，命令层不做短路。
-  const outline = bookmarkCountOf(bytes);
+  assertPdfHeaderOf(bytes);
+  // 页数与大纲数读的是产物真值（一次解析两个口径都出来）；结构读不出抛 `render_empty`，
+  // `--no-outline` 的产物里没有 `/Outlines` 键，大纲自然得 0，命令层不做短路。
+  const facts = await inspectPdfOf(bytes);
+  if (facts.pages === 0) throw new HrError("render_empty", "PDF 里没有页面");
+  const pages = facts.pages;
+  const outline = facts.outline;
   await writeOutOf({
     path: input.out,
     workspace: input.workspace,
