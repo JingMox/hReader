@@ -214,7 +214,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn ac14_watching_twice_is_idempotent() {
+    fn watching_twice_is_idempotent() {
         let hub = platform::Hub::new();
         hub.watch();
         hub.watch();
@@ -223,7 +223,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn r3_register_failure_rolls_back_and_is_not_retried() {
+    fn register_failure_rolls_back_and_is_not_retried() {
         let hub = platform::Hub::new();
         let failing = |_signal: i32, _flag: Arc<AtomicBool>| -> Result<(), String> {
             Err("boom".to_string())
@@ -243,7 +243,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn r3_installed_reports_a_handler_that_is_really_registered() {
+    fn installed_reports_a_handler_that_is_really_registered() {
         assert!(watch().installed(), "本机应当装得上 SIGTERM/SIGINT");
         let hub = platform::Hub::new();
         let accepting = |_signal: i32, _flag: Arc<AtomicBool>| -> Result<(), String> { Ok(()) };
@@ -252,7 +252,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn r1_watch_with_reports_each_signal_it_registers() {
+    fn watch_with_reports_each_signal_it_registers() {
         use signal_hook::consts::signal::{SIGINT, SIGTERM};
 
         let hub = platform::Hub::new();
@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn ac14_waiting_returns_after_the_timeout() {
+    fn waiting_returns_after_the_timeout() {
         let started = std::time::Instant::now();
         wait_or_timeout(Duration::from_millis(120));
         assert!(started.elapsed() >= Duration::from_millis(120));

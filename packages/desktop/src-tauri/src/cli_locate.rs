@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_flag_wins_over_env_and_path() {
+    fn flag_wins_over_env_and_path() {
         let exists = only_these(&["/flag/hr", "/env/hr", "/bin/hr"]);
         assert_eq!(
             locate(
@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_env_wins_over_path() {
+    fn env_wins_over_path() {
         let exists = only_these(&["/env/hr", "/bin/hr"]);
         assert_eq!(
             locate(
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_path_is_the_last_resort() {
+    fn path_is_the_last_resort() {
         let exists = only_these(&["/bin/hr"]);
         let path_env = if cfg!(windows) {
             "/usr/bin;/bin"
@@ -218,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_missing_explicit_path_does_not_fall_back() {
+    fn missing_explicit_path_does_not_fall_back() {
         let exists = only_these(&["/bin/hr"]);
         assert_eq!(
             locate(Some(Path::new("/nope/hr")), None, Some("/bin"), &exists),
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_all_three_missing_is_not_found() {
+    fn all_three_missing_is_not_found() {
         let exists = only_these(&[]);
         assert_eq!(
             locate(
@@ -245,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_empty_path_entries_are_skipped() {
+    fn empty_path_entries_are_skipped() {
         let exists = only_these(&["/bin/hr"]);
         let path_env = if cfg!(windows) {
             ";;/bin;;"

@@ -328,7 +328,7 @@ fn show_native_error(title: &str, message: &str) {
 #[cfg(not(target_os = "macos"))]
 fn show_native_error(_title: &str, _message: &str) {}
 
-/// `--hold <secs>`：无窗口、跑满一段时间或收到 SIGTERM/SIGINT 就退出，给 AC-14 一个可测的靶子。
+/// `--hold <secs>`：无窗口、跑满一段时间或收到 SIGTERM/SIGINT 就退出，给信号处理一个可测的靶子。
 fn hold(argv: &[String], options: &ShellOptions, timeout: Duration) -> i32 {
     let session = match connect(argv, options, signals::watch()) {
         Ok(session) => session,
@@ -549,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn r2_home_from_env_prefers_home() {
+    fn home_from_env_prefers_home() {
         let env = test_lookup(&[("HOME", "/home/me"), ("USERPROFILE", "C:/Users/win")]);
         assert_eq!(
             home_from_env(env).expect("HOME 应当胜出"),
@@ -558,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn r2_home_from_env_falls_back_to_userprofile() {
+    fn home_from_env_falls_back_to_userprofile() {
         // Windows 常规只有 USERPROFILE：只读 HOME 的实现在那边等于"没有数据目录"。
         let env = test_lookup(&[("USERPROFILE", "C:/Users/win")]);
         let home = home_from_env(env).expect("USERPROFILE 应当兜底");
@@ -567,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn r2_home_from_env_errors_instead_of_falling_back_to_cwd() {
+    fn home_from_env_errors_instead_of_falling_back_to_cwd() {
         // 回退 "." 会把 daemon.json 写进 cwd（可能是任意仓库），正违背 W7。
         let error = home_from_env(test_lookup(&[])).expect_err("两个变量都没有时必须失败");
         assert!(error.contains("USERPROFILE"), "错误里要说清差什么：{error}");
@@ -675,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn r1_bundle_icon_ico_is_a_valid_ico_with_four_sizes() {
+    fn bundle_icon_ico_is_a_valid_ico_with_four_sizes() {
         // Windows 的 tauri-build 直接读 `icons/icon.ico`，本机没有 windows target：这条是唯一守门人。
         assert_valid_ico(
             include_bytes!("../icons/icon.ico"),
@@ -685,7 +685,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "第 0 档没有数据")]
-    fn r7_ico_rejects_empty_directory_with_zero_sizes() {
+    fn ico_rejects_empty_directory_with_zero_sizes() {
         // 70 字节空目录：四档宽高都对，但 size/offset 全 0——旧判据靠 `offset+size<=len` 的 0+0 恒真放过它。
         let bytes = fake_ico(
             &[(16, 16, 0, 0), (32, 32, 0, 0), (48, 48, 0, 0), (0, 0, 0, 0)],
@@ -697,7 +697,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "至少 40 字节")]
-    fn r7_ico_rejects_dib_without_payload() {
+    fn ico_rejects_dib_without_payload() {
         // 目录项自洽、位域写着 32bpp，payload 却只有 4 字节 DIB 签名：旧判据读 `entry[6..8]` 照样全过。
         let bytes = fake_ico(&[(16, 16, 4, 22)], &[0x28, 0, 0, 0]);
         assert_eq!(bytes.len(), 26);
@@ -706,7 +706,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "必须以 IHDR 开头")]
-    fn r7_ico_rejects_png_marker_without_ihdr() {
+    fn ico_rejects_png_marker_without_ihdr() {
         // `PNG 签名 + IEND` 共 16 字节：签名与收尾都对，中间没有 IHDR——"判据吹得比实际贵"的样本。
         let mut payload = PNG_SIGNATURE.to_vec();
         payload.extend_from_slice(&PNG_IEND);
@@ -716,7 +716,7 @@ mod tests {
     }
 
     #[test]
-    fn r8b_ico_rejects_png_without_iend_tail() {
+    fn ico_rejects_png_without_iend_tail() {
         // 签名 8 + 合规 IHDR 块 25 + 假 IDAT 块 16 = 49 字节：IHDR 与长度门槛都过，
         // 只有"以 IEND 收尾"能拒它——否则那行断言永远红不了，等于没有。
         let mut payload = PNG_SIGNATURE.to_vec();
@@ -742,7 +742,7 @@ mod tests {
     }
 
     #[test]
-    fn r7_ico_rejects_png_under_45_bytes() {
+    fn ico_rejects_png_under_45_bytes() {
         // 签名 8 + 合法 IHDR 块 25 + IEND 序列 8 = 41 字节：IHDR 与 IEND 两侧都过
         // （IEND 判据只看 8 字节序列、不看 4 字节长度前缀），只有"至少 45 字节"能拒它。
         // 45 = 签名 8 + IHDR 块 25 + **完整 IEND 块** 12，所以这条断言判的是块结构完整。
@@ -771,7 +771,7 @@ mod tests {
     }
 
     #[test]
-    fn ac11_shell_home_is_app_scoped_and_never_the_user_home() {
+    fn shell_home_is_app_scoped_and_never_the_user_home() {
         let user_home = Path::new("/Users/x");
         let shell_home = default_home_for(user_home);
         assert_ne!(shell_home, user_home, "绝不能用 $HOME 本身");
@@ -793,7 +793,7 @@ mod tests {
     }
 
     #[test]
-    fn ac11_daemon_file_lands_outside_the_user_store() {
+    fn daemon_file_lands_outside_the_user_store() {
         let user_home = Path::new("/Users/x");
         let file = daemon_file::daemon_file_in(&default_home_for(user_home));
         assert_ne!(file, user_home.join(".hreader/daemon.json"));

@@ -111,7 +111,7 @@ fn conflict_of(error: StartupError) -> Conflict {
 }
 
 #[test]
-fn ac4_navigation_is_refused_when_the_port_changes_hands_before_it() {
+fn navigation_is_refused_when_the_port_changes_hands_before_it() {
     let fixture = Fixture::new("recheck");
     // 第一轮（`decide`）是自己，第二轮（导航前的复核）已经被换手。
     // 拒绝 = 没有 Session = 没有 webview 导航，抢到端口的人也就收不到那个带 `?t=` 的首个请求。
@@ -129,7 +129,7 @@ fn ac4_navigation_is_refused_when_the_port_changes_hands_before_it() {
 }
 
 #[test]
-fn ac4_navigation_happens_when_the_same_daemon_still_answers() {
+fn navigation_happens_when_the_same_daemon_still_answers() {
     let fixture = Fixture::new("recheck-ok");
     let probe = Scripted::new(&[(true, true, Some(42))]);
     let session = connect_with(
@@ -145,7 +145,7 @@ fn ac4_navigation_happens_when_the_same_daemon_still_answers() {
 }
 
 #[test]
-fn ac4_navigation_is_refused_when_the_daemon_died_before_it() {
+fn navigation_is_refused_when_the_daemon_died_before_it() {
     let fixture = Fixture::new("recheck-gone");
     let probe = Scripted::new(&[(true, true, Some(42)), (false, false, None)]);
     let Err(error) = connect_with(

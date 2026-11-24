@@ -1085,14 +1085,14 @@ mod tests {
     }
 
     #[test]
-    fn ac7_register_failure_bubbles_up_as_a_startup_failure() {
+    fn register_failure_bubbles_up_as_a_startup_failure() {
         let error = register_with(&accels(), &FakeRegistrar { reject: true })
             .expect_err("注册失败的 Err 必须冒泡，不许 let _ =");
         assert!(matches!(error, ShortcutError::Rejected(_)), "{error:?}");
     }
 
     #[test]
-    fn ac7_unmappable_key_is_an_error_not_a_silent_skip() {
+    fn unmappable_key_is_an_error_not_a_silent_skip() {
         let broken = [(
             "showWindow".to_string(),
             Accel {
@@ -1109,12 +1109,12 @@ mod tests {
     }
 
     #[test]
-    fn ac7_ok_path_registers_every_accel() {
+    fn ok_path_registers_every_accel() {
         assert!(register_with(&accels(), &FakeRegistrar { reject: false }).is_ok());
     }
 
     #[test]
-    fn ac14_gui_exit_events_all_count_as_exits() {
+    fn gui_exit_events_all_count_as_exits() {
         assert!(exits(&tauri::RunEvent::Exit));
         assert!(!exits(&tauri::RunEvent::Ready));
         assert!(window_exits(&tauri::WindowEvent::Destroyed));

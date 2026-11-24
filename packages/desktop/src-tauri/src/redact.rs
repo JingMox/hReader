@@ -34,7 +34,7 @@ mod tests {
     const TOKEN: &str = "Qm9vR2xtU3R4dHl6MTIzNDU2Nzg5MEFCQ0RFRkdISUpLTE0N";
 
     #[test]
-    fn ac3_all_six_shapes_are_redacted() {
+    fn all_six_shapes_are_redacted() {
         let shapes = [
             format!("http://127.0.0.1:8123/s/a.html?t={TOKEN}"),
             format!("http://127.0.0.1:8123/?doc=a.html#t={TOKEN}"),
@@ -51,18 +51,18 @@ mod tests {
     }
 
     #[test]
-    fn ac3_text_without_token_is_returned_verbatim() {
+    fn text_without_token_is_returned_verbatim() {
         let text = "daemon 就绪 http://127.0.0.1:8123/";
         assert_eq!(redact(text, TOKEN), text);
     }
 
     #[test]
-    fn ac3_empty_token_does_not_maul_the_text() {
+    fn empty_token_does_not_maul_the_text() {
         assert_eq!(redact("hello", ""), "hello");
     }
 
     #[test]
-    fn ac3_base64url_span_detector() {
+    fn base64url_span_detector() {
         assert!(has_base64url_span(TOKEN, 48));
         assert!(has_base64url_span(&format!("t={TOKEN}"), 48));
         assert!(!has_base64url_span("t=***", 48));
@@ -71,7 +71,7 @@ mod tests {
     }
 
     #[test]
-    fn ac3_redacted_token_leaves_no_long_span() {
+    fn redacted_token_leaves_no_long_span() {
         let line = format!("nav {}", bootstrap_like());
         assert!(!has_base64url_span(&redact(&line, TOKEN), 48));
     }

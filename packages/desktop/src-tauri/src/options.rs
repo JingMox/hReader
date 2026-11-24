@@ -133,12 +133,12 @@ mod tests {
     }
 
     #[test]
-    fn ac1_no_arguments_keeps_cli_defaults() {
+    fn no_arguments_keeps_cli_defaults() {
         assert_eq!(parse_in(&[]), Ok(defaults()));
     }
 
     #[test]
-    fn ac1_flags_override_each_field() {
+    fn flags_override_each_field() {
         let parsed = parse_in(&[
             "--smoke",
             "--home",
@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn ac1_relative_directories_resolve_against_cwd() {
+    fn relative_directories_resolve_against_cwd() {
         let parsed =
             parse_in(&["--home", ".hreader-home", "--workspace", "docs"]).expect("相对路径");
         assert_eq!(parsed.home, PathBuf::from("/cwd/.hreader-home"));
@@ -175,13 +175,13 @@ mod tests {
     }
 
     #[test]
-    fn ac1_open_value_is_not_read_as_a_directory() {
+    fn open_value_is_not_read_as_a_directory() {
         let parsed = parse_in(&["--open", "/ws/a.html", "--home", "/tmp/h"]).expect("合法参数");
         assert_eq!(parsed.home, PathBuf::from("/tmp/h"));
     }
 
     #[test]
-    fn ac1_missing_value_unknown_flag_and_bad_port_are_errors() {
+    fn missing_value_unknown_flag_and_bad_port_are_errors() {
         assert_eq!(
             parse_in(&["--home"]),
             Err(OptionsError::MissingValue("--home".to_string()))

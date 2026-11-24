@@ -150,7 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn ac1_ok_file_is_present_with_all_four_fields() {
+    fn ok_file_is_present_with_all_four_fields() {
         let state = read_daemon(&fixture("ok.json")).expect("ok.json 必须可读");
         assert_eq!(
             state,
@@ -164,21 +164,21 @@ mod tests {
     }
 
     #[test]
-    fn ac1_missing_file_is_absent_not_error() {
+    fn missing_file_is_absent_not_error() {
         let state =
             read_daemon(Path::new("/definitely/not/here/daemon.json")).expect("缺失不算坏文件");
         assert_eq!(state, DaemonState::Absent);
     }
 
     #[test]
-    fn ac1_bad_json_is_error_not_absent() {
+    fn bad_json_is_error_not_absent() {
         let error = read_daemon(&fixture("bad-json.json")).expect_err("坏 JSON 必须报错");
         assert_eq!(error.path(), fixture("bad-json.json"));
         assert!(error.to_string().contains("不是 JSON"));
     }
 
     #[test]
-    fn ac1_missing_field_field_keys_and_values_not_leaked() {
+    fn missing_field_field_keys_and_values_not_leaked() {
         let error = read_daemon(&fixture("field-missing.json")).expect_err("缺字段必须报错");
         assert!(error.to_string().contains("port 不可用"));
         // 值是 "8123" 字符串：报错文案只允许出现字段名，不许出现任何字段值。
@@ -188,13 +188,13 @@ mod tests {
     }
 
     #[test]
-    fn ac1_port_zero_and_empty_token_are_errors() {
+    fn port_zero_and_empty_token_are_errors() {
         assert!(read_daemon(&fixture("port-zero.json")).is_err());
         assert!(read_daemon(&fixture("token-empty.json")).is_err());
     }
 
     #[test]
-    fn ac1_top_level_non_object_is_error() {
+    fn top_level_non_object_is_error() {
         let error = read_daemon(&fixture("not-an-object.json")).expect_err("非对象必须报错");
         assert!(error.to_string().contains("顶层不是对象"));
     }
