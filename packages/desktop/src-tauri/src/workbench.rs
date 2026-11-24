@@ -380,15 +380,15 @@ pub fn welcome_html() -> &'static str {
 <body>
 <article data-hr-id="doc-root">
   <h1 data-hr-id="w0-h1">欢迎使用 hReader 桌面阅读与排版工作台</h1>
-  <p data-hr-id="w0-p1">hReader 以单文件 HTML 为原生载体，融合左侧大纲与文件树、沉浸式居中画布、所见即所得行内编辑、7 种结构化组件与出版级导出。</p>
+  <p data-hr-id="w0-p1">hReader 以单文件 HTML 为原生载体，融合左侧大纲与文件树、沉浸式居中画布、所见即所得行内编辑、8 种结构化组件与出版级导出。</p>
   <div data-hr-id="w0-kpi" data-hr-component="kpi-bento">
     <div>
       <p><strong>直接输入</strong></p>
       <p>像 Typora 一样点击即写，Enter 新建段</p>
     </div>
     <div>
-      <p><strong>7 种组件</strong></p>
-      <p>KPI、Callout、对比栏、折叠、时间线、图表</p>
+      <p><strong>8 种组件</strong></p>
+      <p>KPI、Callout、对比栏、折叠、时间线、图表、音视频卡</p>
     </div>
     <div>
       <p><strong>一键出版</strong></p>

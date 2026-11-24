@@ -138,13 +138,16 @@ flowchart LR
 * **内置视觉设计**：
   * **纸感与暗夜双模**：日间采用温暖羊皮纸白（`#FAF8F5`）与深炭墨黑，夜间自动切换为深曜石蓝灰（`#121316`），拒绝刺眼纯白与纯黑。
   * **黄金阅读人体工学**：正文区严格锁定 `68ch` 最佳阅读视宽，右侧预留 `280px` 边栏用于展示浮动目录与页边批注（Sidenotes）。
-  * **7 个内置零配置语义组件（6 类，callout 含 insight/warning 两型）**（Agent 只需写 `data-hr-component="xxx"`）：
+  * **8 个内置零配置语义组件（7 类，callout 含 insight/warning 两型）**（Agent 只需写 `data-hr-component="xxx"`）：
     1. `kpi-bento`：多维核心指标卡片网格
     2. `callout-insight / warning`：高辨识度洞察与警示框
     3. `split-compare`：左右双栏优劣/方案对比视图
     4. `deep-dive`：可折叠的底层细节/源码剖析手风琴框（`<details>` 增强）
     5. `step-timeline`：纵向编号流转步骤条
     6. `diagram-stage`：带缩放与图例说明的 SVG / Mermaid 画布容器
+    7. `media-card`：音频 / 视频 + 图注 + 可折叠逐字稿的统一外壳
+  * **文档形态（`data-hr-kind`）**：`note` / `report` / `minutes` / `brief` / `slides` 五种起稿骨架（`hr new --kind`、`hr_create_doc` 的 `kind`）；`slides` 每个顶层 `<section>` 一页，靠滚动吸附翻页、打印横版一页一张，不含脚本。
+  * **写入时排版检查**：组件结构规约（根标签 / 子元素个数 / 必备子元素）与内联 `style` 在每次 patch 时检查，问题作为 `warnings` 返回；整篇用 `hr check`。规约表在 `packages/core/src/layout/components.ts`。
 * **内置默认语言风格（社论深度剖析调性）**：
   * **结论先行（BLUF）**：每个 `<section>` 第一句必须给出明确判断，不绕圈子。
   * **反 AI 废话过滤器（Anti-Slop Lint）**：内置禁用词表（如“总而言之”、“在当今数字化时代”、“毋庸置疑”、“赋能”、“抓手”），引擎在 Patch 时甚至可对命中禁用词的段落向 Agent 发出重写警告。
@@ -184,10 +187,10 @@ language_style:
 
 | 原语名称 | 输入参数 | Token 消耗与作用说明 |
 | :--- | :--- | :--- |
-| `hr_create_doc` | `filePath`, `title` | **建稿**。写一份最小合法文档（`<article data-hr-id="root">` + `<h1>` + 一个 `<section>`），节点 id 交给 `injectNodeIds` 派生；已存在的文件不覆盖。 |
+| `hr_create_doc` | `filePath`, `title`, `kind?` | **建稿**。不给 `kind` 时写一份最小合法文档（`<article data-hr-id="root">` + `<h1>` + 一个 `<section>`）；给 `kind`（`note` / `report` / `minutes` / `brief` / `slides`）时写对应形态的骨架（与 `hr new --kind` 同一份）。节点 id 交给 `injectNodeIds` 派生；已存在的文件不覆盖。 |
 | `hr_outline` | `filePath` | **~150 Tokens**。返回文档的 `<section>` / `<h1~h4>` 骨骼树、各节点 `data-hr-id`、字数统计、以及**所有未处理的 `pending_ai` 用户划词批注**。 |
 | `hr_read_node` | `filePath`, `nodeId` (或 CSS Selector) | **~200 Tokens**。仅提取目标节点及其子树的 HTML 源码与关联批注，避免读取整篇文件。 |
-| `hr_patch_node` | `filePath`, `nodeId`, `action` (`replace` \| `insert_after` \| `insert_before` \| `append` \| `delete`), `htmlContent` | **极速局部写入**。解析 HTML 片段，自动为新增块级元素注入 `data-hr-id`，校验标签闭合与禁用词，更新文件并触发 WebSocket 局部热更新。 |
+| `hr_patch_node` | `filePath`, `nodeId`, `action` (`replace` \| `insert_after` \| `insert_before` \| `append` \| `delete`), `htmlContent` | **极速局部写入**。解析 HTML 片段，自动为新增块级元素注入 `data-hr-id`，校验标签闭合与禁用词，更新文件并触发 WebSocket 局部热更新；回执带 `warnings`（组件结构 / 内联 `style` 的排版检查，只警告不拒写）。 |
 | `hr_apply_style` | `filePath`, `visualId?`, `toneId?` | 若仅切换 `visualId`，引擎直接替换 `<style id="hr-theme">`（**0 LLM Token**）；若切换 `toneId`，返回该语言风格的完整规约供 Agent 改写正文。 |
 | `hr_resolve_annotation` | `filePath`, `annotationId`, `resolutionNote?` | 将 `<script id="hr-meta">` 中对应的用户批注标记为 `resolved`，阅读器界面自动将该批注归档并高亮显示修改后的段落。 |
 | `hr_undo` | `filePath` | **一次调用回退一步**。取最近一份快照 → 校验**快照自身**的哈希与文件名一致（防截断/改写；不校验目标文件是否被人改过）→ 原子还原 → 删掉该快照；没有历史时返回 `nothing_to_undo`。快照链由 `patch` / 批注处理 / 新建文档共用，但 **`hr_apply_style` 不写快照**（`L-32`）：换过样式后的一次 undo 会把正文一起退，不要把“换样式”当成可单独撤销的一步。 |

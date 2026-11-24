@@ -1,29 +1,85 @@
 <div align="center">
   <img src="packages/desktop/src-tauri/icons/icon.png" width="92" height="92" alt="hReader Logo" />
   <h1>hReader</h1>
-  <p><strong>本地优先的单文件 HTML 阅读器、桌面笔记工作台与 AI Agent 结构化写作协议</strong></p>
+  <p><strong>AI Agent 的文档交付层：笔记、报告、纪要、简报、幻灯片，都是同一种整齐、可审、可局部修改的 HTML。</strong></p>
   <p>
     <a href="https://github.com/JingMox/hReader/releases"><img src="https://img.shields.io/github/v/release/JingMox/hReader?display_name=tag&style=flat-square" alt="Release" /></a>
     <a href="https://github.com/JingMox/hReader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/JingMox/hReader/ci.yml?branch=main&label=CI&style=flat-square" alt="CI" /></a>
     <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="MIT License" /></a>
     <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen?style=flat-square" alt="Node >= 22" />
-    <img src="https://img.shields.io/badge/tauri-v2-24C8DB?style=flat-square" alt="Tauri v2" />
   </p>
   <p>
-    <a href="./README.md">English</a> · <strong>简体中文</strong>
+    <a href="https://jingmox.github.io/hReader/">在线示例库</a> ·
+    <a href="./docs/launch/why-html.zh-CN.md">为什么是 HTML</a> ·
+    <a href="https://github.com/JingMox/hReader/releases">下载</a> ·
+    <a href="./README.md">English</a>
   </p>
 </div>
 
----
+<p align="center">
+  <img src="site/img/demo.gif" width="880" alt="演示：在阅读器里选中一句话写批注，Agent 只改这一段，页面自动刷新" />
+</p>
 
-hReader 把自包含的语义化 `.html` 长文档变成两样东西：**类 Typora + Obsidian 体验的桌面阅读/笔记工作台**（`hReader`），以及一套 **面向 AI Agent 的低 Token、高精度 DOM 读写协议**（CLI、MCP Server、Agent Skill、Pi Coding Agent 扩展、DeepSeek Harness 插件）。
+<p align="center"><sub>选中一句话、写下批注 → Agent 通过 MCP 只改这一段 → 阅读器自动刷新，批注自动归档。</sub></p>
 
-## 为什么选择语义化 HTML 而不是纯 Markdown？
+AI 写 HTML 和写 Markdown 一样便宜，但它排版太自由，每次都不一样。hReader 用 **8 个语义组件 + 一套主题**约束 AI 的排版，并在**写入时检查**这套约束；用**稳定的块 id** 让 Agent 只改你批注的那一段。每份文档都是你硬盘上一个普通的 `.html` 文件，双击就能打开，任何 Agent 都能读写。
 
-- **单文件即完整作品**：排版主题样式（`atelier-editorial`）、语义化内容组件（`kpi-bento`、`callout-insight`、`callout-warning`、`split-compare`、`deep-dive`、`step-timeline`、`diagram-stage`）、可折叠 `<details>`、内联 SVG 图表与读者批注全部内嵌在同一个 `.html` 文件里，任何浏览器双击即可完美呈现。
-- **字节级精准 DOM 修补（`data-hr-id`）**：AI 改长文不再需要重写上千行。先看紧凑大纲（`hr outline` / `hr_outline`），再读取单个节点（`hr read` / `hr_read_node`），最后精确替换或插入该子树（`hr patch` / `hr_patch_node`），原子落盘且自动生成可撤销快照（`hr undo` / `hr_undo`）。
-- **视觉主题与写作口吻正交解耦**：排版视觉样式（`styles/atelier-editorial/theme.css`）可独立切换而不污染正文；写作口吻约束（`hr style --tone`）与禁用词检查（`hr style --lint`）保证行文一致。
-- **人机协同批注闭环**：读者在桌面工作台或浏览器阅读器（`hr serve`）中划词并留下 `pending_ai` 批注；Agent 拉取待处理批注、仅修改对应节点，工作台通过 SSE 实时热刷新。
+它不只是笔记工具。Agent 交付给人的东西——周报、调研报告、会议纪要、决策简报、汇报用的幻灯片——都可以是同一种格式：
+
+| 形态     | 一条命令起稿                        | 骨架                                                        |
+| -------- | ----------------------------------- | ----------------------------------------------------------- |
+| 笔记     | `hr new note.html`                  | 自由展开                                                    |
+| 报告     | `hr new q4.html --kind report`      | 结论 → 关键数据 → 分析 → 方案对比 → 风险 → 下一步           |
+| 会议纪要 | `hr new weekly.html --kind minutes` | 结论与决定 → 讨论要点 → 待办 → 录音与逐字稿                 |
+| 决策简报 | `hr new brief.html --kind brief`    | 建议 → 依据 → 代价与风险 → 下一步                           |
+| 幻灯片   | `hr new deck.html --kind slides`    | 每个 `<section>` 一页，滚动翻页，打印是横版一页一张，零脚本 |
+
+## 一分钟试用
+
+推荐从 MCP 或 Agent Skill 开始（需要 Node.js 22+）。
+
+**MCP**（Claude Desktop、Cursor 等）：从 [Releases](https://github.com/JingMox/hReader/releases) 下载 `hreader-mcp-server.tar.gz` 并解压，然后在 MCP 配置里加上：
+
+```json
+{
+  "mcpServers": {
+    "hreader": {
+      "command": "node",
+      "args": ["/path/to/hreader-mcp-server/dist/main.js", "--workspace", "/path/to/your/docs"]
+    }
+  }
+}
+```
+
+**Agent Skill**（Claude Code 等）：下载 `hreader-skill.zip`，解压到 Agent 的 skills 目录：
+
+```bash
+unzip hreader-skill.zip -d ~/.claude/skills/
+```
+
+然后对 Agent 说：“用 hreader 把这次会议整理成一份纪要。”
+
+## 同一份内容，三种写法
+
+<p align="center">
+  <a href="https://jingmox.github.io/hReader/compare/"><img src="site/img/compare.png" width="880" alt="左：Markdown；中：AI 自由生成的 HTML；右：hReader" /></a>
+</p>
+
+左边是 Markdown：音频只能是链接或裸播放器。中间是让 AI 自由生成的 HTML：好看，但每块一种风格，换一次生成就换一套长相。右边是 hReader：同样的内容，录音卡片、摘要、折叠逐字稿永远在同一个位置。[在线查看 →](https://jingmox.github.io/hReader/)
+
+## 为什么是 HTML，而不是 Markdown
+
+- **Markdown 赢在“不让你排版”**：过去排版成本由人出，所以大家选了表现力最弱、成本最低的格式。
+- **AI 把这份成本付掉了**：对 AI 来说写 HTML 和写 Markdown 一样便宜，卡片、对比、折叠、音视频、图表都是白送的。
+- **但 AI 排版太自由**：十份文档十种样子，放进一个资料库比 Markdown 还乱。所以需要约束：组件只声明语义（`data-hr-component="callout-warning"`），长相交给主题，换主题不动正文。
+- **改，而不是重写**：每个块都有稳定的 `data-hr-id`，Agent 先看大纲（`hr_outline`）、只读一块（`hr_read_node`）、只改一块（`hr_patch_node`），原子写入、可撤销（`hr_undo`）。
+- **文件是你的**：本地 `.html`，不绑定任何 AI 厂商；Claude Code、Cursor、Codex、DeepSeek 等任何支持 MCP 或 Skill 的 Agent 都能用。
+
+完整论述见[《AI 时代，笔记为什么该用 HTML，而不是 Markdown》](./docs/launch/why-html.zh-CN.md)。
+
+## 现状
+
+v1.0 刚刚开源，还很早期：组件目前 8 个、主题 1 套；排版约束已经在写入时检查（`hr check`、`hr patch` 回执里的 `warnings`），但只警告、不拒写；幻灯片形态目前是独立文件在浏览器里的体验，阅读器内的演示模式和 `hr pdf` 的横版导出还没做；桌面版需要本机有 Node 22，安装包还没签名。路线图上的下一步是更多主题、Markdown 导入和受控的交互组件。欢迎在 [Issues](https://github.com/JingMox/hReader/issues) 告诉我你想往文档里插什么。
 
 ---
 
@@ -120,6 +176,9 @@ pnpm desktop:build
 `@hreader/cli` 可编译为单文件独立包（`packages/cli/dist/cli.mjs` + `styles/`，Release 中同时提供 `hreader-cli.tar.gz`）。
 
 ```bash
+# 按文档形态起稿（带齐 id、已套主题、组件占位齐全）
+hr new report.html [--kind note|report|minutes|brief|slides] [--title <标题>] [--force]
+
 # 查看文档结构与待处理批注
 hr outline report.html [--json]
 
@@ -131,6 +190,9 @@ hr read report.html s2-p1 [--json] [--max-bytes 65536]
 
 # 精准节点修补 (replace | insert_before | insert_after | append | delete)
 hr patch report.html s2-p1 --action replace --html-file patch.html [--json]
+
+# 排版约束检查：组件结构、内联 style、文档级诊断（只读）
+hr check report.html [--json]
 
 # 视觉排版 / 写作口吻提示词 / 禁用词检查 / 从语料抽取 style.yaml
 hr style report.html --visual atelier-editorial
