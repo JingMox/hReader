@@ -3,8 +3,7 @@
 import { checkLayout, parseHtml, validateDocument } from "@hreader/core";
 
 import { readTextFile } from "../input";
-import { jsonOk } from "../output";
-import { dataCheck, humanCheck } from "../output-doc";
+import { dataCheck, humanCheck, jsonOk } from "../output";
 
 export interface CheckInput {
   readonly path: string;

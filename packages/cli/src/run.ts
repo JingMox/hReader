@@ -8,22 +8,24 @@ import { HrError, nodeStyleDeps } from "@hreader/core";
 
 import { parseArgs, type Intent } from "./args";
 import { attemptRealpath, realpathThroughAncestors } from "./canonical";
+import { chromeDepsOf, renderPdfOf, renderPngOf } from "./chrome/session";
 import { checkCommand } from "./commands/check";
 import { exportPrintCommand } from "./commands/export-print";
 import { newDocCommand } from "./commands/new";
 import { normalizeCommand } from "./commands/normalize";
 import { outlineCommand } from "./commands/outline";
 import { patchCommand } from "./commands/patch";
+import { pdfCommand } from "./commands/pdf";
+import { pngCommand } from "./commands/png";
 import { readCommand } from "./commands/read";
 import { styleCommand } from "./commands/style";
 import { styleExtractCommand } from "./commands/style-extract";
 import { undoCommand } from "./commands/undo";
 import { EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./exit-codes";
 import { sourceText } from "./input";
-import { apiKeyOf } from "./llm/session";
+import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
+import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
 import { displayedPathOf, jsonError } from "./output";
-import { llmOf } from "./run-llm";
-import { pdfOf, pngOf, type ProductIo } from "./run-products";
 import { serveCommandOf } from "./run-serve";
 import { isDiscoveredStylePath, undiscoveredHint } from "./style-out";
 import { usageText, type CommandName } from "./usage";
@@ -121,6 +123,22 @@ const hintIfUndiscovered = (
 const displayedOutOf = (out: string | undefined, cwd: string): string | undefined =>
   out === undefined ? undefined : relative(cwd, out);
 
+/** 传输层只在这里构造：`commands/*` 不许碰 env，网络实现也不该知道 flag 从哪来。 */
+const llmOf = (
+  intent: Extract<Intent, { kind: "styleExtract" }>,
+  fetch: typeof globalThis.fetch | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+  key: string,
+): LlmPort =>
+  createLlmClient({
+    apiKey: key,
+    baseUrl: normalizeBaseUrl(intent.baseUrl ?? baseUrlOf(env)),
+    model: intent.model ?? modelOf(env),
+    sessionId: sessionIdOf(env),
+    timeoutMs: LLM_TIMEOUT_MS,
+    fetch: fetch ?? globalThis.fetch,
+  });
+
 const runExtract = async (
   intent: Extract<Runnable, { kind: "styleExtract" }>,
   io: ResolvedIo,
@@ -200,6 +218,48 @@ const runServe = async (
     launchParentPid: io.launchParentPid,
     diagnose: io.stderr,
     displayPath: displayedPathOf(intent.path, io.cwd),
+  });
+
+/** 分发层归一好的三样：展示口径（`cwd`）、停止口、env 快照；`warn` 是 stderr 的非致命通道。 */
+interface ProductIo {
+  readonly cwd: string;
+  readonly stop: Promise<void>;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly warn: (message: string) => void;
+}
+
+/** 纸/超时/大纲这类字段意图层与命令层同名：整体透传，只换算路径相关的三项。 */
+const pdfOf = (
+  intent: Extract<Intent, { kind: "pdf" }>,
+  paths: { readonly workspace: string; readonly file: string },
+  io: ProductIo,
+): Promise<string> =>
+  pdfCommand({
+    ...intent,
+    path: join(paths.workspace, paths.file),
+    out: realpathThroughAncestors(intent.out),
+    workspace: paths.workspace,
+    warn: io.warn,
+    displayOut: displayedPathOf(intent.out, io.cwd),
+    render: (renderInput) =>
+      renderPdfOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),
+  });
+
+/** 长图尺寸在会话层定；这里只把视口参数与停止口接上（命令层不碰进程）。 */
+const pngOf = (
+  intent: Extract<Intent, { kind: "png" }>,
+  paths: { readonly workspace: string; readonly file: string },
+  io: ProductIo,
+): Promise<string> =>
+  pngCommand({
+    ...intent,
+    path: join(paths.workspace, paths.file),
+    out: realpathThroughAncestors(intent.out),
+    workspace: paths.workspace,
+    warn: io.warn,
+    displayOut: displayedPathOf(intent.out, io.cwd),
+    render: (renderInput) =>
+      renderPngOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),
   });
 
 /** 产物命令的注入面：与 `ResolvedIo` 同源的四个字段，只给命令层看得到的部分。 */
