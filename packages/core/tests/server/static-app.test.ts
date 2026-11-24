@@ -125,6 +125,8 @@ describe("GET / · 构建产物与回退", () => {
     expect(raw.toLowerCase()).toContain("content-type: text/html; charset=utf-8");
     expect(raw.toLowerCase()).toContain("content-security-policy: default-src 'none'");
     expect(raw.toLowerCase()).toContain("style-src 'self' 'unsafe-inline'");
+    // 外来文档靠同源 iframe 承载；少了 frame-src，阅读器自己的 CSP 会把它整个拦掉。
+    expect(raw.toLowerCase()).toContain("frame-src 'self'");
     expect(bodyOf(raw)).toContain("built");
   });
 
