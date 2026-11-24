@@ -5,7 +5,7 @@
 //
 // 这层管：解析产树（id 留在哪个 `<p>` 上、零长 span 长什么样、二次收尾不变）、落盘字节、
 // `read` 可寻址、`outline` 不列无文本块、以及"第二个无 id 的空段照旧消失"。
-// 落盘后的 CLI 删除语义在 `packages/cli/tests/r2-implicit-close-empty.test.ts`。
+// 落盘后的 CLI 删除语义在 `packages/cli/tests/implicit-end-tags.test.ts`。
 
 import { describe, expect, it } from "vitest";
 

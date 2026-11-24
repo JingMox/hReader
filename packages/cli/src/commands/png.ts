@@ -1,5 +1,5 @@
 // 这层管：`hr png`（打印稿 → 会话层出长图 → PNG 头校验 → 原子写）；不判 argv、不定退出码。
-// 落盘三连（io → 越界 → 已存在）与 `hr pdf` 同序同语义（D5），渲染失败时盘上零残留。
+// 落盘三连（io → 越界 → 已存在）与 `hr pdf` 同序同语义，渲染失败时盘上零残留。
 
 import { dirname } from "node:path";
 
@@ -15,7 +15,7 @@ import {
   assertWritableDirOf,
   printProductOf,
   writeOutOf,
-} from "./exportPrint";
+} from "./export-print";
 
 export type RenderPng = (input: {
   readonly html: string;

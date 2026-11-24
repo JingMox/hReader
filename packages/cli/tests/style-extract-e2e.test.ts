@@ -1,4 +1,4 @@
-// 这层管：AC-5 端到端——CLI 真跑一遍把 yaml 写到盘，再用公开的 loadStyle/compileTone/lintByStyle 消费它。
+// 这层管：端到端——CLI 真跑一遍把 yaml 写到盘，再用公开的 loadStyle/compileTone/lintByStyle 消费它。
 // LLM 版与纯统计版各走一遍：产物是"用户下一次写作的全部输入"。断言要能证伪链路（条数/人设/请求体），
 // 只证"能 load"的套话对"合并层丢字段""--no-llm 仍联网"这类错误全盲。
 
@@ -14,7 +14,7 @@ import { run, type CliIo } from "../src/run";
 
 const REPO = join(import.meta.dirname, "../../..");
 
-/** D11：三篇 fixture 是统计层的真值来源，端到端必须用同一份语料，否则"能消费"只是对合成输入成立。 */
+/** 三篇 fixture 是统计层的真值来源，端到端必须用同一份语料，否则"能消费"只是对合成输入成立。 */
 const CORPUS = ["docs-03-section11.md", "docs-05-m33.md", "style-authoring.md"].map((name) =>
   join(REPO, "fixtures/extract", name),
 );
@@ -146,7 +146,7 @@ const firstSentenceOf = (persona: string): string => {
   return (first ?? persona).trim();
 };
 
-describe("style extract · AC-5 端到端（LLM 版）", () => {
+describe("style extract · 端到端（LLM 版）", () => {
   it("should write a yaml that carries every merged field and can be consumed", async () => {
     const sent = sentOf();
     const result = await extractOf("e2e-llm", [], { key: CANARY, fetch: replayOf(sent) });
@@ -175,7 +175,7 @@ describe("style extract · AC-5 端到端（LLM 版）", () => {
   });
 });
 
-describe("style extract · AC-5 端到端（请求体）", () => {
+describe("style extract · 端到端（请求体）", () => {
   it("should send all three corpora in argv order", async () => {
     const sent = sentOf();
     await extractOf("e2e-order", [], { key: CANARY, fetch: replayOf(sent) });
@@ -208,7 +208,7 @@ describe("style extract · AC-5 端到端（请求体）", () => {
   });
 });
 
-describe("style extract · AC-5 端到端（纯统计版）", () => {
+describe("style extract · 端到端（纯统计版）", () => {
   it("should produce an equally consumable yaml with --no-llm and never touch the network", async () => {
     const sent = sentOf();
     const result = await extractOf("e2e-stat", ["--no-llm"], {
@@ -237,7 +237,7 @@ describe("style extract · AC-5 端到端（纯统计版）", () => {
   });
 });
 
-describe("style extract · AC-5 反向", () => {
+describe("style extract · 端到端反向", () => {
   it("should reject a yaml whose persona line was deleted", async () => {
     const source = await extractOf("e2e-broken", ["--no-llm"]);
     const text = readFileSync(source.path, "utf8");

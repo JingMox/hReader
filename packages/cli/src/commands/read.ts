@@ -31,7 +31,7 @@ const readOnce = (
 
 export const readCommand = async (input: ReadInput): Promise<string> => {
   const parsed = parseHtml(await readTextFile(input.path));
-  // 缺 id 的文档不能靠临时注入蒙过去：算出来的 id 不在盘上，喂回 patch 必挂（B-03）。
+  // 缺 id 的文档不能靠临时注入蒙过去：算出来的 id 不在盘上，喂回 patch 必挂。
   assertIsDocument(parsed, input.path);
   // 重复 id 要排在 `needs_normalize` 前面：那是“缺 id”，这是“两个元素共用同一个 id”。
   assertUniqueIds(parsed, input.path);

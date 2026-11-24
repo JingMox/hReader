@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { checkCommand } from "../src/commands/check";
-import { dataCheck, dataNew, humanCheck, humanNew } from "../src/output-doc";
+import { dataCheck, dataNew, humanCheck, humanNew } from "../src/output";
 import { DOC, seed } from "./cli-support";
 import { atOf, fieldOf, keysOf, parseJsonLine, withTempDir } from "./harness";
 import { runIn } from "./support/capture";
@@ -89,7 +89,7 @@ describe("hr check · JSON 与错误", () => {
   });
 });
 
-describe("output-doc · 形状", () => {
+describe("output · check/new 形状", () => {
   it("should keep the issue path in JSON when there is one", () => {
     const issue = { code: "inline_style", severity: "warning", message: "m", path: "p[0]" };
 

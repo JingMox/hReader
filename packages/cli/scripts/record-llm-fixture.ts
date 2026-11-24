@@ -1,4 +1,4 @@
-// 一次性录制脚本：真跑一次模型，把**完整响应体**存进 `fixtures/llm/`（D12：≤10 次真调用，录完即回放）。
+// 一次性录制脚本：真跑一次模型，把**完整响应体**存进 `fixtures/llm/`（预算 ≤10 次真调用，录完即回放）。
 // 不进 `src`（不参与覆盖率），也不许被测试 import —— 用 `pnpm dlx tsx` 手工跑。
 // `pnpm verify` 永不执行它；模型换代或 prompt 改动导致 fixture 失真时手工重录（见 `fixtures/llm/README.md`）。
 // 用法：OPENCODE_API_KEY=… pnpm dlx tsx packages/cli/scripts/record-llm-fixture.ts fixtures/extract/*.md --out fixtures/llm/ok.json

@@ -716,7 +716,7 @@ ERROR: Coverage for branches (96.87%) does not meet global threshold (100%) for 
 
 ### 11.34 写者自报"全量 verify 绿"必须由协调者复跑；守卫顺序是契约（M4.3 R4→R6，2026-11-17）
 
-**事故**：R4 收尾时写者报 `pnpm verify EXIT=0`，我照例复跑，实得 `2 failed | 2668 passed`。根因不是"测试少"，而是**守卫顺序**：`exportPrint.ts` 把「目标已存在（`file_exists`/exit 1）」判在「越界（`path_outside_workspace`/exit 3）」之前，于是 `--out ../escape.html` 先落到 exit 1，**还真的把 11243 字节产物写到了 workspace 外面**（`$TMPDIR/escape.html`）。这个脏文件又让一条毫不相干的旧用例（`cli-exit-codes.test.ts`「should exit 3 for ../x.html」）变红——因为两条用例都把落点取成 `$TMPDIR` 下的同名文件。修完后测试员又验出第三个缝隙：把 `isInside` 换成 `path.startsWith(workspace)` 全绿存活（共享前缀兄弟目录 `<base>/w` vs `<base>/w-evil/x.html` 正是 `startsWith` 的经典漏点）。
+**事故**：R4 收尾时写者报 `pnpm verify EXIT=0`，我照例复跑，实得 `2 failed | 2668 passed`。根因不是"测试少"，而是**守卫顺序**：`export-print.ts` 把「目标已存在（`file_exists`/exit 1）」判在「越界（`path_outside_workspace`/exit 3）」之前，于是 `--out ../escape.html` 先落到 exit 1，**还真的把 11243 字节产物写到了 workspace 外面**（`$TMPDIR/escape.html`）。这个脏文件又让一条毫不相干的旧用例（`cli-exit-codes.test.ts`「should exit 3 for ../x.html」）变红——因为两条用例都把落点取成 `$TMPDIR` 下的同名文件。修完后测试员又验出第三个缝隙：把 `isInside` 换成 `path.startsWith(workspace)` 全绿存活（共享前缀兄弟目录 `<base>/w` vs `<base>/w-evil/x.html` 正是 `startsWith` 的经典漏点）。
 
 **规矩**：
 1. **写者自报的全量绿只当线索**。收口前由协调者在仓库根亲跑 `pnpm verify`（§10.12 的延伸：不采信"我跑过了"）；写者被要求报 `Test Files`/`Tests`/`All files` 三行原始数字，而不是 `EXIT=0` 四个字符。
@@ -892,7 +892,7 @@ $ git log --all --oneline -- packages/desktop
 
 ### 11.50 一棵树只能有一个写者（M4.2 R7/R8a 并行，2026-11-18）
 
-**事故**：为省墙钟，我把 R7（`ci.yml`/`lib.rs`/`lib.sh`）与 R8a（`packages/cli/tests/units-run-home.test.ts`）同时派到一个工作树。文件不重叠，但**门禁重叠**：R7 首跑 `pnpm test:coverage` 撞上 R8a 写的 `coverage/.tmp`（`ENOENT`），`cargo test` 的 doctest 撞上并发编译（`E0463` can't find crate），两次首跑各红一次、复跑才绿。测试员 G4 同时也在同一棵树里跑 `verify`，它只能额外记一节"主树漂移"。
+**事故**：为省墙钟，我把 R7（`ci.yml`/`lib.rs`/`lib.sh`）与 R8a（`packages/cli/tests/run-home.test.ts`）同时派到一个工作树。文件不重叠，但**门禁重叠**：R7 首跑 `pnpm test:coverage` 撞上 R8a 写的 `coverage/.tmp`（`ENOENT`），`cargo test` 的 doctest 撞上并发编译（`E0463` can't find crate），两次首跑各红一次、复跑才绿。测试员 G4 同时也在同一棵树里跑 `verify`，它只能额外记一节"主树漂移"。
 
 **规矩**：
 1. **同一工作树同一时刻只允许一个写者**。要并行，就 `worktree: true` 或让其中一个只读（审计/测试可以并行，写作不行）。
@@ -974,7 +974,7 @@ node scripts/check-ci-parity.mjs | tail -3; echo "EXIT=$?"
 **为什么套件没抓到**（这是本节的核心）：链条是 `实现 → 业务编写员写测试 → 测试员做变异`，三者共享同一套假设。
 - 测试继承了实现的假设："文档自带 id"。手写稿路径整条不在视野里 ⇒ 覆盖率高而无入口。
 - 变异体也**从实现推出**（改 `if (closed) return`、改 `< 1000`、改边界）。变异只能证明"用例能杀掉实现自身的变体"，**杀不出"这条路径根本不存在"**。
-- 最典型的一条断言：`packages/cli/tests/units-serve.test.ts:65` 用 `/^serving .+ on http:\/\/127\.0\.0\.1:\d+\/ \(pid \d+\)\n$/u` 匹配打印文本——它在确认"实现有没有按我写的样子打印"，从没**照着这行字去访问一次**。`docs/03:64/136/176` 早就要求"用户视角黑盒实验"，被我自己派单时退化成"变异 ≥6 条 + 连跑 N 次"。
+- 最典型的一条断言：`packages/cli/tests/serve-command.test.ts:65` 用 `/^serving .+ on http:\/\/127\.0\.0\.1:\d+\/ \(pid \d+\)\n$/u` 匹配打印文本——它在确认"实现有没有按我写的样子打印"，从没**照着这行字去访问一次**。`docs/03:64/136/176` 早就要求"用户视角黑盒实验"，被我自己派单时退化成"变异 ≥6 条 + 连跑 N 次"。
 
 **用户裁定（2026-11-19，四角色）**：
 1. 测试代码由**独立的测试编写员**写（§1.2b），业务编写员**不得碰 `tests/**`**（§1.2）。
@@ -1077,7 +1077,7 @@ timeout 15 node --experimental-strip-types packages/cli/src/main.ts serve … --
 
 ### 11.58 门禁收回协调者之后，派单模板必须带「prettier + lint 只查改动文件」（R2 F19，2026-11-19）
 
-**症状**：F19 一轮里，`pnpm verify` **连续三次**死在第一关或第三关，每次都是一个 3 分钟的往返：`prettier --check` 红 `usage.ts`/`locate.ts` → 红 `r3-ambiguous-escape.test.ts`；`lint` 红 5 条 `max-lines-per-function`。写手每次都自证"我的用例全绿"，因为**格式与 lint 从来不在它们的自查范围里**。
+**症状**：F19 一轮里，`pnpm verify` **连续三次**死在第一关或第三关，每次都是一个 3 分钟的往返：`prettier --check` 红 `usage.ts`/`locate.ts` → 红 `ambiguous-target.test.ts`；`lint` 红 5 条 `max-lines-per-function`。写手每次都自证"我的用例全绿"，因为**格式与 lint 从来不在它们的自查范围里**。
 
 **根因不是它们偷懒，是我的派单模板缺一行**。写手报告"验证：vitest 全绿"是真的，也是不够的。
 
@@ -1122,6 +1122,6 @@ npx eslint <本次改动过的每个文件>              # 不是 eslint .
 
 **教训四条**：
 1. **改 src 的盒子，必须跑"引用该模块的全部测试文件"**，不是只跑自己那个。`locate.ts` 被 CLI 四个测试文件间接覆盖，写手一个都没跑。
-2. **全量红必须逐条分类**：`src bug` / `旧断言` / `flaky`。分类错了的代价是双向的——把回归当旧断言改掉（丢护栏），把旧断言当回归去改 src（改坏行为）。这次 10 条里 9 条是旧断言、1 条（`r2-locate-parity`）是**测试前提本身过强**。
+2. **全量红必须逐条分类**：`src bug` / `旧断言` / `flaky`。分类错了的代价是双向的——把回归当旧断言改掉（丢护栏），把旧断言当回归去改 src（改坏行为）。这次 10 条里 9 条是旧断言、1 条（`locate.test.ts`）是**测试前提本身过强**。
 3. **"逐字节一致"这类强前提要写清它约束的是什么**。那条测试要求"同一元素两条寻址路径输出逐字节相同"，而 `ambiguous_selector` 警告讲的是**选择器有歧义**，不是**元素是谁**——所以两份输出本来就该不同。弱化它的同时必须把护栏补回去（`span` 那条仍要带警告、子选择器那条不得带），否则放松会变成删掉护栏。
 4. **协调者不能只在结卡前跑全量**。正确节奏：**每个盒子完成即跑一次 test 阶段（不跑 lint/build）**，贵一点但早知道；`verify` 全量留给我结卡前跑。

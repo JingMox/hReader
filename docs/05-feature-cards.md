@@ -409,7 +409,7 @@ pnpm desktop:dev -- --workspace <dir> --open <file>   # 开发时直跑
 - **父 pid 只采集一次**：`packages/cli/src/main.ts:12` 在首个 `await` 之前取 `process.ppid`，注入链 `CliIo.launchParentPid`（**必填**）→ `ServeInput.launchParentPid` → 启动前判 `ppid === 1` 即拒启（`invalid_input`，exit 1，不建服务、不写 json）。晚读 `process.ppid` 在类型层不可写。
 - **`--exit-with-parent` 的已知限制（`L-42`）**：启动时父进程已是 init（`ppid === 1`，典型：`nohup`、`setsid`、systemd 服务）会**拒启**。语义上不可实现"父消失即自杀"，只能 fail-fast；壳路径永远先采集父 pid，不受影响。不带该旗标时 ppid=1 正常启动。
 - **daemon 复用判定**：`/healthz` 回的 pid 与 `daemon.json` 一致才复用；端口被别的进程占着报错而不是接管；文件坏了按"没有"处理并重建。**用户手动跑的 `hr serve` 不会被误判、更不会被误杀。**
-- **真机脚本**：`scripts/gui/m4.2/`（`w1-signal-exit.sh` 壳收信号、`w2-parent-death.sh`/`w2-launch-window.sh` 父死与启动窗口、`w7-default-home.sh` 默认 home），`lib.sh` 提供 `mktemp_root`/`make_dirs`。`--home` 一律指向 `mktemp -d` 沙箱；**W7 是唯一例外**：它故意使用真实壳 app data 目录并在开头 `rm -rf` 它，脚本因此要求 `HREADER_GUI_REAL_HOME=1` 才继续——跑之前备份、并确认无在跑实例。无机器相关绝对路径。`pnpm lint:sh` 对它们逐个 `bash -n`。
+- **真机脚本**：`scripts/gui/`（`signal-exit.sh` 壳收信号、`parent-death.sh`/`launch-window.sh` 父死与启动窗口、`default-home.sh` 默认 home），`lib.sh` 提供 `mktemp_root`/`make_dirs`。`--home` 一律指向 `mktemp -d` 沙箱；**default-home.sh 是唯一例外**：它故意使用真实壳 app data 目录并在开头 `rm -rf` 它，脚本因此要求 `HREADER_GUI_REAL_HOME=1` 才继续——跑之前备份、并确认无在跑实例。无机器相关绝对路径。`pnpm lint:sh` 对它们逐个 `bash -n`。
 - **门禁**：`pnpm verify` 八步（`format:check` → `lint` → `lint:sh` → `typecheck` → `build` → `test:coverage` → `depcruise` → `knip`）；桌面侧独立 `pnpm desktop:check`（Cargo 与 TS 不同链，不塞进 `verify` 以免无 Rust 环境者被卡）。
 
 ## 错误码表（`HrError.code` → 退出码）

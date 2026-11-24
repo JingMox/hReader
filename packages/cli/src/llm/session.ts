@@ -9,13 +9,13 @@ const DEFAULT_MODEL = "deepseek-v4.1-flash";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-/** 空白值等于没给：`KEY=""` 是常见的 shell 事故，不能当"有 key"用（D2 的降级会因此失效）。 */
+/** 空白值等于没给：`KEY=""` 是常见的 shell 事故，不能当"有 key"用（降级会因此失效）。 */
 const valueOf = (env: Env, key: string): string | undefined => {
   const text = env[key]?.trim();
   return text === undefined || text === "" ? undefined : text;
 };
 
-/** D6：会话头是 OpenCode Zen 的路由键；没指定就每次调用生成一个 UUID（无状态，跨进程不复用）。 */
+/** 会话头是 OpenCode Zen 的路由键；没指定就每次调用生成一个 UUID（无状态，跨进程不复用）。 */
 export const sessionIdOf = (env: Env): string =>
   valueOf(env, "HR_LLM_SESSION") ?? crypto.randomUUID();
 

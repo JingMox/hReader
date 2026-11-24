@@ -111,8 +111,8 @@ describe("chromeDepsOf · killGroup", () => {
 });
 
 describe("chromeDepsOf · killGroup 与孙进程", () => {
-  // M04 判别点：`process.kill(pid)` 也能杀掉主进程，所以“主进程死了”不能证明杀的是进程组；
-  // 只有同组孙进程也停才说明 `-pid` 没被写成 `pid`（§15.2、§16.5）。
+  // 判别点：`process.kill(pid)` 也能杀掉主进程，所以“主进程死了”不能证明杀的是进程组；
+  // 只有同组孙进程也停才说明 `-pid` 没被写成 `pid`。
   it("killGroup 收的是整个进程组：孙进程跟着停", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hr-group-"));
     const marker = join(dir, "tick");

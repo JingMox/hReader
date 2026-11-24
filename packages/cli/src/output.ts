@@ -42,7 +42,7 @@ const quote = (value: string): string => JSON.stringify(value);
  */
 export const displayedPathOf = (path: string, cwd: string): string => {
   const rel = relative(cwd, path);
-  // 逃出 cwd 才是 `..` 或 `..<sep>…`；`..foo` 只是名字以两个点开头的正常路径，不能误判成外部。#F7-7
+  // 逃出 cwd 才是 `..` 或 `..<sep>…`；`..foo` 只是名字以两个点开头的正常路径，不能误判成外部。
   return rel === "" || rel === ".." || rel.startsWith(".." + sep) ? path : rel;
 };
 
@@ -81,7 +81,7 @@ export const dataRead = (result: ReadNodeResult, ids: readonly string[]): string
   `"truncated":${bool(result.truncated)},` +
   `"diagnostics":[${result.diagnostics.map(diagnosticJson).join(",")}]}`;
 
-/** 键序 = 卡片 §3；`historyPath` 为 `null` 表示没写盘（`changed:false`）。
+/** 键序固定（对外契约）；`historyPath` 为 `null` 表示没写盘（`changed:false`）。
  * `replacedIds` 只在 `replace` 让目标 id 真变了时出现：其余动作不印空数组，免得既有调用以为多了一个"映射"。
  * `warnings` 同理只在非空时出现（片段的 `duplicate_attribute` 等解析诊断）。
  */
@@ -131,7 +131,7 @@ export const dataStyleExtract = (
   `{"path":${path === null ? "null" : quote(path)},"stats":${statsJson(result.stats)},"yaml":${quote(result.yaml)}` +
   (dropped === undefined ? "}" : `,"dropped":[${dropped.map(droppedJson).join(",")}]}`);
 
-/** `out` 为 `null` = 只打 stdout；`bytes` 与落盘文件大小相等（用 `statSync` 复核过，§11.4）。 */
+/** `out` 为 `null` = 只打 stdout；`bytes` 与落盘文件大小相等（用 `statSync` 复核过）。 */
 export const dataExport = (report: PrintHtmlResult, out: string | null): string =>
   `{"html":${quote(report.html)},"bytes":${String(report.bytes)},` +
   `"droppedImages":${String(report.droppedImages)},"out":${out === null ? "null" : quote(out)}}`;
@@ -203,7 +203,7 @@ export const humanRead = (result: ReadNodeResult): string => {
 };
 
 /**
- * `replace` 会按内容重发 id（docs/05 横切口径）：不把「旧 id → 新 id」印出来，用户手上那个旧 id 就再也不能用（B-04）。
+ * `replace` 会按内容重发 id：不把「旧 id → 新 id」印出来，用户手上那个旧 id 就再也不能用。
  * 映射之外的附带新 id（片段里更深层的块）照旧跟在后面；无新 id 时不印空列表，免得每行拖一串噪声。
  */
 export const humanPatch = (result: PatchResult, path: string = result.path): string => {
@@ -275,3 +275,50 @@ export const humanNormalizeWritten = (
 export const humanStyleExtract = (result: ExtractStyleResult, path: string): string =>
   `extracted ${path} (${String(result.stats.paragraphs)} 段、${String(result.stats.sentences)} 句，` +
   `平均句长 ${String(result.stats.averageSentenceChars)} 字，每段 ≤ ${String(result.stats.maxParagraphSentences)} 句)\n`;
+
+/** `Diagnostic` 不在 core 的公开面单列 `path` 之外的形状；这里用结构类型，与 `DiagnosticShape` 同一取舍。 */
+interface IssueShape {
+  readonly code: string;
+  readonly severity: string;
+  readonly message: string;
+  readonly path?: string;
+}
+
+interface NewDocReport {
+  readonly path: string;
+  readonly kind: string;
+  readonly title: string;
+  readonly bytes: number;
+}
+
+/** `path` 键恒在（没有定位时为 `null`）：`--json` 的形状不随诊断种类变。 */
+const issueJson = (issue: IssueShape): string =>
+  JSON.stringify({
+    code: issue.code,
+    severity: issue.severity,
+    message: issue.message,
+    path: issue.path ?? null,
+  });
+
+export const dataCheck = (issues: readonly IssueShape[]): string =>
+  `{"issues":[${issues.map(issueJson).join(",")}],"count":${String(issues.length)}}`;
+
+const issueLine = (issue: IssueShape): string =>
+  `${issue.severity}: ${issue.code} — ${issue.message}${issue.path === undefined ? "" : ` @ ${issue.path}`}\n`;
+
+/** 没问题也要有一行：0 字节 stdout 读起来像“没跑”。 */
+export const humanCheck = (issues: readonly IssueShape[], path: string): string =>
+  issues.length === 0
+    ? `ok ${path}（没有排版问题）\n`
+    : `${issues.map(issueLine).join("")}${path}：${String(issues.length)} 条问题\n`;
+
+export const dataNew = (report: NewDocReport): string =>
+  JSON.stringify({
+    path: report.path,
+    kind: report.kind,
+    title: report.title,
+    bytes: report.bytes,
+  });
+
+export const humanNew = (report: NewDocReport, path: string): string =>
+  `created ${path} (${report.kind}, ${String(report.bytes)} bytes)\n`;

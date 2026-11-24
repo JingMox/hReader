@@ -72,7 +72,7 @@ describe("llm/client · 请求形状", () => {
     expect(sent[0]?.init.headers).toMatchObject({
       authorization: "Bearer sk-test-LEAKCANARY",
       "content-type": "application/json",
-      // D6：缺了这个头 Zen 网关直接 400。
+      // 缺了这个头 Zen 网关直接 400。
       "x-opencode-session": "session-1",
     });
     expect(JSON.parse(fetchBodyOf(sent[0]?.init))).toEqual({
@@ -86,7 +86,7 @@ describe("llm/client · 请求形状", () => {
   });
 });
 
-describe("llm/client · AC-4 失败面", () => {
+describe("llm/client · 失败面", () => {
   it("should fail with llm_failure on a 500", async () => {
     const error = await failureOf(responseOf('{"error":"boom"}', 500));
 

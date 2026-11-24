@@ -13,7 +13,7 @@ import {
   assertWritableDirOf,
   printProductOf,
   writeOutOf,
-} from "./exportPrint";
+} from "./export-print";
 
 export type RenderPdf = (input: {
   readonly html: string;

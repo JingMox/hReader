@@ -128,7 +128,7 @@ describe("pdfCommand · 人读行与渲染入参", () => {
       );
       expect(seen[0]?.pageSize).toBe("letter");
       expect(seen[0]?.timeoutMs).toBe(1500);
-      // 纸必须进 `@page`：只换 printToPDF 的纸不换版心（§15.1）。
+      // 纸必须进 `@page`：只换 printToPDF 的纸不换版心。
       expect(seen[0]?.html).toContain("size: letter;");
       expect(seen[0]?.html).toContain("标题");
     });

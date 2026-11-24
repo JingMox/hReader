@@ -1,4 +1,4 @@
-// 这层管：`hr undo` 的**信封与空态**（B-24）。
+// 这层管：`hr undo` 的**信封与空态**。
 //
 // 用户视角两件事：
 //   1. 有历史时 undo 真的把内容退回去，`--json` 给出 `{path,bytes,restoredFrom,sha256}`；

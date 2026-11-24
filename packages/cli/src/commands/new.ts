@@ -14,9 +14,8 @@ import {
   type DocKind,
 } from "@hreader/core";
 
-import { jsonOk } from "../output";
-import { dataNew, humanNew } from "../output-doc";
-import { assertTargetFreeOf, assertWritableDirOf, writeOutOf } from "./exportPrint";
+import { dataNew, humanNew, jsonOk } from "../output";
+import { assertTargetFreeOf, assertWritableDirOf, writeOutOf } from "./export-print";
 
 const encoder = new TextEncoder();
 

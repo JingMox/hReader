@@ -8,22 +8,24 @@ import { HrError, nodeStyleDeps } from "@hreader/core";
 
 import { parseArgs, type Intent } from "./args";
 import { attemptRealpath, realpathThroughAncestors } from "./canonical";
+import { chromeDepsOf, renderPdfOf, renderPngOf } from "./chrome/session";
 import { checkCommand } from "./commands/check";
-import { exportPrintCommand } from "./commands/exportPrint";
+import { exportPrintCommand } from "./commands/export-print";
 import { newDocCommand } from "./commands/new";
 import { normalizeCommand } from "./commands/normalize";
 import { outlineCommand } from "./commands/outline";
 import { patchCommand } from "./commands/patch";
+import { pdfCommand } from "./commands/pdf";
+import { pngCommand } from "./commands/png";
 import { readCommand } from "./commands/read";
 import { styleCommand } from "./commands/style";
-import { styleExtractCommand } from "./commands/styleExtract";
+import { styleExtractCommand } from "./commands/style-extract";
 import { undoCommand } from "./commands/undo";
 import { EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./exit-codes";
 import { sourceText } from "./input";
-import { apiKeyOf } from "./llm/session";
+import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
+import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
 import { displayedPathOf, jsonError } from "./output";
-import { llmOf } from "./run-llm";
-import { pdfOf, pngOf, type ProductIo } from "./run-products";
 import { serveCommandOf } from "./run-serve";
 import { isDiscoveredStylePath, undiscoveredHint } from "./style-out";
 import { usageText, type CommandName } from "./usage";
@@ -40,16 +42,16 @@ export interface CliIo {
   readonly fetch?: typeof globalThis.fetch;
   /** serve 靠它感知 SIGTERM/SIGINT；其它命令不需要（测试里构造 io 时可省）。 */
   readonly stop?: Promise<void>;
-  /** 启动时父进程的 pid：**必填**，只有 `main.ts` 能在首个 `await` 之前采集它（`?? process.ppid` 兜底 = 重开 W2 的洞）。 */
+  /** 启动时父进程的 pid：**必填**，只有 `main.ts` 能在首个 `await` 之前采集它（`?? process.ppid` 兜底 = 又把"晚读"写回来）。 */
   readonly launchParentPid: number;
   readonly home?: string;
 }
 
-/** stdin 解码成功但为空：卡片 §7.4 定为用法错误（而不是 core 的 `invalid_fragment`）。 */
+/** stdin 解码成功但为空：定为用法错误（而不是 core 的 `invalid_fragment`）。 */
 class UsageError extends Error {}
 
 type Runnable = Exclude<Intent, { readonly kind: "help" }>;
-/** 写命令入参：两边都取真实路径再算相对（R1-P1-2）；workspace 不存在时同走一条基准，`ENOENT` 交给 core。 */
+/** 写命令入参：两边都取真实路径再算相对；workspace 不存在时同走一条基准，`ENOENT` 交给 core。 */
 const workspaceRealpathOf = (workspace: string): string => {
   const real = attemptRealpath(workspace);
   if (real === undefined) throw new UsageError(`--workspace 不存在：${workspace}`);
@@ -121,13 +123,29 @@ const hintIfUndiscovered = (
 const displayedOutOf = (out: string | undefined, cwd: string): string | undefined =>
   out === undefined ? undefined : relative(cwd, out);
 
+/** 传输层只在这里构造：`commands/*` 不许碰 env，网络实现也不该知道 flag 从哪来。 */
+const llmOf = (
+  intent: Extract<Intent, { kind: "styleExtract" }>,
+  fetch: typeof globalThis.fetch | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+  key: string,
+): LlmPort =>
+  createLlmClient({
+    apiKey: key,
+    baseUrl: normalizeBaseUrl(intent.baseUrl ?? baseUrlOf(env)),
+    model: intent.model ?? modelOf(env),
+    sessionId: sessionIdOf(env),
+    timeoutMs: LLM_TIMEOUT_MS,
+    fetch: fetch ?? globalThis.fetch,
+  });
+
 const runExtract = async (
   intent: Extract<Runnable, { kind: "styleExtract" }>,
   io: ResolvedIo,
 ): Promise<string> => {
   const env = io.env;
   const key = apiKeyOf(env);
-  // D2：没 key 是正常路径，不是错误——只在 stderr 说明一句，产物与 --no-llm 完全一致。
+  // 没 key 是正常路径，不是错误——只在 stderr 说明一句，产物与 --no-llm 完全一致。
   if (key === undefined) io.stderr(`未设置 ${LLM_KEY_ENV}，仅用统计结果\n`);
   const llm = key === undefined || intent.noLlm ? undefined : llmOf(intent, io.fetch, env, key);
   if (!intent.idGiven) io.stderr(`未给 --id，使用默认值：${intent.id}\n`); // 默认值只提示，不拦
@@ -202,6 +220,48 @@ const runServe = async (
     displayPath: displayedPathOf(intent.path, io.cwd),
   });
 
+/** 分发层归一好的三样：展示口径（`cwd`）、停止口、env 快照；`warn` 是 stderr 的非致命通道。 */
+interface ProductIo {
+  readonly cwd: string;
+  readonly stop: Promise<void>;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly warn: (message: string) => void;
+}
+
+/** 纸/超时/大纲这类字段意图层与命令层同名：整体透传，只换算路径相关的三项。 */
+const pdfOf = (
+  intent: Extract<Intent, { kind: "pdf" }>,
+  paths: { readonly workspace: string; readonly file: string },
+  io: ProductIo,
+): Promise<string> =>
+  pdfCommand({
+    ...intent,
+    path: join(paths.workspace, paths.file),
+    out: realpathThroughAncestors(intent.out),
+    workspace: paths.workspace,
+    warn: io.warn,
+    displayOut: displayedPathOf(intent.out, io.cwd),
+    render: (renderInput) =>
+      renderPdfOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),
+  });
+
+/** 长图尺寸在会话层定；这里只把视口参数与停止口接上（命令层不碰进程）。 */
+const pngOf = (
+  intent: Extract<Intent, { kind: "png" }>,
+  paths: { readonly workspace: string; readonly file: string },
+  io: ProductIo,
+): Promise<string> =>
+  pngCommand({
+    ...intent,
+    path: join(paths.workspace, paths.file),
+    out: realpathThroughAncestors(intent.out),
+    workspace: paths.workspace,
+    warn: io.warn,
+    displayOut: displayedPathOf(intent.out, io.cwd),
+    render: (renderInput) =>
+      renderPngOf({ ...renderInput, stop: io.stop, deps: chromeDepsOf(io.env) }),
+  });
+
 /** 产物命令的注入面：与 `ResolvedIo` 同源的四个字段，只给命令层看得到的部分。 */
 const productIoOf = (io: ResolvedIo): ProductIo => ({
   cwd: io.cwd,
@@ -266,7 +326,7 @@ const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
     if (io.debug && error instanceof Error) io.stderr(`${error.stack ?? ""}\n`);
     return EXIT_INTERNAL;
   }
-  // 只走一条通道：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段（P2-3）。
+  // 只走一条通道：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段。
   if (json) io.stdout(jsonError(error.code, error.message, error.data));
   else io.stderr(`${error.message}\n`);
   return exitCodeOf(error.code);

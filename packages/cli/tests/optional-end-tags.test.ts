@@ -106,7 +106,7 @@ const appendOmitted = async (dir: string, item: OmittedEndTagCase): Promise<void
   expect(patched.code).toBe(0);
   expect(readFileSync(file, "utf8")).toMatch(item.onDisk);
 
-  // F9 的核心性质：写出去的字节与解析回来的树一致 —— 再跑一次 normalize 只报 unchanged、字节不差。
+  // 核心性质：写出去的字节与解析回来的树一致 —— 再跑一次 normalize 只报 unchanged、字节不差。
   const written = sha(file);
   const second = checked(await runCli(["normalize", "doc.html", "--write"], { cwd: dir }));
   expect(second.code).toBe(0);
@@ -114,7 +114,7 @@ const appendOmitted = async (dir: string, item: OmittedEndTagCase): Promise<void
   expect(sha(file)).toBe(written);
 };
 
-describe("F9 · 可省略结束标签的片段", () => {
+describe("可省略结束标签的片段", () => {
   it.each(CASES)(
     "should accept a $tag fragment with its end tag omitted and keep the tree stable",
     async (item) => {
@@ -152,7 +152,7 @@ const rewriteListWithoutEndTags = async (dir: string): Promise<void> => {
   expect(sha(file)).toBe(before);
 };
 
-describe("F9 · 整段重写只靠省略结束标签", () => {
+describe("整段重写只靠省略结束标签", () => {
   it("should treat a <ul> rewrite without end tags as the very same tree", async () => {
     await withTempDir(rewriteListWithoutEndTags);
   });
@@ -190,7 +190,7 @@ describe("F9 · 整段重写只靠省略结束标签", () => {
   });
 });
 
-describe("F9 · 表格结构片段写错位置", () => {
+describe("表格结构片段写错位置", () => {
   it("should name the next step when a <td> fragment would lose its structure", async () => {
     await withTempDir(async (dir) => {
       const file = join(dir, "doc.html");

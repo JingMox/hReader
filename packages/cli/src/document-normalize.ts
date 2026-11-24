@@ -53,7 +53,7 @@ export const assertIsDocument = (parsed: ParsedHtml, file: string): void => {
 };
 
 /**
- * 缺 id 时直接失败而不是临时注入：算出来的 id 不在盘上，用户把它喂回 `patch` 必挂（B-03）。
+ * 缺 id 时直接失败而不是临时注入：算出来的 id 不在盘上，用户把它喂回 `patch` 必挂。
  */
 export const assertNormalized = (parsed: ParsedHtml, file: string): void => {
   if (needsNormalize(parsed)) {

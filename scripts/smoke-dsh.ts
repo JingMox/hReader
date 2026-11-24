@@ -1,5 +1,5 @@
-// 这层管：M3.3 的手工烟测门——本仓依赖的是 `@deepseek-ai/*` 的 **rc** 版本，而
-// `dsh.compatibility.dshReleases` 又不在 `DshManifest` 类型里（见 docs/05 M3.3 节），
+// 这层管：dsh bundle 的手工烟测门——本仓依赖的是 `@deepseek-ai/*` 的 **rc** 版本，而
+// `dsh.compatibility.dshReleases` 又不在 `DshManifest` 类型里（见 docs/05），
 // 只有让真 `dsh` 装一次才知道它认不认这份清单。**不进 CI**（需要本机装 dsh、起真进程）。
 // 用法：`pnpm smoke:dsh`。
 //
@@ -57,7 +57,7 @@ const probe = run("dsh", ["--version"]);
 if (probe.missing || probe.status !== 0) {
   process.stdout.write(
     `SKIP 烟测：本机没有可用的 \`dsh\`（\`dsh --version\` 退出 ${String(probe.status)}）。\n` +
-      "装了之后才能验 AC-1 的真宿主面，例如：\n" +
+      "装了之后才能验真宿主面，例如：\n" +
       "  npm i -D @deepseek-ai/dsh@0.2.2-rc.1\n" +
       '  PATH="$PWD/node_modules/.bin:$PATH" pnpm smoke:dsh\n',
   );

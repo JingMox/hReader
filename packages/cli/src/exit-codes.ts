@@ -1,4 +1,4 @@
-// 这层管：`HrErrorCode` → 退出码的唯一映射（AC2 冻结表）；不解释错误、不打印。
+// 这层管：`HrErrorCode` → 退出码的唯一映射（冻结表）；不解释错误、不打印。
 
 import type { HrErrorCode } from "@hreader/core";
 
@@ -50,7 +50,7 @@ const EXIT_CODES = {
   needs_normalize: EXIT_USAGE,
   port_in_use: EXIT_USAGE,
   content_model_conflict: EXIT_USAGE,
-  // F16：重复 id 是「先 normalize --write 就能修」的状态，与 `needs_normalize` 同档
+  // 重复 id 是「先 normalize --write 就能修」的状态，与 `needs_normalize` 同档
   duplicate_id: EXIT_USAGE,
 } satisfies Record<HrErrorCode, number>;
 
