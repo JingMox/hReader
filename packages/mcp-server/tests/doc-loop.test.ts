@@ -1,13 +1,13 @@
-// 这层管：G3-1 —— M3.1 唯一一条"用户能感知"的主链，且跑在**交付物**上（`dist/main.js` 真子进程）：
+// 这层管：唯一一条"用户能感知"的主链，且跑在**交付物**上（`dist/main.js` 真子进程）：
 // 建稿 → 大纲 → 拿大纲给的 id 改正文 → 再大纲（新 id 可寻址）→ undo → 字节回到建稿那一刻。
 //
 // 它会因为什么而红（逐环）：
-// - 建稿不再注入 id（F3 回退）→ 第 2 步 `nodes` 为空或 `outline_node_without_id` 非空；
-// - 改完正文没有重算 id（`L-02` 被改成"保留旧 id"或"丢 id"）→ 第 3 步大纲里找不到可寻址的 h1；
+// - 建稿不再注入 id → 第 2 步 `nodes` 为空或 `outline_node_without_id` 非空；
+// - 改完正文没有重算 id（id 漂移被改成"保留旧 id"或"丢 id"）→ 第 3 步大纲里找不到可寻址的 h1；
 // - 写盘留下半截/多拼 BOM → 末环字节比不回去（这条比 "内容包含某词" 硬：少一个换行也红）；
 // - 快照不是"写前字节"或 undo 不消费快照 → 末环字节不等，且再 undo 一次要报 `undo_unavailable`。
 //
-// 注意：id 会漂移是 `L-02` 的既有设计（工具描述已写明"不要缓存 id"），所以这里断言的是
+// 注意：id 会漂移是既有设计（工具描述已写明"不要缓存 id"），所以这里断言的是
 // "新 id 可寻址"，**不是** "id 不变"。
 
 import { readFile } from "node:fs/promises";
@@ -105,7 +105,7 @@ const createAndOutlineOf = async (
 };
 
 /** 用大纲给的 id 改正文，再大纲 + 读节点：id 必须**仍是那一个**且真的可寻址。
- *  R2-04：`replace` 的新根继承目标自己的 id（docs/05:57），所以改完正文标题的锚点不变。 */
+ *  `replace` 的新根继承目标自己的 id，所以改完正文标题的锚点不变。 */
 const patchAndReadBackOf = async (workspace: string, oldId: unknown): Promise<void> => {
   await resultIn({
     workspace,
@@ -157,7 +157,7 @@ const undoBackOf = async (workspace: string, createdBytes: Buffer): Promise<void
   });
 };
 
-describe("dist/main.js · G3-1 主链闭环", () => {
+describe("dist/main.js · 主链闭环", () => {
   it("should take a created doc through outline, patch, outline again, then undo back to the exact bytes", async () => {
     const workspace = await workspaceIn("hreader-mcp-loop-");
     try {

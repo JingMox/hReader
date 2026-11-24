@@ -1,5 +1,5 @@
 // 这层管：三个「改动」工具走 in-memory transport 的行为——
-// 落盘是否真经过 core 的写管线（AC-2）、失败是否折成保留 `HrError.code` 的工具结果（AC-3）。
+// 落盘是否真经过 core 的写管线、失败是否折成保留 `HrError.code` 的工具结果。
 
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";

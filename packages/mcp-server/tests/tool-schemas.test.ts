@@ -1,16 +1,16 @@
-// 这层管：AC-2 里"tool list 必须带 zod 生成的 inputSchema"与"description 写何时用"这两条散装契约。
+// 这层管："tool list 必须带 zod 生成的 inputSchema" 与 "description 写何时用" 这两条散装契约。
 // 现有 `stdio.test.ts` 只比了**工具名**：名字对而 schema 缺失/手写跑偏，它照样绿。
 //
 // 它会因为什么而红：
 // - `tools/list` 里某个工具没有 `inputSchema`（宿主无法自描述，只能靠猜参）；
-// - schema 的必填键与卡片的表不一致（少一个必填 = 模型可以合法地不传；多一个 = 合法调用被拒）；
+// - schema 的必填键与下表不一致（少一个必填 = 模型可以合法地不传；多一个 = 合法调用被拒）；
 // - `description` 退化成参数名复述或空串。
 
 import { describe, expect, it } from "vitest";
 
 import { isRecord, sessionOf } from "./harness";
 
-/** 卡片 AC-2 的表：工具 → 必填参数。 */
+/** 工具 → 必填参数的契约表。 */
 const REQUIRED_BY_TOOL: Record<string, readonly string[]> = {
   hr_outline: ["filePath"],
   hr_read_node: ["filePath", "nodeId"],
@@ -52,7 +52,7 @@ const toolsOf = async (): Promise<readonly ListedTool[]> => {
   });
 };
 
-describe("工具自我描述（AC-2）", () => {
+describe("工具自我描述", () => {
   it("should carry a zod-derived inputSchema for every tool, with the required keys the card names", async () => {
     const tools = await toolsOf();
 
@@ -61,7 +61,7 @@ describe("工具自我描述（AC-2）", () => {
       // 手写 schema 的典型症状：没有 `type: object`（上面已断）或 properties 空。
       expect(tool.properties.length).toBeGreaterThan(0);
       const expected = REQUIRED_BY_TOOL[tool.name];
-      if (expected === undefined) throw new Error(`卡片上没有登记的工具：${tool.name}`);
+      if (expected === undefined) throw new Error(`契约表上没有登记的工具：${tool.name}`);
       expect([...tool.required].sort()).toEqual([...expected].sort());
       // 必填项必须真的在 properties 里，否则宿主渲染不出该参数。
       for (const key of tool.required) expect(tool.properties).toContain(key);

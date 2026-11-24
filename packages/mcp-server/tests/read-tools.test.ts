@@ -1,5 +1,5 @@
 // 这层管：三个「读 / 开篇」工具走 in-memory transport 的行为——
-// 入参 schema、调的是哪条 core 原语、失败是否折成保留 `HrError.code` 的工具结果（AC-2 / AC-3）。
+// 入参 schema、调的是哪条 core 原语、失败是否折成保留 `HrError.code` 的工具结果。
 
 import { readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -77,7 +77,7 @@ describe("hr_create_doc", () => {
   });
 });
 
-// AC-1 → AC-3：建完就能改。这一组用例的职责是"以后谁再手搓文档骨架，它会红"——
+// 建完就能改。这一组用例的职责是"以后谁再手搓文档骨架，它会红"——
 // 新建文档的 id 必须由 core 的注入器给，否则大纲为空、`hr_patch_node` 只剩 `root` 一个靶子。
 const outlineOf = async (filePath: string): Promise<Record<string, unknown>> => {
   const session = await sessionOf();
@@ -135,7 +135,7 @@ describe("hr_create_doc · 建完就能改", () => {
   });
 });
 
-// P1-1：`filePath` 来自模型输出（可被文档内容里的注入操纵），越界必须在建目录之前拒掉。
+// `filePath` 来自模型输出（可被文档内容里的注入操纵），越界必须在建目录之前拒掉。
 describe("hr_create_doc · 工作区边界", () => {
   it("should reject a path that escapes the workspace before creating anything", async () => {
     const outside = join(dirname(workspace), `${basename(workspace)}-escape.html`);
@@ -167,7 +167,7 @@ describe("hr_create_doc · 回显", () => {
     const result = await createOf({ filePath: "/etc/passwd", title: "越界" });
     const text = textOf(result);
 
-    // 用户发来的是 `/etc/passwd`：回显必须是它，不能是 `../../../../etc/passwd`（F8-2）。
+    // 用户发来的是 `/etc/passwd`：回显必须是它，不能是 `../../../../etc/passwd`。
     expect(codeOf(result)).toBe("path_outside_workspace");
     expect(text).toContain("/etc/passwd");
     expect(text).not.toContain("..");

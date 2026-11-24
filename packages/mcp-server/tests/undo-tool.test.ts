@@ -1,5 +1,5 @@
-// 这层管：`hr_undo` 的五条用户可见行为（§2）、两层快照的严格 LIFO（AC-3）、三条错误码的诚实性（AC-2）、
-// 并发（AC-4）、以及"快照被外部删掉/改坏"时不留半还原状态（R-4 / A1）、无 no-op 台阶（D）。
+// 这层管：`hr_undo` 的五条用户可见行为、两层快照的严格 LIFO、三条错误码的诚实性、
+// 并发、以及"快照被外部删掉/改坏"时不留半还原状态、无 no-op 台阶。
 //
 // 它会因为什么而红：把 `revertLast` 换成 `undoPatch`（`undo_unavailable` 会漏进工具结果）、
 // 去掉 core 的 `runLocked`（两个并发 undo 都成功）、或 undo 只"报告成功"而不真写回字节。
@@ -70,7 +70,7 @@ const DOC_ID = "doc.html";
 const revisionOf = (content: string): string =>
   createHash("sha256").update(content, "utf8").digest("hex").slice(0, 16);
 
-describe("hr_undo · 有效性（AC-1）", () => {
+describe("hr_undo · 有效性", () => {
   it("should put the pre-patch bytes back, and report the same revision the frontend would", async () => {
     const before = await bytesOf();
     await patchOf("p-1", "<p>新正文</p>");
@@ -100,7 +100,7 @@ describe("hr_undo · 有效性（AC-1）", () => {
   });
 });
 
-describe("hr_undo · 快照消费（AC-1）", () => {
+describe("hr_undo · 快照消费", () => {
   it("should answer nothing_to_undo on the second undo (the only snapshot is consumed)", async () => {
     await patchOf("p-1", "<p>新正文</p>");
     const first = await undoOf();
@@ -119,7 +119,7 @@ describe("hr_undo · 快照消费（AC-1）", () => {
   });
 });
 
-describe("hr_undo · 错误码诚实性（AC-2）", () => {
+describe("hr_undo · 错误码诚实性", () => {
   it("should map a missing path to not_found and a directory to not_a_file", async () => {
     const missing = await undoOf("nope.html");
     const asDir = await undoOf(".");
@@ -144,7 +144,7 @@ describe("hr_undo · 错误码诚实性（AC-2）", () => {
   });
 });
 
-describe("hr_undo · 并发与残缺（AC-4 / R-4）", () => {
+describe("hr_undo · 并发与残缺", () => {
   it("should let exactly one of two concurrent undos win", async () => {
     await patchOf("p-1", "<p>新正文</p>");
     const [first, second] = await Promise.all([undoOf(), undoOf()]);
@@ -169,7 +169,7 @@ describe("hr_undo · 并发与残缺（AC-4 / R-4）", () => {
   });
 });
 
-describe("hr_undo · 两层快照严格 LIFO（AC-3）", () => {
+describe("hr_undo · 两层快照严格 LIFO", () => {
   it("两次 patch 后逐次 undo 严格退最近一份（不是退任意一份）", async () => {
     const s0 = await bytesOf();
     await patchOf("h1", "<h1>标题一</h1>");
@@ -193,7 +193,7 @@ describe("hr_undo · 两层快照严格 LIFO（AC-3）", () => {
   });
 });
 
-describe("hr_undo · 快照被改坏（A1）", () => {
+describe("hr_undo · 快照被改坏", () => {
   it("哈希不符时拒绝写回（io_failure），目标文件不动且快照不被消费", async () => {
     await patchOf("p-1", "<p>新正文</p>");
     const patched = await bytesOf();

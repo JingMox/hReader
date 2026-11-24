@@ -1,4 +1,4 @@
-// 这层管：工具结果的两副面孔与日志落点（AC-3/AC-4）——失败保留 `HrError.code`，堆栈只进 stderr。
+// 这层管：工具结果的两副面孔与日志落点——失败保留 `HrError.code`，堆栈只进 stderr。
 
 import { HrError } from "@hreader/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -112,7 +112,7 @@ describe("log", () => {
 
 describe("绝对路径折叠", () => {
   it("should leave the message untouched when the root is the filesystem root", () => {
-    // `root === "/"` 时根是**每个**绝对路径的前缀：折它只会把文案拆坏（G2-R4 P2-1）。
+    // `root === "/"` 时根是**每个**绝对路径的前缀：折它只会把文案拆坏。
     expect(elidedOf("找不到风格：/x.yaml", ["/"])).toBe("找不到风格：/x.yaml");
   });
 
@@ -138,7 +138,7 @@ describe("绝对路径折叠", () => {
 
 describe("折叠顺序", () => {
   // macOS 上 cwd=`/var/folders/x`、realpath=`/private/var/folders/x`：先折短的会命中长串中段，
-  // 折出 `/privatedoc.html` + 半截 `/private`（G2-R5 P2）。长根先折就没这问题。
+  // 折出 `/privatedoc.html` + 半截 `/private`。长根先折就没这问题。
   it("should fold the longer root first when one root is a suffix of the other", () => {
     const cwd = "/var/folders/x";
     const real = "/private/var/folders/x";
