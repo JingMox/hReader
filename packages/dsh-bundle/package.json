@@ -17,7 +17,8 @@
     "cordis.patch.yml"
   ],
   "scripts": {
-    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --define:__filename=import.meta.filename --define:__dirname=import.meta.dirname --outfile=dist/index.js --sourcemap --sources-content=false --log-level=warning --banner:js='import { createRequire as __cr } from \"node:module\"; const require = __cr(import.meta.url);' && tsc -p tsconfig.build.json --noCheck && cp dist/.types/dsh-bundle/src/*.d.ts dist/ && rm -rf dist/.types && cp -R ../../styles dist/styles"
+    "build": "node scripts/build.mjs",
+    "test": "vitest run"
   },
   "dsh": {
     "bundle": {
@@ -35,9 +36,16 @@
     "@deepseek-ai/dsh-package-manifest": "0.2.2-rc.1",
     "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.1",
     "@hreader/core": "workspace:*",
-    "@types/node": "26.6.6",
-    "esbuild": "0.28.2",
-    "vitest": "3.2.4",
-    "yaml": "2.9.1"
+    "@types/node": "catalog:",
+    "vitest": "catalog:",
+    "yaml": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JingMox/hReader.git",
+    "directory": "packages/dsh-bundle"
   }
 }

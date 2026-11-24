@@ -21,13 +21,6 @@ module.exports = {
       severity: "error",
       comment: "@hreader/core 不得依赖任何其他 @hreader/* 包（依赖方向单向）。",
       from: { path: "^packages/core/(src|tests)" },
-      to: { path: "^packages/(protocol|renderer-html|app)/" },
-    },
-    {
-      name: "protocol-depends-on-core-only",
-      severity: "error",
-      comment: "@hreader/protocol 只允许依赖 @hreader/core。",
-      from: { path: "^packages/protocol/(src|tests)" },
       to: { path: "^packages/(renderer-html|app)/" },
     },
     {

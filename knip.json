@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignore": ["docs/**"],
   "vitest": {
-    "config": ["vitest.config.ts"]
+    "config": ["vitest.config.ts", "packages/*/vitest.config.ts"]
   },
   "eslint": {
     "config": ["eslint.config.mjs"]
@@ -13,9 +13,6 @@
   "workspaces": {
     "packages/core": {
       "entry": ["fixtures/*.mjs", "tests/**/*.ts"]
-    },
-    "packages/protocol": {
-      "entry": ["tests/**/*.ts"]
     },
     "packages/cli": {
       "entry": [
@@ -33,7 +30,7 @@
       ]
     },
     ".": {
-      "entry": ["skills/hreader/scripts/hr.mjs", "scripts/**/*.ts"]
+      "entry": ["skills/hreader/scripts/hr.mjs", "scripts/**/*.ts", "scripts/**/*.mjs"]
     },
     "packages/app": {
       "entry": ["src/main.ts", "scripts/*.mjs"],
@@ -47,7 +44,7 @@
       "entry": ["pi-hreader.ts", "tests/**/*.ts"]
     },
     "packages/dsh-bundle": {
-      "entry": ["tests/**/*.ts"],
+      "entry": ["src/index.ts", "tests/**/*.ts"],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@deepseek-ai/dsh-attachment", "@deepseek-ai/dsh-package-manifest"]
     },

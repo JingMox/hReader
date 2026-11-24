@@ -28,9 +28,7 @@
 
     "paths": {
       "@hreader/core": ["./packages/core/src/index.ts"],
-      "@hreader/protocol": ["./packages/protocol/src/index.ts"],
       "@hreader/renderer-html": ["./packages/renderer-html/src/index.ts"],
-      "@hreader/chrome-extension": ["./packages/chrome-extension/src/index.ts"],
       "@hreader/app": ["./packages/app/src/index.ts"]
     }
   }

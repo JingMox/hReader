@@ -269,7 +269,6 @@ Cordis plugin [`packages/dsh-bundle/src/index.ts`](packages/dsh-bundle/src/index
 | Package                  | Role                                                                                      |
 | ------------------------ | ----------------------------------------------------------------------------------------- |
 | `@hreader/core`          | Semantic HTML parser, `data-hr-id` tree, outline, surgical patch, style & HTTP/SSE server |
-| `@hreader/protocol`      | Shared MCP / tool schemas and protocol contracts                                          |
 | `@hreader/renderer-html` | Print/PDF/PNG HTML renderer via headless Chromium                                         |
 | `@hreader/app`           | Browser/webview reader application bundle (`dist/`)                                       |
 | `@hreader/cli`           | Standalone `hr` CLI & local server daemon                                                 |
