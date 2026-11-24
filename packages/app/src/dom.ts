@@ -112,9 +112,18 @@ const paint = (root: DocumentLike, spec: NodeSpec): ElementLike => {
   return element;
 };
 
+/** 主题 CSS 的注释里会出现字面 `<article …>`（如 slides 分页注释）：先把这些非正文区段
+ *  抹成等长空白（保住索引）再定位文章起点，否则截出来的"正文"会从 CSS 注释中间开始，
+ *  注释尾巴和后面的规则文本会被解析成游离元素、直接渲染在正文顶部。 */
 const stripHeadOf = (markup: string): string => {
-  const match = /<article\b[\s\S]*<\/article>/iu.exec(markup);
-  return match === null ? markup : match[0];
+  const masked = markup.replace(
+    /<style\b[\s\S]*?<\/style>|<script\b[\s\S]*?<\/script>|<!--[\s\S]*?-->/giu,
+    (region) => " ".repeat(region.length),
+  );
+  const start = masked.indexOf("<article");
+  if (start === -1) return markup;
+  const end = markup.lastIndexOf("</article>");
+  return start <= end ? markup.slice(start, end + "</article>".length) : markup;
 };
 
 const syncHeadTheme = (root: DocumentLike, markup: string): void => {

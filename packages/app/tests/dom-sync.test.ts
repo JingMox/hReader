@@ -36,6 +36,44 @@ describe("dom · stripHeadOf 与同步 #hr-theme", () => {
     );
   });
 
+  it("should not treat an <article> literal inside the theme comment as the document start", () => {
+    const doc = createFakeDocument();
+    const docEl = fakeElement("article");
+    doc.bySelector.set("#hr-doc", docEl);
+    const fullHtml =
+      '<head><style id="hr-theme">/* 形态（<article data-hr-kind="slides">）*/ a{}</style></head>' +
+      '<body><article data-hr-id="doc-root"><p data-hr-id="a">hi</p></article></body>';
+    createDomHost(doc).html("#hr-doc", fullHtml);
+    expect(docEl.innerHTML).toBe(
+      '<article data-hr-id="doc-root"><p data-hr-id="a">hi</p></article>',
+    );
+  });
+
+  it("should keep in-article comments while skipping pre-article junk", () => {
+    const doc = createFakeDocument();
+    const docEl = fakeElement("article");
+    doc.bySelector.set("#hr-doc", docEl);
+    const fullHtml =
+      "<!-- <article -->" +
+      '<article data-hr-id="doc-root"><!-- keep --><p data-hr-id="a">hi</p></article>';
+    createDomHost(doc).html("#hr-doc", fullHtml);
+    expect(docEl.innerHTML).toBe(
+      '<article data-hr-id="doc-root"><!-- keep --><p data-hr-id="a">hi</p></article>',
+    );
+  });
+
+  it("should fall back to the raw markup when no unmasked <article> exists", () => {
+    const doc = createFakeDocument();
+    const docEl = fakeElement("article");
+    docEl.innerHTML = '<article data-hr-id="doc-root"></article>';
+    doc.bySelector.set("#hr-doc", docEl);
+    // 唯一一处 `<article` 在 style 注释里 → 起点找不到 → 原样返回（既有兜底）。
+    createDomHost(doc).html("#hr-doc", "<style>/* <article */</style>");
+    expect(docEl.innerHTML).toBe("<style>/* <article */</style>");
+    createDomHost(doc).html("#hr-doc", "<p>没有收尾标签</p><article");
+    expect(docEl.innerHTML).toBe("<p>没有收尾标签</p><article");
+  });
+
   it("should skip theme sync gracefully when #hr-theme element is missing", () => {
     const doc = createFakeDocument();
     doc.bySelector.set("#hr-doc", fakeElement("article"));
