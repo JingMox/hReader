@@ -17,7 +17,7 @@
     "cordis.patch.yml"
   ],
   "scripts": {
-    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js --sourcemap --sources-content=false --log-level=warning --banner:js='import { createRequire as __cr } from \"node:module\"; const require = __cr(import.meta.url);' && tsc -p tsconfig.build.json --noCheck && cp dist/.types/dsh-bundle/src/*.d.ts dist/ && rm -rf dist/.types && cp -R ../../styles dist/styles"
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --define:__filename=import.meta.filename --define:__dirname=import.meta.dirname --outfile=dist/index.js --sourcemap --sources-content=false --log-level=warning --banner:js='import { createRequire as __cr } from \"node:module\"; const require = __cr(import.meta.url);' && tsc -p tsconfig.build.json --noCheck && cp dist/.types/dsh-bundle/src/*.d.ts dist/ && rm -rf dist/.types && cp -R ../../styles dist/styles"
   },
   "dsh": {
     "bundle": {

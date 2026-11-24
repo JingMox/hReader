@@ -19,6 +19,8 @@ async function main() {
     sourcemap: true,
     sourcesContent: false,
     banner: { js: BANNER },
+    // ESM 产物里没有 CJS 的 __filename/__dirname；被打进来的 CJS 依赖（如 write-file-atomic）会用到。
+    define: { __filename: "import.meta.filename", __dirname: "import.meta.dirname" },
   });
 
   if (!existsSync("../../styles")) {
