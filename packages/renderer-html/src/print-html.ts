@@ -19,16 +19,15 @@ import {
 import type { Attribute } from "./sanitize";
 
 /**
- * 印什么、用哪个主题、正文是什么，全部由调用方给出：包内不找文件、不读环境（D3/D7），
- * 同输入必然同字节（D2）。
+ * 印什么、用哪个主题、正文是什么，全部由调用方给出：包内不找文件、不读环境，同输入必然同字节。
  */
 export interface PrintHtmlInput {
-  /** 不传则回落：`<title>` → 首个 `h1` → `docId`（§11 之前按 §4 的优先级）。 */
+  /** 不传则回落：`<title>` → 首个 `h1` → `docId`。 */
   readonly title?: string;
   /** 稳定文档标识（源文件 basename 去扩展名）：只进 `<meta name="hr-doc-id">`，不参与排版。 */
   readonly docId: string;
   readonly visualId: string;
-  /** 纸张：必填（D7）。它直接进 `@page{size:…}`，选错纸就是版心被纸边切掉（§15.1）。 */
+  /** 纸张：必填。它直接进 `@page{size:…}`，选错纸就是版心被纸边切掉。 */
   readonly paper: PaperSize;
   /** `<body>` 的类名原样输出；不传或空串表示不加类。 */
   readonly bodyClass?: string;
@@ -43,12 +42,12 @@ export interface PrintHtmlResult {
   readonly html: string;
   /**
    * `html` 的 UTF-8 字节数，精确值：`productOf` 在拼接前算的就是它（同一个数），调用方拿它与
-   * 4 MiB 对表，并保证 `--json.bytes` 与 `statSync(out).size` 相等（§11.4）。
+   * 4 MiB 对表，并保证 `--json.bytes` 与 `statSync(out).size` 相等。
    */
   readonly bytes: number;
   /**
    * 口径只算图片：被删的 `<img>` 与 SVG `<image>`。`<video>`/`<audio>`/`<svg>`/`<iframe>` 是整删，
-   * 不计数——它们不是"图片"，算进来会让那句"已移除 N 个外部图片"说谎（§13.3）。
+   * 不计数——它们不是"图片"，算进来会让那句"已移除 N 个外部图片"说谎。
    */
   readonly droppedImages: number;
 }
@@ -101,7 +100,7 @@ const coverTitleOf = (input: PrintHtmlInput, root: HtmlNode, article: HtmlElemen
 
 interface RewriteState {
   readonly numbering: Numbering;
-  /** `data-hr-id` → 文档内唯一的锚名；在全树占位后一次性分配，写树时只查表（§13.1）。 */
+  /** `data-hr-id` → 文档内唯一的锚名；在全树占位后一次性分配，写树时只查表。 */
   readonly anchorById: ReadonlyMap<string, string>;
   droppedImages: number;
 }
@@ -198,7 +197,7 @@ const rewrittenElementOf = (
   const children = rewrittenChildrenOf(node.children, state);
   return {
     kind: "element",
-    // §11.2：嵌套 `<article>` 降级为 `div`（属性原样留），产物里只许有一个 `<article>`。
+    // 嵌套 `<article>` 降级为 `div`（属性原样留），产物里只许有一个 `<article>`。
     tag: node.tag === "article" ? "div" : node.tag,
     attrs: attributesOf(node, chapter, anchor),
     children:
@@ -221,9 +220,9 @@ const rewrittenChildrenOf = (
 };
 
 /**
- * 空稿判据是**文本级**而非标记级（§12.1）：`<section></section>` 序列化后非空，但纸面上什么都没有，
+ * 空稿判据是**文本级**而非标记级：`<section></section>` 序列化后非空，但纸面上什么都没有，
  * 放了它就等于用一个空 chapter 蒙过校验。用 parseHtml 走一遍文本节点，不用正则剥标签。
- * 零宽字符（`U+200B`/`U+FEFF`/`U+180E`）在纸面上不占位，`trim()` 又不认它们，故先剥再判（§13.2）。
+ * 零宽字符（`U+200B`/`U+FEFF`/`U+180E`）在纸面上不占位，`trim()` 又不认它们，故先剥再判。
  */
 const ZERO_WIDTH = /[\u200B\uFEFF\u180E]/gu;
 const hasText = (html: string): boolean =>
@@ -244,7 +243,7 @@ const articleBodyOf = (article: HtmlElementNode, state: RewriteState): string =>
 };
 
 export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
-  // 不注入 id（BUG-02）：导出产物里只有源文档本来就有的 `data-hr-id`，
+  // 不注入 id：导出产物里只有源文档本来就有的 `data-hr-id`，
   // 否则用户从打印稿拄下来的 id 拿去 `patch` 只会得到 `node_not_found`。
   const parsed = parseHtml(input.documentHtml);
   const article = findElement(parsed.root, "article");
