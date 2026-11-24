@@ -19,6 +19,7 @@ const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--html-file",
   "--id",
   "--inherits-visual",
+  "--kind",
   "--max-bytes",
   "--max-height",
   "--model",
@@ -30,6 +31,7 @@ const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--visual",
   "--tone",
   "--timeout",
+  "--title",
   "--width",
   "--workspace",
 ]);

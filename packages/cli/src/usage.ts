@@ -1,10 +1,12 @@
 // 这层管：`--help` 文本的单一来源（根目录 + 每条命令一段）；不做解析、不格式化结果。
 
 export const COMMAND_NAMES = [
+  "new",
   "normalize",
   "outline",
   "read",
   "patch",
+  "check",
   "style",
   "undo",
   "export",
@@ -27,11 +29,13 @@ const COMMON = [
 ];
 
 const SYNOPSIS = [
+  "hr new <file> [--kind note|report|minutes|brief|slides] [--title <标题>] [--visual <id>] [--force] [--json]",
   "hr normalize <file> [--write] [--json]",
   "hr outline <file> [--json]",
   "hr read <file> <nodeId|selector> [--json] [--max-bytes <n>]",
   "hr patch <file> <nodeId|selector> --action <replace|insert_before|insert_after|append|delete>",
   "         (--html <s> | --html-file <p> | --html-stdin) [--json]",
+  "hr check <file> [--json]",
   "hr style <file> (--visual <id> | --tone <id> | --lint) [--json]",
   "hr style extract <file...> [--id <id>] [--name <名字>] [--out <path>] [--no-llm] [--json]",
   "hr undo <file> [--json]",
@@ -44,6 +48,18 @@ const SYNOPSIS = [
 ];
 
 const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
+  new: [
+    "用法：hr new <file> [--kind <形态>] [--title <标题>] [--visual <id>] [--force] [--json]",
+    "",
+    "  --kind <形态>   note 笔记（默认）| report 报告 | minutes 会议纪要 | brief 决策简报 | slides 幻灯片",
+    "  --title <标题>  写进 <title> 与 <h1>（默认取文件名）",
+    "  --visual <id>   视觉主题（默认内置主题）",
+    "  --force         <file> 已存在时覆盖（缺省报 file_exists）",
+    "",
+    "  按形态写一份带齐 data-hr-id、已套主题的起稿骨架：占位文字写在全角括号里，逐块 patch 掉即可。",
+    "  slides 形态每个顶层 <section> 是一页：浏览器里滚动即翻页，打印是横版一页一张。",
+    "  JSON 时为 { path, kind, title, bytes }。",
+  ],
   normalize: [
     "用法：hr normalize <file> [--write] [--json]",
     "",
@@ -81,6 +97,14 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "  --html-file <p>      从文件读片段（严格 UTF-8）",
     "  --html-stdin         从 stdin 读片段（空 stdin 为用法错误）",
     "  delete 不接受任何 --html* 来源。",
+  ],
+  check: [
+    "用法：hr check <file> [--json]",
+    "",
+    "  检查文档是否守住排版约束：组件名在白名单内、组件结构完整（根标签 / 子元素个数 / 必备子元素）、",
+    "  没有内联 style，外加文档级诊断（重复 id、标题跳级等）。只读，不改文件。",
+    "  每条一行 `<severity>: <code> — <message>`；JSON 时为 { issues, count }。",
+    "  同一套检查在 hr patch 写入时也会跑：片段照常落盘，问题随回执的 warnings 给出。",
   ],
   style: [
     "用法：hr style <file> (--visual <id> | --tone <id> | --lint) [--json]",

@@ -1,7 +1,7 @@
 // 这层管：argv 解析的公共类型与四个小工具（失败信封 / 未用 flag / 公共字段 / 绝对路径）；不含具体命令。
 
 import { resolve } from "node:path";
-import type { PatchAction } from "@hreader/core";
+import type { DocKind, PatchAction } from "@hreader/core";
 
 import type { Raw } from "./tokens";
 import type { CommandName } from "./usage";
@@ -101,6 +101,16 @@ export type Intent =
       readonly force: boolean;
     } & Common)
   | ({ readonly kind: "undo"; readonly path: string } & Common)
+  | ({ readonly kind: "check"; readonly path: string } & Common)
+  | ({
+      readonly kind: "new";
+      readonly path: string;
+      readonly docKind: DocKind;
+      readonly title: string;
+      readonly visual: string;
+      /** `<file>` 已存在时是否覆盖（缺省 `file_exists`）。 */
+      readonly force: boolean;
+    } & Common)
   | ({
       readonly kind: "serve";
       readonly path: string;

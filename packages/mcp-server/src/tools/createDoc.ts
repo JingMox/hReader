@@ -1,9 +1,17 @@
-// 这层管：`hr_create_doc`（最小合法文档 + 校验 + 落盘）；写作视图靠它拿到一个可读的落点。
+// 这层管：`hr_create_doc`（最小合法文档或按形态起稿 + 校验 + 落盘）；写作视图靠它拿到一个可读的落点。
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { HrError, injectNodeIds, parseHtml, serializeHtml, validateDocument } from "@hreader/core";
+import {
+  DOC_KINDS,
+  HrError,
+  injectNodeIds,
+  newDocumentHtml,
+  parseHtml,
+  serializeHtml,
+  validateDocument,
+} from "@hreader/core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
@@ -28,6 +36,14 @@ export const createDocShape = {
       "文档标题（写进 `<title>` 与 `<h1>`）；正文之后再靠 patch 补。" +
         "新建文档的块 id 由内容派生：首次写入正文后 id 会变，" +
         "请以 `hr_outline`/`hr_read_node` 的最新 id 为准，不要缓存返回值里的 id。",
+    ),
+  kind: z
+    .enum(DOC_KINDS)
+    .optional()
+    .describe(
+      "文档形态：note 笔记 / report 报告 / minutes 会议纪要 / brief 决策简报 / slides 幻灯片" +
+        "（每个顶层 `<section>` 一页）。给了就按该形态写一份带组件占位的起稿骨架，" +
+        "占位文字在全角括号里，逐块 `hr_patch_node` 替换即可；不给则只建最小空文档。",
     ),
 };
 
@@ -72,7 +88,11 @@ const writeNewDocOf = async (
   htmlOf: (title: string) => string,
 ): Promise<CallToolResult> => {
   const target = documentTargetOf(args.filePath, process.cwd());
-  const html = htmlOf(args.title);
+  // 形态骨架来自 core（与 `hr new` 同一份）；不给 `kind` 时仍是裁定 #5 的最小文档，行为不变。
+  const html =
+    args.kind === undefined
+      ? htmlOf(args.title)
+      : newDocumentHtml({ kind: args.kind, title: args.title });
   const [firstDiagnostic] = validateDocument(parseHtml(html));
   if (firstDiagnostic !== undefined) {
     throw new HrError("invalid_document", `生成的文档没过校验：${firstDiagnostic.message}`);
@@ -81,7 +101,9 @@ const writeNewDocOf = async (
   await assertInsideWorkspace(target);
   await writeNewOf(target, html);
   return okResult(
-    { path: target.file, title: args.title },
+    args.kind === undefined
+      ? { path: target.file, title: args.title }
+      : { path: target.file, title: args.title, kind: args.kind },
     { ui: { resourceUri: `${UI_URI_PREFIX}${docIdOf(target.file)}` } },
   );
 };

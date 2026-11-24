@@ -203,19 +203,10 @@ describe("output · 人读文本", () => {
 });
 
 describe("usage · 单一事实源", () => {
-  it("should name all ten commands", () => {
-    expect(COMMAND_NAMES).toEqual([
-      "normalize",
-      "outline",
-      "read",
-      "patch",
-      "style",
-      "undo",
-      "export",
-      "pdf",
-      "png",
-      "serve",
-    ]);
+  it("should name all twelve commands", () => {
+    expect(COMMAND_NAMES.join(" ")).toBe(
+      "new normalize outline read patch check style undo export pdf png serve",
+    );
     expect(isCommandName("patch")).toBe(true);
     expect(isCommandName("nope")).toBe(false);
     expect(isCommandName(undefined)).toBe(false);

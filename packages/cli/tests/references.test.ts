@@ -31,8 +31,8 @@ const stable = (html: string): string => serializeHtml(parseHtml(html));
 describe("components-spec.md · 每个片段都能原样通过 hr patch", () => {
   const blocks = htmlBlocks(readFileSync(SPEC, "utf8"));
 
-  it("should extract at least the seven component snippets", () => {
-    expect(blocks.length).toBeGreaterThanOrEqual(7);
+  it("should extract at least the eight component snippets", () => {
+    expect(blocks.length).toBeGreaterThanOrEqual(8);
   });
 
   it.each(htmlBlocks(readFileSync(SPEC, "utf8")).map((block, index) => [index, block] as const))(
@@ -91,9 +91,9 @@ const sourceIds: ReadonlySet<string> = new Set(
 );
 
 describe("组件 id · 文档与代码双向一致", () => {
-  it("should declare exactly seven ids on both sides", () => {
-    expect(docIds.size).toBe(7);
-    expect(sourceIds.size).toBe(7);
+  it("should declare exactly eight ids on both sides", () => {
+    expect(docIds.size).toBe(8);
+    expect(sourceIds.size).toBe(8);
   });
 });
 

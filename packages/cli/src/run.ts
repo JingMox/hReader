@@ -8,7 +8,9 @@ import { HrError, nodeStyleDeps } from "@hreader/core";
 
 import { parseArgs, type Intent } from "./args";
 import { attemptRealpath, realpathThroughAncestors } from "./canonical";
+import { checkCommand } from "./commands/check";
 import { exportPrintCommand } from "./commands/exportPrint";
+import { newDocCommand } from "./commands/new";
 import { normalizeCommand } from "./commands/normalize";
 import { outlineCommand } from "./commands/outline";
 import { patchCommand } from "./commands/patch";
@@ -18,9 +20,9 @@ import { styleExtractCommand } from "./commands/styleExtract";
 import { undoCommand } from "./commands/undo";
 import { EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./exit-codes";
 import { sourceText } from "./input";
-import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
-import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
+import { apiKeyOf } from "./llm/session";
 import { displayedPathOf, jsonError } from "./output";
+import { llmOf } from "./run-llm";
 import { pdfOf, pngOf, type ProductIo } from "./run-products";
 import { serveCommandOf } from "./run-serve";
 import { isDiscoveredStylePath, undiscoveredHint } from "./style-out";
@@ -103,23 +105,6 @@ const runUndo = async (
 
 const LLM_KEY_ENV = "OPENCODE_API_KEY";
 
-/** 传输层只在这里构造：`commands/*` 不许碰 env，网络实现也不该知道 flag 从哪来。 */
-const llmOf = (
-  intent: Extract<Runnable, { kind: "styleExtract" }>,
-  io: CliIo,
-  env: Readonly<Record<string, string | undefined>>,
-  key: string,
-): LlmPort => {
-  return createLlmClient({
-    apiKey: key,
-    baseUrl: normalizeBaseUrl(intent.baseUrl ?? baseUrlOf(env)),
-    model: intent.model ?? modelOf(env),
-    sessionId: sessionIdOf(env),
-    timeoutMs: LLM_TIMEOUT_MS,
-    fetch: io.fetch ?? globalThis.fetch,
-  });
-};
-
 /** 写别处是合法用法（导出到任意目录），但那样 `--tone <id>` 找不到它：提示，不是错误。 */
 const hintIfUndiscovered = (
   out: string | undefined,
@@ -144,7 +129,7 @@ const runExtract = async (
   const key = apiKeyOf(env);
   // D2：没 key 是正常路径，不是错误——只在 stderr 说明一句，产物与 --no-llm 完全一致。
   if (key === undefined) io.stderr(`未设置 ${LLM_KEY_ENV}，仅用统计结果\n`);
-  const llm = key === undefined || intent.noLlm ? undefined : llmOf(intent, io, env, key);
+  const llm = key === undefined || intent.noLlm ? undefined : llmOf(intent, io.fetch, env, key);
   if (!intent.idGiven) io.stderr(`未给 --id，使用默认值：${intent.id}\n`); // 默认值只提示，不拦
   if (!intent.nameGiven) io.stderr(`未给 --name，使用默认值：${intent.name}\n`);
   if (intent.files.length === 1) io.stderr("单篇语料的规则会很窄：建议 3 篇以上\n");
@@ -184,6 +169,15 @@ const runExport = async (
     displayOut: intent.out === undefined ? undefined : displayedPathOf(intent.out, io.cwd),
   });
 };
+
+/** 新文档的落点与 `--out` 同一口径：两侧都换成真实路径，越界判定交给命令层。 */
+const runNew = (intent: Extract<Runnable, { kind: "new" }>, cwd: string): Promise<string> =>
+  newDocCommand({
+    ...intent,
+    path: realpathThroughAncestors(intent.path),
+    workspace: workspaceRealpathOf(intent.workspace),
+    displayPath: displayedPathOf(intent.path, cwd),
+  });
 
 /** `env`/`stop`/`home` 在 `CliIo` 里可省；归一到 `ResolvedIo`，下游命令才不必判空（`stop` 的永不兑现是故意的）。 */
 type ResolvedIo = CliIo & Required<Pick<CliIo, "env" | "stop" | "home">>;
@@ -251,6 +245,10 @@ const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
       warn: io.stderr,
     });
   if (intent.kind === "read") return readCommand(intent);
+  if (intent.kind === "check") {
+    return checkCommand({ ...intent, displayPath: displayedPathOf(intent.path, io.cwd) });
+  }
+  if (intent.kind === "new") return runNew(intent, io.cwd);
   return intent.kind === "export" ? runExport(intent, io) : await runRemaining(intent, io);
 };
 

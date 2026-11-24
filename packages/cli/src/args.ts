@@ -7,10 +7,11 @@ import { extractIntent } from "./args-extract";
 import { pdfIntent } from "./args-pdf";
 import { pngIntent } from "./args-png";
 import { exportIntent } from "./args-export";
+import { newIntent } from "./args-new";
 import { absoluteOf, commonOf, failure, unusedFlag, type ParsedArgs } from "./intent";
 import type { HtmlSource, StyleMode } from "./intent";
 import { allowHostsOf, tokenize, type Raw } from "./tokens";
-import { isCommandName, type CommandName } from "./usage";
+import { COMMAND_NAMES, isCommandName, type CommandName } from "./usage";
 
 // `input.ts` / `run.ts` / `commands/*` 都从 `./args` 取这些名字：真正的定义在 `intent.ts`（避免循环 import）。
 export type { HtmlSource, Intent, ParsedArgs, StyleMode } from "./intent";
@@ -226,7 +227,12 @@ const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
   };
 };
 
-const plainIntent = (raw: Raw, rest: readonly string[], cwd: string, kind: "undo"): ParsedArgs => {
+const plainIntent = (
+  raw: Raw,
+  rest: readonly string[],
+  cwd: string,
+  kind: "undo" | "check",
+): ParsedArgs => {
   const [file = "", ...extra] = rest;
   const problem =
     extra.length > 0
@@ -242,10 +248,12 @@ type IntentBuilder = (raw: Raw, rest: readonly string[], cwd: string) => ParsedA
 
 /** 一张表代替 if 链：每加一个命令只多一行，`build` 的圈复杂度不随之长。 */
 const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
+  new: newIntent,
   normalize: normalizeIntent,
   outline: outlineIntent,
   read: readIntent,
   patch: patchIntent,
+  check: (raw, rest, cwd) => plainIntent(raw, rest, cwd, "check"),
   style: styleIntent,
   undo: (raw, rest, cwd) => plainIntent(raw, rest, cwd, "undo"),
   export: exportIntent,
@@ -257,10 +265,7 @@ const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
 const build = (raw: Raw, cwd: string): ParsedArgs => {
   const [name, ...rest] = raw.positionals;
   if (name === undefined) {
-    return failure(
-      "缺少命令：normalize | outline | read | patch | style | undo | export | pdf | png | serve",
-      undefined,
-    );
+    return failure(`缺少命令：${COMMAND_NAMES.join(" | ")}`, undefined);
   }
   if (!isCommandName(name)) return failure(`未知命令：${name}`, undefined);
   return BUILDERS[name](raw, rest, cwd);

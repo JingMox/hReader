@@ -43,7 +43,7 @@ const registerReadingTools = (server: McpServer): void => {
     {
       title: "新建文档",
       description:
-        "在给定路径新建一份最小合法文档（`<article>` + `<h1>` + `<section>`）并返回阅读视图。要凭空开一篇新稿时用它",
+        "在给定路径新建文档并返回阅读视图。不给 kind 是最小合法文档（`<article>` + `<h1>` + `<section>`）；给 kind（note/report/minutes/brief/slides）则按形态起稿。要凭空开一篇新稿时用它",
       inputSchema: createDocShape,
     },
     createDocCall,
@@ -56,7 +56,7 @@ const registerEditingTools = (server: McpServer): void => {
     {
       title: "改一个节点",
       description:
-        "对某个节点做 replace/insert_before/insert_after/append/delete。要动正文时用它，别整篇重写；写盘走原子替换并留 undo 快照",
+        "对某个节点做 replace/insert_before/insert_after/append/delete。要动正文时用它，别整篇重写；写盘走原子替换并留 undo 快照。返回里的 warnings 含排版约束问题（组件结构不对、内联 style），看到就再 patch 一次改掉",
       inputSchema: patchNodeShape,
     },
     patchNodeCall,
