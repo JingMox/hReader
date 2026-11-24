@@ -1,4 +1,4 @@
-// 这层管：TextQuoteSelector 的解析与消歧（AC1.2/AC1.3）；纯函数，不 IO、不抛错。
+// 这层管：TextQuoteSelector 的解析与消歧；纯函数，不 IO、不抛错。
 // **失败是返回值**（`anchor_lost` / `orphaned`），不是异常——批注失效时阅读器还要能用。
 
 import type { Annotation, TextAnchor } from "./model";
@@ -27,7 +27,7 @@ const occurrenceStarts = (text: string, needle: string): number[] => {
   }
 };
 
-/** 前/后文匹配：空模板视为"不参与消歧"；越界只比**实际存在**的那一段（裁定 #3：越界不算失配）。 */
+/** 前/后文匹配：空模板视为"不参与消歧"；越界只比**实际存在**的那一段（越界不算失配）。 */
 const fitsContext = (text: string, at: number, anchor: TextAnchor): boolean => {
   const prefixFrom = Math.max(0, at - anchor.prefix.length);
   const prefixShown = text.slice(prefixFrom, at);
@@ -51,7 +51,7 @@ const onlyOf = (list: readonly number[]): number => list.reduce((first) => first
 const needleOf = (anchor: TextAnchor): string => anchor.exact;
 
 /**
- * 解析顺序（AC1.2 + 裁定 #3）：块还在吗 → `exact` 有没有命中 → **唯一命中直接采用**（不看上下文）→
+ * 解析顺序：块还在吗 → `exact` 有没有命中 → **唯一命中直接采用**（不看上下文）→
  * 多处命中才用 `prefix`/`suffix` 消歧 → 仍多命中取最接近 `start` 的；一个都不合上下文 = `ambiguous`。
  */
 export const resolveAnchor = (annotation: Annotation, doc: AnchorDocument): AnchorResult => {

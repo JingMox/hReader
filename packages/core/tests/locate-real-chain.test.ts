@@ -66,7 +66,7 @@ describe("locateTarget · 选择器命中（真文法 + 真解析）", () => {
   });
 
   it("should report a hit element without data-hr-id as matched but not addressable", () => {
-    // `<em>` 没有 id：命中是真的，可寻址是假的——`read` 能读，`patch` 不能改（AC9 的 node_not_found 臂）。
+    // `<em>` 没有 id：命中是真的，可寻址是假的——`read` 能读，`patch` 不能改（node_not_found 臂）。
     const located = locateTarget(PLAIN, "em");
 
     expect(located.selector).toBe("em");

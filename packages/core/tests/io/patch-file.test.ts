@@ -54,7 +54,7 @@ describe("patchFile · 写盘与快照", () => {
 
       expect(result.changed).toBe(true);
       expect(result.undoable).toBe(true);
-      // docs/05:57：`replace` 的新根继承目标 id，所以这一条不再报新 id。
+      // `replace` 的新根继承目标 id，所以这一条不再报新 id。
       expect(result.newIds).toEqual([]);
       expect(result.bytes).toBe(after.length);
       expect(result.path).toBe(join(realDir, DOC_FILE));

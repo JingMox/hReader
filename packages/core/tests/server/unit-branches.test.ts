@@ -596,7 +596,7 @@ describe("server · 非法百分号编码", () => {
 });
 
 describe("limits · keep-alive 空闲到点", () => {
-  // v4#2：空闲到点只关连接，不再发 408（Node `keepAliveTimeout` 的语义）。
+  // 空闲到点只关连接，不再发 408（Node `keepAliveTimeout` 的语义）。
   it("should close without a 408 once the idle window elapses", async () => {
     await withServer(
       async (ctx) => {
@@ -703,7 +703,7 @@ const idleAfterResponse = async (port: number, cookie: string): Promise<string> 
   });
 
 describe("limits · idle 计时器自己触发（不是 header 计时器）", () => {
-  // v4#2 裁定：keep-alive 空闲到点由 Node 的 `keepAliveTimeout` 静默关连接，不再发明 408 帧。
+  // keep-alive 空闲到点由 Node 的 `keepAliveTimeout` 静默关连接，不再发明 408 帧。
   it("should close a completed-then-idle keep-alive socket without inventing a 408", async () => {
     await withServer(
       async (ctx) => {
@@ -742,7 +742,7 @@ describe("http-io · TE+CL 到底谁拒", () => {
       );
 
       const statusOf = (): string => text.split("\r\n")[0] ?? "";
-      // 实测由 Node 的 llhttp 抢先拒绝（裸 400，无我们的 JSON 体）——见报告：我们的守卫是死代码。
+      // 实测由 Node 的 llhttp 抢先拒绝（裸 400，无我们的 JSON 体）——我们的守卫实际是死代码（llhttp 先拒）。
       expect(statusOf()).toMatch(/400|501/u);
       expect(text).not.toContain('"code":"ok"');
     });
@@ -943,7 +943,7 @@ const headTimeout = async (port: number): Promise<string> => {
 };
 
 describe("limits · 两档计时器的收尾路径", () => {
-  // v4#2：空闲到点 = 静默关连接（Node `keepAliveTimeout`），不再有自造 408。
+  // 空闲到点 = 静默关连接（Node `keepAliveTimeout`），不再有自造 408。
   it("should close an idle keep-alive socket without a 408 frame", async () => {
     await withServer(
       async (ctx) => {
@@ -956,7 +956,7 @@ describe("limits · 两档计时器的收尾路径", () => {
     );
   });
 
-  // v4#2：请求头半截由 Node 的 `requestTimeout` 处理——它可能回 408，也可能直接关连接，两者都合规。
+  // 请求头半截由 Node 的 `requestTimeout` 处理——它可能回 408，也可能直接关连接，两者都合规。
   it("should either answer 408 or close when the request head never finishes", async () => {
     await withServer(
       async (ctx) => {
@@ -1069,7 +1069,7 @@ describe("门面 · 可单测部件仍可用", () => {
     const wrong = matchRoute("POST", "/api/events");
     expect(wrong.kind).toBe("method");
 
-    // M2.2 让冻结路由表 9 → 12，M2.3 的批注/撤销五条 → 17。
+    // 路由表已从 9 条涨到 17 条（静态入口 + 批注/撤销）。
     expect(ROUTES).toHaveLength(17);
     expect(statusOf("locked")).toBe(409);
     expect(statusOf("too_many_clients")).toBe(429);

@@ -34,7 +34,7 @@ describe("真实结构文章 · patch 后仍可读", () => {
         action: "replace",
         html: "<p>改过</p>",
       });
-      // docs/05:57：`replace` 的新根继承目标 id ⇒ 老 id 仍可寻址，且不产新 id。
+      // `replace` 的新根继承目标 id ⇒ 老 id 仍可寻址，且不产新 id。
       const output = readAfter(html, "p1");
 
       expect(newIds).toEqual([]);

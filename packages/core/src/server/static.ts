@@ -23,10 +23,10 @@ import { APP_CSP, assetSegmentsOf, contentTypeOf } from "./http-io";
 
 const SECURITY = { "x-content-type-options": "nosniff" } as const;
 
-/** 未构建时的默认主题名（服务器是唯一权威，客户端不许硬编码——裁定 #2/#3）。 */
+/** 未构建时的默认主题名（服务器是唯一权威，客户端不许硬编码）。 */
 const DEFAULT_THEME = "atelier-editorial";
 
-/** `ENAMETOOLONG`/`EINVAL` 是"名字不合法"而非服务故障：按 404 处理（裁定 #9）。 */
+/** `ENAMETOOLONG`/`EINVAL` 是"名字不合法"而非服务故障：按 404 处理。 */
 const BAD_NAME = new Set(["ENAMETOOLONG", "EINVAL"]);
 
 const codeOf = (error: unknown): unknown => Reflect.get(Object(error), "code");
@@ -76,9 +76,9 @@ const HOME_FALLBACK_HEADERS = {
 
 /**
  * 没构建前端时的最小首页：**刻意回 200 而不是 503**。
- * M2.1 已冻结"带 cookie 访问 `/` 得 200 + docId 链接"的契约（`wire-http.test.ts`），
+ * 已冻结"带 cookie 访问 `/` 得 200 + docId 链接"的契约（`wire-http.test.ts`），
  * 本地 `hr serve` 也常被 `curl` 当自检入口；构建缺失是"开发者未跑 build"，不是服务故障。
- * `body` 是服务端渲染好的正文（见 `homeBodyOf`）：首页不许只是一个靠 JS 再拉一次的壳（BUG-03）。
+ * `body` 是服务端渲染好的正文（见 `homeBodyOf`）：首页不许只是一个靠 JS 再拉一次的壳。
  */
 const fallbackHome = (docId: string, body: string): Reply => ({
   status: 200,
@@ -86,7 +86,7 @@ const fallbackHome = (docId: string, body: string): Reply => ({
   body: `<!doctype html><meta charset="utf-8"><title>hReader</title><h1>hReader</h1><p>当前文档：<a href="/s/${encodeURIComponent(docId)}">${escapeHtml(docId)}</a></p>${body}<p><a href="/healthz">healthz</a></p>`,
 });
 
-/** `GET /` 的 401 页：人读一句话说清怎么打开，而不是丢一句 JSON（BUG-01）。 */
+/** `GET /` 的 401 页：人读一句话说清怎么打开，而不是丢一句 JSON。 */
 export const homeUnauthorizedReply = (): Reply => ({
   status: 401,
   headers: HOME_FALLBACK_HEADERS,
@@ -108,7 +108,7 @@ const articleIn = (node: HtmlNode): HtmlElementNode | undefined => {
 /**
  * 首页外壳里的正文：直接拿文档的 `<article>` 子树（与 `/s/<docId>` 同一份可读内容，不跑 JS）。
  * 文档读不到/没有 `<article>` 时回空串而不是 5xx：首页是 `hr serve` 的自检入口，
- * "构建缺失"与"文档没了"都不该把 `GET /` 变成错误页（M2.1 冻结的 200 契约）。
+ * "构建缺失"与"文档没了"都不该把 `GET /` 变成错误页（冻结的 200 契约）。
  */
 const homeBodyOf = async (ctx: HandlerContext, docId: string): Promise<string> => {
   try {
@@ -126,8 +126,8 @@ const homeBodyOf = async (ctx: HandlerContext, docId: string): Promise<string> =
 
 /**
  * `GET /`：
- * - 未构建 → 200 最小首页 + 服务端渲染的正文（M2.1 冻结契约，见 `fallbackHome`）；
- * - 已构建（`appDir` 非空）且没带 `?doc=` → **302** 到 `/?doc=<docId>`（不注入 HTML，裁定 #1）；
+ * - 未构建 → 200 最小首页 + 服务端渲染的正文（冻结契约，见 `fallbackHome`）；
+ * - 已构建（`appDir` 非空）且没带 `?doc=` → **302** 到 `/?doc=<docId>`（不注入 HTML）；
  * - 带了 `?doc=` → 回 `index.html`。
  */
 export const indexReply = async (
@@ -156,7 +156,7 @@ export const indexReply = async (
   };
 };
 
-/** AC1.2/AC1.3：越界一律 404（不暴露"那里有东西"），未知文件同样 404。 */
+/** 越界一律 404（不暴露"那里有东西"），未知文件同样 404。 */
 export const assetReply = async (ctx: HandlerContext, rawPath: string): Promise<Reply> => {
   const segments = assetSegmentsOf(rawPath);
   if (segments === undefined) return notFound("资源路径不合法");
@@ -170,7 +170,7 @@ export const assetReply = async (ctx: HandlerContext, rawPath: string): Promise<
   };
 };
 
-/** 内置 + 用户主题清单（裁定 #2）：客户端不再硬编码主题名。 */
+/** 内置 + 用户主题清单：客户端不再硬编码主题名。 */
 export const themesReply = async (ctx: HandlerContext): Promise<Reply> => {
   const deps = ctx.styleDeps;
   const builtin = await listDirsOrEmpty(deps.stylesRoot, deps);
@@ -187,7 +187,7 @@ export const themesReply = async (ctx: HandlerContext): Promise<Reply> => {
   });
 };
 
-/** AC5.2：主题 CSS 只从内置/用户主题目录读；未知 id 让 `unknown_style` 冒泡成 404。 */
+/** 主题 CSS 只从内置/用户主题目录读；未知 id 让 `unknown_style` 冒泡成 404。 */
 export const themeReply = async (ctx: HandlerContext, styleId: string): Promise<Reply> => {
   const css = await loadThemeCss(styleId, ctx.styleDeps);
   return {

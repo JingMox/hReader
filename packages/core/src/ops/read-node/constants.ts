@@ -18,7 +18,7 @@ export const SHELL_TAGS: ReadonlySet<string> = new Set(["html", "body", "head"])
 /** 内含 raw text 或模板内容的容器：复制出去会带走可执行体，一律不对外。 */
 export const BLOCKED_CONTENT_TAGS: ReadonlySet<string> = new Set(["script", "style", "template"]);
 
-/** 外壳锚点：`hr-meta` 脚本与 `hr-theme` 样式（`docs/02` §3.1），读 article 时必须剔除。 */
+/** 外壳锚点：`hr-meta` 脚本与 `hr-theme` 样式，读 article 时必须剔除。 */
 export const META_ANCHOR_ID = "hr-meta";
 export const THEME_ANCHOR_ID = "hr-theme";
 

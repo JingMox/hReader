@@ -65,7 +65,7 @@ const JSON_HEADERS: Readonly<Record<string, string>> = {
   "content-type": "application/json; charset=utf-8",
 };
 
-/** @internal 由 M2.3 处理器（annotation-replies.ts）复用；不进公共导出面。 */
+/** @internal 由 annotation-replies.ts 的处理器复用；不进公共导出面。 */
 export const jsonReply = (status: number, value: unknown): Reply => ({
   status,
   headers: JSON_HEADERS,

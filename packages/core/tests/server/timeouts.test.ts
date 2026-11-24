@@ -69,7 +69,7 @@ describe("timeouts · 请求体半截（slowloris）", () => {
 });
 
 describe("timeouts · 请求头半截", () => {
-  // v4#2：头不完整交给 Node `requestTimeout` —— 回 408 或直接关连接都合规。
+  // 头不完整交给 Node `requestTimeout` —— 回 408 或直接关连接都合规。
   it("should either answer 408 or close when the request line is never finished", async () => {
     await withServer(async (ctx) => {
       const { raw, closed } = await drain(ctx.port, "GET /");

@@ -28,7 +28,7 @@ export interface Annotation {
   readonly resolutionNote?: string;
 }
 
-/** 长度上限（AC1.1）：超出**截断**并返回诊断，绝不静默丢字段。 */
+/** 长度上限：超出**截断**并返回诊断，绝不静默丢字段。 */
 export const ANCHOR_LIMITS = { exact: 500, prefix: 64, suffix: 64 } as const;
 export const NOTE_LIMIT = 2000;
 
@@ -40,7 +40,7 @@ const anchorSchema = z.object({
   start: z.number().int().nonnegative().safe().catch(0),
 });
 
-/** 旧版（M1.x）的 `pending_ai` 与 `pending` 合并成同一个待处理态：状态机只有两态。 */
+/** 旧版的 `pending_ai` 与 `pending` 合并成同一个待处理态：状态机只有两态。 */
 const statusSchema = z
   .enum(["pending", "pending_ai", "resolved"])
   .transform((status): AnnotationStatus => (status === "resolved" ? "resolved" : "pending"));
@@ -49,7 +49,7 @@ const statusSchema = z
 const annotationSchema = z.object({
   id: looseString,
   nodeId: looseString,
-  // M1.x 的 meta 用 `targetId` / `comment`：升级不能让旧批注读不出来。
+  // 旧版 meta 用 `targetId` / `comment`：升级不能让旧批注读不出来。
   targetId: looseString,
   anchor: z.unknown(),
   note: z.unknown(),
@@ -60,12 +60,12 @@ const annotationSchema = z.object({
   resolutionNote: looseString,
 });
 
-/** `an-<8 hex>`：输入含 `createdAt`，同一位置写两条批注得到两个 id（AC §2-7）。 */
+/** `an-<8 hex>`：输入含 `createdAt`，同一位置写两条批注得到两个 id。 */
 export const annotationIdOf = (input: {
   readonly nodeId: string;
   readonly anchor: TextAnchor;
   readonly createdAt: string;
-  /** 裁定 #5：同位置同句两条批注也要两个 id——把 `note` 与该块已有批注数拼进种子。 */
+  /** 同位置同句两条批注也要两个 id——把 `note` 与该块已有批注数拼进种子。 */
   readonly salt?: string;
 }): string => {
   const material = [
@@ -88,7 +88,7 @@ interface AnchorOutcome {
   readonly diagnostics: readonly string[];
 }
 
-/** 只截断、不抛错：太长是作者的输入问题，阅读器要多活一会儿（AC1.1）。 */
+/** 只截断、不抛错：太长是作者的输入问题，阅读器要多活一会儿。 */
 export const normalizeAnchor = (raw: unknown): AnchorOutcome | undefined => {
   const parsed = anchorSchema.safeParse(raw);
   if (!parsed.success) return undefined;
@@ -164,7 +164,7 @@ export const parseAnnotationOf = (raw: unknown, index: number): ParseOutcome | s
   };
 };
 
-/** 新增字段只报**一条**诊断：逐字段刷屏会把真正的错误淹掉（AC2.4）。 */
+/** 新增字段只报**一条**诊断：逐字段刷屏会把真正的错误淹掉。 */
 export const unknownFieldsOf = (raw: unknown): readonly string[] => {
   const record = jsonObject.safeParse(raw);
   if (!record.success) return [];

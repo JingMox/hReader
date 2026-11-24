@@ -1,4 +1,4 @@
-// 这层管：裁定 #8 挪到服务端的 diff 路由 `GET /api/doc/<docId>/notes/<anId>/diff`（路由表第 17 条）。
+// 这层管：服务端的 diff 路由 `GET /api/doc/<docId>/notes/<anId>/diff`（路由表第 17 条）。
 // 只断"服务端真的算了 diff"：chunk 能逐字重拼出 before/after，边界是"没有历史 → before 为空"。
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -110,9 +110,9 @@ describe("GET …/diff · 正常路径", () => {
       expect(rebuild(chunks, "before")).toBe(fieldOf(body, "before"));
       expect(String(fieldOf(body, "before"))).toContain("正文一");
       expect(String(fieldOf(body, "after"))).toContain("新正文");
-      // R2-04：`replace` 保留目标 id ⇒ 按 id 直接命中，无需重识别、不降级。
+      // `replace` 保留目标 id ⇒ 按 id 直接命中，无需重识别、不降级。
       expect(fieldOf(body, "degraded")).toBe(false);
-      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+      // wire 不再有 reason/originNodeId；degraded 才是契约。
       expect(fieldOf(body, "reason")).toBeUndefined();
       expect(fieldOf(body, "degradedReason")).toBeUndefined();
       expect(typeof fieldOf(body, "revision")).toBe("string");

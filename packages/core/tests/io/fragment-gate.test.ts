@@ -80,7 +80,7 @@ describe("parseFragment · SVG 动画改写事件属性", () => {
 
 describe("parseFragment · 解析器会吞掉/挪走的构造", () => {
   // 这四类片段的共同点：解析器**不报错**，只是把元素忽略掉或挪到容器之外。
-  // 拦截它们的分别是 F11 的四条判定 —— 任何一条退化成 no-op，这里就会从 `invalid_*` 变回 `no_throw`。
+  // 拦截它们的分别是片段校验的四条判定 —— 任何一条退化成 no-op，这里就会从 `invalid_*` 变回 `no_throw`。
   const CASES: readonly { fragment: string; code: string; marker: string; why: string }[] = [
     {
       fragment: "<select><div>x</div></select>",

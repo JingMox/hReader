@@ -13,10 +13,10 @@ const REPO_ROOT = decodeURIComponent(new URL("../../../../", import.meta.url).pa
 
 const pathOf = (name: string): string => `${REPO_ROOT}fixtures/extract/${name}`;
 
-/** 卡 §10 R8：语料是源文档的副本，改 `docs/` 不许让本卡用例红——所以这里钉的是副本自己的字节。 */
+/** 语料是源文档的副本，改 `docs/` 不许让这里的用例红——所以这里钉的是副本自己的字节。 */
 const CORPUS_FILES = ["docs-03-section11.md", "docs-05-m33.md", "style-authoring.md"] as const;
 
-/** 卡 §4 的真值钉在字节上：语料一改，统计量就没有"真值"可言了。 */
+/** 真值钉在字节上：语料一改，统计量就没有"真值"可言了。 */
 const SHA256: Readonly<Record<string, string>> = {
   "docs-03-section11.md": "d03b0ef233cfb1eed1598735e4aae59b261e68c34b84ae56234fb524753ff622",
   "docs-05-m33.md": "4b421ca7177f48ff3a92e7311930295bb329b3575e81f5324fd8d89ccb075b6f",

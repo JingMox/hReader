@@ -53,7 +53,7 @@ interface Injected {
 
 const NO_DIAGNOSTICS: readonly Diagnostic[] = [];
 
-/** locations 模式下每个元素都有 span（隐含骨架为零宽），这里只取值，不回答"元素在不在"（P2-2）。 */
+/** locations 模式下每个元素都有 span（隐含骨架为零宽），这里只取值，不回答"元素在不在"。 */
 const spanOrZero = (target: HtmlElementNode): SourceSpan => ({ ...ZERO_SPAN, ...target.span });
 
 const isKnownAction = (value: string): boolean => PATCH_ACTIONS.some((action) => action === value);
@@ -132,7 +132,7 @@ const rangeFor = (
   return isRoot ? { from: span.innerStart, to: span.innerEnd } : { from: span.start, to: span.end };
 };
 
-/** 被 replace 掉的节点连同 ID 消失：从保留集摘掉，重复 patch 才能重导出同 ID 保持幂等（P1-8）。 */
+/** 被 replace 掉的节点连同 ID 消失：从保留集摘掉，重复 patch 才能重导出同 ID 保持幂等。 */
 const withoutSelfId = (reserved: readonly string[], target: HtmlElementNode): readonly string[] => {
   const self = attributeValue(target.attrs, HR_ID_ATTRIBUTE);
   // self 缺失时 `id !== undefined` 恒真，效果等同“原样返回”，不必再分支。
@@ -255,7 +255,7 @@ const spliceFor = (
   } = parseFragmentWithDiagnostics(request.html);
   const container = containerOf(root, located, request.action);
   if (container !== undefined) assertFragmentFits(container, fragment);
-  // #12：内容相同就原样返回，不重新注入（否则同一内容重复 patch 会一直换 ID）。
+  // 内容相同就原样返回，不重新注入（否则同一内容重复 patch 会一直换 ID）。
   if (request.action === "replace" && sameContent(located, fragment)) return undefined;
   const scope =
     request.action === "replace"
@@ -282,7 +282,7 @@ export const applyPatch = (html: string, request: PatchRequest): PatchOutcome =>
   if (splice === undefined) {
     return { html, newIds: [], replacedIds: [], changed: false, warnings: [] };
   }
-  // 走到这里必然有字节变化：#12 的等值分支已在上面提前返回。
+  // 走到这里必然有字节变化：等值分支已在上面提前返回。
   return {
     html: `${html.slice(0, splice.from)}${splice.text}${html.slice(splice.to)}`,
     newIds: splice.newIds,

@@ -4,8 +4,8 @@ import { HrError } from "../src/index";
 import type { HrErrorCode } from "../src/index";
 
 // 用例表的单一事实源：Record<HrErrorCode, true> 缺键即 TS2741，由 `pnpm typecheck` 拦截
-// （单根 tsconfig.json，include 含 packages/*/tests/**）。R1 实测：删掉 locked 键 → exit 2
-// （证据见 .workflow/reports/test-M1.0.md §6.3 实验 A2）。
+// （单根 tsconfig.json，include 含 packages/*/tests/**）。实测：删掉 locked 键 → exit 2
+// 。
 const CODE_MATRIX: Record<HrErrorCode, true> = {
   invalid_html: true,
   no_article: true,
@@ -46,9 +46,9 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   render_empty: true,
   needs_normalize: true,
   port_in_use: true,
-  // R1-F6：片段内容模型与目标容器不兼容（列表尾：与 `HrErrorCode` 的声明顺序一致）
+  // 片段内容模型与目标容器不兼容（列表尾：与 `HrErrorCode` 的声明顺序一致）
   content_model_conflict: true,
-  // R2-11（docs/05:68）：同一文档里两个元素共用同一个 `data-hr-id`，读/写入口直接 exit 2。
+  // 同一文档里两个元素共用同一个 `data-hr-id`，读/写入口直接 exit 2。
   duplicate_id: true,
 };
 
@@ -144,7 +144,7 @@ describe("HrError observable surface", () => {
   it("should keep the enumerable surface to name/code/data (serialisable, no cause/stack)", () => {
     const error = new HrError("invalid_html", "serialisable", { cause: "deep" });
 
-    // 可枚举面即 JSON.stringify 面：`data` 是 F18 新增的程序可面（docs/05:424，
+    // 可枚举面即 JSON.stringify 面：`data` 是程序可面，
     // 让调用方用 `reason` 判别两种 `invalid_selector` 成因），其余 message/cause/stack 不得外泄。
     expect(Object.keys(error).sort()).toEqual(["code", "data", "name"]);
     expect(Object.prototype.propertyIsEnumerable.call(error, "message")).toBe(false);

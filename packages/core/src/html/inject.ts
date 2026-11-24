@@ -202,7 +202,7 @@ const enterNode = (task: Extract<Task, { kind: "enter" }>, state: WalkState): vo
 
 /**
  * `reserved` 是调用方已知占用的 ID（如补丁片段要避开整篇文档已有 ID）；`insideArticle` 用于把
- * 片段本身当作注入根。两者都只在 patch 路径上出现，默认值与 M1.2 行为逐字一致。
+ * 片段本身当作注入根。两者都只在 patch 路径上出现，默认值与普通注入路径逐字一致。
  * `rootSeed` 同属 patch 路径：给了它，片段根就按它在文档里的原位置复算 ID（`replace` 的锚点保持）。
  */
 /** 一次注入遍历的启动状态：`result()` 取遍历后写回的根（外壳层可能被替换）。 */
@@ -211,7 +211,7 @@ interface Walk {
   readonly result: () => HtmlNode;
 }
 
-/** 注入选项：`reserved`/`insideArticle`/`rootSeed`/`rootId` 只在 patch 路径出现，缺省与 M1.2 逐字一致。 */
+/** 注入选项：`reserved`/`insideArticle`/`rootSeed`/`rootId` 只在 patch 路径出现，缺省与普通注入逐字一致。 */
 interface InjectOptions {
   /** 调用方已知占用的 ID（如补丁片段要避开整篇文档已有 ID）。 */
   readonly reserved?: readonly string[];

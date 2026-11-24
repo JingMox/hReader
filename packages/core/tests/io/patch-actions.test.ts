@@ -115,7 +115,7 @@ describe("replace · 内容相同即幂等", () => {
   });
 
   it("should swap the subtree but keep the target's own id when content differs", () => {
-    // docs/05:57（M1.1 AC2「id 归产品所有」）：`replace` 的新根**继承目标自己的 id**，换内容不换锚点。
+    // id 归产品所有：`replace` 的新根**继承目标自己的 id**，换内容不换锚点。
     const outcome = patch({ targetId: "p1", action: "replace", html: "<p>换掉</p>" });
 
     expect(outcome.changed).toBe(true);
@@ -228,7 +228,7 @@ describe("请求校验 · 非字符串 html", () => {
 
 describe("ID 分配 · 只补新的、可复现", () => {
   it("should allocate one id per new element in document order, reusing the target's id", () => {
-    // docs/05:57：`replace` 的新根继承目标 id（`empty`），只有片段内部的节点才算新 id。
+    // `replace` 的新根继承目标 id（`empty`），只有片段内部的节点才算新 id。
     const outcome = patch({
       targetId: "empty",
       action: "replace",

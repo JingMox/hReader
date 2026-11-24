@@ -1,6 +1,6 @@
 // 这层管：`PatchOutcome` 的两个"附加返回面"——片段解析诊断（`warnings`）与 id 变更对
 // （`replacedIds`）。它们都是"字节写成功了，但用户需要知道发生了什么"的机器可读渠道：
-// 丢掉 `warnings` = 属性悄悄少了一个；`replacedIds` 自 R2-04 起恒为空（`replace` 保 id），
+// 丢掉 `warnings` = 属性悄悄少了一个；`replacedIds` 恒为空（`replace` 保 id），
 // 键仍留在返回面里，所以这里锁住"它确实是空数组、不是 undefined"。
 
 import { describe, expect, it } from "vitest";
@@ -42,7 +42,7 @@ describe("applyPatch · warnings 上浮片段诊断", () => {
 
 describe("applyPatch · replacedIds 的 id 变更对", () => {
   it("should ignore the fragment's own id and say so in warnings", () => {
-    // docs/05:57：片段自带的 `data-hr-id` 一律忽略，写进文档的是继承来的目标 id。
+    // 片段自带的 `data-hr-id` 一律忽略，写进文档的是继承来的目标 id。
     const outcome = patch({
       targetId: "p1",
       action: "replace",
@@ -56,7 +56,7 @@ describe("applyPatch · replacedIds 的 id 变更对", () => {
   });
 
   it("should report no pair on replace because the new root inherits the target id", () => {
-    // docs/05:57：`replace` 的新根继承目标自己的 id ⇒ `from === to`，不构成变更对。
+    // `replace` 的新根继承目标自己的 id ⇒ `from === to`，不构成变更对。
     const outcome = patch({ targetId: "p1", action: "replace", html: "<p>换</p>" });
 
     expect(outcome.changed).toBe(true);

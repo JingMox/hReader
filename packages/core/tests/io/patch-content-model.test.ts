@@ -105,7 +105,7 @@ describe("applyPatch · replace 看的是直接父容器", () => {
 
     // 父容器是 `<article>`：装得下块级就是合法改动，不查祖先链。
     expect(outcome.changed).toBe(true);
-    // docs/05:57：`replace` 的新根继承目标 id（`hr-p`），换标签也不换锚点。
+    // `replace` 的新根继承目标 id（`hr-p`），换标签也不换锚点。
     expect(outcome.html).toBe(
       '<article data-hr-id="hr-a"><div data-hr-id="hr-p">块</div></article>',
     );
@@ -162,7 +162,7 @@ describe("assertFragmentFits · 解析器会改树的组合", () => {
   );
 
   it("should still accept a paragraph inside a list because it does not change the tree", () => {
-    // 审计裁定的边界：`<ul><p>` 只是内容模型不合规，解析器不重排，所以不登记、不拒。
+    // 内容模型边界：`<ul><p>` 只是内容模型不合规，解析器不重排，所以不登记、不拒。
     expect(() => {
       assertFragmentFits(elementOf("ul"), elementOf("p"));
     }).not.toThrow();

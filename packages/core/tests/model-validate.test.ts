@@ -4,10 +4,10 @@ import { injectNodeIds, parseHtml, validateDocument } from "../src/index";
 import { DIAGNOSTIC_SEVERITY } from "../src/html/constants";
 import type { Diagnostic, DiagnosticCode } from "../src/index";
 
-// 卡片 M1.2 契约 2：validateDocument 与 M1.1 的诊断同处一个 code 空间、按文档序稳定、
+// 契约：validateDocument 与解析层的诊断同处一个 code 空间、按文档序稳定、
 // 按 `code|path|message` 去重；四个新码的严重度与“每处一条”的粒度都在这里钉住。
 //
-// R2-11（docs/05:68）：注入会先把重复 id 去掉（保留第一个，其余给 `id_reassigned`），
+// 注入会先把重复 id 去掉（保留第一个，其余给 `id_reassigned`），
 // 所以 `duplicate_id` 只能由**未注入**的输入落出来——这正是读入口看到的形态。
 
 const validate = (html: string): readonly Diagnostic[] =>
@@ -86,7 +86,7 @@ describe("validateDocument · heading_level_jump", () => {
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["heading_level_jump"]);
     expect(diagnostics[0]?.severity).toBe("warning");
     expect(diagnostics[0]?.message).toBe("标题层级从 h2 跳到 h4（跳级 >1）");
-    // 序号是本节点在父节点 children 里的下标（v2 #12）：h2 占 0，所以 h4 是 `h4[1]`。
+    // 序号是本节点在父节点 children 里的下标：h2 占 0，所以 h4 是 `h4[1]`。
     expect(diagnostics[0]?.path).toBe("html[0]>body[1]>article[0]>h4[1]");
   });
 
@@ -147,7 +147,7 @@ describe("validateDocument · article 数量", () => {
 describe("validateDocument · 与解析诊断合并", () => {
   it("should keep parser diagnostics first and remain stable across calls", () => {
     // 注入先改名：`Bad Id` → invalid_hr_id（原地的）、第二个 `dup` → id_reassigned；
-    // 没过注入的 `duplicate_id` 在这里已经不存在了（R2-11）。
+    // 没过注入的 `duplicate_id` 在这里已经不存在了。
     const html =
       "<article><h2>a</h2><h4>b</h4><p data-hr-id='Bad Id'>x</p><p data-hr-id='dup'>1</p><p data-hr-id='dup'>2</p></article>";
     const injected = injectNodeIds(parseHtml(html));
@@ -214,7 +214,7 @@ describe("validateDocument · 与解析诊断合并 · 续", () => {
   });
 });
 
-// 卡片 v3 #11：两层的 path 必须逐字同构（无前导 `>`，语法 `tag[i]>tag[i]>…`，锚在 `html[0]`）。
+// 两层的 path 必须逐字同构（无前导 `>`，语法 `tag[i]>tag[i]>…`，锚在 `html[0]`）。
 // 下面这条把**同一份源文本、同一个 `<p>`** 同时送进两层：该 `<p>` 的 `data-hr-id` 对两层都不合法，
 // 于是 inject 层与 validate 层各报一条 `invalid_hr_id`，两条的 `path` 可以直接 `===` 比对。
 // 任何一层改口径（加前导 `>`、换分隔符、从 body 起算、兄弟序号偏位）都会红。

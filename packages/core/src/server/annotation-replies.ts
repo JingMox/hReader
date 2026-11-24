@@ -1,4 +1,4 @@
-// 这层管：M2.3 的四个批注/撤销处理器（AC3.1–AC3.4）；只产出 `Reply`/`Written`，不碰 socket。
+// 这层管：批注/撤销处理器；只产出 `Reply`/`Written`，不碰 socket。
 
 import { z } from "zod";
 
@@ -18,7 +18,7 @@ import { revisionOf } from "./revision";
 const bytesOf = (ctx: HandlerContext, target: ResolvedTarget): Promise<Uint8Array> =>
   ctx.deps.fs.readFile(target.realPath);
 
-/** 锚点解析的"文档侧"：失败是值不是异常（AC1.2），且**按批注自己的块**判（裁定 #4）。 */
+/** 锚点解析的"文档侧"：失败是值不是异常，且**按批注自己的块**判。 */
 const lostOf = (model: DocumentModel, annotations: readonly Annotation[]): readonly string[] => {
   const nodes = flattenOf(model);
   const ids = nodes.map((node) => node.id);
@@ -144,20 +144,20 @@ export const undoReply = async (
   };
 };
 
-/** `GET /api/doc/<docId>/notes/<anId>/diff`：diff 在服务端算（裁定 #8），浏览器只渲染 chunk。 */
+/** `GET /api/doc/<docId>/notes/<anId>/diff`：diff 在服务端算，浏览器只渲染 chunk。 */
 export const annotationDiffReply = async (ctx: HandlerContext, ids: DocAnId): Promise<Reply> => {
   const target = await targetOf(ctx, ids.docId);
   const bytes = await bytesOf(ctx, target);
   const listed = await listAnnotations({ workspace: ctx.workspace, file: ids.docId }, ctx.deps);
   const annotation = listed.annotations.find((item) => item.id === ids.anId);
   if (annotation === undefined) throw new HrError("not_found", `批注不存在：${ids.anId}`);
-  // 裁定 #4：diff 的粒度是**这条批注自己的块**，不是全篇（全篇会让两条批注拿到同一份结果）。
+  // diff 的粒度是**这条批注自己的块**，不是全篇（全篇会让两条批注拿到同一份结果）。
   const model = modelOf(bytes, target.realPath);
   const basis = await blockBasisOf(ctx, target, model, annotation.nodeId);
   const diff = diffText(basis.before, basis.after);
   const body: AnnotationDiffBody = {
     revision: revisionOf(bytes),
-    // 裁定：重识别后响应里的 `nodeId` 必须是当前文档里的真实 id（否则前端标不到块）。
+    // 重识别后响应里的 `nodeId` 必须是当前文档里的真实 id（否则前端标不到块）。
     nodeId: basis.nodeId,
     before: basis.before,
     after: basis.after,

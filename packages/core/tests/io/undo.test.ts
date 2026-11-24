@@ -29,7 +29,7 @@ const DOC = `${WS}/a.html`;
 const HISTORY = `${WS}/.hreader/history/${sha1Of("a.html")}`;
 const LOCK = `${WS}/.hreader/locks/${sha1Of("a.html")}.lock`;
 
-/** v2 #6：快照名带内容 sha 前缀，undo 前自证没被截断。 */
+/** 快照名带内容 sha 前缀，undo 前自证没被截断。 */
 const snapName = (data: string, seq: number, at = "2026-01-02T03:04:05.006Z"): string =>
   `${HISTORY}/${sha256Of(encodeUtf8(data)).slice(0, 16)}-${at}-${String(seq)}.html`;
 const SNAPSHOT = snapName("orig", 1);

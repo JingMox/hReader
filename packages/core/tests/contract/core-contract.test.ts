@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-// P0-2 自证：跨包只走包名。解析链 = tsconfig.base paths + vitest resolve.alias（同一份源码）。
+// 跨包只走包名。解析链 = tsconfig.base paths + vitest resolve.alias（同一份源码）。
 import { HrError } from "@hreader/core";
 
 function caughtFromThrow(): unknown {

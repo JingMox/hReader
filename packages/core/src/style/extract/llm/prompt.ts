@@ -61,7 +61,7 @@ const SPEC_LINES = [
 ];
 
 /**
- * 同一个 `PromptInput` 必须给出同一个字节串（F2 约束 5）：纯字符串拼接，没有时间、随机数、
+ * 同一个 `PromptInput` 必须给出同一个字节串：纯字符串拼接，没有时间、随机数、
  * 环境变量；数组顺序即语料顺序，统计值一律经 `String()` 落地。
  */
 export const promptOf = (input: PromptInput): string => {

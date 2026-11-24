@@ -1,4 +1,4 @@
-// 这层管：`readStyleSource` 的"原文 vs 序列化产物"与内置档往返一致性（M3.1 AC-5）。
+// 这层管：`readStyleSource` 的"原文 vs 序列化产物"与内置档往返一致性。
 
 import { describe, expect, it } from "vitest";
 

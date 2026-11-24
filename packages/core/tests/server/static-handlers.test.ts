@@ -1,4 +1,4 @@
-// 这层管：**新接口的静态响应**（M2.2 R1）——`GET /`、`/assets/**`、`/api/theme`、`/api/theme/<id>`。
+// 这层管：**新接口的静态响应**——`GET /`、`/assets/**`、`/api/theme`、`/api/theme/<id>`。
 // 全部走真实文件系统（`mkdtemp`）与真 `styleDeps`，不在假 fs 上断言路径拼接。
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -140,7 +140,7 @@ describe("themesReply · 内建清单", () => {
 });
 
 describe("themesReply · 空清单回退", () => {
-  // 已知缺陷（报告「待裁定」#2，P0）：`static.ts:133` 对用户主题也拼 `${path}/theme.css`，
+  // 已知缺陷：`static.ts:133` 对用户主题也拼 `${path}/theme.css`，
   // 而 `userThemePath()` 已经是文件路径 → 探测变成 `.../mine/theme.css/theme.css`（ENOENT），
   // 于是**用户安装的主题永远不出现在 /api/theme**。下面先钉住现状，修好后应改为"出现在清单里"。
   it("should currently fail the whole list when a user theme exists (see report)", async () => {

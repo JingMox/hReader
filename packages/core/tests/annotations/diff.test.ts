@@ -1,4 +1,4 @@
-// 这层管：`annotations/diff.ts` 的字符级 diff（AC4.1）、20 000 上限两侧（AC4.2）与性能边界。
+// 这层管：`annotations/diff.ts` 的字符级 diff、20 000 上限两侧与性能边界。
 // 退化与否由 `degraded` 单独暴露：只看 chunk 是看不出"跑的是哪条算法"的。
 
 import { describe, expect, it } from "vitest";

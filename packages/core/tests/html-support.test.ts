@@ -1,7 +1,7 @@
-// 这层管：M1.1 测试共用的小工具（树遍历、运行期类型擦除调用）+ 工具自身的自检。
+// 这层管：测试共用的小工具（树遍历、运行期类型擦除调用）+ 工具自身的自检。
 // 为什么只能叫 `*.test.ts`：knip.json 的 entry 只认 `packages/*/src/index.ts`，`project` 里的
 // `packages/*/tests/**/*.ts` 若无测试用例就会被 `knip --strict` 报 "Unused files"（实测改名
-// `html-support.ts` 即红，而 knip.json 不在测试员白名单，改不了）。副作用见报告 §9.4。
+// `html-support.ts` 即红，而 knip.json 不在测试员白名单，改不了）。。
 // 因此自检必须留在本文件内（独立 guard 文件会把 6 条重复注册进每个 import 方）。
 
 import { describe, expect, it } from "vitest";

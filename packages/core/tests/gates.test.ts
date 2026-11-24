@@ -61,7 +61,7 @@ describe("lint gate effectiveness", () => {
 
   it("should not treat a deep-import rejection as covering the package-root boundary", async () => {
     // 盲区取证：@hreader/core → 其他 @hreader/* 包的根导入不受 ESLint 限制，
-    // 包边界由 dependency-cruiser 的 core-is-a-foundation 规则守（见 test-M1.0.md 实验记录）。
+    // 包边界由 dependency-cruiser 的 core-is-a-foundation 规则守。
     const ruleIds = await ruleIdsFor('import "@hreader/renderer-html";');
     expect(ruleIds).not.toContain("no-restricted-imports");
   }, 120_000);

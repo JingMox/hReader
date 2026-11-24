@@ -85,7 +85,7 @@ describe("selector · child combinators and nth-of-type", () => {
     expect(codeOf("article > section:nth-of-type(3)")).toBe("node_not_found");
   });
 
-  it("should ignore a native id that has no data-hr-id (v2 #14)", () => {
+  it("should ignore a native id that has no data-hr-id", () => {
     expect(codeOf("#legacy")).toBe("node_not_found");
   });
 
@@ -100,7 +100,7 @@ describe("selector · child combinators and nth-of-type", () => {
 describe("selector · the #id synonym trap", () => {
   // 同一文档里 `id="twin"` 与 `data-hr-id="twin"` 落在**不同**元素上，且壳元素在前。
   // 若实现误用原生 id 属性（或 getElementById），就会读到壳元素而不是正文元素 —— 这正是
-  // v2 #14 要封的洞：`#x` 与 `[data-hr-id=x]` 都只认 `data-hr-id`，原生 `id` 完全不参与。
+  // 要封的洞：`#x` 与 `[data-hr-id=x]` 都只认 `data-hr-id`，原生 `id` 完全不参与。
   const TRAP =
     '<article data-hr-id="post"><div id="twin">壳</div><section data-hr-id="twin">正文</section></article>';
 
@@ -110,7 +110,7 @@ describe("selector · the #id synonym trap", () => {
     expect(result.html).toBe('<section data-hr-id="twin">正文</section>');
   });
 
-  it("should refuse a native only id instead of falling back to it (v2 #14)", () => {
+  it("should refuse a native only id instead of falling back to it", () => {
     expect(codeOf("#twin", '<article data-hr-id="post"><div id="twin">壳</div></article>')).toBe(
       "node_not_found",
     );

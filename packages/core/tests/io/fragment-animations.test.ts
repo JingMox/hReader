@@ -1,4 +1,4 @@
-// 这层管：v3#16/#17 的 SVG 动画绕过面（审计员抓到的真实漏洞）——按 `;` 逐项判、
+// 这层管：SVG 动画的 URL 绕过面——按 `;` 逐项判、
 // 且动画的"元素级 URL 属性"目标必须与直接写 href 同口径；纯层 import，不经 io。
 
 import { describe, expect, it } from "vitest";

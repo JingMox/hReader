@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { injectNodeIds, parseHtml, toDocumentModel } from "../src/index";
 import type { DocumentModel } from "../src/index";
 
-// 卡片 M1.2 契约 3：模型节点与数组深层冻结、写操作无效或抛 TypeError、
+// 模型契约：模型节点与数组深层冻结、写操作无效或抛 TypeError、
 // 两次派生深等但非同一引用（不可共享可变子结构）。这里用迭代遍历，4000 深也不会自伤。
 
 const SAMPLE = [

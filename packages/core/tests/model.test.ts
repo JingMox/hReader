@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { injectNodeIds, parseHtml, toDocumentModel } from "../src/index";
 import type { DocumentModel } from "../src/index";
 
-// 卡片 M1.2 契约 1 + 4：文本归属只认节点树（词边界含 <br>，与 CSS display 无关）、
+// 模型契约：文本归属只认节点树（词边界含 <br>，与 CSS display 无关）、
 // 空白只压 ASCII；深度与 1MB 性能有硬上限。
 
 const derive = (html: string): DocumentModel =>
@@ -45,7 +45,7 @@ const buildDocument = (sections: number): string => {
   return parts.join("");
 };
 
-/** 节点密集的 1MB：只用来抓"爆表级"回归，200ms 门禁不适用于它（见报告 P2-1）。 */
+/** 节点密集的 1MB：只用来抓"爆表级"回归，200ms 门禁不适用于它。 */
 const wide = (paragraphs: number): string =>
   `<article>${Array.from({ length: paragraphs }, (_, index) => `<p>第 ${String(index)} 段</p>`).join("\n")}</article>`;
 
@@ -60,7 +60,7 @@ const measure = (html: string): number => {
   return performance.now() - startedAt;
 };
 
-/** 取最快的一次：抖动只会让单次变慢，最快样本最接近真实成本（与 M1.1 的 html-perf 同口径）。 */
+/** 取最快的一次：抖动只会让单次变慢，最快样本最接近真实成本（与 html-perf 同口径）。 */
 const fastest = (html: string, runs: number): number => {
   let best = Number.POSITIVE_INFINITY;
   for (let index = 0; index < runs; index += 1) {
@@ -129,7 +129,7 @@ describe("toDocumentModel · 空白归一", () => {
   // 才算"归一"，所以这条按该口径写，当前实现会红 —— 登记为 D2（`\s+`/u 会连 NBSP、U+3000、
   // U+FEFF 一起压成 ASCII 空格）。修好之前 `it.fails` 把它当"已知裂缝"看着，不许删。
   // KD-01
-  it.fails("should keep NBSP and ideographic space (only ASCII whitespace is folded) [D2]", () => {
+  it.fails("should keep NBSP and ideographic space (only ASCII whitespace is folded)", () => {
     expect(shapeOf(derive("<article><p>a\u00A0b\u3000c</p></article>"))).toEqual([
       "p:a\u00A0b\u3000c",
     ]);

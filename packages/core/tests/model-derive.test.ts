@@ -4,7 +4,7 @@ import { HrError, injectNodeIds, parseHtml, toDocumentModel } from "../src/index
 import type { DocumentModel } from "../src/index";
 import { catchThrown } from "./html-support.test";
 
-// 模型是 ParsedHtml 的只读投影（卡片 M1.2 分层裁定）。本文件只打"派生出来的形状"：
+// 模型是 ParsedHtml 的只读投影。本文件只打"派生出来的形状"：
 // 文本归属、空白归一、块/内联边界、<br> 词边界、折叠、抛错条件。冻结与校验各自成文件。
 
 const modelOf = (html: string): DocumentModel =>
@@ -76,7 +76,7 @@ describe("toDocumentModel · 文本归属 · 续", () => {
   // 实现只在"进入"块级时补空格（derive.ts:separateBlock），"离开"时不补，得到 "x yz"。
   // 注入后块级元素都有 id，折叠路径几乎只在未注入输入里可达，故定 P2；修好后本用例会转红，请翻成 it。
   // KD-02
-  it.fails("should separate text that follows a folded block subtree (D1)", () => {
+  it.fails("should separate text that follows a folded block subtree", () => {
     const root = rawModelOf('<article data-hr-id="doc"><section>x<p>y</p>z</section></article>');
 
     expect(root.text).toBe("x y z");
@@ -118,7 +118,7 @@ describe("toDocumentModel · 解码与属性", () => {
   it("should keep decoded characters and no markup residue", () => {
     const text = child(modelOf("<article><p>&amp;&lt;&gt;&quot;</p></article>"), 0).text;
 
-    // 解码后的 `<`/`&` 是正文（AC4 允许），残留的"标记"指的是 `&amp;`/`&lt;` 这类实体原文。
+    // 解码后的 `<`/`&` 是正文，残留的"标记"指的是 `&amp;`/`&lt;` 这类实体原文。
     expect(text).toBe('&<>"');
     expect(text.includes("&amp;")).toBe(false);
     expect(text.includes("&lt;")).toBe(false);

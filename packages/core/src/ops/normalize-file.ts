@@ -34,7 +34,7 @@ export interface NormalizeResult {
 
 /**
  * 不需要规范化就原样返回原文：`parseHtml` + `serializeHtml` 会把引号/自闭合等写法归一，
- * 拿它覆盖一份本来就合法的文档等于凭空改用户的字节（AC-1 要求第二次运行 md5 不变）。
+ * 拿它覆盖一份本来就合法的文档等于凭空改用户的字节（第二次运行必须 md5 不变）。
  */
 const normalizedOf = (original: string): { html: string; injected: number } => {
   const parsed = parseHtml(original);
@@ -61,7 +61,7 @@ export const normalizeFile = async (
   const result: NormalizeResult = {
     path: target.realPath,
     // `needsNormalize` 描述的是**写完之后**磁盘的状态：`--write` 已经把这批 id 落盘，
-    // 再把写前算出的 `true` 报回去，用户会以为写回没生效（P1-1）。写失败会抛错，走不到这里。
+    // 再把写前算出的 `true` 报回去，用户会以为写回没生效。写失败会抛错，走不到这里。
     needsNormalize: incomplete && !input.write,
     injected: normalized.injected,
     html: normalized.html,

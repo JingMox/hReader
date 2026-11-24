@@ -1,4 +1,4 @@
-// 这层管：`ops/annotation-ops.ts` + `ops/revert-op.ts` 的落盘编排（AC2.1/AC2.3/AC2.5）。
+// 这层管：`ops/annotation-ops.ts` + `ops/revert-op.ts` 的落盘编排。
 // 全部走真盘：篇幅断言用 sha256，不靠"看起来没变"。
 
 import { join } from "node:path";
@@ -37,7 +37,7 @@ const DOC = [
 ].join("\r\n");
 
 const ANCHOR = { exact: "正文一", prefix: "", suffix: "", start: 0 };
-// 快照名按时间戳排序：注入时钟必须比真实时钟"更新"，否则 undo 会挑到旧快照（见报告待裁定）。
+// 快照名按时间戳排序：注入时钟必须比真实时钟"更新"，否则 undo 会挑到旧快照。
 const AT = Date.now() + 60_000;
 const AT_ISO = new Date(AT).toISOString();
 
@@ -110,7 +110,7 @@ describe("addAnnotation · 重复提交与拒绝", () => {
       const first = await addAnnotation(addInput({ workspace: dir }), depsAt());
       const second = await addAnnotation(addInput({ workspace: dir }), depsAt());
 
-      // 裁定 #5：同位置同句也必须是两条（重复提交不能被吞）。
+      // 同位置同句也必须是两条（重复提交不能被吞）。
       expect(second.annotation.id).not.toBe(first.annotation.id);
       const listed = await listAnnotations({ workspace: dir, file: FILE }, depsAt());
       expect(listed.annotations.map((item) => item.id)).toEqual([

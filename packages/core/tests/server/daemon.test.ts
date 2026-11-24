@@ -1,4 +1,4 @@
-// 这层管：R3 的陈旧 daemon 判定——死 pid 只删记录不阻断、活持有者仍拒绝、`isAlive` 注入的边界值不崩。
+// 这层管：陈旧 daemon 判定——死 pid 只删记录不阻断、活持有者仍拒绝、`isAlive` 注入的边界值不崩。
 
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type RequestListener } from "node:http";

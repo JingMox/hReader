@@ -60,7 +60,7 @@ describe("balance · 错嵌套", () => {
   });
 });
 
-// R1 已修（impl-M1.1.md §9 D2）：closeTag 现在只对 FORMATTING_TAGS（adoption-agency 那一组）
+// closeTag 只对 FORMATTING_TAGS（adoption-agency 那一组）
 // 报 misnested，非格式化元素被外层结束标签收尾时静默。这正是测试的意图：合法隐式闭合
 // （<ul><li>…</ul>、<table><tr><td>…</table>）不再当噪音，而真交叉嵌套（<div><span><b></div>）
 // 仍要报。这 5 条曾经全部红过（当时用 it.fails 钉住 bug），如今应绿：已翻成 it。

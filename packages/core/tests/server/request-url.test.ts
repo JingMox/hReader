@@ -1,5 +1,5 @@
 // 这层管：`runtime.dispatch` 对"手搓请求对象"的防线——`req.url` 缺失时给 400，
-// 而不是把一个永远进不去的 `?? "/"` 默认值留在生产代码里（P0-3 收口后的显式守卫）。
+// 而不是把一个永远进不去的 `?? "/"` 默认值留在生产代码里（显式守卫）。
 // 真 `createRuntime` + 真 fs，只把 `req` 换成不含 `url` 的 `IncomingMessage`。
 
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";

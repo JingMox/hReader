@@ -45,12 +45,12 @@ const locatedFrom = (
 /**
  * 两跳都没命中。码只在**这里**定，判据是**这一跳为什么失败**（失败码），不是目标串长什么样：
  * `#`、空格、`>` 都不是 id 字符，按字面形态判就会把“文法过了、只是零命中”塞进 syntax 分支
- * （F20：`#S2`/`#nope`/`article > div:nth-of-type(9)` 曾报 `invalid_selector` + `reason:"syntax"`，
+ * （`#S2`/`#nope`/`article > div:nth-of-type(9)` 曾报 `invalid_selector` + `reason:"syntax"`，
  * 报文还自相矛盾地写着“没有匹配到任何节点”，而同一串走 `readNode` 是 `node_not_found`）。
  * 任一跳报 `node_not_found` ⇒ 那一跳的文法已过，整条就是“找不到”；两跳都是 `invalid_selector` 才是写法错。
  * `HR_ID_PATTERN` 只决定第二跳要不要试（在 `idSelectorOf` 之前），判码时不出现。
  * 报文只讲**一句**，主语用用户敲的那个串（不是 `[data-hr-id="…"]`）：另一跳的过程是调试信息，
- * 两跳拼给用户看只会得到自相矛盾的报文（R2-14）。
+ * 两跳拼给用户看只会得到自相矛盾的报文。
  */
 const bothFailed = (target: string, bySelector: HrError, byId: HrError | undefined): never => {
   const quoted = JSON.stringify(target);

@@ -1,4 +1,4 @@
-// 这层管：`annotations/anchor.ts` 的解析矩阵（AC1.2/AC1.3）与 `model.ts` 的 id 稳定性（AC §2-7）。
+// 这层管：`annotations/anchor.ts` 的解析矩阵与 `model.ts` 的 id 稳定性。
 // 纯函数直喂结构：每例既断 `status`，也断它带回来的定位信息（start/end 或 reason）。
 
 import { describe, expect, it } from "vitest";

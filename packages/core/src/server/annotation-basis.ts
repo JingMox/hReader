@@ -1,4 +1,4 @@
-// 这层管：M2.3 diff 的"这块在哪"——块文本、先序槽位、快照基版与重识别（裁定 #4）。
+// 这层管：批注 diff 的"这块在哪"——块文本、先序槽位、快照基版与重识别。
 // 只回答位置与基版，不组装响应、不做错误映射（响应在 `annotation-replies.ts`）。
 
 import { join } from "node:path";
@@ -26,7 +26,7 @@ const flattenWithDepthOf = (model: DocumentModel): readonly FlatNode[] => {
   const stack: FlatNode[] = [{ node: model, depth: 0 }];
   for (let item = stack.pop(); item !== undefined; item = stack.pop()) {
     nodes.push(item);
-    // 先序 = 文档序：子节点反着入栈，这样"同位置"才有意义（P1-4 位置兜底）。
+    // 先序 = 文档序：子节点反着入栈，这样"同位置"才有意义（位置兜底）。
     // `depth` 是同一处兜底的另一半：只比 tag 会把“嵌套 li”错配到“另一个列表的顶层 li”（同型 P1）。
     const children = item.node.children;
     for (let index = children.length - 1; index >= 0; index -= 1) {
@@ -56,7 +56,7 @@ interface BlockBasis {
   readonly before: string;
   readonly after: string;
   /**
-   * 三档语义（D.4）。C1/`L-05` 后这两个字段不再上 wire，**只作 core 内部的重识别判据**：
+   * 三档语义。这两个字段不上 wire，**只作 core 内部的重识别判据**：
    * - 命中：`nodeId` = 命中 id，`originNodeId` 缺省（新旧相同，给了是噪音）；
    * - 重识别成功：`nodeId` = 当前文档里那块的真实 id（旧 id 常已被 patch 换掉），
    *   `originNodeId` = 批注记录里的旧 id，内部用它区分“同一块换了 id”与“另一块顶了位”；
@@ -103,7 +103,7 @@ export const blockBasisOf = async (
   if (latest === undefined) {
     // 工作区还没有任何快照：当前文档里块还在 → 没有基版可比，整块都算新增（不降级）；
     // 块也一起没了 → 两侧文本都是空串，但**不是"无变化"**：`degraded:false` 会被读成
-    // "字符级对比、两版一致"，而真相是块丢了（裁定 B，见 annotations-diff-basis.test.ts）。
+    // "字符级对比、两版一致"，而真相是块丢了（见 annotations-diff-basis.test.ts）。
     return direct === undefined
       ? {
           before: "",

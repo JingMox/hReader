@@ -17,7 +17,7 @@ export interface ExtractStyleInput {
   readonly inheritsVisual: string;
 }
 
-/** 统计量随产物返回：`--json` 直接透出，调用方不必重算（卡 §10 R6 的 P75 值就是这一项）。 */
+/** 统计量随产物返回：`--json` 直接透出，调用方不必重算（P75 值就是这一项）。 */
 export interface ExtractStats {
   readonly paragraphs: number;
   readonly sentences: number;
@@ -32,14 +32,14 @@ export interface ExtractStyleResult {
 }
 
 /**
- * 卡 §4 的硬上限：`forbidden` 24 条、`recommended` 16 条。
- * F1 由套话表长度（恰好 24）兜底，这条上限还不 binding；F2 的 LLM 追加工序才真正撞上它。
+ * 硬上限：`forbidden` 24 条、`recommended` 16 条。
+ * 统计层由套话表长度（恰好 24）兜底，这条上限还不 binding；LLM 追加工序才真正撞上它。
  */
 export const MAX_FORBIDDEN = 24;
 
 export const MAX_RECOMMENDED = 16;
 
-/** "最多几句"的软区间：P75 落在此区间外就夹到端点（卡 §10 R6）。 */
+/** "最多几句"的软区间：P75 落在此区间外就夹到端点。 */
 export const MIN_PARAGRAPH_SENTENCES = 2;
 
 export const MAX_PARAGRAPH_SENTENCES = 5;

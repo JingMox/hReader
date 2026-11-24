@@ -5,7 +5,7 @@ import { stableHex8 } from "../src/html/hash";
 import { injectNodeIds, parseHtml, serializeHtml } from "../src/index";
 import { codesOf, findElement, messagesOf } from "./html-support.test";
 
-// 这层管：G3.1 R1 返工项的回归闸——每块对应 impl-M1.1.md §9 的一项修复，且都是"修前必红"的形状。
+// 这层管：html 解析/注入修复项的回归闸——每块对应一处修过的缺陷，且都是"修前必红"的形状。
 
 const BODY = (inner: string): string =>
   `<!DOCTYPE html><html><head></head><body>${inner}</body></html>`;

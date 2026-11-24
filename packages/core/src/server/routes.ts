@@ -59,7 +59,7 @@ const route = (
 ): Route => Object.freeze({ method, segments: Object.freeze(segments), auth, kind });
 
 export const ROUTES: readonly Route[] = Object.freeze([
-  // `/` 也吃 token：`hr serve` 打印的就是 `/?token=…`，首访落 cookie 后 302 回干净的 `/`（BUG-01）。
+  // `/` 也吃 token：`hr serve` 打印的就是 `/?token=…`，首访落 cookie 后 302 回干净的 `/`。
   route("GET", [], "token", "home"),
   route("GET", ["assets", REST_PARAM], "none", "assets"),
   route("GET", ["api", "theme"], "none", "themes"),
@@ -135,7 +135,7 @@ export const matchRoute = (method: string, pathname: string): RouteLookup => {
 /**
  * 具名参数取值：命中就返回，缺失才用 `fallback`。
  * 写成循环而不是 `params[key] ?? fallback`，是因为后者在"路由保证一定有这个参数"的地方
- * 会留下一条**永远取不到**的默认值臂（M2.3 R3 覆盖率裁定）；循环的两条臂共享同一行，都是真实路径。
+ * 会留下一条**永远取不到**的默认值臂；循环的两条臂共享同一行，都是真实路径。
  */
 export const paramOf = (
   params: Readonly<Record<string, string>>,

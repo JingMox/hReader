@@ -1,4 +1,4 @@
-// 这层管：v2 裁定（AC4' 源码区间拼接 / changed 按写盘字节 / undo 哈希自证 / 锁接管与 tmp pid）。
+// 这层管：patch 的落盘语义——源码区间拼接、changed 按写盘字节、undo 哈希自证、锁接管与 tmp pid。
 // 实现未落地时这些用例是红的——红是返工清单，不许改断言迁就实现。
 
 import { join } from "node:path";
@@ -34,7 +34,7 @@ const SPLICE_DOC = [
   "\uFEFF<!DOCTYPE html>",
   "<html lang='zh-CN'><head>",
   "<meta charset='utf-8'>",
-  "<title>M1.5 拼接待测</title>",
+  "<title>拼接待测</title>",
   "</head><body>",
   "<article data-hr-id='root' class='post'>",
   "<p data-hr-id='p1' class='lead'>第一段&nbsp;实体</p>",
@@ -92,7 +92,7 @@ describe("patch · 只改目标源码区间（续）", () => {
   });
 });
 
-// v3 裁定 #12 覆盖了 v2#2 的字面读法：幂等按"剥 ID 后的内容"判定，
+// 幂等按"剥 ID 后的内容"判定，
 // 内容等价时直接返回原字节（不重注入 ID、changed:false、不留历史）。
 describe("patch · 内容等价即原字节返回", () => {
   it("should keep the original bytes and history when only the entity spelling differs", async () => {

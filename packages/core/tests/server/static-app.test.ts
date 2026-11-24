@@ -1,4 +1,4 @@
-// 这层管：M2.2 新增的静态面——`GET /`（构建产物与回退首页）、`GET /assets/*`（穿越攻击）、
+// 这层管：静态面——`GET /`（构建产物与回退首页）、`GET /assets/*`（穿越攻击）、
 // `GET /api/theme/*`（CSS 而不是 JSON）。全部走真 HTTP（`node:net` 原文），断言状态行 + 原始头。
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";

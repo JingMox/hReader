@@ -25,7 +25,7 @@ const applyToFile = async (
   return { path: target.realPath, bytes: bytes.length, changed: true };
 };
 
-/** 复用 M1.5 的锁与原子写：不新增写入路径，失败时不留 tmp。 */
+/** 复用 patch 的锁与原子写：不新增写入路径，失败时不留 tmp。 */
 export const applyStyle = async (
   input: ApplyStyleInput,
   deps: StyleDeps,

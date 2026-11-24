@@ -1,4 +1,4 @@
-// F20 / BLOCKER-2（docs/05:55「隐含结束产生的空段落同样获得 id」+ :56「已有 `data-hr-id` 保持不变」）：
+// 隐含结束产生的空段落同样获得 id；已有 `data-hr-id` 保持不变。
 // quirks 文档里 `<p data-hr-id="p-1"><table>…</table></p>` 的**首段没有行内内容**。整段丢弃会让
 // 作者写在 `<p>` 上的 `data-hr-id` 无处承接、静默消失（`hr read #p-1` 直接 `node_not_found`），
 // 因此首段补成零长 span 的空 `<p>` 把原 attrs 留住；**其余**空段没有自己的 id，仍丢弃。
@@ -179,7 +179,7 @@ describe("落盘 · 空首段的 id", () => {
     const parsed = parseHtml(injectedHtml(DOC_WITH_HEADING));
     const outlined = collectOutlinedIds(buildOutline(parsed).nodes);
 
-    // docs/05:55 的另一半：拿到 id ≠ 出现在目录里，无文本块不列。
+    // 规则的另一半：拿到 id ≠ 出现在目录里，无文本块不列。
     expect(outlined).toEqual(["p-h"]);
   });
 });

@@ -17,7 +17,7 @@ export const COMPONENT_WHITELIST: readonly string[] = [
   "media-card",
 ];
 
-/** 文档容器标签：模型根、注入目标的锚点（M1.2 v2 起 `<article>` 自身也注入）。 */
+/** 文档容器标签：模型根、注入目标的锚点（`<article>` 自身也注入）。 */
 export const ARTICLE_TAG = "article";
 
 /**
@@ -48,7 +48,7 @@ export const BLOCK_TAGS: ReadonlySet<string> = new Set([
  * = 内容模型块级（`BLOCK_TAGS`）∪ 常见块级容器 ∪ 表格结构。
  *
  * 与 `BLOCK_TAGS` 的关系（三者不是同一个集合，别合并）：`BLOCK_TAGS` 管内容模型投影，本集合管"有没有 id"，
- * `PATCHABLE_TAGS` 管"能不能被改"。加了一个块级容器却忘了加在这里，症状就是它拿不到 id、批注无处可挂（BUG-12/13）。
+ * `PATCHABLE_TAGS` 管"能不能被改"。加了一个块级容器却忘了加在这里，症状就是它拿不到 id、批注无处可挂。
  * `<article>` 放在这里是为了让 `PATCHABLE_TAGS` 能按 id 命中 `<article>`；最外层/嵌套 article 的注入判定由 `html/inject.ts:39` 的 tag 分支直接做（tag 为 article 时走第一分支，本集合的 has("article") 不被求值）。
  */
 export const ADDRESSABLE_TAGS: ReadonlySet<string> = new Set([

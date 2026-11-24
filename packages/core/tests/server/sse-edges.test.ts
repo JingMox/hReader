@@ -1,4 +1,4 @@
-// 这层管：v4#1 的三条 SSE 防线——首帧注释、429 自带重试间隔并关连接、5xx 广播成 error 事件。
+// 这层管：SSE 的三条防线——首帧注释、429 自带重试间隔并关连接、5xx 广播成 error 事件。
 
 import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";

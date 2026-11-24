@@ -5,7 +5,7 @@ import type { PatchDeps } from "../io/ports";
 export interface SentenceRhythmSpec {
   /** 连续纯文字段落里允许的句子上限：超出即触发"三段一视觉法则"的改写提示。 */
   readonly maxParagraphSentences: number;
-  /** 空串表示"不约束句式"：编译时整行跳过（裁定 #5）。 */
+  /** 空串表示"不约束句式"：编译时整行跳过。 */
   readonly style: string;
 }
 
@@ -32,7 +32,7 @@ export interface StyleSpec {
   readonly id: string;
   readonly name: string;
   readonly description: string;
-  /** 视觉维度：指向主题目录名（决定 `theme.css`），语言维度不随它继承（裁定 #3）。 */
+  /** 视觉维度：指向主题目录名（决定 `theme.css`），语言维度不随它继承。 */
   readonly inheritsVisual: string;
   readonly language: LanguageSpec;
 }
@@ -57,7 +57,7 @@ export interface LintReport {
   readonly truncated: boolean;
 }
 
-/** 被发现流程跳过的坏文件：坏一个不许毁掉全部（AC6.6）。 */
+/** 被发现流程跳过的坏文件：坏一个不许毁掉全部。 */
 export interface StyleDiagnostic {
   readonly path: string;
   readonly reason: string;
@@ -68,7 +68,7 @@ export type StyleSource = "explicit" | "project" | "user" | "builtin";
 export interface LoadedStyle {
   readonly spec: StyleSpec;
   readonly source: StyleSource;
-  /** `theme.css` 的绝对路径：`applyStyle` 只从盘上读这一份（裁定 #8）。 */
+  /** `theme.css` 的绝对路径：`applyStyle` 只从盘上读这一份。 */
   readonly themePath: string;
 }
 
@@ -87,7 +87,7 @@ export interface StyleDiscovery {
 export interface StyleDeps extends PatchDeps {
   readonly home: string;
   readonly projectRoot: string;
-  /** 仓库内置 `styles/` 目录：主题与预设的静态资源根（裁定 #8）。 */
+  /** 仓库内置 `styles/` 目录：主题与预设的静态资源根。 */
   readonly stylesRoot: string;
 }
 
@@ -100,6 +100,6 @@ export interface ApplyStyleInput {
 export interface ApplyStyleResult {
   readonly path: string;
   readonly bytes: number;
-  /** 同 `visualId` 重复应用为 `false`：此时不写盘（AC7.4 幂等）。 */
+  /** 同 `visualId` 重复应用为 `false`：此时不写盘（幂等）。 */
   readonly changed: boolean;
 }

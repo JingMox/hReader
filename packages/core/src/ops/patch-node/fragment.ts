@@ -146,7 +146,7 @@ const assertTagAllowed = (node: HtmlElementNode): void => {
   }
 };
 
-/** 危险协议的判定只此一处：属性值与 SVG 动画取值共用，避免两套口径漂移（v3#16）。 */
+/** 危险协议的判定只此一处：属性值与 SVG 动画取值共用，避免两套口径漂移。 */
 const forbiddenUrlOf = (raw: string): string | undefined =>
   FORBIDDEN_VALUE_PREFIXES.find((candidate) => normalizedUrl(raw).startsWith(candidate));
 
@@ -174,10 +174,10 @@ const assertAttributesAllowed = (node: HtmlElementNode): void => {
   }
 };
 
-/** v3#16：动画改的是"元素级 URL 属性"时必须与直接写 `href` **同口径**（都按 `;` 逐项判），否则就是绕过面。 */
+/** 动画改的是"元素级 URL 属性"时必须与直接写 `href` **同口径**（都按 `;` 逐项判），否则就是绕过面。 */
 const ANIMATION_URL_TARGETS: ReadonlySet<string> = new Set(["href", "src", "xlink:href"]);
 
-/** `values` 是 SMIL 的分号列表；`to/from/by` 是单值（单值里的分号属于相对 URL 本身，v3#17）。 */
+/** `values` 是 SMIL 的分号列表；`to/from/by` 是单值（单值里的分号属于相对 URL 本身）。 */
 const ANIMATION_LIST_ATTRIBUTE = "values";
 const ANIMATION_SINGLE_ATTRIBUTES: readonly string[] = ["to", "from", "by"];
 
@@ -216,7 +216,7 @@ const assertNoForbiddenContent = (root: HtmlNode): void => {
 };
 
 /**
- * M1.1 契约：入参不合法必须是 `invalid_html`，不能漏成 TypeError。
+ * 对外契约：入参不合法必须是 `invalid_html`，不能漏成 TypeError。
  * `parseFragment` 在 `parseHtml` 之前还有 token 扫描，类型外的入参必须先在这里被拦住。
  */
 function assertHtmlString(html: unknown): asserts html is string {
@@ -256,7 +256,7 @@ export const fragmentIdWarnings = (
       ];
 
 export const parseFragmentWithDiagnostics = (html: string): FragmentResult => {
-  // #13：空片段是"内容不成立"；非字符串走 M1.1 契约（invalid_html），与 parseHtml 同口径。
+  // 空片段是"内容不成立"；非字符串与 parseHtml 同口径（invalid_html）。
   assertHtmlString(html);
   if (html.trim().length === 0) {
     throw new HrError("invalid_fragment", "片段为空或只有空白：必须恰好有一个根元素");

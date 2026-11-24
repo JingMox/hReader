@@ -1,4 +1,4 @@
-// 这层管：`hr_outline` 的性能与规模（卡片 M1.3 契约 3 的“1MB ≤150ms / 10k 节点”）以及确定性。
+// 这层管：`hr_outline` 的性能与规模（“1MB ≤150ms / 10k 节点”）以及确定性。
 
 import { describe, expect, it } from "vitest";
 

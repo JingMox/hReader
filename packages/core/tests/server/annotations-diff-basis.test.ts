@@ -2,7 +2,7 @@
 // "整块都是新增"、"块没了"，还是"按槽位重识别"。`degradedReason` 是直接显示给人看的一句话，
 // 档位拿错时用户会被告知"历史里找不到该块"（正确是"看不出变化"），靠常规"改一次块再 diff"走不到。
 //
-// 夹具在 `diff-basis-support.test.ts`（共用，两边只差别在不同历史形状）。
+// 夹具在 `diff-basis-support.ts`（共用，两边只差别在不同历史形状）。
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -56,7 +56,7 @@ describe("diff 基版 · 基版取哪一份", () => {
       expect(fieldOf(body, "nodeId")).toBe("hr-c");
       expect(fieldOf(body, "before")).toBe("正文一");
       expect(fieldOf(body, "after")).toBe("手改的第三版");
-      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。id 没变 ⇒ 不降级。
+      // wire 不再有 reason/originNodeId；degraded 才是契约。id 没变 ⇒ 不降级。
       expect(fieldOf(body, "reason")).toBeUndefined();
       expect(fieldOf(body, "degraded")).toBe(false);
     });
@@ -74,7 +74,7 @@ const DOC_NESTED = [
 
 describe("diff 基版 · 批注指向的块在工作区外被删掉", () => {
   it("should report block_missing when the block is gone and no snapshot exists", async () => {
-    // 裁定 B：用户在 hreader 之外编辑文件、把带批注的块删了，而工作区还没生成任何快照。
+    // 用户在 hreader 之外编辑文件、把带批注的块删了，而工作区还没生成任何快照。
     // 两侧都没有文本可比（`before`/`after` 都是空串），但这**不是**"没有变化"——
     // 块已经不存在了，必须按 `block_missing` 降级告知。
     await withServer(
@@ -84,7 +84,7 @@ describe("diff 基版 · 批注指向的块在工作区外被删掉", () => {
         expect(fieldOf(body, "nodeId")).toBe("hr-gone");
         expect(fieldOf(body, "before")).toBe("");
         expect(fieldOf(body, "after")).toBe("");
-        // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+        // wire 不再有 reason/originNodeId；degraded 才是契约。
         expect(fieldOf(body, "reason")).toBeUndefined();
         expect(fieldOf(body, "degraded")).toBe(true);
         expect(chunkTextOf(body)).toBe("");
@@ -107,7 +107,7 @@ describe("diff 基版 · 同 tag 但不同层", () => {
         const body = await diffOf(ctx, anId);
 
         expect(fieldOf(body, "nodeId")).toBe("hr-deep");
-        // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+        // wire 不再有 reason/originNodeId；degraded 才是契约。
         expect(fieldOf(body, "reason")).toBeUndefined();
         expect(fieldOf(body, "degraded")).toBe(true);
         expect(fieldOf(body, "before")).toBe("深块");
@@ -187,7 +187,7 @@ describe("diff 基版 · 历史被裁空", () => {
       const body = await diffOf(ctx, anId);
 
       expect(fieldOf(body, "nodeId")).toBe("hr-c");
-      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+      // wire 不再有 reason/originNodeId；degraded 才是契约。
       expect(fieldOf(body, "originNodeId")).toBeUndefined();
       expect(fieldOf(body, "before")).toBe("");
       expect(fieldOf(body, "after")).toBe("");

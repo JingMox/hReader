@@ -31,7 +31,7 @@ const totalSentencesOf = (paragraphs: readonly string[]): number =>
   paragraphs.reduce((sum, paragraph) => sum + sentenceCountOf(paragraph), 0);
 
 /**
- * 卡 §10 R6：取 P75 而不是 P25——"每段最多几句"是上限语义，下四分位会让生成文本比语料更碎。
+ * 取 P75 而不是 P25——"每段最多几句"是上限语义，下四分位会让生成文本比语料更碎。
  * 插值后 floor，再夹到 [2,5]（`spec.ts` 只要求正整数，区间是本卡的软约束）。
  */
 export const maxParagraphSentencesOf = (paragraphs: readonly string[]): number => {
@@ -54,7 +54,7 @@ export const statisticsOf = (paragraphs: readonly string[]): ExtractStats => ({
   maxParagraphSentences: maxParagraphSentencesOf(paragraphs),
 });
 
-/** 卡 §10 R5：作者真用过的词不进 `forbidden`，否则等于要求作者别再写自己常写的字。 */
+/** 作者真用过的词不进 `forbidden`，否则等于要求作者别再写自己常写的字。 */
 export const forbiddenPhrasesOf = (corpusText: string): readonly string[] =>
   FILLER_PHRASES.filter((phrase) => !corpusText.includes(phrase)).slice(0, MAX_FORBIDDEN);
 
@@ -71,7 +71,7 @@ const bigramsOf = (corpusText: string): readonly string[] => {
 };
 
 /**
- * 卡 §10 R5 的输出契约：频次降序、同频按 Unicode 码位升序。
+ * 输出契约：频次降序、同频按 Unicode 码位升序。
  *
  * @internal 只给单测：`sort` 只会拿两个不同条目来问，`left === right` 那一支真实排序到不了，
  * 而"同键回 0"是契约的一部分，所以导出后直接断言。
@@ -85,7 +85,7 @@ export const byFrequencyThenCodepoint = (
   return left[0] < right[0] ? -1 : 1;
 };
 
-/** 卡 §10 R5：频次降序、同频按 Unicode 码位升序——换台机器也必须是同一个 16 条。 */
+/** 频次降序、同频按 Unicode 码位升序——换台机器也必须是同一个 16 条。 */
 export const recommendedWordsOf = (corpusText: string): readonly string[] => {
   const counts = new Map<string, number>();
   for (const bigram of bigramsOf(corpusText)) {

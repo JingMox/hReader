@@ -1,4 +1,4 @@
-// 这层管：M2.1 的服务器测试装置——真 `startServer` + 真 socket（`node:net` 原文）+ 真子进程外的 HTTP 客户端。
+// 这层管：服务器测试装置——真 `startServer` + 真 socket（`node:net` 原文）+ 真子进程外的 HTTP 客户端。
 //
 // 规矩：每个 socket 都有硬超时（挂住比失败更糟）；服务器一律 `finally` 关闭并删掉临时 home/workspace。
 //

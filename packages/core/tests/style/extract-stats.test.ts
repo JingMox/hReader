@@ -154,7 +154,7 @@ describe("forbiddenPhrasesOf · 语料 0 次", () => {
   });
 
   it("should fill exactly the pinned cap when the corpus uses no filler at all", () => {
-    // F1 的 binding 点是套话表长度本身；F2 的 LLM 追加才真正考验这条上限。
+    // 统计层由套话表长度本身兜底；LLM 追加才真正考验这条上限。
     expect(forbiddenPhrasesOf("").length).toBe(MAX_FORBIDDEN);
   });
 });
