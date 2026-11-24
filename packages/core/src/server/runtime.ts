@@ -8,13 +8,14 @@ import { isTmpFileName } from "../io/atomic";
 import { decodeUtf8 } from "../io/bytes";
 import { resolveTarget, type ResolvedTarget } from "../io/paths";
 import type { PatchDeps } from "../io/ports";
-import type { DocumentModel } from "../model/constants";
-import { toDocumentModel } from "../model/derive";
+import { loadDocument } from "../model/load";
+import type { DocumentLoad } from "../model/load";
 import type { StyleDeps } from "../style";
 import type { Reply } from "./contracts";
 import { diffNodes } from "./diff-nodes";
 import { annotationDiffReply, annotationsReply } from "./annotation-replies";
 import {
+  docInfoReply,
   documentReply,
   modelReply,
   outlineReply,
@@ -48,12 +49,13 @@ export interface Runtime {
 
 interface Watched {
   active: ResolvedTarget | undefined;
-  model: DocumentModel | undefined;
+  /** 缓存整份加载结果（含分档）：每次文件变更直接换，不为外来文档反复走 derive-抛错-吞掉的老路。 */
+  load: DocumentLoad | undefined;
   revision: string | undefined;
 }
 
-const modelOfPath = async (deps: RuntimeDeps, target: ResolvedTarget): Promise<DocumentModel> =>
-  toDocumentModel(
+const loadOfPath = async (deps: RuntimeDeps, target: ResolvedTarget): Promise<DocumentLoad> =>
+  loadDocument(
     parseHtml(decodeUtf8(await deps.patch.fs.readFile(target.realPath), target.realPath)),
   );
 
@@ -70,15 +72,19 @@ interface PublishInput {
   readonly deps: RuntimeDeps;
   readonly state: Watched;
   readonly workspace: string;
-  readonly model: DocumentModel;
+  readonly load: DocumentLoad;
   readonly target: ResolvedTarget;
 }
 
-/** `revision` 只有一个口径：文件字节的 sha256 前 16 位（与 REST 响应、`patch` 回执同源）。 */
+/** `revision` 只有一个口径：文件字节的 sha256 前 16 位（与 REST 响应、`patch` 回执同源）。
+ *  前后两侧都托管才 diff；外来文档没有模型，`changedNodes` 恒空，事件照发让阅读器刷新。 */
 const publishChanged = (input: PublishInput): void => {
-  const previous = input.state.model;
-  const changedNodes = previous === undefined ? [] : diffNodes(previous, input.model);
-  input.state.model = input.model;
+  const previous = input.state.load;
+  const changedNodes =
+    previous !== undefined && previous.ok && input.load.ok
+      ? diffNodes(previous.model, input.load.model)
+      : [];
+  input.state.load = input.load;
   void input.deps.patch.fs.readFile(input.target.realPath).then(
     (bytes) => {
       const revision = revisionOf(bytes);
@@ -110,9 +116,9 @@ const watchOf = (deps: RuntimeDeps, hub: Hub, state: Watched, workspace: string)
       hub.publish("library.changed", { path: docPath });
       return;
     }
-    void modelOfPath(deps, active).then(
-      (model) => {
-        publishChanged({ hub, deps, state, workspace, model, target: active });
+    void loadOfPath(deps, active).then(
+      (load) => {
+        publishChanged({ hub, deps, state, workspace, load, target: active });
       },
       () => {
         hub.publish("doc.error", { path: docPath });
@@ -157,11 +163,18 @@ type StaticKind = Extract<Route["kind"], "home" | "assets" | "theme" | "themes">
 const isStaticKind = (kind: Route["kind"]): kind is StaticKind =>
   kind === "home" || kind === "assets" || kind === "theme" || kind === "themes";
 
-/** 读类路由（document/model/outline/annotations）共用"先 remember 再取"。 */
-type ReadKind = Extract<Route["kind"], "document" | "model" | "outline" | "annotations">;
+/** 读类路由（document/docInfo/model/outline/annotations）共用"先 remember 再取"。 */
+type ReadKind = Extract<
+  Route["kind"],
+  "document" | "docInfo" | "model" | "outline" | "annotations"
+>;
 
 const isReadKind = (kind: Route["kind"]): kind is ReadKind =>
-  kind === "document" || kind === "model" || kind === "outline" || kind === "annotations";
+  kind === "document" ||
+  kind === "docInfo" ||
+  kind === "model" ||
+  kind === "outline" ||
+  kind === "annotations";
 
 const readReplyOf = async (
   context: HandlerContext,
@@ -171,6 +184,7 @@ const readReplyOf = async (
 ): Promise<Reply> => {
   await remember(docId);
   if (kind === "document") return (await documentReply(context, docId)).reply;
+  if (kind === "docInfo") return docInfoReply(context, docId);
   if (kind === "annotations") return annotationsReply(context, docId);
   return kind === "model" ? modelReply(context, docId) : outlineReply(context, docId);
 };
@@ -234,9 +248,9 @@ const noteWriterOf =
       revision: written.revision,
       changedNodes: written.changedNodes,
     });
-    void modelOfPath(deps, written.target).then(
-      (model) => {
-        state.model = model;
+    void loadOfPath(deps, written.target).then(
+      (load) => {
+        state.load = load;
       },
       () => undefined,
     );
@@ -256,7 +270,8 @@ const rememberOf =
     );
     if (ctx.state.active?.realPath === target.realPath) return target;
     ctx.state.active = target;
-    ctx.state.model = await modelOfPath(ctx.deps, target);
+    // 外来文档不拒：`remember` 只负责定位与缓存分档，托管与否由 `model`/`outline` 各自判（422/409 契约照旧）。
+    ctx.state.load = await loadOfPath(ctx.deps, target);
     ctx.state.revision = revisionOf(await ctx.deps.patch.fs.readFile(target.realPath));
     ctx.watcher.add(dirname(target.realPath), basename(target.realPath));
     return target;
@@ -273,7 +288,7 @@ export const createRuntime = (
   deps: RuntimeDeps,
   hub: Hub,
 ): Runtime => {
-  const state: Watched = { active: undefined, model: undefined, revision: undefined };
+  const state: Watched = { active: undefined, load: undefined, revision: undefined };
   const context: HandlerContext = {
     workspace: options.workspace,
     appDir: options.appDir ?? "",

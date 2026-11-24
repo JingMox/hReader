@@ -150,8 +150,13 @@ describe("matchRoute · 批注与撤销", () => {
     });
   });
 
-  it("should freeze the table at 17 entries (12 + 5)", () => {
-    expect(ROUTES).toHaveLength(17);
+  it("should freeze the table at 18 entries (12 + 5 + info)", () => {
+    expect(ROUTES).toHaveLength(18);
+    expect(matchRoute("GET", "/api/doc/a.html/info")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html" },
+      route: { kind: "docInfo", auth: "cookie" },
+    });
   });
 
   it("should not let an annotation id span a slash", () => {

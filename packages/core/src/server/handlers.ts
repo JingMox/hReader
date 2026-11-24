@@ -12,9 +12,14 @@ import { resolveTarget } from "../io/paths";
 import type { PatchDeps } from "../io/ports";
 import { patchFile } from "../io/patch-file";
 import { parseHtml } from "../html/parse";
+import { attributeOf } from "../model/attrs";
+import { classifyDocument } from "../model/classify";
 import { toDocumentModel } from "../model/derive";
 import type { DocumentModel } from "../model/constants";
+import type { HtmlElementNode } from "../html/constants";
+import { isDocKind, KIND_ATTRIBUTE, type DocKind } from "../layout/kinds";
 import { buildOutline } from "../ops/outline";
+import { firstArticleOf } from "../ops/outline/locate";
 import type { PatchAction, PatchRequest } from "../ops/patch-node";
 import { applyStyle } from "../style/apply-file";
 import type { StyleDeps } from "../style";
@@ -122,13 +127,39 @@ export const modelReply = async (ctx: HandlerContext, docId: string): Promise<Re
 
 export const outlineReply = async (ctx: HandlerContext, docId: string): Promise<Reply> => {
   const doc = await loadDocument(ctx, docId);
-  const outline = buildOutline(parseHtml(decodeUtf8(doc.bytes, doc.target.realPath)));
+  const parsed = parseHtml(decodeUtf8(doc.bytes, doc.target.realPath));
+  // 冻结契约：非托管文档的 422/409 口径只在 derive 里有一份——让它抛，不复制文案。
+  // （`remember` 不再为外来文档抛错，`buildOutline` 本身又不判 article。）
+  if (classifyDocument(parsed).cls !== "managed") toDocumentModel(parsed);
+  const outline = buildOutline(parsed);
   return jsonReply(200, { revision: doc.revision, outline });
 };
 
 export const documentReply = async (ctx: HandlerContext, docId: string): Promise<DocumentServe> => {
   const doc = await loadDocument(ctx, docId);
   return { ...doc, reply: htmlReply(doc.bytes) };
+};
+
+/** `kind` 只在恰好一个 `<article>` 时有意义：外来文档可能含多个 article，哪一个都不算"文档形态"。 */
+const docKindOf = (article: HtmlElementNode | undefined): DocKind | undefined => {
+  if (article === undefined) return undefined;
+  const value = attributeOf(article, KIND_ATTRIBUTE);
+  return value !== undefined && isDocKind(value) ? value : undefined;
+};
+
+/** 分档查询不判托管与否：外来文档也要能拿到 `cls`/`reason`，`model`/`outline` 的 422 契约不挪到这里。 */
+export const docInfoReply = async (ctx: HandlerContext, docId: string): Promise<Reply> => {
+  const target = await targetOf(ctx, docId);
+  const bytes = await bytesOf(ctx, target);
+  const parsed = parseHtml(decodeUtf8(bytes, target.realPath));
+  const classification = classifyDocument(parsed);
+  const kind = docKindOf(classification.articles === 1 ? firstArticleOf(parsed.root) : undefined);
+  return jsonReply(200, {
+    revision: revisionOf(bytes),
+    cls: classification.cls,
+    ...(classification.reason === undefined ? {} : { reason: classification.reason }),
+    ...(kind === undefined ? {} : { kind }),
+  });
 };
 
 const changedOf = (before: Uint8Array, after: Uint8Array, label: string): readonly string[] =>

@@ -12,6 +12,7 @@ export type RouteKind =
   | "themes"
   | "healthz"
   | "document"
+  | "docInfo"
   | "model"
   | "outline"
   | "patch"
@@ -66,6 +67,7 @@ export const ROUTES: readonly Route[] = Object.freeze([
   route("GET", ["api", "theme", ":styleId"], "none", "theme"),
   route("GET", ["healthz"], "none", "healthz"),
   route("GET", ["s", DOC_PARAM], "token", "document"),
+  route("GET", ["api", "doc", DOC_PARAM, "info"], "cookie", "docInfo"),
   route("GET", ["api", "doc", DOC_PARAM, "model"], "cookie", "model"),
   route("GET", ["api", "doc", DOC_PARAM, "outline"], "cookie", "outline"),
   route("POST", ["api", "patch"], "cookie+csrf", "patch"),
