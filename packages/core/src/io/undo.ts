@@ -7,7 +7,7 @@ import { writeAtomic } from "./atomic";
 import { readBytes } from "./bytes";
 import type { PatchOptions, PatchTargetInput, UndoResult } from "./contracts";
 import { sha256Hex } from "./digest";
-import { unlinkOf } from "./fs-ops";
+import { unlinkOf } from "./errors";
 import { latestOf, listSnapshots } from "./history";
 import { runLocked } from "./lock";
 import { historyDirOf, resolveTarget, type ResolvedTarget } from "./paths";

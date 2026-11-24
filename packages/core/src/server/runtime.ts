@@ -4,7 +4,7 @@ import type { IncomingMessage } from "node:http";
 import { basename, dirname, join, relative, sep } from "node:path";
 
 import { parseHtml } from "../html/parse";
-import { TMP_PREFIX } from "../io/atomic";
+import { isTmpFileName } from "../io/atomic";
 import { decodeUtf8 } from "../io/bytes";
 import { resolveTarget, type ResolvedTarget } from "../io/paths";
 import type { PatchDeps } from "../io/ports";
@@ -62,7 +62,7 @@ const internalOf = (workspace: string, path: string): boolean => {
   const store = join(workspace, ".hreader");
   if (path === store || path.startsWith(`${store}${sep}`)) return true;
   const name = basename(path);
-  return name.startsWith(TMP_PREFIX) || name.endsWith("~");
+  return isTmpFileName(name) || name.endsWith("~");
 };
 
 interface PublishInput {

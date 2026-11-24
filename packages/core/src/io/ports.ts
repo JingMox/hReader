@@ -8,12 +8,6 @@ export interface FileStat {
   readonly mode?: number;
 }
 
-/**
- * 打开模式只有两种，且都由调用方显式给出：
- * `wx` 独占创建（锁文件，已存在即 `EEXIST`）；`wx-nofollow` 额外拒符号链接（tmp，P0-1）。
- */
-export type OpenMode = "wx" | "wx-nofollow";
-
 export interface OpenFile {
   readonly write: (data: Uint8Array) => Promise<void>;
   readonly sync: () => Promise<void>;
@@ -27,12 +21,16 @@ export interface FileSystem {
   readonly unlink: (path: string) => Promise<void>;
   readonly mkdir: (path: string) => Promise<void>;
   readonly lstat: (path: string) => Promise<FileStat>;
-  /** 只在保留权限位时用到；缺省 = 该 fs 不表态（测试替身），按不改权处理。 */
-  readonly chmod?: (path: string, mode: number) => Promise<void>;
   readonly readdir: (path: string) => Promise<readonly string[]>;
   readonly realpath: (path: string) => Promise<string>;
-  readonly open: (path: string, mode: OpenMode) => Promise<OpenFile>;
+  /** 独占创建：文件已存在即 `EEXIST`——锁文件就靠这条语义互斥。 */
+  readonly open: (path: string) => Promise<OpenFile>;
   readonly close: (file: OpenFile) => Promise<void>;
+  /**
+   * 同目录 tmp → fsync → 沿用原文件权限位/属主 → rename 的整段原子写。
+   * 真实实现委托 write-file-atomic；workspace 安全复核在调用方（atomic.ts）。
+   */
+  readonly writeFileAtomic: (path: string, data: Uint8Array) => Promise<void>;
 }
 
 export interface Clock {

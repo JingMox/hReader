@@ -92,7 +92,7 @@ describe("undo · 无快照与失败路径", () => {
     const fs = fakeFs({ "/abs/ws/post.html": ARTICLE_DOC, [snapshot]: "OLD" });
     const clock = fixedClock(Date.parse("2026-01-01T00:00:00.000Z"));
     const sleep = recordingSleep();
-    fs.fail("rename", Object.assign(new Error("EXDEV"), { code: "EXDEV" }));
+    fs.fail("writeFileAtomic", Object.assign(new Error("EXDEV"), { code: "EXDEV" }));
     const code = await codeOfAsync(() =>
       undoPatch(
         { workspace: "/abs/ws", file: DOC_FILE },

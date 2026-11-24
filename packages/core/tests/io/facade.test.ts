@@ -83,7 +83,7 @@ describe("纯层隔离", () => {
         offenders.push(file.slice(SRC.length + 1));
       }
     }
-    // server/ 自己的 fs 访问（daemon.json、fs.watch）是独立层，不转道 io/node-fs。
-    expect(offenders).toEqual(["io/node-fs.ts", "server/daemon.ts", "server/watcher.ts"]);
+    // server/ 自己的 fs 访问（daemon.json）是独立层，不转道 io/node-fs。
+    expect(offenders).toEqual(["io/node-fs.ts", "server/daemon.ts"]);
   });
 });

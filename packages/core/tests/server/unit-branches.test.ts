@@ -156,6 +156,34 @@ describe("runtime · 注入 watch 的广播分支（续）", () => {
   });
 });
 
+describe("runtime · 内部路径与 tmp 噪声过滤", () => {
+  it("should stay silent for .hreader internals and atomic-write tmp names", async () => {
+    const slot = slotOf();
+    const workspace = root("hr-rt-ws-");
+    const home = root("hr-rt-home-");
+    writeFileSync(join(workspace, "doc.html"), DOC, "utf8");
+    const server = await startWith({ workspace, home }, slot);
+    const ctx = { port: server.port, token: server.token, file: join(workspace, "doc.html") };
+    try {
+      const silent = await eventFrame(
+        ctx,
+        () => {
+          slot.fire("change", ".hreader");
+          slot.fire("change", ".hreader/history/x.html");
+          slot.fire("change", ".hr-tmp.1.abc.doc.html");
+          // write-file-atomic 的 tmp 是 `<目标>.<数字>`：漏过滤会广播一个不存在的文件名。
+          slot.fire("change", "doc.html.7654321");
+          slot.fire("change", "doc.html~");
+        },
+        "library.changed",
+      );
+      expect(silent).toBe("");
+    } finally {
+      await server.close();
+    }
+  });
+});
+
 describe("ensureNoDaemon · 三条早退", () => {
   it("should start when the recorded daemon is dead", async () => {
     const workspace = root("hr-daemon-ws-");

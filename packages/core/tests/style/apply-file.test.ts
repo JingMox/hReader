@@ -71,7 +71,9 @@ describe("applyStyle · 幂等与插入", () => {
 
     expect(result.changed).toBe(false);
     expect(env.fake.state.files.get(FILE)).toBe(afterFirst);
-    expect(env.fake.state.log.filter((line) => line.startsWith("rename:"))).toHaveLength(1);
+    expect(env.fake.state.log.filter((line) => line.startsWith("writeFileAtomic:"))).toHaveLength(
+      1,
+    );
   });
 
   it("should insert the block into <head> when the document has none", async () => {
@@ -90,10 +92,10 @@ describe("applyStyle · 幂等与插入", () => {
 });
 
 describe("applyStyle · 失败不留痕（tmp / 原字节 / 锁）", () => {
-  it("should leave no tmp and keep the original bytes when rename fails", async () => {
+  it("should leave no tmp and keep the original bytes when the atomic write fails", async () => {
     const env = styleEnv(seed());
     const before = new Uint8Array(env.fake.state.files.get(FILE) ?? new Uint8Array());
-    env.fake.fail("rename", Object.assign(new Error("EIO"), { code: "EIO" }));
+    env.fake.fail("writeFileAtomic", Object.assign(new Error("EIO"), { code: "EIO" }));
 
     await expect(
       applyStyle(
