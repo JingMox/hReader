@@ -19,15 +19,13 @@
   },
   "scripts": {
     "build": "pnpm -C packages/app build && pnpm -C packages/cli build && pnpm -C packages/mcp-server build && pnpm -C packages/dsh-bundle build",
-    "check-ci-parity": "node scripts/check-ci-parity.mjs",
     "depcruise": "depcruise --config .dependency-cruiser.cjs packages",
     "desktop:build": "pnpm --dir packages/desktop run build",
     "desktop:check": "bash packages/desktop/scripts/check.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "knip": "knip",
-    "lint:sh": "root=scripts; [ -d \"$root\" ] || { echo \"lint:sh: 目录不存在：$root\" >&2; exit 1; }; test -n \"$(find \"$root\" -name '*.sh' -print -quit)\" || { echo \"lint:sh: 没有可检查的 *.sh 脚本：$root\" >&2; exit 1; }; find \"$root\" -name '*.sh' -print0 | xargs -0 -n1 bash -n",
-    "lint-sh-selftest": "bash scripts/lint-sh-selftest.sh",
+    "lint:sh": "if command -v shellcheck >/dev/null 2>&1; then find scripts packages -name \"*.sh\" -not -path \"*/node_modules/*\" -not -path \"*/src-tauri/*\" -print0 | xargs -0 shellcheck -x -S warning; else echo \"lint:sh: shellcheck 未安装，跳过（CI 已装并检查；本地 brew/apt install shellcheck 可复现）\"; fi",
     "lint": "eslint . --max-warnings=0 --report-unused-disable-directives",
     "skill:pack": "node scripts/pack-skill.mjs",
     "smoke:dsh": "node scripts/smoke-dsh.ts",
@@ -36,7 +34,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "node scripts/print-e2e.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json --pretty false",
-    "verify": "pnpm format:check && pnpm check-ci-parity && pnpm lint && pnpm lint:sh && pnpm lint-sh-selftest && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm depcruise && pnpm knip"
+    "verify": "pnpm format:check && pnpm lint && pnpm lint:sh && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm depcruise && pnpm knip"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",

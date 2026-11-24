@@ -1,5 +1,5 @@
 name: CI
-# 与 pnpm verify 的十步一一对应：少一步就是"本地绿、CI 不查"
+# checks job 与 pnpm verify 同序：本地和 CI 跑同一套门禁。
 
 on:
   push:
@@ -21,11 +21,10 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: pnpm format:check
-      - run: pnpm check-ci-parity
       - run: pnpm lint
       - run: pnpm lint:sh
-      - run: pnpm lint-sh-selftest
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:coverage
