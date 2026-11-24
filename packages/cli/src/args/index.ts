@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { COMMAND_NAMES, isCommandName, type CommandName } from "../usage";
 import {
   checkIntent,
+  importIntent,
   newIntent,
   normalizeIntent,
   outlineIntent,
@@ -66,6 +67,7 @@ type IntentBuilder = (raw: Raw, rest: readonly string[], cwd: string) => ParsedA
 /** 一张表代替 if 链：每加一个命令只多一行，`build` 的圈复杂度不随之增长。 */
 const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
   new: newIntent,
+  import: importIntent,
   normalize: normalizeIntent,
   outline: outlineIntent,
   read: readIntent,

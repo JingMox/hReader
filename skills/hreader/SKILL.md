@@ -18,6 +18,7 @@ hReader 把一份 HTML 长文档拆成"可按 id 读、可按 id 改"的节点�
 
 ```bash
 node skills/hreader/scripts/hr.mjs new report.html --kind report --title "Q4 复盘"  # 按形态起稿
+node skills/hreader/scripts/hr.mjs import deck.html --kind slides # 外来 HTML → 托管文档（默认出 <name>.hr.html）
 node skills/hreader/scripts/hr.mjs outline report.html            # 结构树
 node skills/hreader/scripts/hr.mjs read report.html s2-p1 --json   # 读一个节点
 node skills/hreader/scripts/hr.mjs patch report.html s2-p1 \

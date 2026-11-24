@@ -12,6 +12,8 @@ import type {
   ExtractStyleResult,
   HrErrorCode,
   HrErrorData,
+  ImportDiscard,
+  ImportReport,
   LintHit,
   LintReport,
   Outline,
@@ -328,3 +330,42 @@ export const dataNew = (report: NewDocReport): string =>
 
 export const humanNew = (report: NewDocReport, path: string): string =>
   `created ${path} (${report.kind}, ${String(report.bytes)} bytes)\n`;
+
+const discardJson = (item: ImportDiscard): string =>
+  `{"what":${quote(item.what)},"reason":${quote(item.reason)},"count":${String(item.count)}}`;
+
+/** 键序固定（对外契约）；`trunkTag` 只有 largest 时有值，其余恒 `null`——`--json` 的形状不随主干来源变。 */
+export const dataImport = (path: string, bytes: number, report: ImportReport): string =>
+  `{"path":${quote(path)},"bytes":${String(bytes)},"kind":${quote(report.kind)},` +
+  `"title":${quote(report.title)},"titleSource":${quote(report.titleSource)},` +
+  `"trunk":${quote(report.trunk)},"trunkTag":${report.trunkTag === undefined ? "null" : quote(report.trunkTag)},` +
+  `"sections":${String(report.sections)},"removedElements":${String(report.removedElements)},` +
+  `"strippedAttributes":${String(report.strippedAttributes)},` +
+  `"discarded":[${report.discarded.map(discardJson).join(",")}]}`;
+
+const TITLE_SOURCE_LABEL: Readonly<Record<ImportReport["titleSource"], string>> = {
+  option: "--title",
+  title: "<title>",
+  h1: "首个 <h1>",
+  fallback: "兜底文案",
+};
+
+/** 人读的 report 摘要：产物行 + 标题/主干/剥除统计行 + 丢弃明细（什么都没有被丢就不出那段）。 */
+export const humanImport = (report: ImportReport, out: string, bytes: number): string => {
+  // trunkTag 只在 largest 下有值（report 契约）：拿它当 largest 的判据就不用对 undefined 求值。
+  const trunk =
+    report.trunkTag !== undefined
+      ? `<${report.trunkTag}>`
+      : report.trunk === "main"
+        ? "<main>"
+        : "<body>";
+  const dropped = report.discarded
+    .map((item) => `\n    ${item.what} ×${String(item.count)}（${item.reason}）`)
+    .join("");
+  return (
+    `imported ${out} (${report.kind}, ${String(report.sections)} 节, ${String(bytes)} bytes)\n` +
+    `  标题「${report.title}」（${TITLE_SOURCE_LABEL[report.titleSource]}）；主干：${trunk}；` +
+    `剥除元素 ${String(report.removedElements)} 个、属性 ${String(report.strippedAttributes)} 个` +
+    `${dropped === "" ? "" : `\n  丢弃明细：${dropped}`}\n`
+  );
+};

@@ -8,7 +8,7 @@ export const CWD = "/repo";
 
 /** 顶层缺命令时的清单串：命令一多就会长到被 prettier 折行，抽出来免得把用例撑爆限行。 */
 export const COMMAND_LIST_HINT =
-  "缺少命令：new | normalize | outline | read | patch | check | style | undo | export | pdf | png | serve";
+  "缺少命令：new | import | normalize | outline | read | patch | check | style | undo | export | pdf | png | serve";
 
 export const parse = (argv: readonly string[], cwd: string = CWD) => parseArgs(argv, cwd);
 

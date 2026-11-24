@@ -8,3 +8,5 @@ export { locateTarget, patchTargetIdOf } from "./locate";
 export type { LocatedTarget } from "./locate";
 export { applyPatch, parseFragment } from "./patch-node";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./patch-node";
+export { importForeign } from "./import";
+export type { ImportDiscard, ImportOptions, ImportReport, ImportResult } from "./import";

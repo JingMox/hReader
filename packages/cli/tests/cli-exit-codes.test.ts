@@ -123,7 +123,9 @@ describe("退出码 2 · 用法错误", () => {
 
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("缺少命令：new | normalize | outline | read | patch | check");
+    expect(result.stderr).toContain(
+      "缺少命令：new | import | normalize | outline | read | patch | check",
+    );
     expect(result.stderr).toContain("用法：");
   });
 

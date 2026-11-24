@@ -63,6 +63,7 @@ describe("dist/main.js · tool surface", () => {
     expect([...toolNamesOf(frames)].sort()).toEqual([
       "hr_apply_style",
       "hr_create_doc",
+      "hr_import_doc",
       "hr_outline",
       "hr_patch_node",
       "hr_read_node",
