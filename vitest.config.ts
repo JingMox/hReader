@@ -28,6 +28,11 @@ export default defineConfig({
     // 本机 16GB / v8 覆盖率下，默认线程池（≈核数）会把 swap 打爆；2 个 worker 峰值内存约为原来的 1/3。
     // 这是限流，不是放宽门禁：阈值仍是 perFile 四维 100%。
     maxWorkers: 2,
+    // CLI 用例的超时由 tests/harness.ts 自己管：每次 `runCli` 10s 硬超时（SIGKILL + 带命令行的错误），
+    // `withTempDir` 10s 兜底。vitest 默认 5s 低于这两道守卫，并行有负载时总是它先触发，
+    // 把可辨认的诊断盖成一句 "Test timed out in 5000ms"。30s = 约 3 次 CLI 调用的合法预算，
+    // 让 harness 的守卫成为真正触发的那一道；显式写了更长时限的 Chrome/PDF 用例不受影响。
+    testTimeout: 30_000,
     coverage: {
       provider: "v8",
       // `pi-hreader.ts` 是 M3.2 AC-1 强制的**单文件**扩展（它在包根，不在 `src/` 下），
