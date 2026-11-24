@@ -15,6 +15,8 @@ export interface KeyLike {
   readonly altKey?: boolean;
   readonly shiftKey?: boolean;
   readonly target?: KeyTargetLike | null;
+  /** 事件被消费时由 `boot` 调一次：方向键/空格/F5 不拦，浏览器会先翻页或刷新。 */
+  readonly preventDefault?: () => void;
 }
 
 const EDITABLE_TAGS: readonly string[] = ["INPUT", "TEXTAREA", "SELECT"];
@@ -48,8 +50,35 @@ const isPrintableShortcut = (event: KeyLike, state: ReaderState): ReaderIntent |
   return undefined;
 };
 
+/** 演示态键盘只认翻页/退出：其余键整片吞掉，`j`/`w` 这类读写键绝不能漏到阅读态。 */
+const presentIntentOf = (event: KeyLike, state: ReaderState): ReaderIntent | undefined => {
+  switch (event.key) {
+    case "ArrowRight":
+    case "ArrowDown":
+    case " ":
+    case "PageDown":
+      return { kind: "presentAdvanced" };
+    case "ArrowLeft":
+    case "ArrowUp":
+    case "PageUp":
+      return { kind: "presentBack" };
+    case "Home":
+      return { kind: "presentMoved", page: 0 };
+    case "End":
+      return { kind: "presentMoved", page: state.pages.length - 1 };
+    case "Escape":
+    case "p":
+    case "F5":
+      return { kind: "presentExited" };
+    default:
+      return undefined;
+  }
+};
+
 export const intentOf = (event: KeyLike, state: ReaderState): ReaderIntent | undefined => {
   if (modified(event) || isEditableTarget(event.target)) return undefined;
+  if (state.present.active) return presentIntentOf(event, state);
   if (event.key === "Escape") return { kind: "panelClosed" };
+  if (event.key === "p" || event.key === "F5") return { kind: "presentEntered" };
   return isPrintableShortcut(event, state);
 };

@@ -13,6 +13,7 @@ export interface KeyboardLike {
   /** 真 `KeyboardEvent` 必带；`Shift+D` 的 diff 路由靠它（`keys.ts` 读 `shiftKey === true`）。 */
   readonly shiftKey?: boolean;
   readonly target?: unknown;
+  readonly preventDefault?: () => void;
 }
 
 export interface BrowserStubs {

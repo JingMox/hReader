@@ -197,3 +197,23 @@ describe("dom · removeBlock", () => {
     expect(element.remove.mock.calls).toHaveLength(1);
   });
 });
+
+describe("dom · all", () => {
+  it("should return the registered matches in document order", () => {
+    const doc = createFakeDocument();
+    const a = fakeElement("li");
+    const b = fakeElement("li");
+    doc.bySelectorAll.set("li", [a, b]);
+    expect(createDomHost(doc).all("li")).toEqual([a, b]);
+    expect(createDomHost(doc).all("p")).toEqual([]);
+  });
+
+  it("should return an empty list when the document cannot enumerate", () => {
+    const host = createDomHost({
+      body: { getAttribute: () => null },
+      querySelector: () => null,
+      createElement: (tag) => fakeElement(tag),
+    });
+    expect(host.all("li")).toEqual([]);
+  });
+});

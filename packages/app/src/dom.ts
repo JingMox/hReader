@@ -55,6 +55,8 @@ export interface Host {
     handler: (target: TargetLike) => void,
   ) => () => void;
   readonly scrollTo: (selector: string) => void;
+  /** 文档序取全部命中元素（演示模式的步进元素枚举）；**必选**，缺实现就是步进永远不出现。 */
+  readonly all: (selector: string) => readonly ElementLike[];
   /** 锚点是否存在：模板缺锚点必须**可见地失败**，不能静默跳过。可选：假 host 可省。 */
   readonly has?: (selector: string) => boolean;
   readonly destroy: () => void;
@@ -64,7 +66,15 @@ export interface Host {
 export interface DocumentLike {
   readonly body: { readonly getAttribute: (name: string) => string | null };
   readonly querySelector: (selector: string) => ElementLike | null;
+  /** `Host.all` 的唯一来源；缺省表示环境不支持枚举（`all` 返回空）。 */
+  readonly querySelectorAll?: (selector: string) => readonly ElementLike[];
   readonly createElement: (tag: string) => ElementLike;
+  /** Fullscreen API 三段（进入 / 退出 / 当前态）：任一缺席即整体退化，演示模式落回"铺满视口"。 */
+  readonly documentElement?: { readonly requestFullscreen?: () => Promise<void> };
+  readonly exitFullscreen?: () => Promise<void>;
+  readonly fullscreenElement?: unknown;
+  readonly addEventListener?: (type: string, handler: () => void) => void;
+  readonly removeEventListener?: (type: string, handler: () => void) => void;
   /** `Range` 的最小声明（块内字符偏移的度量）；缺省表示不量偏移。 */
   readonly createRange?: () => {
     readonly selectNodeContents: (node: unknown) => void;
@@ -221,7 +231,7 @@ const paintOps = (
 /** 只碰文本/属性/类名的那些。 */
 const textOps = (
   root: DocumentLike,
-): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "has"> => ({
+): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "all" | "has"> => ({
   text: (selector, value) => {
     const element = found(root, selector);
     if (element === undefined) return;
@@ -246,6 +256,7 @@ const textOps = (
   scrollTo: (selector) => {
     found(root, selector)?.scrollIntoView?.({ block: "start" });
   },
+  all: (selector) => root.querySelectorAll?.(selector) ?? [],
   has: (selector) => found(root, selector) !== undefined,
 });
 

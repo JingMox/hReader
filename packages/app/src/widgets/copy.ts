@@ -11,7 +11,9 @@ export const COPY = {
   statusLive: "已同步",
   statusReconnecting: "重连中…",
   statusOffline: "离线",
-  shortcuts: "j/k 移动 · h 高亮 · c 旁注 · / 搜索 · Esc 关闭",
+  shortcuts: "j/k 移动 · h 高亮 · c 旁注 · p 演示 · / 搜索 · Esc 关闭",
   searchDeferred: "搜索将在后续卡片启用",
+  present: "演示",
+  presentExit: "退出",
   version: "v0.0.0",
 } as const;

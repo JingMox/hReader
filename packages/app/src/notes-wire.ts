@@ -3,6 +3,7 @@
 // 两者职责写在这里，避免再出现"守卫读到 dispatch 之后的状态"。
 
 import type { Host, TargetLike } from "./dom.ts";
+import { escapeAttr } from "./escape-attr.ts";
 import {
   annotationIntentOf,
   renderAnnotations,
@@ -16,10 +17,6 @@ import { optimisticCardOf, type AnnotationCard, type NoteAnchor } from "./notes.
 import { withLost } from "./notes-state.ts";
 import type { ReaderIntent, ReaderState } from "./state.ts";
 import type { Store } from "./store.ts";
-
-/** 属性值里的 `"` / `\` / `]` 必须转义，否则 id 能提前闭合选择器。 */
-const escapeAttr = (value: string): string =>
-  value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("]", "\\]");
 
 /** 带 try/catch 的选择器：非法 id 一律"找不到"，绝不让异常逃到回调外。 */
 const foundNodeOf = (host: Host, id: string): string | undefined => {

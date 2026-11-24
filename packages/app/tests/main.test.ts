@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fakeElement } from "./support/fake-dom.ts";
+import { createFakeHost } from "./support/fake-host.ts";
 import { submitNoteWithSelection, toggleDiffWithShiftD } from "./support/selection-fixture.ts";
 import {
   failOf,
@@ -114,9 +115,11 @@ describe("main · 键盘与主题适配", () => {
     install("doc.html", "http://x/", happy);
     await load();
     const handler = stubs.keyHandlers[0];
+    const prevented = vi.fn();
     handler?.({ key: "j", metaKey: true, ctrlKey: false, altKey: false });
     handler?.({ key: "h", metaKey: false, ctrlKey: true, target: null });
-    handler?.({ key: "j" });
+    handler?.({ key: "j", preventDefault: prevented });
+    expect(prevented).toHaveBeenCalledTimes(1);
     expect(stubs.keyHandlers).toHaveLength(1);
   });
 
@@ -125,6 +128,100 @@ describe("main · 键盘与主题适配", () => {
     await load();
     expect(stubs.keyHandlers).toHaveLength(1);
     expect(stubs.keyHandlers[0]?.({ key: "j", target: { tagName: "INPUT" } })).toBeUndefined();
+  });
+});
+
+describe("main · 演示环境", () => {
+  it("should degrade every shell member when the globals are missing", async () => {
+    install("doc.html", "http://x/", happy);
+    await load();
+    const { presentShellOf } = await import("../src/main.ts");
+    const shell = presentShellOf();
+    expect(shell.fullscreen).toBeUndefined();
+    expect(shell.isFullscreen?.()).toBe(false);
+    expect(shell.hash?.read()).toBe("");
+    // history 缺省 → 写 hash 是 no-op（不抛）；addEventListener 缺省 → 绑定是 no-op。
+    shell.hash?.write("p=2");
+    const off = shell.onFullscreenChange?.(() => undefined);
+    expect(off).toBeTypeOf("function");
+    off?.();
+  });
+
+  it("should wire fullscreen and hash when the globals exist", async () => {
+    install("doc.html", "http://x/", happy);
+    await load();
+    const calls: string[] = [];
+    const fsElement: { current: unknown } = { current: {} };
+    const listeners = new Map<string, () => void>();
+    vi.stubGlobal("document", {
+      documentElement: {
+        requestFullscreen: () => {
+          calls.push("enter");
+          return Promise.resolve();
+        },
+      },
+      exitFullscreen: () => {
+        calls.push("exit");
+        return Promise.resolve();
+      },
+      get fullscreenElement() {
+        return fsElement.current;
+      },
+      addEventListener: (type: string, handler: () => void) => {
+        listeners.set(type, handler);
+      },
+      removeEventListener: (type: string) => {
+        listeners.delete(type);
+      },
+    });
+    const urls: string[] = [];
+    vi.stubGlobal("window", {
+      location: { href: "http://x/", hash: "#p=2", pathname: "/", search: "?doc=d" },
+      history: {
+        replaceState: (_data: unknown, _unused: string, url: string) => {
+          urls.push(url);
+        },
+      },
+    });
+    const { presentShellOf } = await import("../src/main.ts");
+    const shell = presentShellOf();
+    expect(shell.isFullscreen?.()).toBe(true);
+    fsElement.current = null;
+    expect(shell.isFullscreen?.()).toBe(false);
+    shell.fullscreen?.enter();
+    shell.fullscreen?.exit();
+    expect(shell.hash?.read()).toBe("p=2");
+    shell.hash?.write("p=3");
+    shell.hash?.write("");
+    expect(urls).toEqual(["/?doc=d#p=3", "/?doc=d"]);
+    const off = shell.onFullscreenChange?.(() => undefined);
+    expect(listeners.has("fullscreenchange")).toBe(true);
+    off?.();
+    expect(listeners.has("fullscreenchange")).toBe(false);
+    await flush();
+    expect(calls).toEqual(["enter", "exit"]);
+  });
+
+  it("should accept an injected present shell through bootWith", async () => {
+    install("doc.html", "http://x/", happy);
+    await load();
+    const fake = createFakeHost();
+    const { bootWith, createHttpIo } = await import("../src/main.ts");
+    const booted = bootWith({
+      docId: "doc.html",
+      themes: { themes: ["atelier-editorial"], default: "atelier-editorial" },
+      documentHtml: "<article data-hr-id='hr-a'><p>一</p></article>",
+      io: createHttpIo(),
+      host: fake.host,
+      present: {},
+    });
+    // 泵里的水合 fetch 要在用例内跑完：afterEach 拆了 fetch 桩之后，晚到的泵任务会打到真 undici。
+    await flush();
+    await flush();
+    booted.destroy();
+    expect(
+      fake.calls.some((call) => call.op === "text" && call.args[0]?.includes("hr-present")),
+    ).toBe(true);
   });
 });
 

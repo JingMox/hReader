@@ -21,6 +21,11 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-theme-select",
   "#hr-focus-label",
   "#hr-doc",
+  // 演示模式：入口按钮 / 覆盖层容器 / 页码 / 退出
+  "#hr-present-btn",
+  "#hr-present",
+  "#hr-present-pager",
+  "#hr-present-exit",
   // 右栏（旁注）：标题 / 选区按钮 / 编辑器 / 提示 / 两组 / diff
   "#hr-notes",
   "#hr-notes-title",
@@ -58,6 +63,7 @@ export const CONTAINER_ANCHORS: readonly string[] = [
   "#hr-canvas",
   "#hr-controls",
   "#hr-notes-actions",
+  "#hr-present",
 ];
 
 /** 缺失的锚点（空数组 = 模板完整）；`host.has` 缺失时（假 host）不做检查，返回空清单。 */
