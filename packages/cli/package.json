@@ -19,7 +19,6 @@
   "devDependencies": {
     "@hreader/core": "workspace:*",
     "@hreader/renderer-html": "workspace:*",
-    "esbuild": "catalog:",
     "vitest": "catalog:",
     "@types/node": "catalog:"
   },

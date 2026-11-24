@@ -23,7 +23,6 @@
   "devDependencies": {
     "@hreader/core": "workspace:*",
     "@types/node": "catalog:",
-    "esbuild": "catalog:",
     "vitest": "catalog:"
   }
 }

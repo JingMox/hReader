@@ -37,7 +37,6 @@
     "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.1",
     "@hreader/core": "workspace:*",
     "@types/node": "catalog:",
-    "esbuild": "catalog:",
     "vitest": "catalog:",
     "yaml": "catalog:"
   }
