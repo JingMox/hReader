@@ -109,7 +109,7 @@ env -u OPENCODE_API_KEY node skills/hreader/scripts/hr.mjs style extract 文1.md
 - **`--out` 必须落在发现路径上**，否则 `style --tone my-voice` 找不到它：项目级 `<workspace>/.hreader/style.yaml`，或用户级 `~/.hreader/styles/my-voice/style.yaml`。写到别处也合法（导出/归档），但 `--tone` 只认 id、没有路径入口——要让 `--tone` 用上它，就得写到上面两条路径之一；写别处时 stderr 会给一行提示。
 - `--out` 指向已存在的文件时必须加 `--force`，否则 `file_exists`；父目录不自动建。
 - 模型/网关可用 `--model`、`--base-url` 覆盖；`--json` 输出 `{ok,data:{path,stats,yaml,dropped}}`（`dropped` 仅 LLM 路径出现），错误也是单行 JSON。
-- fixture 与模型换代（换 `--model` 或改 prompt）后须重录 `fixtures/llm/`，否则回放证明的不再是今天的模型输出（`L-36`）。
+- fixture 与模型换代（换 `--model` 或改 prompt）后须重录 `fixtures/llm/`，否则回放证明的不再是今天的模型输出。
 
 ## 让宿主自己带着风格（不用每次取口吻）
 
