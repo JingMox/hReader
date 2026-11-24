@@ -1,14 +1,14 @@
-// 这层管：`chromeDepsOf` 的真实现（真 spawn / 真 fetch / 真进程组 kill）；一个真 Chrome 都不起。
+// 这层管：`chromeDepsOf` 的真实现（真 spawn / 真进程组 kill）；一个真 Chrome 都不起。
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { chromeDepsOf, chromeProcessOf, type ChromeProcess } from "../src/chrome/session";
+import { chromeProcessOf, type ChromeProcess } from "../src/chrome/process";
+import { chromeDepsOf } from "../src/chrome/session";
 
 const FAKE_CHROME = fileURLToPath(new URL("../fixtures/fake-chrome.mjs", import.meta.url));
 
@@ -142,25 +142,4 @@ describe("chromeDepsOf · killGroup 与孙进程", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 15_000);
-});
-
-describe("chromeDepsOf · fetchText", () => {
-  it("用全局 fetch 拿 /json/version", async () => {
-    const server = createServer((request, response) => {
-      response.end(`body:${request.url ?? ""}`);
-    });
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", resolve);
-    });
-    const address = server.address();
-    const port = typeof address === "object" && address !== null ? address.port : 0;
-    try {
-      const deps = chromeDepsOf({});
-      expect(await deps.fetchText(`http://127.0.0.1:${String(port)}/json/version`)).toBe(
-        "body:/json/version",
-      );
-    } finally {
-      server.close();
-    }
-  });
 });

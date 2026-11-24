@@ -20,5 +20,9 @@
     "@hreader/renderer-html": "workspace:*",
     "esbuild": "0.28.2",
     "vitest": "3.2.4"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "puppeteer-core": "25.17.0"
   }
 }

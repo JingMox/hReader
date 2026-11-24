@@ -13,10 +13,9 @@ import { join } from "node:path";
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-import { pdfCommand, pdfPagesOf, type PdfCommandInput, type RenderPdf } from "../src/commands/pdf";
-import { fieldOf } from "../src/chrome/protocol";
-import { pdfOf, pdfBase64Of } from "./chrome-helpers";
-import { keysOf, withTempDir } from "./harness";
+import { pdfCommand, type PdfCommandInput, type RenderPdf } from "../src/commands/pdf";
+import { pdfOf } from "./chrome-helpers";
+import { fieldOf, keysOf, withTempDir } from "./harness";
 
 const DOC = "<html><body><article><h1>标题</h1><p>正文</p></article></body></html>";
 
@@ -214,24 +213,18 @@ describe("pdfCommand · 产物校验", () => {
   it("PDF 里没有页面报 render_empty", async () => {
     await withDocOf(async (dir) => {
       const render = (): Promise<{ bytes: Uint8Array }> =>
-        Promise.resolve({ bytes: Buffer.from("%PDF-1.4\n%%EOF\n") });
+        Promise.resolve({ bytes: Buffer.from(pdfOf(0)) });
       const error = await failureOf(pdfCommand(inputOf(dir, { render })));
       expect(error.message).toContain("没有页面");
     });
   });
 
-  it("pdfPagesOf 不把 /Pages 页树节点算成页面", () => {
-    expect(pdfPagesOf(Buffer.from(pdfOf(3)))).toBe(3);
-    expect(pdfPagesOf(Buffer.from("%PDF-1.4\n%%EOF"))).toBe(0);
-    expect(pdfPagesOf(Buffer.from(pdfBase64Of(2), "base64"))).toBe(2);
-  });
-});
-
-describe("pdfPagesOf · 页数正则边界（M12）", () => {
-  // 旧写法 `[^s]` 要求 `Page` 后面还有一个字符，字节流正好以 `/Type /Page` 结尾（无尾随换行）
-  // 时就漏掉最后一页并报 0；`\b(?!s)` 必须数得到它（§15.2）。
-  it("数得到以 `/Type /Page` 结尾的最后一页", () => {
-    expect(pdfPagesOf(Buffer.from("<< /Type /Pages /Count 1 >>\n<< /Type /Page"))).toBe(1);
-    expect(pdfPagesOf(Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Page"))).toBe(1);
+  it("结构解析不出的 PDF 字节报 render_empty", async () => {
+    await withDocOf(async (dir) => {
+      const render = (): Promise<{ bytes: Uint8Array }> =>
+        Promise.resolve({ bytes: Buffer.from("%PDF-1.4\n%%EOF\n") });
+      const error = await failureOf(pdfCommand(inputOf(dir, { render })));
+      expect(error.code).toBe("render_empty");
+    });
   });
 });

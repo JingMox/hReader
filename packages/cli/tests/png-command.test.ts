@@ -12,11 +12,10 @@ import { join } from "node:path";
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-import type { LongImage } from "../src/chrome/cdp";
+import type { LongImage } from "../src/chrome/types";
 import { pngCommand, type PngCommandInput } from "../src/commands/png";
-import { fieldOf } from "../src/chrome/protocol";
 import { pngOf } from "./chrome-helpers";
-import { keysOf, withTempDir } from "./harness";
+import { fieldOf, keysOf, withTempDir } from "./harness";
 
 const DOC = "<html><body><article><h1>标题</h1><p>正文</p></article></body></html>";
 

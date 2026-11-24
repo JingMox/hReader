@@ -1,12 +1,14 @@
-// `renderPdfOf` / `renderPngOf` 共用的进程内装配：假进程 + 假传输 + 假版本端点，目录/进程组可观察。
+// `renderPdfOf` / `renderPngOf` 共用的进程内装配：假进程 + 假浏览器，目录/进程组可观察。
 import type { renderPdfOf } from "../src/chrome/session";
+
 import {
   depsWithOf,
+  fakeBrowserOf,
   fakeChromeOf,
-  responderOf,
-  VERSION_TEXT,
+  fakePageOf,
+  type FakeBrowser,
   type FakeChrome,
-  type ResponderOptions,
+  type FakePageOptions,
 } from "./chrome-helpers";
 
 /** 进程内测试的停止口：永不 resolve，等价于"没人按 Ctrl-C"。 */
@@ -16,33 +18,27 @@ export const DEVTOOLS_LINE = "DevTools listening on ws://127.0.0.1:9222/devtools
 
 export interface SessionSetup {
   readonly fake: FakeChrome;
+  readonly browser: FakeBrowser;
   readonly dirs: string[];
   readonly spawnedArgs: string[][];
-  readonly requestedUrls: string[];
-  readonly responder: ReturnType<typeof responderOf>;
   readonly deps: ReturnType<typeof depsWithOf>;
 }
 
-export const renderSetupOf = (options: ResponderOptions = { pages: 2 }): SessionSetup => {
+export const renderSetupOf = (options: FakePageOptions = { pages: 2 }): SessionSetup => {
   const fake = fakeChromeOf();
-  const responder = responderOf(options);
+  const browser = fakeBrowserOf(fakePageOf(options));
   const dirs: string[] = [];
   const spawnedArgs: string[][] = [];
-  const requestedUrls: string[] = [];
   const deps = depsWithOf({
     chrome: fake.chrome,
     dirs,
-    connect: () => responder.transport,
-    fetchText: (url) => {
-      requestedUrls.push(url);
-      return Promise.resolve(VERSION_TEXT);
-    },
+    connect: () => Promise.resolve(browser),
     env: { HREADER_CHROME: "/fake/chrome" },
     onSpawn: (args) => {
       spawnedArgs.push([...args]);
     },
   });
-  return { fake, dirs, spawnedArgs, requestedUrls, responder, deps };
+  return { fake, browser, dirs, spawnedArgs, deps };
 };
 
 type PdfInput = Parameters<typeof renderPdfOf>[0];
