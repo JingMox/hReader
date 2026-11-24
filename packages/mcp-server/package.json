@@ -17,12 +17,12 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
-    "zod": "3.25.76"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@hreader/core": "workspace:*",
-    "@types/node": "26.6.6",
-    "esbuild": "0.28.2",
-    "vitest": "3.2.4"
+    "@types/node": "catalog:",
+    "esbuild": "catalog:",
+    "vitest": "catalog:"
   }
 }

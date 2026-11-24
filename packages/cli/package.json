@@ -18,8 +18,8 @@
   "devDependencies": {
     "@hreader/core": "workspace:*",
     "@hreader/renderer-html": "workspace:*",
-    "esbuild": "0.28.2",
-    "vitest": "3.2.4"
+    "esbuild": "catalog:",
+    "vitest": "catalog:"
   },
   "dependencies": {
     "pdf-lib": "1.17.1",

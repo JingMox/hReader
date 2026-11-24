@@ -35,9 +35,9 @@
     "@deepseek-ai/dsh-package-manifest": "0.2.2-rc.1",
     "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.1",
     "@hreader/core": "workspace:*",
-    "@types/node": "26.6.6",
-    "esbuild": "0.28.2",
-    "vitest": "3.2.4",
-    "yaml": "2.9.1"
+    "@types/node": "catalog:",
+    "esbuild": "catalog:",
+    "vitest": "catalog:",
+    "yaml": "catalog:"
   }
 }
