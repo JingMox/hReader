@@ -21,6 +21,8 @@ export type RenderPdf = (input: {
   readonly timeoutMs: number;
   /** 开工前就要定下来：它是 `Page.printToPDF` 的 `generateDocumentOutline`，协议层不给默认值。 */
   readonly outline: boolean;
+  /** `true` = 打印稿自带 `@page` 纸张（slides），Chrome 听 CSS；`pageSize` 只剩兜底意义。 */
+  readonly preferCSSPageSize: boolean;
 }) => Promise<{ bytes: Uint8Array }>;
 
 export interface PdfCommandInput {
@@ -83,6 +85,7 @@ const productPdfOf = async (input: PdfCommandInput, pageSize: PdfPageSize): Prom
     pageSize,
     timeoutMs: input.timeoutMs,
     outline: input.outline,
+    preferCSSPageSize: product.slides,
   });
   return bytes;
 };

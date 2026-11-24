@@ -1,0 +1,651 @@
+/* Deck Noir：暗色演示主题。16:9 版心用 --du 单位制（min(100vw/16, 100vh/9)）随视口等比缩放；
+   打印时 vw/vh 相对页框计算，同一份尺寸在横版页面上等比复现，故打印块只补分页规则。
+   演示态状态属性由阅读器提供：data-hr-present、data-hr-slide-state、data-hr-step-state。 */
+
+:root {
+  --hr-bg: #0a0d14;
+  --hr-surface: #12161f;
+  --hr-fg: #f4f1e9;
+  --hr-muted: #98a1b3;
+  --hr-accent: #ffb020;
+  --hr-accent-soft: rgba(255, 176, 32, 0.14);
+  --hr-teal: #5eead4;
+  --hr-warning: #ff6b5e;
+  --hr-border: #2a3244;
+  --hr-code-bg: #151a26;
+  --hr-measure: 64ch;
+  --hr-sidebar: 260px;
+  --hr-radius: 0.75rem;
+  --hr-sans:
+    "Avenir Next", "Futura", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --hr-mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+::selection {
+  background: var(--hr-accent);
+  color: #161310;
+}
+
+body {
+  margin: 0;
+  background: var(--hr-bg);
+  color: var(--hr-fg);
+  font-family: var(--hr-sans);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------- 非 slides 形态：普通阅读版式 ---------- */
+
+.hr-layout {
+  display: grid;
+  grid-template-columns: minmax(0, var(--hr-measure)) var(--hr-sidebar);
+  gap: 2.5rem;
+  justify-content: center;
+  padding: 2.5rem 1rem;
+}
+
+.hr-layout > * {
+  min-width: 0;
+}
+
+.hr-sidebar {
+  font-size: 0.875rem;
+  color: var(--hr-muted);
+}
+
+.hr-sidebar > * {
+  position: sticky;
+  top: 2.5rem;
+}
+
+.hr-sidebar dl {
+  margin: 0;
+}
+
+.hr-sidebar dt {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hr-sidebar dd {
+  margin: 0;
+  color: var(--hr-fg);
+}
+
+.hr-sidebar a {
+  color: var(--hr-accent);
+  text-underline-offset: 0.2em;
+}
+
+article[data-hr-id] {
+  max-width: var(--hr-measure);
+  overflow-wrap: anywhere;
+}
+
+article[data-hr-id] h1,
+article[data-hr-id] h2,
+article[data-hr-id] h3 {
+  margin: 2.5rem 0 0.75rem;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+article[data-hr-id] > h1 {
+  margin-top: 0;
+  font-size: 2.4rem;
+  font-weight: 800;
+}
+
+article[data-hr-id] > header p {
+  font-size: 0.875rem;
+  color: var(--hr-muted);
+}
+
+article[data-hr-id] h2 {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--hr-border);
+}
+
+article[data-hr-id] a {
+  color: var(--hr-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+article[data-hr-id] code,
+article[data-hr-id] pre {
+  font-family: var(--hr-mono);
+  font-size: 0.9em;
+  background: var(--hr-code-bg);
+  border-radius: 0.4rem;
+}
+
+article[data-hr-id] code {
+  padding: 0.1em 0.35em;
+}
+
+article[data-hr-id] pre {
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+article[data-hr-id] blockquote {
+  margin: 1.5rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--hr-border);
+  color: var(--hr-muted);
+}
+
+/* ---------- 组件（阅读态与 slide 共用一套骨架，slide 内只改字号） ---------- */
+
+[data-hr-component="kpi-bento"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+[data-hr-component="kpi-bento"] > * {
+  padding: 1rem;
+  background: var(--hr-surface);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="kpi-bento"] > * > p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] > * > p:first-child {
+  margin-bottom: 0.5rem;
+  font-size: 1.875rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--hr-accent);
+}
+
+[data-hr-component="callout-insight"] {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border-left: 3px solid var(--hr-accent);
+  background: var(--hr-accent-soft);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="callout-warning"] {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border-left: 3px solid var(--hr-warning);
+  background: rgba(255, 107, 94, 0.12);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="callout-insight"] > p,
+[data-hr-component="callout-warning"] > p {
+  margin: 0;
+}
+
+[data-hr-component="split-compare"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+[data-hr-component="split-compare"] > * {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--hr-surface);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="split-compare"] > * > p:first-child {
+  margin-top: 0;
+}
+
+/* 备注位：演示态隐藏、纸面隐藏，只在阅读态出现的"讲给自己听"的部分。 */
+[data-hr-component="deep-dive"] {
+  margin: 1.5rem 0;
+  padding: 0.5rem 1rem;
+  border: 1px dashed var(--hr-border);
+  border-radius: var(--hr-radius);
+  font-size: 0.9375rem;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="deep-dive"] > summary {
+  cursor: pointer;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="deep-dive"] > summary::before {
+  content: "备注";
+  display: inline-block;
+  margin-right: 0.5em;
+  padding: 0 0.45em;
+  border: 1px solid var(--hr-border);
+  border-radius: 1em;
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  vertical-align: 0.1em;
+}
+
+[data-hr-component="deep-dive"][open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+[data-hr-component="step-timeline"] {
+  margin: 1.5rem 0;
+  padding-left: 1.5rem;
+  border-left: 1px solid var(--hr-border);
+  counter-reset: hr-step;
+}
+
+[data-hr-component="step-timeline"] > li {
+  position: relative;
+  counter-increment: hr-step;
+  list-style: none;
+  margin-bottom: 1rem;
+}
+
+[data-hr-component="step-timeline"] > li::before {
+  content: counter(hr-step);
+  position: absolute;
+  left: calc(-1.5rem - 0.75rem);
+  top: 0.3rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--hr-bg);
+  border: 1px solid var(--hr-accent);
+  color: var(--hr-accent);
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+[data-hr-component="step-timeline"] > li > p:first-child {
+  margin-bottom: 0;
+}
+
+[data-hr-component="diagram-stage"] {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+  background: var(--hr-surface);
+  overflow-x: auto;
+}
+
+[data-hr-component="diagram-stage"] img,
+[data-hr-component="diagram-stage"] svg,
+[data-hr-component="diagram-stage"] video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+[data-hr-component="diagram-stage"] audio {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+[data-hr-component="diagram-stage"] figcaption {
+  font-size: 0.8125rem;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="media-card"] {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+  background: var(--hr-surface);
+}
+
+[data-hr-component="media-card"] > audio {
+  display: block;
+  width: 100%;
+}
+
+[data-hr-component="media-card"] > video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="media-card"] > figcaption {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="media-card"] > details {
+  margin-top: 0.75rem;
+  font-size: 0.9375rem;
+}
+
+[data-hr-component="media-card"] > details > summary {
+  cursor: pointer;
+  color: var(--hr-muted);
+}
+
+/* ---------- slides 阅读态：16:9 版心、滚动吸附翻页 ---------- */
+
+/* --du 是版心单位：16du 恒等于视口宽、9du 恒等于视口高（取小者），
+   页内尺寸全用它写，视口变化时整页等比缩放。 */
+article[data-hr-kind="slides"] {
+  --du: min(calc(100vw / 16), calc(100vh / 9));
+  max-width: none;
+  padding: calc(0.3 * var(--du)) 0;
+  counter-reset: hr-deck-page;
+}
+
+html:has(article[data-hr-kind="slides"]) {
+  scroll-snap-type: y mandatory;
+}
+
+article[data-hr-kind="slides"] > h1,
+article[data-hr-kind="slides"] > section {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: calc(16 * var(--du));
+  height: calc(9 * var(--du));
+  margin: 0 auto calc(0.3 * var(--du));
+  padding: calc(0.55 * var(--du)) calc(0.8 * var(--du));
+  overflow: hidden;
+  scroll-snap-align: center;
+  font-size: calc(0.34 * var(--du));
+  line-height: 1.5;
+  background: linear-gradient(155deg, var(--hr-surface), #0d1119 65%);
+  border: 1px solid var(--hr-border);
+  border-radius: calc(0.22 * var(--du));
+  box-shadow: 0 calc(0.3 * var(--du)) calc(0.9 * var(--du)) rgba(0, 0, 0, 0.45);
+}
+
+article[data-hr-kind="slides"] > section {
+  counter-increment: hr-deck-page;
+}
+
+article[data-hr-kind="slides"] > section::after {
+  content: counter(hr-deck-page);
+  position: absolute;
+  right: calc(0.8 * var(--du));
+  bottom: calc(0.45 * var(--du));
+  font-size: calc(0.22 * var(--du));
+  color: var(--hr-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 标题页：h1 本身是一页，居中放大 + 底部 accent 条。 */
+article[data-hr-id][data-hr-kind="slides"] > h1 {
+  margin: 0 auto calc(0.3 * var(--du));
+  align-items: center;
+  text-align: center;
+  font-size: calc(1.15 * var(--du));
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+article[data-hr-kind="slides"] > h1::after {
+  content: "";
+  width: 1.4em;
+  height: 0.07em;
+  margin-top: 0.45em;
+  border-radius: 1em;
+  background: linear-gradient(90deg, var(--hr-accent), var(--hr-teal));
+}
+
+article[data-hr-kind="slides"] > section > h2 {
+  margin: 0 0 0.5em;
+  padding-bottom: 0;
+  border-bottom: 0;
+  font-size: 1.7em;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+article[data-hr-kind="slides"] > section > h2::after {
+  content: "";
+  display: block;
+  width: 1.6em;
+  height: 0.1em;
+  margin-top: 0.3em;
+  border-radius: 1em;
+  background: var(--hr-accent);
+}
+
+/* slide 内的组件只改相对字号，结构复用上面同一套骨架。 */
+article[data-hr-kind="slides"] [data-hr-component="kpi-bento"] > * > p:first-child {
+  font-size: 2.4em;
+}
+
+article[data-hr-kind="slides"] [data-hr-component="step-timeline"] > li::before {
+  width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  font-size: 0.7em;
+  left: calc(-1.5rem - 0.7em);
+}
+
+/* ---------- 演示态：页状态与逐条出现 ---------- */
+
+/* 带状态的页脱离文档流、全屏居中叠放；状态值由阅读器维护。 */
+article[data-hr-kind="slides"] > h1[data-hr-slide-state],
+article[data-hr-kind="slides"] > section[data-hr-slide-state] {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+}
+
+article[data-hr-kind="slides"] > [data-hr-slide-state="past"],
+article[data-hr-kind="slides"] > [data-hr-slide-state="future"] {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+article[data-hr-kind="slides"] > [data-hr-slide-state="past"] {
+  transform: translateX(-5%) scale(0.94);
+}
+
+article[data-hr-kind="slides"] > [data-hr-slide-state="future"] {
+  transform: translateX(5%) scale(0.94);
+}
+
+article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
+  z-index: 1;
+}
+
+/* 演示态兜底：没被标记状态的页一律藏住，宁缺不叠。 */
+[data-hr-present] article[data-hr-kind="slides"] > h1:not([data-hr-slide-state]),
+[data-hr-present] article[data-hr-kind="slides"] > section:not([data-hr-slide-state]) {
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* deep-dive 是讲者备注：演示与投影都不该出现。 */
+[data-hr-present] [data-hr-component="deep-dive"],
+[data-hr-slide-state] [data-hr-component="deep-dive"] {
+  display: none;
+}
+
+/* 逐条出现：hidden 占位不撤（版面不跳），只是不可见。 */
+[data-hr-present] [data-hr-step-state="hidden"],
+[data-hr-slide-state] [data-hr-step-state="hidden"] {
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(0.45em);
+}
+
+/* ---------- 动画：全部只挂在 no-preference 下；reduced-motion 走上面的静态态 ---------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* 翻页：离场页向反方向退并缩小，进场页从同侧漂入。visibility 延迟到动画结束才生效，
+     反向（入场）用零延迟版本，两条成对才有"漂出去又漂进来"。 */
+  article[data-hr-kind="slides"] > [data-hr-slide-state] {
+    transition:
+      opacity 0.55s cubic-bezier(0.2, 0.65, 0.2, 1),
+      transform 0.55s cubic-bezier(0.2, 0.65, 0.2, 1),
+      visibility 0s linear 0.55s;
+  }
+
+  article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
+    transition:
+      opacity 0.55s cubic-bezier(0.2, 0.65, 0.2, 1),
+      transform 0.55s cubic-bezier(0.2, 0.65, 0.2, 1),
+      visibility 0s;
+  }
+
+  [data-hr-step-state] {
+    transition:
+      opacity 0.4s ease,
+      transform 0.4s ease,
+      visibility 0s linear 0.4s;
+  }
+
+  [data-hr-step-state="shown"] {
+    transition:
+      opacity 0.4s ease,
+      transform 0.4s ease,
+      visibility 0s;
+  }
+
+  /* 阅读态入场：元素随 slide 进入视口错落浮起；滚动驱动的纯 CSS 动画，
+     不支持的引擎会在加载时一次播完，仍是完整静止稿。 */
+  article[data-hr-kind="slides"] > section:not([data-hr-slide-state]) > * {
+    animation: hr-noir-rise 0.7s cubic-bezier(0.2, 0.7, 0.25, 1) both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 45%;
+  }
+
+  article[data-hr-kind="slides"] > section:not([data-hr-slide-state]) > *:nth-child(2) {
+    animation-range: entry 5% entry 55%;
+  }
+
+  /* 滚动进度条：只在 slides 阅读态出现；演示态下页没有滚动，:has 直接关掉它。 */
+  html:has(article[data-hr-kind="slides"]):not(:has([data-hr-slide-state])) body::before {
+    content: "";
+    position: fixed;
+    z-index: 10;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(90deg, var(--hr-accent), var(--hr-teal));
+    transform-origin: 0 50%;
+    animation: hr-noir-progress linear both;
+    animation-timeline: scroll(root);
+  }
+}
+
+@keyframes hr-noir-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1.2em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hr-noir-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ---------- 窄屏：非 slides 形态折叠成单列 ---------- */
+
+@media (max-width: 420px) {
+  .hr-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    padding: 1rem 0.75rem;
+  }
+
+  .hr-sidebar {
+    width: auto;
+  }
+}
+
+/* ---------- 打印 ---------- */
+
+/* 命名页只管 slides：全出血 16:9 横版；非 slides 文档的纸张由打印骨架决定。 */
+@page hr-deck-slide {
+  size: 13.333in 7.5in;
+  margin: 0;
+}
+
+@media print {
+  .hr-sidebar,
+  .hr-toc-toggle,
+  .hr-mode-toggle,
+  button {
+    display: none;
+  }
+
+  body::before {
+    display: none;
+  }
+
+  article[data-hr-kind="slides"] > h1,
+  article[data-hr-kind="slides"] > section {
+    page: hr-deck-slide;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    scroll-snap-align: none;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+  }
+
+  [data-hr-component="callout-insight"],
+  [data-hr-component="callout-warning"],
+  [data-hr-component="kpi-bento"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* 演示态的隐藏状态在纸面上不生效：打印稿里所有内容都该在。 */
+  [data-hr-step] {
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+  }
+
+  /* 纸面永远是日间配色（仅非 slides 文档）：slides 本身就是深色稿，强行转浅色
+     等于换了一份主题；阅读型文档则与 atelier 同口径回落到纸面。 */
+  html:not(:has(article[data-hr-kind="slides"])) {
+    --hr-bg: #ffffff;
+    --hr-surface: #f7f8fa;
+    --hr-fg: #17191f;
+    --hr-muted: #5a6172;
+    --hr-accent: #9a6a00;
+    --hr-accent-soft: rgba(154, 106, 0, 0.1);
+    --hr-warning: #b3352a;
+    --hr-border: #c9cdd6;
+    --hr-code-bg: #f3f4f7;
+  }
+}

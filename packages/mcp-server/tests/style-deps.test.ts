@@ -33,8 +33,8 @@ const errorOf = (run: () => unknown): unknown => {
 describe("styleDepsOf", () => {
   it("should point the builtin theme root at a directory that holds every preset's theme.css", () => {
     const { stylesRoot } = styleDepsOf("/workspace");
-    // 仓库只发一份主题（`styles/atelier-editorial/theme.css`），三个预设都 `inheritsVisual: "atelier-editorial"`；
-    // 主题根指对了，三个 id 的换肤就都成立——错的是那个根，不是缺文件。
+    // 预设的 `inheritsVisual` 去重后每个 visual 都得有 `styles/<id>/theme.css`；
+    // 主题根指对了，全部 id 的换肤就都成立——错的是那个根，不是缺文件。
     const missing = BUILTIN_STYLES.map((style) => style.inheritsVisual).filter(
       (visualId) => !existsSync(join(stylesRoot, visualId, "theme.css")),
     );

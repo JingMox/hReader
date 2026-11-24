@@ -37,9 +37,10 @@ export const styleEnv = (seed: Readonly<Record<string, string>>): StyleEnv => {
 
 export const THEME_CSS = ":root{--hr-bg:#faf8f5}\nbody{color:#1b1a17}\n";
 
-/** 内置主题的最小种子：所有预设都 `inheritsVisual: atelier-editorial`。 */
+/** 内置主题的最小种子：`inheritsVisual` 去重后每个 visual 一份 theme.css（deck-noir 独立成目录）。 */
 export const builtinSeed = (css: string = THEME_CSS): Record<string, string> => ({
   [`${STYLES}/atelier-editorial/theme.css`]: css,
+  [`${STYLES}/deck-noir/theme.css`]: css,
 });
 
 export const USER_STYLE = (id: string): string => `${HOME}/.hreader/styles/${id}/style.yaml`;

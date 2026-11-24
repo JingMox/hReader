@@ -133,6 +133,49 @@ describe("pdfCommand · 人读行与渲染入参", () => {
       expect(seen[0]?.html).toContain("标题");
     });
   });
+
+  it("普通文档的 preferCSSPageSize 是 false（页框听 --page-size）", async () => {
+    await withDocOf(async (dir) => {
+      const seen: boolean[] = [];
+      await pdfCommand(
+        inputOf(dir, {
+          render: (input) => {
+            seen.push(input.preferCSSPageSize);
+            return Promise.resolve({ bytes: Buffer.from(pdfOf(1)) });
+          },
+        }),
+      );
+      expect(seen).toEqual([false]);
+    });
+  });
+});
+
+describe("pdfCommand · slides 打印稿", () => {
+  const SLIDES_DOC =
+    "<html><body>" +
+    '<article data-hr-kind="slides">' +
+    "<h1>封面页</h1>" +
+    "<section><h2>第二页</h2><p>要点</p></section>" +
+    "</article>" +
+    "</body></html>";
+
+  it("data-hr-kind=slides 时 preferCSSPageSize=true：页框听产物里的 @page", async () => {
+    await withRealDir(async (dir) => {
+      writeFileSync(join(dir, "doc.html"), SLIDES_DOC);
+      const seen: { readonly flag: boolean; readonly html: string }[] = [];
+      await pdfCommand(
+        inputOf(dir, {
+          render: (input) => {
+            seen.push({ flag: input.preferCSSPageSize, html: input.html });
+            return Promise.resolve({ bytes: Buffer.from(pdfOf(2)) });
+          },
+        }),
+      );
+      expect(seen[0]?.flag).toBe(true);
+      // 横版页框在打印骨架里写死，不靠 --page-size 也不靠主题。
+      expect(seen[0]?.html).toContain("size: 13.333in 7.5in;");
+    });
+  });
 });
 
 describe("pdfCommand · 落盘闸门（已存在/--force）", () => {

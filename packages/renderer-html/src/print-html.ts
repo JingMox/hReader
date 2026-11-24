@@ -6,6 +6,7 @@ import {
   HrError,
   isCountedImage,
   isDroppedNode,
+  KIND_ATTRIBUTE,
   parseHtml,
   sanitizedAttributesOf,
   serializeHtml,
@@ -16,7 +17,7 @@ import { attributeStringOf, utf8LengthOf } from "./markup";
 import { numberingOf } from "./numbering";
 import type { Numbering } from "./numbering";
 import type { PaperSize } from "./print-css";
-import { printSheetOf } from "./print-page";
+import { printSheetOf, slidesSheetOf } from "./print-page";
 import type { TocItem } from "./print-page";
 
 type Attribute = HtmlElementNode["attrs"][number];
@@ -56,6 +57,11 @@ export interface PrintHtmlResult {
    * 不计数——它们不是"图片"，算进来会让那句"已移除 N 个外部图片"说谎。
    */
   readonly droppedImages: number;
+  /**
+   * `true` = 产物是 slides 打印稿（无封面/目录、页框由 CSS `@page` 声明）。
+   * 渲染方据此决定听 CSS 的还是听命令行纸张参数的（`hr pdf` 的 `preferCSSPageSize`）。
+   */
+  readonly slides: boolean;
 }
 
 const DOC_ID_ATTRIBUTE = "data-hr-id";
@@ -256,7 +262,9 @@ export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
   if (article === undefined) {
     throw new HrError("no_article", "源文档里没有 <article>，无法导出打印稿");
   }
-  const numbering = numberingOf(input.outline);
+  const slides = attributeOf(article, KIND_ATTRIBUTE) === "slides";
+  // slides 不编号也不加 chapter 类：页标题不该带"1.2"前缀，目录页本来就没有。
+  const numbering = slides ? numberingOf([]) : numberingOf(input.outline);
   const usedIds = new Set<string>();
   reservedIdsOf(article, numbering, usedIds);
   // 条目与编号同源（都来自 outline 的顺序），故锚也只按条目分配一次。
@@ -272,7 +280,7 @@ export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
     nav: anchorOf("hr-toc", usedIds),
     title: anchorOf("hr-toc-title", usedIds),
   };
-  const html = printSheetOf({
+  const sheet = {
     paper: input.paper,
     title,
     docId: input.docId,
@@ -283,8 +291,9 @@ export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
     tocIds,
     articleOpen: `<article${attributeStringOf(sanitizedAttributesOf(article, SANITIZE_PRESET))}>`,
     body,
-  });
-  return { html, bytes: utf8LengthOf(html), droppedImages: state.droppedImages };
+  };
+  const html = slides ? slidesSheetOf(sheet) : printSheetOf(sheet);
+  return { html, bytes: utf8LengthOf(html), droppedImages: state.droppedImages, slides };
 };
 
 export const printHtmlOf = (input: PrintHtmlInput): string => printHtmlReportOf(input).html;
