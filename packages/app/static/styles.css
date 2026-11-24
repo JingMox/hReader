@@ -174,6 +174,72 @@ body {
   transition: background 2000ms ease-out;
 }
 
+/* 演示模式：JS 只翻 data 属性（`data-hr-present` / `data-hr-slide-state` / `data-hr-step-state`），
+   出现动画全归主题；这层只保底三件事——其它栏不显示、非当前页不显示、当前页撑满视口。 */
+#hr-root[data-hr-present] {
+  display: block;
+  height: 100vh;
+  padding: 0;
+}
+
+#hr-root[data-hr-present] #hr-library,
+#hr-root[data-hr-present] #hr-notes,
+#hr-root[data-hr-present] #hr-statusbar,
+#hr-root[data-hr-present] #hr-controls {
+  display: none;
+}
+
+#hr-root[data-hr-present] #hr-canvas {
+  height: 100vh;
+  overflow: hidden;
+}
+
+#hr-root[data-hr-present] #hr-doc {
+  max-width: none;
+  margin: 0;
+}
+
+#hr-root[data-hr-present] [data-hr-slide-state="past"],
+#hr-root[data-hr-present] [data-hr-slide-state="future"] {
+  display: none;
+}
+
+#hr-root[data-hr-present] [data-hr-slide-state="current"] {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 8vh 8vw;
+}
+
+#hr-root[data-hr-present] [data-hr-step-state="future"] {
+  visibility: hidden;
+}
+
+/* 逐字稿/深挖组件是演讲者备注，演示态不给观众看。 */
+#hr-root[data-hr-present] [data-hr-component="deep-dive"] {
+  display: none;
+}
+
+#hr-present {
+  display: none;
+}
+
+#hr-root[data-hr-present] #hr-present {
+  display: flex;
+  position: fixed;
+  right: var(--hr-gap);
+  bottom: var(--hr-gap);
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #hr-root[data-hr-present] [data-hr-slide-state],
+  #hr-root[data-hr-present] [data-hr-step-state] {
+    transition: none;
+  }
+}
+
 /* 1100px 折点：两栏（书库折叠成抽屉），旁注落到正文下方。 */
 @media (max-width: 1100px) {
   #hr-root {

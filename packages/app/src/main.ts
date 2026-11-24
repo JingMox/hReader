@@ -22,11 +22,21 @@ export {
 } from "./wiring.ts";
 import { createStore } from "./store.ts";
 import { createStyleSwitch } from "./style-switch.ts";
+import type { PresentShell } from "./widgets/present.ts";
 
 /** 浏览器全局的最小声明（本仓库 tsconfig 不带 DOM lib）：只写我们真正用到的成员。 */
 declare const document: DocumentLike;
 declare const window: {
-  readonly location: { readonly href: string };
+  readonly location: {
+    readonly href: string;
+    readonly hash?: string;
+    readonly pathname?: string;
+    readonly search?: string;
+  };
+  /** `replaceState` 写 hash 不堆历史记录；缺省表示环境不支持（hash 退化为只读）。 */
+  readonly history?: {
+    readonly replaceState: (data: unknown, unused: string, url: string) => void;
+  };
   /** 划词：只读 `anchorNode/anchorOffset/focusNode/focusOffset` 四项。 */
   readonly getSelection?: () => {
     readonly anchorNode: {
@@ -187,7 +197,50 @@ export interface BootInput {
   readonly documentHtml: string;
   readonly io: AppIo;
   readonly host: Host;
+  /** 演示模式的浏览器环境；缺省用真 `document`/`window`（`@internal`：测试注入替身）。 */
+  readonly present?: PresentShell;
 }
+
+/** Fullscreen API 任一缺席就整体退化（演示模式铺满视口的 CSS 兜底一直在）。 */
+const fullscreenOf = (): PresentShell["fullscreen"] => {
+  if (
+    document.documentElement?.requestFullscreen === undefined ||
+    document.exitFullscreen === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    // 进全屏会被浏览器拒（无用户手势/权限），拒绝是正常路径，吞掉即可——版式兜底在 CSS。
+    enter: () => {
+      void document.documentElement?.requestFullscreen?.().catch(() => undefined);
+    },
+    exit: () => {
+      void document.exitFullscreen?.().catch(() => undefined);
+    },
+  };
+};
+
+const hashOfWindow = (): PresentShell["hash"] => ({
+  read: () => (window.location.hash ?? "").replace(/^#/, ""),
+  write: (hash) => {
+    const base = `${window.location.pathname ?? ""}${window.location.search ?? ""}`;
+    window.history?.replaceState(null, "", hash === "" ? base : `${base}#${hash}`);
+  },
+});
+
+/** 演示模式的环境面：全屏三段 + hash 读写（`@internal`：测试可直接换掉全局再调）。 */
+export const presentShellOf = (): PresentShell => ({
+  fullscreen: fullscreenOf(),
+  isFullscreen: () =>
+    document.fullscreenElement !== undefined && document.fullscreenElement !== null,
+  onFullscreenChange: (handler) => {
+    document.addEventListener?.("fullscreenchange", handler);
+    return () => {
+      document.removeEventListener?.("fullscreenchange", handler);
+    };
+  },
+  hash: hashOfWindow(),
+});
 
 /** 块的纯文本（`c` 键的整块锚点、diff 的 after）；标签只在这里被剥一次。 */
 const bindOf =
@@ -197,7 +250,7 @@ const bindOf =
     await io.json(path, guard);
 
 export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
-  const { docId, themes, documentHtml, io, host } = input;
+  const { docId, themes, documentHtml, io, host, present = presentShellOf() } = input;
   const encoded = encodeURIComponent(docId);
   const bind = bindOf(io);
   const store = createStore(initialState(docId, themes.default));
@@ -219,6 +272,7 @@ export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
     fetchModel: bind(`/api/doc/${encoded}/model`, isModelResponse),
     fetchOutline: bind(`/api/doc/${encoded}/outline`, isOutlineResponse),
     keySource: keySourceOf,
+    present,
     logger: errorLogger,
     notes: {
       io,

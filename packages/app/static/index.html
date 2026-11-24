@@ -21,9 +21,15 @@
           <label id="hr-theme-label" for="hr-theme-select"></label>
           <select id="hr-theme-select"></select>
           <span id="hr-focus-label"></span>
+          <!-- 与 `#hr-note-btn` 同一兜底：无 JS 首帧先藏着，widget 按文档形态摘/挂 `hidden`。 -->
+          <button id="hr-present-btn" type="button" hidden></button>
         </div>
         <article id="hr-doc" class="doc"></article>
       </main>
+      <div id="hr-present">
+        <span id="hr-present-pager" role="status"></span>
+        <button id="hr-present-exit" type="button"></button>
+      </div>
       <aside id="hr-notes" class="sidenotes">
         <h3 id="hr-notes-title"></h3>
         <div id="hr-notes-actions" class="notes-actions">

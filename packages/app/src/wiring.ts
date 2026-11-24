@@ -21,6 +21,8 @@ export interface KeyboardLike {
   readonly altKey?: boolean;
   readonly shiftKey?: boolean;
   readonly target?: { readonly tagName?: string; readonly isContentEditable?: boolean } | null;
+  /** 原型链方法，必须包一层转发（`this` 丢不得）。 */
+  readonly preventDefault?: () => void;
 }
 
 /** 浏览器全局的最小声明（本仓库 tsconfig 不带 DOM lib）：本文件的键盘源只用到这两个成员。 */
@@ -39,6 +41,9 @@ export const keySourceOf = (handler: (event: KeyLike) => void): (() => void) => 
       altKey: event.altKey === true,
       shiftKey: event.shiftKey === true,
       target: event.target ?? null,
+      preventDefault: () => {
+        event.preventDefault?.();
+      },
     });
   };
   window.addEventListener("keydown", listener);

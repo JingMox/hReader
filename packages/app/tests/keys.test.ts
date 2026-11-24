@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import { intentOf, type KeyLike } from "../src/keys.ts";
+import type { ReaderState } from "../src/state.ts";
 import { stateOf } from "./support/fake-host.ts";
 
 const key = (name: string, over: Partial<KeyLike> = {}): KeyLike => ({ key: name, ...over });
@@ -31,6 +32,48 @@ describe("intentOf · 单键命令", () => {
 
   it("should ignore keys it does not own", () => {
     expect(intentOf(key("x"), stateOf())).toBeUndefined();
+  });
+
+  it.each(["p", "F5"])("should enter present mode on %s", (name) => {
+    expect(intentOf(key(name), stateOf())).toEqual({ kind: "presentEntered" });
+  });
+});
+
+describe("intentOf · 演示态按键", () => {
+  const presenting = (over: Partial<ReaderState> = {}) =>
+    stateOf({ present: { active: true, page: 1 }, pages: ["a", "b", "c"], ...over });
+
+  it.each([
+    ["ArrowRight", { kind: "presentAdvanced" }],
+    ["ArrowDown", { kind: "presentAdvanced" }],
+    [" ", { kind: "presentAdvanced" }],
+    ["PageDown", { kind: "presentAdvanced" }],
+    ["ArrowLeft", { kind: "presentBack" }],
+    ["ArrowUp", { kind: "presentBack" }],
+    ["PageUp", { kind: "presentBack" }],
+    ["Home", { kind: "presentMoved", page: 0 }],
+    ["End", { kind: "presentMoved", page: 2 }],
+    ["Escape", { kind: "presentExited" }],
+    ["p", { kind: "presentExited" }],
+    ["F5", { kind: "presentExited" }],
+  ])("should map %s to its intent", (name, expected) => {
+    expect(intentOf(key(name), presenting())).toEqual(expected);
+  });
+
+  it.each(["j", "k", "h", "c", "w", "/", "x"])(
+    "should swallow the reading-mode key %s while presenting",
+    (name) => {
+      expect(intentOf(key(name), presenting())).toBeUndefined();
+    },
+  );
+
+  it("should still let modified keys fall through while presenting", () => {
+    expect(intentOf(key("ArrowRight", { metaKey: true }), presenting())).toBeUndefined();
+  });
+
+  it("should ignore present keys inside editable targets", () => {
+    const target = { tagName: "INPUT" };
+    expect(intentOf(key("ArrowRight", { target }), presenting())).toBeUndefined();
   });
 });
 

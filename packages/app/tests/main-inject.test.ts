@@ -57,6 +57,7 @@ const recordingHostOf = (): RecordedHost => {
       return () => undefined;
     },
     scrollTo: noop,
+    all: () => [],
     destroy: noop,
   };
   return {

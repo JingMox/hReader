@@ -55,6 +55,8 @@ export interface Host {
     handler: (target: TargetLike) => void,
   ) => () => void;
   readonly scrollTo: (selector: string) => void;
+  /** 文档序取全部命中元素（演示模式的步进元素枚举）；**必选**，缺实现就是步进永远不出现。 */
+  readonly all: (selector: string) => readonly ElementLike[];
   /** 锚点是否存在：模板缺锚点必须**可见地失败**，不能静默跳过。可选：假 host 可省。 */
   readonly has?: (selector: string) => boolean;
   readonly destroy: () => void;
@@ -64,7 +66,15 @@ export interface Host {
 export interface DocumentLike {
   readonly body: { readonly getAttribute: (name: string) => string | null };
   readonly querySelector: (selector: string) => ElementLike | null;
+  /** `Host.all` 的唯一来源；缺省表示环境不支持枚举（`all` 返回空）。 */
+  readonly querySelectorAll?: (selector: string) => readonly ElementLike[];
   readonly createElement: (tag: string) => ElementLike;
+  /** Fullscreen API 三段（进入 / 退出 / 当前态）：任一缺席即整体退化，演示模式落回"铺满视口"。 */
+  readonly documentElement?: { readonly requestFullscreen?: () => Promise<void> };
+  readonly exitFullscreen?: () => Promise<void>;
+  readonly fullscreenElement?: unknown;
+  readonly addEventListener?: (type: string, handler: () => void) => void;
+  readonly removeEventListener?: (type: string, handler: () => void) => void;
   /** `Range` 的最小声明（块内字符偏移的度量）；缺省表示不量偏移。 */
   readonly createRange?: () => {
     readonly selectNodeContents: (node: unknown) => void;
@@ -112,9 +122,18 @@ const paint = (root: DocumentLike, spec: NodeSpec): ElementLike => {
   return element;
 };
 
+/** 主题 CSS 的注释里会出现字面 `<article …>`（如 slides 分页注释）：先把这些非正文区段
+ *  抹成等长空白（保住索引）再定位文章起点，否则截出来的"正文"会从 CSS 注释中间开始，
+ *  注释尾巴和后面的规则文本会被解析成游离元素、直接渲染在正文顶部。 */
 const stripHeadOf = (markup: string): string => {
-  const match = /<article\b[\s\S]*<\/article>/iu.exec(markup);
-  return match === null ? markup : match[0];
+  const masked = markup.replace(
+    /<style\b[\s\S]*?<\/style>|<script\b[\s\S]*?<\/script>|<!--[\s\S]*?-->/giu,
+    (region) => " ".repeat(region.length),
+  );
+  const start = masked.indexOf("<article");
+  if (start === -1) return markup;
+  const end = markup.lastIndexOf("</article>");
+  return start <= end ? markup.slice(start, end + "</article>".length) : markup;
 };
 
 const syncHeadTheme = (root: DocumentLike, markup: string): void => {
@@ -212,7 +231,7 @@ const paintOps = (
 /** 只碰文本/属性/类名的那些。 */
 const textOps = (
   root: DocumentLike,
-): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "has"> => ({
+): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "all" | "has"> => ({
   text: (selector, value) => {
     const element = found(root, selector);
     if (element === undefined) return;
@@ -237,6 +256,7 @@ const textOps = (
   scrollTo: (selector) => {
     found(root, selector)?.scrollIntoView?.({ block: "start" });
   },
+  all: (selector) => root.querySelectorAll?.(selector) ?? [],
   has: (selector) => found(root, selector) !== undefined,
 });
 

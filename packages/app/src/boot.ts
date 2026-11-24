@@ -18,11 +18,14 @@ import { renderNotes, wireNotes, type NotesDeps } from "./notes-wire.ts";
 import { missingAnchorsOf, reportMissingAnchors } from "./anchors.ts";
 import type { RawSelection } from "./widgets/selection.ts";
 import { COPY } from "./widgets/copy.ts";
+import { mountPresent, type PresentShell, type PresentWidget } from "./widgets/present.ts";
 import { syncView } from "./wiring.ts";
 
 export interface ModelResponse {
   readonly revision: string;
-  readonly model: { readonly children?: readonly { readonly id?: string }[] };
+  readonly model: {
+    readonly children?: readonly { readonly id?: string; readonly tag?: string }[];
+  };
 }
 
 export interface OutlineResponse {
@@ -50,6 +53,8 @@ export interface BootDeps {
   readonly keySource: (handler: (event: KeyLike) => void) => () => void;
   /** 批注与 diff 的接线；缺省时批注相关意图全部无副作用。 */
   readonly notes?: NotesDeps;
+  /** 演示模式的浏览器环境（全屏 / hash）；缺省 = 这两项副作用退化为 no-op。 */
+  readonly present?: PresentShell;
   /** 诊断出口（缺锚点等"必须可见地失败"的消息）；`main.ts` 接 `console.error`。 */
   readonly logger?: (message: string) => void;
 }
@@ -65,6 +70,19 @@ const ROOT = "#hr-root";
 const blocksOfModel = (model: ModelResponse): readonly string[] =>
   (model.model.children ?? []).flatMap((node) => (node.id === undefined ? [] : [node.id]));
 
+/**
+ * 演示页 = 顶层 `h1`（封面）+ 顶层 `section`（一页一节），保持文档序。
+ * 一节都没有时退化为全部顶层块——外来文档没有 section，逐块分页仍讲得完。
+ */
+const pagesOfModel = (model: ModelResponse): readonly string[] => {
+  const children = model.model.children ?? [];
+  const hasSection = children.some((node) => node.tag === "section");
+  if (!hasSection) return blocksOfModel(model);
+  return children.flatMap((node) =>
+    node.id !== undefined && (node.tag === "h1" || node.tag === "section") ? [node.id] : [],
+  );
+};
+
 /** 一次只跑一个刷新，后到的排队（同一个文档的 patch 会连发多条事件）。 */
 const createPump = (): ((task: () => Promise<void>) => void) => {
   let tail: Promise<void> = Promise.resolve();
@@ -73,20 +91,36 @@ const createPump = (): ((task: () => Promise<void>) => void) => {
   };
 };
 
-const mountAll = (deps: BootDeps, forward: (intent: ReaderIntent) => void): readonly Widget[] => {
+interface Mounted {
+  readonly widgets: readonly Widget[];
+  /** 演示 widget 单独拎出来：`before` 要在 dispatch 前拦 `presentAdvanced`（放步进不翻页）。 */
+  readonly present: PresentWidget;
+}
+
+const mountAll = (deps: BootDeps, forward: (intent: ReaderIntent) => void): Mounted => {
   const state = deps.store.get();
-  return [
-    mountLibrary(deps.host, ROOT, state, forward),
-    mountCanvas({
-      host: deps.host,
-      parent: ROOT,
-      state,
-      input: { html: deps.documentHtml, themes: deps.themes },
-      onIntent: forward,
-    }),
-    mountSidenotes(deps.host, ROOT),
-    mountStatusbar(deps.host, ROOT),
-  ];
+  const present = mountPresent({
+    host: deps.host,
+    parent: ROOT,
+    shell: deps.present ?? {},
+    onIntent: forward,
+  });
+  return {
+    widgets: [
+      mountLibrary(deps.host, ROOT, state, forward),
+      mountCanvas({
+        host: deps.host,
+        parent: ROOT,
+        state,
+        input: { html: deps.documentHtml, themes: deps.themes },
+        onIntent: forward,
+      }),
+      mountSidenotes(deps.host, ROOT),
+      mountStatusbar(deps.host, ROOT),
+      present,
+    ],
+    present,
+  };
 };
 
 /** 主题选择落地的唯一出口（`@internal` 导出：测试可 `await settleTheme(...)`，不必黑盒等泵）。 */
@@ -122,6 +156,7 @@ const dispatchLoaded = (
     outline: outline.outline.nodes,
     revision: model.revision,
     html,
+    pages: pagesOfModel(model),
   });
   return blocks;
 };
@@ -153,7 +188,10 @@ const keyHandlerOf =
   (store: Store, dispatchIntent: (intent: ReaderIntent) => void) =>
   (raw: KeyLike): void => {
     const intent = intentOf(raw, store.get());
-    if (intent !== undefined) dispatchIntent(intent);
+    if (intent === undefined) return;
+    // 事件已消费就要拦默认行为：空格/方向键会滚动、F5 会刷新、`/` 会触发快速查找。
+    raw.preventDefault?.();
+    dispatchIntent(intent);
   };
 
 const applyFirstTheme = (deps: BootDeps, pump: (task: () => Promise<void>) => void): void => {
@@ -263,9 +301,12 @@ export const boot = (deps: BootDeps): Booted => {
   const pump = createPump();
   const selectTheme = themeSwitcher(deps, pump);
   const wiredRef: { current: ReturnType<typeof wireNotes> | undefined } = { current: undefined };
+  const presentRef: { current: PresentWidget | undefined } = { current: undefined };
   function dispatchIntent(intent: ReaderIntent): void {
-    // 守卫必须在 dispatch **之前**求值：`w` 的可用性取决于"此刻"面板是否开着。
+    // 守卫必须在 dispatch **之前**求值：`w` 的可用性取决于"此刻"面板是否开着，
+    // `presentAdvanced` 要不要翻页取决于"此刻"页内还有没有没放出的步进。
     if (wiredRef.current !== undefined && !wiredRef.current.before(intent)) return;
+    if (presentRef.current !== undefined && !presentRef.current.before(intent)) return;
     store.dispatch(intent);
     if (intent.kind === "themeSelected") selectTheme(intent);
     // `/` 只给可见提示：搜索框模板里是 `disabled`（不聚焦死控件）；同一句文案也写在它的 `title` 上。
@@ -276,14 +317,15 @@ export const boot = (deps: BootDeps): Booted => {
     await wiredRef.current?.load();
   });
   const scope: FlowScope = { deps, store, pump, dispatch: dispatchIntent, reload };
-  const widgets = mountAll(deps, dispatchIntent);
+  const mounted = mountAll(deps, dispatchIntent);
+  presentRef.current = mounted.present;
   const wired = wiredOf(scope);
   wiredRef.current = wired;
   host.attr(`${ROOT} #hr-search`, "title", COPY.searchDeferred);
   if (host.has !== undefined) {
     reportMissingAnchors(host, deps.logger ?? (() => undefined), missingAnchorsOf(host));
   }
-  const unsubscribe = subscribeOf(deps, widgets);
+  const unsubscribe = subscribeOf(deps, mounted.widgets);
   if (wired !== undefined) pump(wired.load);
   const stopFlows = startFlows(scope);
   return bootedOf(wired, () => {
