@@ -34,12 +34,12 @@ export interface BootDeps {
   readonly store: Store;
   /** 由 boot 传入 handler 后返回连接对象（`main.ts` 负责把真 `EventSource` 塞进去）。 */
   readonly openSse: (handlers: SseHandlers) => Sse;
-  /** 闪烁的计时器（AC4.3）；缺省用真 `setTimeout`（`main.ts` 不传即真实现）。 */
+  /** 闪烁的计时器；缺省用真 `setTimeout`（`main.ts` 不传即真实现）。 */
   readonly schedule?: Schedule;
   readonly style: StyleSwitch;
   /** 文档正文 HTML（`GET /s/<docId>`）。 */
   readonly documentHtml: string;
-  /** 服务器给的清单与默认名（裁定 #2：客户端不硬编码主题）。 */
+  /** 服务器给的清单与默认名：客户端不硬编码主题名。 */
   readonly themes: readonly string[];
   /** 服务器给的默认名；缺省取清单第一项（测试可省略，源码里没有魔法字符串）。 */
   readonly defaultTheme?: string;
@@ -48,7 +48,7 @@ export interface BootDeps {
   readonly fetchOutline: () => Promise<OutlineResponse>;
   /** 键盘事件源（真实实现是 `window`，由 `main.ts` 注入）。 */
   readonly keySource: (handler: (event: KeyLike) => void) => () => void;
-  /** M2.3：批注与 diff 的接线；缺省时批注相关意图全部无副作用（M2.2 的用例不受影响）。 */
+  /** 批注与 diff 的接线；缺省时批注相关意图全部无副作用。 */
   readonly notes?: NotesDeps;
   /** 诊断出口（缺锚点等"必须可见地失败"的消息）；`main.ts` 接 `console.error`。 */
   readonly logger?: (message: string) => void;
@@ -264,7 +264,7 @@ export const boot = (deps: BootDeps): Booted => {
   const selectTheme = themeSwitcher(deps, pump);
   const wiredRef: { current: ReturnType<typeof wireNotes> | undefined } = { current: undefined };
   function dispatchIntent(intent: ReaderIntent): void {
-    // 守卫必须在 dispatch **之前**求值：`w` 的可用性取决于"此刻"面板是否开着（P0-2 的根因）。
+    // 守卫必须在 dispatch **之前**求值：`w` 的可用性取决于"此刻"面板是否开着。
     if (wiredRef.current !== undefined && !wiredRef.current.before(intent)) return;
     store.dispatch(intent);
     if (intent.kind === "themeSelected") selectTheme(intent);

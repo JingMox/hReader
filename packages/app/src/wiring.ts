@@ -1,6 +1,6 @@
-// 这层管：M2.3 在浏览器侧的接线（state → DOM 全量同步 + 右栏批注/diff 渲染 + 两个写请求 + `keydown` 事件源适配）；
+// 这层管：浏览器侧的接线（state → DOM 全量同步 + 右栏批注/diff 渲染 + 两个写请求 + `keydown` 事件源适配）；
 // 渲染全是纯函数，IO 注入。
-// 从 `main.ts` / `boot.ts` 拆出来是为了守住 `max-lines: 300`（本仓库的硬门禁），语义没有变化。
+// 从 `main.ts` / `boot.ts` 拆出来：入口只留装配，渲染与状态同步归这里。
 
 import type { AppIo, RevisionResponse } from "./io.ts";
 import type { Host } from "./dom.ts";
@@ -50,7 +50,7 @@ export const keySourceOf = (handler: (event: KeyLike) => void): (() => void) => 
 const isRevisionResponse = (value: unknown): value is RevisionResponse =>
   typeof value === "object" && value !== null && typeof Reflect.get(value, "revision") === "string";
 
-/** 右栏批注两组：`pending` / `resolved`（AC5.2）。 */
+/** 右栏批注两组：`pending` / `resolved`。 */
 export const renderAnnotations = (
   host: Host,
   parent: string,
@@ -61,7 +61,7 @@ export const renderAnnotations = (
   host.children(`${parent} #hr-notes-resolved`, specs.resolved);
 };
 
-/** Diff 面板：只往右栏写（AC4.5），正文 DOM 一概不碰。 */
+/** Diff 面板：只往右栏写，正文 DOM 一概不碰。 */
 export const renderDiff = (host: Host, parent: string, view: DiffView): void => {
   host.children(`${parent} #hr-diff-chunks`, diffSpecsOf(view));
   host.text(`${parent} #hr-diff-status`, diffStatusOf(view));
@@ -74,7 +74,7 @@ export const renderDiff = (host: Host, parent: string, view: DiffView): void => 
 export const syncView = (view: {
   readonly host: Host;
   readonly widgets: readonly Widget[];
-  /** 缺省 = 批注层没接（M2.2 的用例）。 */
+  /** 缺省 = 批注层没接。 */
   readonly renderNotes?: (state: ReaderState) => void;
 }): ((next: ReaderState) => void) => {
   const { host, widgets, renderNotes } = view;
@@ -90,13 +90,13 @@ export const syncView = (view: {
   };
 };
 
-/** Diff 的 Revert：只发一次 undo，正文由随后的 `doc.changed` 刷回（AC4.4）。 */
+/** Diff 的 Revert：只发一次 undo，正文由随后的 `doc.changed` 刷回。 */
 export const revertOf = async (io: AppIo, docId: string): Promise<RevisionResponse> => {
   if (io.post === undefined) throw new Error("当前 IO 未实现写请求（POST）");
   return await io.post(`/api/doc/${encodeURIComponent(docId)}/undo`, {}, isRevisionResponse);
 };
 
-/** 提交批注：失败时调用方把乐观渲染的那条撤回（AC5.1）。 */
+/** 提交批注：失败时调用方把乐观渲染的那条撤回。 */
 export const submitAnnotationOf = async (
   io: AppIo,
   docId: string,
@@ -110,6 +110,6 @@ export const submitAnnotationOf = async (
   );
 };
 
-/** 划词 → intent（AC5.1）：写盘由 `annotationOps` 负责，这里只产出描述。 */
+/** 划词 → intent：写盘由 `annotationOps` 负责，这里只产出描述。 */
 export const annotationIntentOf = (selection: RawSelection): SelectionIntent =>
   selectionIntentOf(selection);

@@ -1,4 +1,4 @@
-// 这层管：UI 模板必须有的锚点清单（裁定 #1 P0-1）。
+// 这层管：UI 模板必须有的锚点清单。
 // "函数存在 ≠ 路径可达"——`boot` 挂载后逐条核对，缺一个就**可见地失败**（状态栏 + console.error），
 // 绝不允许静默跳过：模板少一个 id，整条交互链就是死码。
 
@@ -46,12 +46,12 @@ export const REQUIRED_ANCHORS: readonly string[] = [
 ];
 
 /** 只被容器语义使用的锚点：内容由子元素或服务端渲染填充，JS 不直接写它们。
- *  它们仍必须在模板中存在（R1 覆盖），但不参与"必须有写点"（R2）。
+ *  它们仍必须在模板中存在，但不参与"必须有写点"检查。
  *
  *  与 `REQUIRED_ANCHORS` 一体两面，因此和它同源（`wiring-static.test.ts` 也从这里取）。
  *
- *  `#hr-search` **不在**这里：它只是尚未接线，不是容器。它的 `disabled` 让 R3 放行，而 R2 仍盯着它
- *  （`boot` 把延期文案写进它的 `title`，是真写点）；接线那天两条规则一起松口。 */
+ *  `#hr-search` **不在**这里：它只是尚未接线，不是容器。`disabled` 让它不算交互元素，
+ *  而写点检查仍盯着它（`boot` 把延期文案写进它的 `title`，是真写点）；接线那天两条规则一起松口。 */
 export const CONTAINER_ANCHORS: readonly string[] = [
   "#hr-root",
   "#hr-library",

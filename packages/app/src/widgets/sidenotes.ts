@@ -1,4 +1,4 @@
-// 这层管：右栏（M2.2 只有占位文案，**不伪造批注数据**，AC2.5）。面板开关只切 class。
+// 这层管：右栏（首版只有占位文案，**不伪造批注数据**）。面板开关只切 class。
 
 import type { Host, NodeSpec } from "../dom.ts";
 import type { ReaderState } from "../state.ts";
@@ -17,7 +17,7 @@ export const mountSidenotes = (host: Host, parent: string): Widget => {
   return { update };
 };
 
-// ---- M2.3：批注卡（AC5.2/AC5.3） ----
+// ---- 批注卡 ----
 
 export interface AnnotationView {
   readonly id: string;
@@ -57,7 +57,7 @@ const noteChildrenOf = (annotation: AnnotationView): readonly NodeSpec[] => {
   ];
 };
 
-/** 一张卡 → NodeSpec。`note` 走 `text`（`textContent` 语义），**永不** `html`（§2-3）。 */
+/** 一张卡 → NodeSpec。`note` 走 `text`（`textContent` 语义），**永不** `html`。 */
 const cardOf = (annotation: AnnotationView): NodeSpec => ({
   tag: "li",
   attrs: {
@@ -74,7 +74,7 @@ interface SidenotesSpecs {
   readonly resolved: readonly NodeSpec[];
 }
 
-/** 两条分组（AC5.2）：顺序稳定 = 输入顺序，UI 不做重排（重排会跳卡）。 */
+/** 两条分组：顺序稳定 = 输入顺序，UI 不做重排（重排会跳卡）。 */
 export const annotationSpecsOf = (view: readonly AnnotationView[]): SidenotesSpecs => {
   const pending = view.filter((item) => item.status === "pending").map(cardOf);
   const resolved = view.filter((item) => item.status === "resolved").map(cardOf);
