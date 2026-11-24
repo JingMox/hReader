@@ -1,6 +1,6 @@
 // 这层管：文档起稿、规范化、阅读、修补、检查与撤销命令的参数校验与 intent 构造；不碰 fs。
 
-import { basename, extname } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 
 import {
   DEFAULT_DOC_KIND,
@@ -27,6 +27,48 @@ const MAX_BYTES_CEILING = 10_000_000;
 const ACTIONS: readonly string[] = ["replace", "insert_before", "insert_after", "append", "delete"];
 
 const NEW_FLAGS = ["--force", "--json", "--kind", "--title", "--visual", "--workspace"];
+
+const IMPORT_FLAGS = ["--force", "--json", "--kind", "--out", "--title", "--workspace"];
+
+/** 默认落点与源同目录、同名加 `.hr` 中缀：`a.html` → `a.hr.html`，`a` → `a.hr.html`。 */
+const defaultImportOutOf = (file: string): string =>
+  join(dirname(file), `${basename(file, extname(file))}.hr.html`);
+
+export const importIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
+  const [file = "", ...extra] = rest;
+  const out = raw.values.get("--out");
+  const problem =
+    extra.length > 0
+      ? `import 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
+      : file === ""
+        ? "import 缺少 <file>"
+        : raw.values.get("--title") === ""
+          ? "--title 不能为空"
+          : out === ""
+            ? "--out 不能为空"
+            : unusedFlag(raw, IMPORT_FLAGS);
+  if (problem !== undefined) return failure(problem, "import");
+  const docKind = raw.values.get("--kind");
+  if (docKind !== undefined && !isDocKind(docKind)) {
+    return failure(`未知的 --kind：${docKind}（可选：${DOC_KINDS.join(" | ")}）`, "import");
+  }
+  const path = absoluteOf(file, cwd);
+  const target = absoluteOf(out ?? defaultImportOutOf(file), cwd);
+  // 词法这道先拦：`--out` 指向源文件 = 覆盖输入本身，是用法错误（exit 2），不是写盘守卫的事。
+  if (target === path) return failure("--out 不能指向源文件自身", "import");
+  return {
+    ok: true,
+    intent: {
+      kind: "import",
+      path,
+      docKind,
+      title: raw.values.get("--title"),
+      out: target,
+      force: raw.switches.has("--force"),
+      ...commonOf(raw, cwd),
+    },
+  };
+};
 
 const isAction = (value: string): value is PatchAction => ACTIONS.includes(value);
 

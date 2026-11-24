@@ -3,7 +3,14 @@
 // 注意：`--html-stdin` 的 stdin 拒绝用例只是**防御分支/顺带**覆盖 `run.ts` 的 `runPatch` 返回，
 // 它的红色只由 stderr 格式决定，别把它记作 patch 路径的症状覆盖。
 
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -106,6 +113,50 @@ describe("run · export 接线", () => {
     expect(code).toBe(0);
     expect(out.join("")).toContain("<!DOCTYPE html>");
     expect(err).toEqual(["已移除 1 个外部图片\n"]);
+  });
+});
+
+describe("run · import 接线", () => {
+  it("should convert a foreign html and write <name>.hr.html by default", async () => {
+    writeFileSync(
+      join(dir, "foreign.html"),
+      "<body><main><h1>外来</h1><script>boot()</script><p>正文</p></main></body>",
+    );
+    const { io, out } = capture();
+    const code = await run(["import", "foreign.html"], io);
+
+    expect(code).toBe(0);
+    expect(out.join("")).toContain("imported foreign.hr.html (note");
+    // 产物是真正的托管文档：带齐 data-hr-id 与 data-hr-kind。
+    const written = readFileSync(join(dir, "foreign.hr.html"), "utf8");
+    expect(written).toContain('data-hr-id="root" data-hr-kind="note"');
+    expect(written).not.toContain("<script");
+
+    // 不带 --force 重跑：目标已存在 → file_exists（exit 1）。
+    const second = capture();
+    expect(await run(["import", "foreign.html"], second.io)).toBe(1);
+    expect(second.err.join("")).toContain("目标已存在");
+  });
+
+  it("should emit the report envelope under --json", async () => {
+    const { io, out } = capture();
+    const code = await run(["import", "foreign.html", "--out", "f2.html", "--json"], io);
+
+    expect(code).toBe(0);
+    const line = out.join("");
+    expect(line.endsWith("\n") && !line.slice(0, -1).includes("\n")).toBe(true);
+    expect(line).toContain('"trunk":"main"');
+    expect(line).toContain('"path":');
+    expect(existsSync(join(dir, "f2.html"))).toBe(true);
+  });
+
+  it("should exit 2 when --out points back at the source", async () => {
+    const { io, out, err } = capture();
+    const code = await run(["import", "foreign.html", "--out", "foreign.html"], io);
+
+    expect(code).toBe(2);
+    expect(out).toEqual([]);
+    expect(err.join("")).toContain("--out 不能指向源文件自身");
   });
 });
 

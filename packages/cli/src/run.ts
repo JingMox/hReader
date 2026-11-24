@@ -11,6 +11,7 @@ import { attemptRealpath, realpathThroughAncestors } from "./canonical";
 import { chromeDepsOf, renderPdfOf, renderPngOf } from "./chrome/session";
 import { checkCommand } from "./commands/check";
 import { exportPrintCommand } from "./commands/export-print";
+import { importDocCommand } from "./commands/import";
 import { newDocCommand } from "./commands/new";
 import { normalizeCommand } from "./commands/normalize";
 import { outlineCommand } from "./commands/outline";
@@ -271,8 +272,26 @@ const productIoOf = (io: ResolvedIo): ProductIo => ({
   warn: io.stderr,
 });
 
+/** 源按读命令的口径解（workspace 外也允许读）；`--out` 的越界判定在命令层，与 `hr export` 同一套。 */
+const runImport = async (
+  intent: Extract<Runnable, { kind: "import" }>,
+  io: CliIo,
+): Promise<string> => {
+  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+  return importDocCommand({
+    path: join(paths.workspace, paths.file),
+    out: realpathThroughAncestors(intent.out),
+    docKind: intent.docKind,
+    title: intent.title,
+    workspace: paths.workspace,
+    force: intent.force,
+    json: intent.json,
+    displayOut: displayedPathOf(intent.out, io.cwd),
+  });
+};
+
 type RemainingKind =
-  "patch" | "pdf" | "png" | "serve" | "undo" | "styleExtract" | "normalize" | "style";
+  "patch" | "pdf" | "png" | "serve" | "undo" | "styleExtract" | "normalize" | "style" | "import";
 
 /** 剩下一半都要 io（或要走写盘路径）：两段各守一半，圈复杂度不随命令数线性增长。 */
 const runRemaining = async (
@@ -294,6 +313,7 @@ const runRemaining = async (
   }
   if (intent.kind === "serve") return runServe(intent, io);
   if (intent.kind === "undo") return runUndo(intent, io.cwd);
+  if (intent.kind === "import") return runImport(intent, io);
   if (intent.kind === "styleExtract") return runExtract(intent, io);
   return runPatch(intent, io);
 };

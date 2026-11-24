@@ -2,6 +2,7 @@
 
 export const COMMAND_NAMES = [
   "new",
+  "import",
   "normalize",
   "outline",
   "read",
@@ -30,6 +31,7 @@ const COMMON = [
 
 const SYNOPSIS = [
   "hr new <file> [--kind note|report|minutes|brief|slides] [--title <标题>] [--visual <id>] [--force] [--json]",
+  "hr import <file> [--kind <形态>] [--title <标题>] [--out <path>] [--force] [--json]",
   "hr normalize <file> [--write] [--json]",
   "hr outline <file> [--json]",
   "hr read <file> <nodeId|selector> [--json] [--max-bytes <n>]",
@@ -59,6 +61,21 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "  按形态写一份带齐 data-hr-id、已套主题的起稿骨架：占位文字写在全角括号里，逐块 patch 掉即可。",
     "  slides 形态每个顶层 <section> 是一页：浏览器里滚动即翻页，打印是横版一页一张。",
     "  JSON 时为 { path, kind, title, bytes }。",
+  ],
+  import: [
+    "用法：hr import <file> [--kind <形态>] [--title <标题>] [--out <path>] [--force] [--json]",
+    "",
+    "  --kind <形态>   note 笔记（默认）| report | minutes | brief | slides；slides 时每个 h1/h2 分节成一页",
+    "  --title <标题>  覆盖文档标题（默认依次取 <title> → 首个 <h1> → 未命名）",
+    "  --out <path>    落盘位置（默认源文件旁 <name>.hr.html）；必须在 --workspace 内，",
+    "                  且不得指向源文件本身（用法错误）",
+    "  --force         <out> 已存在时覆盖（缺省报 file_exists）",
+    "",
+    "  把外来 HTML（任意网页、带脚本的演示稿）转成托管文档：剥脚本/事件/内联样式，",
+    "  按标题分节并补齐 data-hr-id；产物可直接 check / style / patch / export。",
+    "  人读输出给出 report 摘要；--json 时为 { path, bytes, kind, title, titleSource, trunk,",
+    "  trunkTag, sections, removedElements, strippedAttributes, discarded }。",
+    "  源文件已是托管文档（<article> 带合法 data-hr-id）时报 invalid_input（退出码 1）。",
   ],
   normalize: [
     "用法：hr normalize <file> [--write] [--json]",

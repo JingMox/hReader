@@ -126,6 +126,17 @@ export type Intent =
       readonly force: boolean;
     } & Common)
   | ({
+      readonly kind: "import";
+      /** 外来 HTML 源文件（绝对路径）。 */
+      readonly path: string;
+      /** 未给 `--kind` 时保持 `undefined`：默认形态归 core 兜底，这里不发明默认值。 */
+      readonly docKind: DocKind | undefined;
+      readonly title: string | undefined;
+      /** 落盘位置（绝对路径）：未给 `--out` 时意图层已换成 `<name>.hr.html`。 */
+      readonly out: string;
+      readonly force: boolean;
+    } & Common)
+  | ({
       readonly kind: "serve";
       readonly path: string;
       readonly port: number;
