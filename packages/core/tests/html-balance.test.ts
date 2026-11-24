@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { RAW_TEXT_TAGS } from "../src/html/constants";
 import { parseHtml, serializeHtml } from "../src/index";
-import { codesOf, messagesOf } from "./html-support.test";
+import { codesOf, messagesOf } from "./html-support";
 
 const codesFor = (html: string): readonly string[] => codesOf(parseHtml(html));
 

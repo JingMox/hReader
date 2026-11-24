@@ -10,7 +10,7 @@ import {
   codesOf,
   messagesOf,
   requireElement,
-} from "./html-support.test";
+} from "./html-support";
 
 const COMPONENTS = [
   "kpi-bento",

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { injectNodeIds, parseHtml, serializeHtml } from "../src/index";
 import { closeImplicitParagraphs } from "../src/html/implicit-close";
 import type { HtmlElementNode, HtmlNode, ParsedHtml } from "../src/index";
-import { attributeValue, childrenOf, requireElement } from "./html-support.test";
+import { attributeValue, childrenOf, requireElement } from "./html-support";
 
 const HR_ID = "data-hr-id";
 const HR_ID_SHAPE = /^hr-[0-9a-f]{8}$/u;

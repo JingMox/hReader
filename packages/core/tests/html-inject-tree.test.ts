@@ -9,7 +9,7 @@ import {
   collectElements,
   findElement,
   requireElement,
-} from "./html-support.test";
+} from "./html-support";
 
 const HR_ID = "data-hr-id";
 

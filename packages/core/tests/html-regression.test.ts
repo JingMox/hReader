@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DIAGNOSTIC_SEVERITY, RAW_TEXT_TAGS } from "../src/html/constants";
 import { stableHex8 } from "../src/html/hash";
 import { injectNodeIds, parseHtml, serializeHtml } from "../src/index";
-import { codesOf, findElement, messagesOf } from "./html-support.test";
+import { codesOf, findElement, messagesOf } from "./html-support";
 
 // 这层管：html 解析/注入修复项的回归闸——每块对应一处修过的缺陷，且都是"修前必红"的形状。
 

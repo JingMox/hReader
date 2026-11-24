@@ -150,7 +150,7 @@ describe("apply：未知 styleId", () => {
 /**
  * 以 YAML 解析后的运行期形状调 `apply`：`config.workspace` 是用户手写的，`workspace: 123` 这种错
  * 完全在类型系统之外，而本仓禁 `as`/`any`，故走 `Reflect.apply` 的类型擦除（同
- * `packages/core/tests/html-support.test.ts:79` 的 `callWithUnknown`）。
+ * `packages/core/tests/html-support.ts` 的 `callWithUnknown`）。
  */
 const applyWithRawWorkspace = (ctx: HostContext, workspace: unknown): Promise<unknown> => {
   // `Reflect.apply` 回的是 `any`：先收成 `unknown`，再把同步/异步两种结局统一成 Promise。

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { HrError, injectNodeIds, parseHtml, toDocumentModel } from "../src/index";
 import type { DocumentModel } from "../src/index";
-import { catchThrown } from "./html-support.test";
+import { catchThrown } from "./html-support";
 
 // 模型是 ParsedHtml 的只读投影。本文件只打"派生出来的形状"：
 // 文本归属、空白归一、块/内联边界、<br> 词边界、折叠、抛错条件。冻结与校验各自成文件。
