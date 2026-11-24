@@ -24,6 +24,15 @@ const WORKBENCH_JS_MODULES: &[&str] = &[
     include_str!("../../../webview/bootstrap.js"),
 ];
 
+/// 单份文档打开失败：只挡这一份，文件树照常可用。
+/// `hr serve` 起不来的原因由 core/CLI 决定（分类、拒绝码），壳只做搬运。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocError {
+    pub doc_id: String,
+    pub message: String,
+}
+
 /// 注入前端的工作台上下文（通过 `initialization_script` 与 `on_page_load` 同步到 `window.__HR_DESKTOP_CTX__`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +43,8 @@ pub struct WorkbenchContext {
     pub tree: Vec<TreeNode>,
     pub custom_themes: Vec<CustomTheme>,
     pub is_macos: bool,
+    /// `Some` 时当前没有打开成功的文档：前端在正文区渲染"这份文档打不开"。
+    pub doc_error: Option<DocError>,
 }
 
 fn serialize_context(ctx: &WorkbenchContext) -> String {
@@ -99,6 +110,7 @@ mod tests {
                 css: String::new(),
             }],
             is_macos: true,
+            doc_error: None,
         };
         let script = init_script(&ctx);
         assert!(script.contains("window.__HR_DESKTOP_CTX__"));
@@ -123,5 +135,27 @@ mod tests {
             "window.__hrDesktopSync = (nextCtx) => {\n  if (checkUnauthorizedRecovery()) return;\n  setupWorkbench();"
         ));
         assert!(sync_payload_js(&ctx).contains("window.__hrDesktopSync"));
+    }
+
+    #[test]
+    fn doc_error_reaches_the_frontend_as_camel_case_payload() {
+        let ctx = WorkbenchContext {
+            workspace: "/tmp/ws".to_string(),
+            doc_id: String::new(),
+            files: vec!["bad.html".to_string()],
+            tree: vec![],
+            custom_themes: vec![],
+            is_macos: true,
+            doc_error: Some(DocError {
+                doc_id: "bad.html".to_string(),
+                message: "hr serve 拒绝了这份文档：invalid_document".to_string(),
+            }),
+        };
+        let script = init_script(&ctx);
+        assert!(script.contains(
+            "\"docError\":{\"docId\":\"bad.html\",\"message\":\"hr serve 拒绝了这份文档：invalid_document\"}"
+        ));
+        // 前端按 docError 渲染正文区错误提示（sidebar.js 的空状态分支）。
+        assert!(script.contains("docError"));
     }
 }

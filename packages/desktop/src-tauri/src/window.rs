@@ -17,11 +17,21 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 use crate::shortcut::{self, Accel, Modifier};
 use crate::signals;
 use crate::supervisor::{self, Daemon};
-use crate::{daemon_file, ensure_doc_ready, url_build, workbench, Reaper};
+use crate::{daemon_file, url_build, workbench, Reaper};
 
 pub enum LaunchTarget {
     Session(crate::Session),
-    Empty { workspace: PathBuf, cli: PathBuf },
+    Empty {
+        workspace: PathBuf,
+        cli: PathBuf,
+    },
+    /// 首个文档拉不起 `hr serve`：工作区照开（文件树可用），正文区给这份文档的失败原因。
+    DocError {
+        workspace: PathBuf,
+        cli: PathBuf,
+        doc_id: String,
+        message: String,
+    },
 }
 
 struct DesktopState {
@@ -32,6 +42,8 @@ struct DesktopState {
     workspace: PathBuf,
     doc_id: String,
     cli: PathBuf,
+    /// 当前这份文档为什么打不开；`None` = 没有文档级失败。
+    doc_error: Option<workbench::DocError>,
 }
 
 impl DesktopState {
@@ -46,7 +58,20 @@ impl DesktopState {
                 &self.workspace,
             ),
             is_macos: cfg!(target_os = "macos"),
+            doc_error: self.doc_error.clone(),
         }
+    }
+
+    /// 文档级失败的工作台状态：没有打开的文档，但工作区文件树照常可用，点其他文件即可恢复。
+    /// 不动 `reaper`/`port`/`token`——daemon 死没死由调用点决定，这里只管"该显示什么"。
+    fn mark_doc_error(&mut self, workspace: PathBuf, doc_id: &str, message: String) {
+        self.workspace = workspace;
+        self.doc_id = String::new();
+        self.reauth_stage = 0;
+        self.doc_error = Some(workbench::DocError {
+            doc_id: doc_id.to_string(),
+            message,
+        });
     }
 }
 
@@ -92,6 +117,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 workspace: session.workspace,
                 doc_id: session.doc_id,
                 cli: session.cli,
+                doc_error: None,
             };
             (tauri::WebviewUrl::External(parsed), title, state)
         }
@@ -104,6 +130,29 @@ pub fn run(target: LaunchTarget) -> i32 {
                 workspace,
                 doc_id: String::new(),
                 cli,
+                doc_error: None,
+            };
+            (
+                tauri::WebviewUrl::App("index.html".into()),
+                "hReader".to_string(),
+                state,
+            )
+        }
+        LaunchTarget::DocError {
+            workspace,
+            cli,
+            doc_id,
+            message,
+        } => {
+            let state = DesktopState {
+                reaper: None,
+                port: None,
+                token: None,
+                reauth_stage: 0,
+                workspace,
+                doc_id: String::new(),
+                cli,
+                doc_error: Some(workbench::DocError { doc_id, message }),
             };
             (
                 tauri::WebviewUrl::App("index.html".into()),
@@ -559,18 +608,51 @@ fn toast(app: &tauri::AppHandle, msg: &str, is_err: bool) {
     }
 }
 
+/// 文档级打开失败落到空工作台：文件树照常可用、正文区给出这份文档的原因，点其他文件即可恢复。
+/// `hr serve` 起不来只挡这一份文档，不再让整个工作区失败。
+fn show_doc_error(
+    app: &tauri::AppHandle,
+    shared: &SharedState,
+    workspace: PathBuf,
+    doc_id: &str,
+    message: String,
+) {
+    let ctx = match shared.lock() {
+        Ok(mut guard) => {
+            guard.mark_doc_error(workspace, doc_id, message);
+            guard.context()
+        }
+        Err(_) => return,
+    };
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.navigate(empty_page_url());
+        let _ = win.eval(workbench::sync_payload_js(&ctx));
+    }
+}
+
 fn ensure_daemon_and_open(
     app: &tauri::AppHandle,
     shared: &SharedState,
     target_ws: PathBuf,
     doc_id: String,
 ) {
+    // 工作区级失败：目录本身进不去，谈不上"这份文档"——提示后什么都不动。
+    if !target_ws.is_dir() {
+        toast(
+            app,
+            &format!("打开工作区失败：{} 不存在或不是目录", target_ws.display()),
+            true,
+        );
+        return;
+    }
+
     let fast_path = match shared.lock() {
         Ok(mut guard) => {
             if guard.workspace == target_ws {
                 if let (Some(_), Some(port)) = (&guard.reaper, guard.port) {
                     guard.doc_id = doc_id.clone();
-                    Some((port, guard.cli.clone()))
+                    guard.doc_error = None;
+                    Some(port)
                 } else {
                     None
                 }
@@ -581,12 +663,15 @@ fn ensure_daemon_and_open(
         Err(_) => return,
     };
 
-    if let Some((port, cli)) = fast_path {
-        ensure_doc_ready(&cli, &target_ws, &doc_id);
-        if let Ok(target) = url_build::doc_reader_url(port, &doc_id) {
-            if let (Some(win), Ok(parsed)) = (app.get_webview_window("main"), target.parse()) {
-                let _ = win.navigate(parsed);
+    if let Some(port) = fast_path {
+        match url_build::doc_reader_url(port, &doc_id) {
+            Ok(target) => {
+                if let (Some(win), Ok(parsed)) = (app.get_webview_window("main"), target.parse()) {
+                    let _ = win.navigate(parsed);
+                }
             }
+            // docId 不合法只挡这一份：daemon 还活着，不能误杀。
+            Err(err) => show_doc_error(app, shared, target_ws, &doc_id, err.to_string()),
         }
         return;
     }
@@ -595,7 +680,6 @@ fn ensure_daemon_and_open(
         Ok(guard) => guard.cli.clone(),
         Err(_) => return,
     };
-    ensure_doc_ready(&cli, &target_ws, &doc_id);
 
     let Ok(home) = crate::default_home() else {
         toast(app, "无法定位桌面数据目录", true);
@@ -622,7 +706,7 @@ fn ensure_daemon_and_open(
         match Daemon::spawn_with_app(&cli, &doc_id, &target_ws, &home, None, app_dir.as_deref()) {
             Ok(d) => d,
             Err(err) => {
-                toast(app, &format!("打开工作区失败：{err}"), true);
+                show_doc_error(app, shared, target_ws, &doc_id, err.to_string());
                 return;
             }
         };
@@ -634,7 +718,13 @@ fn ensure_daemon_and_open(
             Ok(u) => u,
             Err(err) => {
                 drop(new_daemon);
-                toast(app, &format!("无效文档路径：{err}"), true);
+                show_doc_error(
+                    app,
+                    shared,
+                    target_ws,
+                    &doc_id,
+                    format!("无效文档路径：{err}"),
+                );
                 return;
             }
         }
@@ -645,6 +735,7 @@ fn ensure_daemon_and_open(
         guard.port = Some(info.port);
         guard.token = Some(info.token);
         guard.reauth_stage = 0;
+        guard.doc_error = None;
         guard.workspace = target_ws;
         guard.doc_id = doc_id;
     }
@@ -874,6 +965,15 @@ fn switch_workspace(
     new_ws: PathBuf,
     target_doc: Option<String>,
 ) {
+    // 工作区级失败：目录本身不可用就不切过去，留在当前工作区。
+    if !new_ws.is_dir() {
+        toast(
+            app,
+            &format!("打开工作区失败：{} 不存在或不是目录", new_ws.display()),
+            true,
+        );
+        return;
+    }
     let doc_opt = target_doc.or_else(|| workbench::list_html_files(&new_ws).into_iter().next());
     if let Some(doc_id) = doc_opt {
         ensure_daemon_and_open(app, shared, new_ws, doc_id);
@@ -896,6 +996,7 @@ fn switch_workspace(
             guard.reauth_stage = 0;
             guard.workspace = new_ws;
             guard.doc_id = String::new();
+            guard.doc_error = None;
             guard.context()
         }
         Err(_) => return,
@@ -1119,5 +1220,41 @@ mod tests {
         assert!(!exits(&tauri::RunEvent::Ready));
         assert!(window_exits(&tauri::WindowEvent::Destroyed));
         assert!(!window_exits(&tauri::WindowEvent::Focused(true)));
+    }
+
+    #[test]
+    fn doc_error_keeps_the_workspace_and_clears_only_the_document() {
+        let root = std::env::temp_dir().join(format!("hr-win-docerr-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("建 workspace");
+        fs::write(root.join("bad.html"), "<p>no article</p>").expect("写文档");
+
+        let mut state = DesktopState {
+            reaper: None,
+            port: None,
+            token: None,
+            reauth_stage: 2,
+            workspace: root.clone(),
+            doc_id: "bad.html".to_string(),
+            cli: PathBuf::from("/nonexistent/hr"),
+            doc_error: None,
+        };
+        state.mark_doc_error(
+            root.clone(),
+            "bad.html",
+            "hr serve 拒绝了这份文档：invalid_document".to_string(),
+        );
+
+        let ctx = state.context();
+        assert!(
+            ctx.doc_id.is_empty(),
+            "文档级失败后没有打开中的文档，空状态页才渲染"
+        );
+        assert_eq!(ctx.files, vec!["bad.html"], "文件树必须照常工作");
+        let error = ctx.doc_error.expect("docError 必须进工作台上下文");
+        assert_eq!(error.doc_id, "bad.html");
+        assert!(error.message.contains("invalid_document"), "{error:?}");
+        assert_eq!(state.reauth_stage, 0);
+        let _ = fs::remove_dir_all(&root);
     }
 }
