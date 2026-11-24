@@ -16,7 +16,7 @@ import {
   styleCandidatesOf,
   styleDepsOf,
   styleRootWarningOf,
-} from "../src/styleDeps";
+} from "../src/style-deps";
 
 /** 一定不存在的一段路径：拿它冒充"产物被拷到仓库外"的布局。 */
 const ABSENT_ROOT = join(tmpdir(), "hreader-styles-root-that-is-not-there");

@@ -6,7 +6,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { foldedOf, guarded, okResult } from "../errors";
-import { styleDepsOf } from "../styleDeps";
+import { styleDepsOf } from "../style-deps";
 import { FILE_PATH_HINT, coreFailureOf, documentTargetOf } from "./target";
 
 export const applyStyleShape = {

@@ -3,12 +3,12 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import { applyStyleCall, applyStyleShape } from "./applyStyle";
-import { createDocCall, createDocShape } from "./createDoc";
+import { applyStyleCall, applyStyleShape } from "./apply-style";
+import { createDocCall, createDocShape } from "./create-doc";
 import { outlineCall, outlineShape } from "./outline";
-import { patchNodeCall, patchNodeShape } from "./patchNode";
-import { readNodeCall, readNodeShape } from "./readNode";
-import { resolveAnnotationCall, resolveAnnotationShape } from "./resolveAnnotation";
+import { patchNodeCall, patchNodeShape } from "./patch-node";
+import { readNodeCall, readNodeShape } from "./read-node";
+import { resolveAnnotationCall, resolveAnnotationShape } from "./resolve-annotation";
 import { undoCall, undoShape } from "./undo";
 
 export const registerTools = (server: McpServer): void => {

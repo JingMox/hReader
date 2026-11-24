@@ -6,7 +6,7 @@ import { basename, dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createDocWith } from "../src/tools/createDoc";
+import { createDocWith } from "../src/tools/create-doc";
 import {
   ANNOTATED_DOC,
   codeOf,

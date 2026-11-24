@@ -1,6 +1,6 @@
 // 这层管：AC-7 的另一半 —— `hr_patch_node` 的成功响应也要带 `_meta.ui.resourceUri`。
 // 现有用例只对 `hr_create_doc` 断言了 ui meta（`read-tools.test.ts`）：改稿这条最重要的一臂没人盯，
-// 把 `src/tools/patchNode.ts` 里 okResult 的 ui 选项删掉，全套测试照样绿。
+// 把 `src/tools/patch-node.ts` 里 okResult 的 ui 选项删掉，全套测试照样绿。
 //
 // 它会因为什么而红：patch 成功但 `_meta.ui` 消失 / URI 前缀换了 / 指向的视图读不出来或读到改前正文。
 

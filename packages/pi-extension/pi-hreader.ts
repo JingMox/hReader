@@ -969,7 +969,7 @@ const readNodeToolOf = (deps: HreaderDeps): HreaderTool<typeof READ_NODE_PARAMS>
     }),
 });
 
-/** `delete` 不发片段（同 MCP 侧 `patchNode.ts:35-38` 的分叉）；其余四种必带。 */
+/** `delete` 不发片段（同 MCP 侧 `patch-node.ts:35-38` 的分叉）；其余四种必带。 */
 const patchBodyOf = (
   docId: string,
   params: { readonly nodeId: string; readonly action: string; readonly htmlContent: string },

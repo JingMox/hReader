@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { BUILTIN_STYLES, compileTone, readStyleSource } from "@hreader/core";
-import { styleDepsOf } from "../src/styleDeps";
+import { styleDepsOf } from "../src/style-deps";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { ANNOTATED_DOC, isRecord, leaveWorkspace, sessionOf, workspaceIn } from "./harness";

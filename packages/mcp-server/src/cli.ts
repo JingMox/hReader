@@ -12,7 +12,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { HrError } from "@hreader/core";
 
 import { logLine, messageOf } from "./log";
-import { styleRootWarningOf } from "./styleDeps";
+import { styleRootWarningOf } from "./style-deps";
 import { createServer } from "./server";
 
 export const USAGE = [
