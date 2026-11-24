@@ -33,7 +33,7 @@ const elementWithText = (node: HtmlNode, text: string): HtmlElementNode | undefi
   return matches[matches.length - 1];
 };
 
-describe("D9 交互 UI 与外部媒体：整节点删除", () => {
+describe("交互 UI 与外部媒体：整节点删除", () => {
   it.each([
     "script",
     "style",
@@ -70,7 +70,7 @@ describe("D9 交互 UI 与外部媒体：整节点删除", () => {
 
 describe("SVG 资源元素与 head 样式范围", () => {
   it("image/use/feImage 整删（不做 href 白名单，同文档 #symbol 也不留）", () => {
-    // 先证明"看得见"：parse5 在 SVG 语境保留驼峰，若 helper 严格比对，下面那条 0 断言会恒绿（§13.7）。
+    // 先证明"看得见"：parse5 在 SVG 语境保留驼峰，若 helper 严格比对，下面那条 0 断言会恒绿。
     // 整删 `<svg>` 之后产物里本来就没有 feImage，光断 0 两条都瞎。
     const source = firstTagOf(parseHtml(fixtureOf("article-noisy.html")).root, "article");
     expect(tagsOf(source, "feImage").length).toBe(1);
@@ -83,7 +83,7 @@ describe("SVG 资源元素与 head 样式范围", () => {
     }
   });
 
-  it("head 里我们自己的两份 <style>（主题 + 印刷骨架）不算违规（AC-7 只看正文）", () => {
+  it("head 里我们自己的两份 <style>（主题 + 印刷骨架）不算违规（哨兵只看正文）", () => {
     expect(tagsOf(root, "style").length).toBe(2);
     expect(tagsOf(article, "style").length).toBe(0);
   });
@@ -125,7 +125,7 @@ describe("XSS：事件属性与伪协议", () => {
 describe("外部资源：只放行内联 data:image", () => {
   it("相对路径与 http(s) 的图片整体删除，并把数量报给调用方", () => {
     expect(tagsOf(article, "img").length).toBe(1);
-    // 口径只数图片：`<img src="x.png">` 与 SVG `<image>` 各一；`<svg>`/`<use>`/`<feImage>` 不计（§13.3）。
+    // 口径只数图片：`<img src="x.png">` 与 SVG `<image>` 各一；`<svg>`/`<use>`/`<feImage>` 不计。
     expect(report.droppedImages).toBe(2);
     expect(elementWithText(article, "相对路径图")).toBeUndefined();
   });
@@ -148,7 +148,7 @@ describe("外部资源：只放行内联 data:image", () => {
   });
 });
 
-describe("srcset 多候选（§13.7 的 M9 盲点）", () => {
+describe("srcset 多候选", () => {
   const srcsetReport = printHtmlReportOf(inputOf(fixtureOf("article-srcset.html")));
   const srcsetArticle = firstTagOf(parseHtml(srcsetReport.html).root, "article");
   const alts = tagsOf(srcsetArticle, "img").map((image) => attrOf(image, "alt"));

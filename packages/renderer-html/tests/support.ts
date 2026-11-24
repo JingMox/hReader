@@ -1,4 +1,4 @@
-// 这层管：测试用的 fixture 读取、输入装配与"数节点"工具（AC-7 要求按解析后的树数，不 grep 字符串）；不承载断言。
+// 这层管：测试用的 fixture 读取、输入装配与"数节点"工具（按解析后的树数，不 grep 字符串）；不承载断言。
 
 import { readFileSync } from "node:fs";
 
@@ -53,7 +53,7 @@ export const elementsOf = (node: HtmlNode): readonly HtmlElementNode[] => {
 export const elementsOfHtml = (html: string): readonly HtmlElementNode[] =>
   elementsOf(parseHtml(html).root);
 
-/** 标签名比对不分大小写：parse5 在 SVG 语境产 `feImage`/`clipPath`，严格比对会让用例恒空（§13.7）。 */
+/** 标签名比对不分大小写：parse5 在 SVG 语境产 `feImage`/`clipPath`，严格比对会让用例恒空。 */
 export const tagsOf = (node: HtmlNode, tag: string): readonly HtmlElementNode[] =>
   elementsOf(node).filter((element) => element.tag.toLowerCase() === tag.toLowerCase());
 

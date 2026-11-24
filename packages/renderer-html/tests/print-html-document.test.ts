@@ -69,7 +69,7 @@ describe("同名层级与注释", () => {
   });
 });
 
-describe("4 MiB 上限（§11.4）", () => {
+describe("4 MiB 上限", () => {
   const LIMIT = 4 * 1024 * 1024;
   /** 垫一个 `a` 起步：空段落会先撞 `empty_document`，量不到字节数。 */
   const bytesWithPadOf = (pad: number): number =>
@@ -111,7 +111,7 @@ describe("转义", () => {
   });
 });
 
-describe("确定性（D2）", () => {
+describe("确定性", () => {
   const input = inputOf(fixtureOf("article.html"));
 
   it("同一输入两次调用字节相同", () => {
@@ -137,7 +137,7 @@ describe("空稿与缺正文", () => {
     );
   });
 
-  it("只有空 section/空标签壳、没有文字 → empty_document（§12.1 文本级判据）", () => {
+  it("只有空 section/空标签壳、没有文字 → empty_document（文本级判据）", () => {
     expect(codeOf(() => printHtmlOf(inputOf(fixtureOf("article-structure-only.html"))))).toBe(
       "empty_document",
     );
@@ -149,7 +149,7 @@ describe("空稿与缺正文", () => {
     );
   });
 
-  it("只有零宽字符也算空稿（U+200B 在纸面上不占位，trim() 又不认它，§13.2）", () => {
+  it("只有零宽字符也算空稿（U+200B 在纸面上不占位，trim() 又不认它）", () => {
     const html = "<article><p>\u200B\uFEFF\u180E</p></article>";
     expect(codeOf(() => printHtmlOf(inputOf(html)))).toBe("empty_document");
   });
@@ -188,7 +188,7 @@ describe("主题 CSS", () => {
     expect(themed).toContain('<style class="hr-theme">.cover__title { color: red; }</style>');
   });
 
-  it("主题在前、印刷骨架在后：同特异度时骨架压主题（§13.4）", () => {
+  it("主题在前、印刷骨架在后：同特异度时骨架压主题", () => {
     const themeAt = themed.indexOf('<style class="hr-theme">');
     const printAt = themed.indexOf('<style class="hr-print">');
     expect(themeAt).toBeGreaterThan(-1);
@@ -196,7 +196,7 @@ describe("主题 CSS", () => {
     expect(themed.indexOf("</head>")).toBeGreaterThan(printAt);
   });
 
-  it("主题里的 </style 逃逸在打印层就被转义（§12.3）", () => {
+  it("主题里的 </style 逃逸在打印层就被转义", () => {
     const escaped = printHtmlOf(
       inputOf(fixtureOf("article.html"), { themeCss: "p{color:red}</STYLE><script>x</script>" }),
     );
