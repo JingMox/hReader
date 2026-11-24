@@ -1,9 +1,9 @@
-// 这层管：AC4.3 的"改动块闪一下"——只往 DOM 加/删一个类，2 秒后由**注入的** timer 收回。
+// 这层管：`doc.changed` 后"改动块闪一下"——只往 DOM 加/删一个类，2 秒后由**注入的** timer 收回。
 // 纯接线：`schedule` 由 `boot` 注入（真实现是 `setTimeout`），因此这里可测且没有全局。
 
 import type { Host } from "./dom.ts";
 
-/** 闪烁时长（AC4.3：2 秒；常量在这里，卡里只给语义）。 */
+/** 闪烁时长：2 秒。 */
 const FLASH_MS = 2000;
 
 const FLASH_CLASS = "hr-flash";

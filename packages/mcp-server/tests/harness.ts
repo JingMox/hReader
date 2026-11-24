@@ -76,7 +76,7 @@ export const payloadOf = (result: unknown): Record<string, unknown> => {
   return isRecord(parsed) ? parsed : {};
 };
 
-/** AC-3：失败必须是工具结果，且错误码还在正文里。 */
+/** 失败必须是工具结果，且错误码还在正文里。 */
 export const codeOf = (result: unknown): string => /^\[([^\]]+)\]/u.exec(textOf(result))?.[1] ?? "";
 
 export const uiUriOf = (result: unknown): string => {

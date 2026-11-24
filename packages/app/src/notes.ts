@@ -3,10 +3,10 @@
 
 export type AnnotationStatus = "pending" | "resolved";
 
-/** 锚点失效的两种原因（AC1.3）：块被删 / 正文改写。 */
+/** 锚点失效的两种原因：块被删 / 正文改写。 */
 export type AnnotationLost = "anchor_lost" | "orphaned";
 
-/** 右栏一张卡（AC5.2）。`optimistic` = 已乐观渲染、服务端还没确认。 */
+/** 右栏一张卡。`optimistic` = 已乐观渲染、服务端还没确认。 */
 export interface AnnotationCard {
   readonly id: string;
   readonly nodeId: string;
@@ -26,7 +26,7 @@ export interface NoteAnchor {
   readonly start: number;
 }
 
-/** 待提交的批注：锚点 + 输入框里的草稿（AC5.1）。 */
+/** 待提交的批注：锚点 + 输入框里的草稿。 */
 export interface NoteTarget {
   readonly nodeId: string;
   readonly anchor: NoteAnchor;
@@ -51,7 +51,7 @@ export interface DiffState {
 
 export const closedDiff: DiffState = { open: false, nodeId: "", chunks: [], degraded: false };
 
-/** 乐观卡的 id：`tmp-` 前缀保证不会与服务端的 `an-…` 撞（AC5.1 回滚时按它删）。 */
+/** 乐观卡的 id：`tmp-` 前缀保证不会与服务端的 `an-…` 撞（回滚时按它删）。 */
 export const optimisticCardOf = (
   target: NoteTarget,
   note: string,
@@ -64,6 +64,6 @@ export const optimisticCardOf = (
   optimistic: true,
 });
 
-/** 失败回滚：只删乐观卡，别的卡原样（AC5.1）。 */
+/** 失败回滚：只删乐观卡，别的卡原样。 */
 export const withoutOptimistic = (cards: readonly AnnotationCard[]): readonly AnnotationCard[] =>
   cards.filter((card) => card.optimistic !== true);

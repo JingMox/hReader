@@ -1,5 +1,5 @@
 // 这层管：MCP-UI 视图资源（`ui://hreader/view/{docId}`）。docId 由相对路径可逆编码，
-// 服务重启后同一个 URI 仍能读出同一份文档；视图只**引用**已跑的 daemon，不代管进程（裁定 #4）。
+// 服务重启后同一个 URI 仍能读出同一份文档；视图只**引用**已跑的 daemon，不代管进程。
 
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
@@ -30,8 +30,8 @@ const portOf = (value: unknown): number | undefined => {
 };
 
 /** 本仓唯一一处 `~/.hreader/daemon.json` 路径拼写：core 只导出 `startServer`，未导出 `daemonStatePath()`
- * （`daemonFileOf` 收在 `core/src/server/index.ts`，不在包入口）；M3.2 若 core 导出即改为引用，
- * 见 `.workflow/known-defects.md` 的 `L-10`。视图只读这个落点拿端口，不写它。 */
+ * （`daemonFileOf` 收在 `core/src/server/index.ts`，不在包入口）；core 若日后导出即改为引用。
+ * 视图只读这个落点拿端口，不写它。 */
 const DAEMON_STATE_FILE = join(".hreader", "daemon.json");
 
 const daemonBaseUrlOf = async (home: string): Promise<string | undefined> => {
@@ -75,7 +75,7 @@ ${body}
 </html>
 `;
 
-/** 无 daemon 不是错误（AC-7：宿主 UI 不该因为后台没开就拿不到资源）；**文档读不出来才是**——
+/** 无 daemon 不是错误（宿主 UI 不该因为后台没开就拿不到资源）；**文档读不出来才是**——
  * 以前回一页"文档不可读"的壳，对宿主是假成功（跟 `unknown_style` 撒谎同类）。 */
 export const viewHtmlOf = async (target: DocumentTarget): Promise<string> => {
   const banner = daemonBanner(await daemonBaseUrlOf(homedir()));

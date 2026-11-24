@@ -178,7 +178,7 @@ impl Daemon {
         &self.info
     }
 
-    /// 复用别人起的 daemon：只记账为外部，退出时绝不 kill（AC-15）。
+    /// 复用别人起的 daemon：只记账为外部，退出时绝不 kill。
     pub fn adopted(info: DaemonInfo) -> Self {
         let mut registry = ChildRegistry::default();
         registry.adopt_external(info.pid);
@@ -190,7 +190,7 @@ impl Daemon {
     }
 
     /// `pub(crate)`：拉 daemon 的入口只能被本 crate 的壳（`lib.rs`/`smoke.rs`）用，
-    /// 且必须先把 `SignalSubscription` 交给 `connect_with`——这一层是 M2 类型闸要守住的那道门。
+    /// 且必须先把 `SignalSubscription` 交给 `connect_with`——这一层是类型闸要守住的那道门。
     pub(crate) fn spawn(
         cli: &Path,
         doc_id: &str,
@@ -485,7 +485,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ac14_own_daemon_is_started_with_exit_with_parent() {
+    fn own_daemon_is_started_with_exit_with_parent() {
         let args = serve_args("doc.html", Path::new("/ws"), Path::new("/appdata"), None);
         assert!(
             args.iter().any(|arg| arg == "--exit-with-parent"),
@@ -498,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn ac11_home_argument_is_the_shell_home_not_a_guess() {
+    fn home_argument_is_the_shell_home_not_a_guess() {
         let args = serve_args(
             "doc.html",
             Path::new("/ws"),

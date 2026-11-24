@@ -9,8 +9,8 @@ import { foldedOf } from "../errors";
 
 /**
  * 七个工具的 `filePath` 描述共用这一句：**"工作区"是什么必须写出来**。
- * 本卡不提供 `--workspace`（`cli.ts` 用 `process.cwd()`），所以"工作区"就是启动时的 cwd；
- * 宿主 `cd /` 拉起时界内就是整个根，这不是 bug，但不能靠宿主自己猜（G3 P1-3）。
+ * 缺省就是启动时的 cwd（`--workspace` 可改）；宿主 `cd /` 拉起时界内就是整个根，
+ * 这不是 bug，但不能靠宿主自己猜。
  */
 export const FILE_PATH_HINT =
   "路径相对工作区（可用 --workspace <dir> 指定，缺省为启动时的 cwd）；绝对路径也必须落在工作区之内";
@@ -20,7 +20,7 @@ export interface DocumentTarget {
   readonly workspace: string;
   /** 相对 `workspace` 的路径：core 的 `resolveTarget` 自己会 realpath + 拒逃逸。 */
   readonly file: string;
-  /** 用户**原样**传进来的 `filePath`：错误文案回显它，绝不回显我们算出来的路径（F8-2）。 */
+  /** 用户**原样**传进来的 `filePath`：错误文案回显它，绝不回显我们算出来的路径。 */
   readonly input: string;
   readonly absolute: string;
 }
@@ -53,8 +53,6 @@ const codeOf = (error: unknown): unknown =>
 /**
  * 边界判定只写一处：不存在的是**祖先**目录，允许恰好就是 workspace（`isInsideOrSelf`）；
  * 存在的是**目标**本身，要求严格在界内（core 的 `isInside` 就是"在界内且不等于自身"）。
- * `L-13` 收掉的就是本文件当初逐字镜像 core `packages/core/src/io/paths.ts:34-40` 的那份复本；
- * `D6` 又收掉了一句"`!== workspace &&`"——那是重新推导 core 已内化的规则。
  */
 
 interface ExistingPath {
@@ -97,7 +95,7 @@ export const assertInsideWorkspace = async (target: DocumentTarget): Promise<voi
     ? isInside(workspace, resolved.path)
     : isInsideOrSelf(workspace, resolved.path);
   if (!accepted) {
-    // 文案用用户传进来的相对路径：绝对路径会把宿主布局泄给模型（F6-②）。
+    // 文案用用户传进来的相对路径：绝对路径会把宿主布局泄给模型。
     throw new HrError("path_outside_workspace", `目标不在工作区内：${target.input}`);
   }
 };

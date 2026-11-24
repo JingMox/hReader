@@ -1,4 +1,4 @@
-// 这层管：G3-5 —— 错误码的诚实性（防"错误归因"：说错原因比缺功能更贵）。
+// 这层管：错误码的诚实性（防"错误归因"：说错原因比缺功能更贵）。
 //
 // 它会因为什么而红：
 // - 某类失败被归到 `[internal]`（等于告诉宿主"我们炸了"，而其实是入参/目标的问题）；
@@ -6,7 +6,7 @@
 // - 文案里出现 node 的原始 errno（`ENOENT:` / `EISDIR:` / `ENAMETOOLONG:`）——那是实现细节，
 //   宿主既不能据此重试也不能改参数，只能把它原样塞进日志。
 //
-// 注意：文案里连绝对路径都不许出现（F6-②）——`errors.ts` 的 `humanMessageOf` 会把工作区根折成相对，
+// 注意：文案里连绝对路径都不许出现——`errors.ts` 的 `humanMessageOf` 会把工作区根折成相对，
 // 所以对**所有**码都一刀切；越界时用户看到的是自己传进来的那条相对路径。
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -42,7 +42,7 @@ interface Case {
   readonly tool: string;
   readonly args: Record<string, unknown>;
   /**
-   * 允许的 `HrError.code` 集合：具体选哪个是实现的裁定（core 词表里 `not_a_file` 与 `not_found` 都先有先例），
+   * 允许的 `HrError.code` 集合：具体选哪个是实现的选择（core 词表里 `not_a_file` 与 `not_found` 都先有先例），
    * 本用例只锁两件不该含糊的事——**不许 `internal` 当垃圾桶**、且**同一类失败只有一个码**（集合只放同语义的近邻）。
    */
   readonly codes: readonly string[];
@@ -132,7 +132,7 @@ describe("错误码诚实性 · 每类失败一个码、一个原因", () => {
       expect(text.startsWith(`[${code}] `)).toBe(true);
       expect(text.match(/^\[[a-z_]+\]/gu)).toHaveLength(1);
       for (const errno of RAW_ERRNO) expect(text).not.toContain(errno);
-      // 绝对路径同样不许进正文（F6-②）：用户看到的是自己传进来的相对路径。
+      // 绝对路径同样不许进正文：用户看到的是自己传进来的相对路径。
       expect(text).not.toContain(workspace);
     },
     30_000,

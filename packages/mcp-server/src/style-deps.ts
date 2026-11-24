@@ -10,12 +10,12 @@ import type { StyleDeps } from "@hreader/core";
 
 /**
  * 包内自带的主题资源（**不同的事实**，不是仓库根的第二份拼写）：`build` 把仓库根 `styles/` 整棵拷成
- * `<pkg>/styles`，而 `src/styleDeps.ts` 与 `dist/main.js` 都恰好比包根深一层，所以 `../styles/`
- * 在源码布局和发布布局里都指向 `<pkg>/styles`（M3.1.1 §2 的锚点推导）。
+ * `<pkg>/styles`，而 `src/style-deps.ts` 与 `dist/main.js` 都恰好比包根深一层，所以 `../styles/`
+ * 在源码布局和发布布局里都指向 `<pkg>/styles`。
  *
  * 仓库根在哪**只**由 core 拼：`packages/core/src/style/node.ts:14` 的 `nodeStyleDeps(workspace).stylesRoot`。
  * 那边注释写着"发布时需把 styles/ 拷进包内再改这里"——本文件就是那个"包内"，两边要能互相找到，
- * 否则发布时只会改一处（`L-21`）。
+ * 否则发布时只会改一处。
  */
 const PACKAGE_STYLES_ROOT = fileURLToPath(new URL("../styles/", import.meta.url));
 

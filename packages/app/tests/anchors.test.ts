@@ -1,4 +1,4 @@
-// 这层测：模板锚点自检（P0-1 的回归保护）——`boot` 挂载后逐条核对 `REQUIRED_ANCHORS`，
+// 这层测：模板锚点自检（回归保护）——`boot` 挂载后逐条核对 `REQUIRED_ANCHORS`，
 // 缺一个就必须**可见地失败**（`#hr-statusbar` + logger），绝不静默跳过。
 import { describe, expect, it, vi } from "vitest";
 

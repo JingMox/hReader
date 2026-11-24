@@ -38,13 +38,13 @@ describe("/hreader", () => {
     expect(first?.message).toContain("http://127.0.0.1:7331/s/docs%2Fx.html?t=tok-1");
   });
 
-  it("参数为空：一次 notify，既给用法也给 daemon 状态（AC-2 / D11）", async () => {
+  it("参数为空：一次 notify，既给用法也给 daemon 状态", async () => {
     const { run, fake } = openWith({ daemon: JSON.stringify(INFO) });
     await run("   ", fake.ctx);
     expect(fake.notifies.map((entry) => entry.type)).toEqual(["info"]);
     const message = fake.notifies[0]?.message ?? "";
     expect(message).toContain("/hreader <path>");
-    // 审计员 P1：无参时若只打用法，用户看不到 daemon 到底在不在、在哪个端口。
+    // 无参时若只打用法，用户看不到 daemon 到底在不在、在哪个端口。
     expect(message).toContain("127.0.0.1:7331");
     expect(message).toContain("/work");
     // 根路径是 cookie 认证、`/s/:docId` 是 token 认证：无参时没有可点的合法链接。

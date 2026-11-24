@@ -2,7 +2,7 @@
 
 /**
  * 主题 CSS 的单一真源永远是盘上的 `styles/<id>/theme.css`（由 core 的 `loadThemeCss` 读并过
- * `assertThemeSafe`）。这里重复存一份 CSS 就会立刻产生第二份真源，换机器换字节、与 §4「只增不改」漂移。
+ * `assertThemeSafe`）。这里重复存一份 CSS 就会立刻产生第二份真源，换机器换字节、与"主题只增不改"的约定漂移。
  */
 export interface VisualTheme {
   readonly id: string;
@@ -11,7 +11,7 @@ export interface VisualTheme {
   readonly label: string;
 }
 
-/** 打印层认得的主题（F3 用它把 `--visual` 翻成 `<body class>`）。 */
+/** 打印层认得的主题：`--visual` 入参经它翻成 `<body class>`。 */
 export const THEMES: Readonly<Record<string, VisualTheme>> = {
   "atelier-editorial": {
     id: "atelier-editorial",

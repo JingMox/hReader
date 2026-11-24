@@ -449,7 +449,7 @@ article[data-hr-id][data-hr-kind="slides"] > section > h2 {
   }
 }
 
-/* M4.3 打印稿：纸面永远是日间配色（AC-6「深色变量覆盖」）。
+/* 打印稿：纸面永远是日间配色（不允许深色变量覆盖）。
    打印稿是独立文件，读者的 `prefers-color-scheme: dark` 与 `data-hr-mode` 都可能命中，
    故这里用比上面三条路径更高的选择器优先级强制回落成日间值；只影响 print 介质。 */
 @media print {

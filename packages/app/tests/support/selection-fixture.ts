@@ -19,7 +19,7 @@ export const seedNotesSurface = (text = "正文一"): FakeElement => {
   return block;
 };
 
-/** 假 `Range`：`toString()` 就是"块头到 offset 的前缀"（与真浏览器的度量同语义，裁定 #11）。 */
+/** 假 `Range`：`toString()` 就是"块头到 offset 的前缀"（与真浏览器的度量同语义）。 */
 const rangeFactoryOf = (): (() => Record<string, unknown>) => {
   const range = {
     text: "",

@@ -30,7 +30,7 @@ export interface ReaderState extends NoteSlice, DiffSlice {
   readonly revision: string;
   /** 真实生效的主题（`themeSettled ok:true` 才更新）。 */
   readonly theme: string;
-  /** `<select>` 显示的主题：用户刚点的那个，失败时回退到 `theme`（裁定 #3）。 */
+  /** `<select>` 显示的主题：用户刚点的那个，失败时回退到 `theme`。 */
   readonly themeRequested: string;
   readonly outline: readonly OutlineNode[];
   /** 文档顺序的块 id（`data-hr-id`），`j`/`k` 与 TOC 高亮都按它走。 */

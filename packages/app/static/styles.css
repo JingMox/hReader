@@ -1,6 +1,6 @@
-/* 这层管：三栏骨架的布局事实（AC2.6）——栅格列宽、68ch 正文宽、1100px 折点、
+/* 这层管：三栏骨架的布局事实——栅格列宽、68ch 正文宽、1100px 折点、
    以及栅格子项上的 min-width:0 / overflow-wrap:anywhere（防长 URL 撑破）。
-   transition 只允许 color/background（例外：`.hr-flash` 的 2s background 过渡，AC4.3）。 */
+   transition 只允许 color/background（例外：`.hr-flash` 的 2s background 过渡）。 */
 
 :root {
   --hr-side: 280px;
@@ -123,7 +123,7 @@ body {
   padding-left: 28px;
 }
 
-/* M2.3 的面板/提示样式：开关只靠 class。规则只保证"挂上的 class 看得见"，不做主题系统。 */
+/* 批注面板/提示样式：开关只靠 class。规则只保证"挂上的 class 看得见"，不做主题系统。 */
 .note-btn {
   /* 不用 display：作者层的 display 会压掉 UA 的 `[hidden]{display:none}`。 */
   cursor: pointer;
@@ -163,7 +163,7 @@ body {
   border-left-color: var(--hr-ink);
 }
 
-/* 划词命中的块（AC5.1）与 `doc.changed` 的闪烁块（AC4.3）。 */
+/* 划词命中的块与 `doc.changed` 的闪烁块。 */
 #hr-doc .hr-note-target {
   outline: 2px solid #b8860b;
   outline-offset: 2px;

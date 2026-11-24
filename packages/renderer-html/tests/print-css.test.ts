@@ -17,7 +17,7 @@ interface RuleCase {
   readonly body: readonly string[];
 }
 
-/** AC-6 逐条（卡 §6：规则"存在"由单测钉，"生效"必须真 Chrome）。 */
+/** 出版级规则逐条钉"存在"；"生效"必须真 Chrome 验。 */
 const RULE_CASES: readonly RuleCase[] = [
   { name: "A4 纸与页边距", selector: "@page {", body: ["size: A4;", "margin: 20mm 18mm;"] },
   { name: "首页无边距", selector: "@page :first {", body: ["margin: 0;"] },
@@ -58,7 +58,7 @@ const declarationsOf = (selector: string): string => {
   return flat.slice(open, flat.indexOf("}", open));
 };
 
-describe("AC-6 出版级规则存在", () => {
+describe("出版级规则存在", () => {
   it.each(RULE_CASES.map((item) => [item.name, item] as const))("%s", (_name, item) => {
     expect(flat).toContain(item.selector);
     const body = declarationsOf(item.selector);
@@ -97,7 +97,7 @@ describe("AC-6 出版级规则存在", () => {
   });
 });
 
-describe("AC-2 / §4 约束", () => {
+describe("骨架体积与自含约束", () => {
   it("≤ 8 KiB", () => {
     expect(Buffer.byteLength(PRINT_CSS, "utf8")).toBeLessThanOrEqual(8192);
   });
@@ -117,7 +117,7 @@ describe("AC-2 / §4 约束", () => {
   });
 });
 
-describe("printCssOf · 纸张守卫（§17.1）", () => {
+describe("printCssOf · 纸张守卫", () => {
   /** 类型层已收窄，只有在运行期绕过它才能复现"CLI 传了个字典外的纸型"：`Reflect.apply` 不写 `as`。 */
   const failureOf = (paper: string): unknown => {
     try {

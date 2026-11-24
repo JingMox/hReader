@@ -1,4 +1,4 @@
-// P1-4 的最后一环：面板必须能标出"这是哪一块"的 diff。
+// diff 面板的最后一环：必须能标出"这是哪一块"的 diff。
 // 断言落在 `#hr-diff-chunks` 的有序 `NodeSpec` 上：每个 chunk 元素都带 `data-hr-node="<activeId>"`，
 // 且所有 chunk 指向同一个块——全篇 diff（或漏传 nodeId）会让这条红。
 
@@ -53,7 +53,7 @@ describe("diff 面板 · 降级原因", () => {
   });
 });
 
-describe("diff 面板 · 标块（P1-4）", () => {
+describe("diff 面板 · 标块", () => {
   it("should mark every diff chunk with the annotation's own block id", async () => {
     const h = bootedWith();
     await openDiff(h);

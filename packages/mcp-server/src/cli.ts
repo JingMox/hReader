@@ -12,7 +12,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { HrError } from "@hreader/core";
 
 import { logLine, messageOf } from "./log";
-import { styleRootWarningOf } from "./styleDeps";
+import { styleRootWarningOf } from "./style-deps";
 import { createServer } from "./server";
 
 export const USAGE = [
@@ -173,7 +173,7 @@ export const runMain = async (argv: readonly string[], io: MainIo = defaultIo): 
     if (mode.workspace !== undefined) (io.chdir ?? defaultChdir)(mode.workspace);
     const workspace = process.cwd();
     // 宿主唯一能自证"工作区是哪个目录"的地方：stdio 的 stdout 是协议通道，只能写 stderr。
-    // 资源缺失也不该等宿主第一次 `hr_apply_style` 才知道（仓库外布局，`L-21`）。
+    // 资源缺失也不该等宿主第一次 `hr_apply_style` 才知道（仓库外布局）。
     [
       `workspace=${workspace}`,
       ...warningLinesOf(workspaceWarningOf(workspace)),

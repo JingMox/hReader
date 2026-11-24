@@ -1,5 +1,5 @@
-// 这层管 `/hr-style` 的三条边角语义：风格归属（G1）、并发取代（G4）、回显净化与截断（G3）、
-// 以及 2xx 非 JSON 的文案（G2）。断言都落在"用户终端上看得见什么"上。
+// 这层管 `/hr-style` 的三条边角语义：风格归属、并发取代、回显净化与截断、
+// 以及 2xx 非 JSON 的文案。断言都落在"用户终端上看得见什么"上。
 
 import { describe, expect, it } from "vitest";
 
@@ -57,7 +57,7 @@ const sleepOf = (ms: number): Promise<void> =>
     setTimeout(done, ms);
   });
 
-describe("/hr-style 的归属（G1：风格是文档属性）", () => {
+describe("/hr-style 的归属（风格是文档属性）", () => {
   it("换到另一个文档后，状态行不再报上一个文档的风格", async () => {
     const harness = harnessOf({
       "/api/theme": [THEMES],
@@ -88,7 +88,7 @@ describe("/hr-style 的归属（G1：风格是文档属性）", () => {
   });
 });
 
-describe("被取代的命令不得动 daemon（G4 的 POST 侧）", () => {
+describe("被取代的命令不得动 daemon（POST 侧）", () => {
   it("GET /api/theme 慢时，被取代的那条命令连 POST 都不发（不只丢结果）", async () => {
     // Arrange：第一次 GET 慢 150ms，第二次 10ms（daemon 卡一下就是这个形状）。
     const harness = harnessOf({
@@ -111,7 +111,7 @@ describe("被取代的命令不得动 daemon（G4 的 POST 侧）", () => {
   });
 });
 
-describe("/hr-style 的并发（G4：后发起的命令赢）", () => {
+describe("/hr-style 的并发（后发起的命令赢）", () => {
   it("后一次的结果不被前一次的慢响覆盖，被丢弃的那次也不改状态", async () => {
     // Arrange：第一条 POST 的 body 晚 150ms 才到，第二条 10ms。
     const harness = harnessOf({
@@ -142,7 +142,7 @@ describe("/hr-style 的并发（G4：后发起的命令赢）", () => {
   });
 });
 
-describe("回显净化与截断（G3：workspace 不可信）", () => {
+describe("回显净化与截断（workspace 不可信）", () => {
   it("视觉 id 里的控制字符不原样进入列表、回显与状态行", async () => {
     const harness = harnessOf({
       // id 来自 workspace 目录名 → 不可信输入：ESC 序列、换行、都实测能进终端。
@@ -173,7 +173,7 @@ describe("回显净化与截断（G3：workspace 不可信）", () => {
   });
 });
 
-describe("回显长度上界（G3：4KB 长 id）", () => {
+describe("回显长度上界（4KB 长 id）", () => {
   it("非法 id 的回显同样净化（用户粘进来的 ESC 不得原样进终端）", async () => {
     const harness = harnessOf({ "/api/theme": [THEMES] });
     await harness.run("hr-style", `${ESC}-nope`);
@@ -208,7 +208,7 @@ describe("回显长度上界（G3：4KB 长 id）", () => {
   });
 });
 
-describe("2xx 但响应不是 JSON 的文案（G2）", () => {
+describe("2xx 但响应不是 JSON 的文案", () => {
   it("`GET /api/theme` 返回 200 但不是 JSON：不说“返回 200：未知错误”", async () => {
     const harness = harnessOf({ "/api/theme": [{ text: "<html>oops</html>" }] });
     await harness.run("hr-style", "feynman-tech");

@@ -1,4 +1,4 @@
-// 这层管：`@page` 的纸张随入参重排（§15.1）；不测 Chrome 的实际分页，那要真机。
+// 这层管：`@page` 的纸张随入参重排；不测 Chrome 的实际分页，那要真机。
 import { describe, expect, it } from "vitest";
 
 import { printHtmlOf } from "../src/index";

@@ -41,11 +41,11 @@ export interface Host {
   readonly html: (selector: string, markup: string) => void;
   readonly cls: (selector: string, name: string, on: boolean) => void;
   readonly children: (selector: string, specs: readonly NodeSpec[]) => void;
-  /** 把整篇 HTML 按 `data-hr-id` 拆成"块 id → 块 innerHTML"（正文增量更新的输入，AC2.4）。 */
+  /** 把整篇 HTML 按 `data-hr-id` 拆成"块 id → 块 innerHTML"（正文增量更新的输入）。 */
   readonly blocks: (markup: string) => ReadonlyMap<string, string>;
   /** 只替换某一块的 innerHTML（不整篇重载，滚动位置因此不丢）。 */
   readonly blockHtml: (id: string, markup: string) => void;
-  /** 块在新文档里不存在了：从 DOM 真正删掉（裁定 #8；**必选**，缺实现就是漏删块）。 */
+  /** 块在新文档里不存在了：从 DOM 真正删掉（**必选**，缺实现就是漏删块）。 */
   readonly removeBlock: (id: string) => void;
   /** 同步整篇 HTML 中新增、改标签或重排的块，保留未改动块与选区。 */
   readonly syncBlocks?: (markup: string) => void;
@@ -55,7 +55,7 @@ export interface Host {
     handler: (target: TargetLike) => void,
   ) => () => void;
   readonly scrollTo: (selector: string) => void;
-  /** 锚点是否存在（裁定 #1：模板缺锚点必须**可见地失败**，不能静默跳过）。可选：假 host 可省。 */
+  /** 锚点是否存在：模板缺锚点必须**可见地失败**，不能静默跳过。可选：假 host 可省。 */
   readonly has?: (selector: string) => boolean;
   readonly destroy: () => void;
 }
@@ -65,7 +65,7 @@ export interface DocumentLike {
   readonly body: { readonly getAttribute: (name: string) => string | null };
   readonly querySelector: (selector: string) => ElementLike | null;
   readonly createElement: (tag: string) => ElementLike;
-  /** `Range` 的最小声明（裁定 #11 的字符偏移）；缺省表示不量偏移。 */
+  /** `Range` 的最小声明（块内字符偏移的度量）；缺省表示不量偏移。 */
   readonly createRange?: () => {
     readonly selectNodeContents: (node: unknown) => void;
     readonly setEnd: (node: unknown, offset: number) => void;
@@ -140,7 +140,7 @@ const parsedBlocksOf = (
   topOnly = false,
 ): Map<string, ElementLike> => {
   const box = root.createElement("div");
-  // 游离 `<div>` 解析：不进活动文档（裁定 #7 的三处之一）。
+  // 游离 `<div>` 解析：不进活动文档（`innerHTML` 的受控使用点之一）。
   box.innerHTML = stripHeadOf(markup);
   const direct = topOnly ? box.querySelectorAll("article[data-hr-id] > [data-hr-id]") : [];
   // 跳过根 `<article>` 自身，索引文档内所有可寻址块（整块同步时优先取 `<article>` 直接子块以保住包装容器）。

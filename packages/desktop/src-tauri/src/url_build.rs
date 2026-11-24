@@ -91,7 +91,7 @@ mod tests {
     ];
 
     #[test]
-    fn ac2_slash_survives_and_reserved_bytes_are_escaped() {
+    fn slash_survives_and_reserved_bytes_are_escaped() {
         assert_eq!(encode_path("a/b.html"), Ok("a/b.html".to_string()));
         assert_eq!(encode_path("a#b"), Ok("a%23b".to_string()));
         assert_eq!(encode_path("a?b"), Ok("a%3Fb".to_string()));
@@ -101,7 +101,7 @@ mod tests {
     }
 
     #[test]
-    fn ac2_dot_segments_are_rejected_at_the_url_layer() {
+    fn dot_segments_are_rejected_at_the_url_layer() {
         assert_eq!(encode_path("../x.html"), Err(PathError::DotSegment));
         assert_eq!(encode_path("a/../x.html"), Err(PathError::DotSegment));
         assert_eq!(encode_path("./x.html"), Err(PathError::DotSegment));
@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn ac2_round_trip_for_every_doc_id_and_token() {
+    fn round_trip_for_every_doc_id_and_token() {
         for doc_id in DOC_IDS {
             for token in TOKENS {
                 let url = bootstrap_url(8123, doc_id, token).expect("文档路径合法");
@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn ac2_hash_in_doc_id_cannot_swallow_the_token() {
+    fn hash_in_doc_id_cannot_swallow_the_token() {
         let url = bootstrap_url(9000, "a#b.html", "tok").expect("a#b.html 在段内不算非法");
         assert!(!url.contains('#'));
         assert!(url.ends_with("?t=tok"));

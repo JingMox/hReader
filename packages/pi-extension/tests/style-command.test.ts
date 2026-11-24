@@ -1,4 +1,4 @@
-// 这层管：`/hr-style`（AC-5）——视觉 id 只来自 `GET /api/theme`（不扫目录）、非法 id 连 POST 都不发、
+// 这层管：`/hr-style`——视觉 id 只来自 `GET /api/theme`（不扫目录）、非法 id 连 POST 都不发、
 // 合法 id 发的 body 恰好是 `{ docId, visualId }` 且带 CSRF 头、未绑定文档时只提示、状态行里记住本会话风格。
 
 import { describe, expect, it } from "vitest";

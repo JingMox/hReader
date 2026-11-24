@@ -1,5 +1,5 @@
-// 这层管：划词 → 选区描述 → Intent（AC5.1/§2-4）；**不写文件、不碰 DOM 事件**。
-// 跨块选区只取起点块并给出提示——跨块锚定是下一版的事（§2-4）。
+// 这层管：划词 → 选区描述 → Intent；**不写文件、不碰 DOM 事件**。
+// 跨块选区只取起点块并给出提示——跨块锚定是下一版的事。
 
 import type { AnchorSpec } from "../dom.ts";
 
@@ -19,7 +19,7 @@ export type SelectionIntent =
   | { readonly kind: "crossBlock" }
   | { readonly kind: "empty" };
 
-/** 前缀/后缀各取 32 字符就够消歧；再长只会把 meta 撑大（AC1.1 的上限 64 也够）。 */
+/** 前缀/后缀各取 32 字符就够消歧；再长只会把 meta 撑大（协议上限 64 字符也够）。 */
 const CONTEXT_CHARS = 32;
 
 const clamped = (value: number, min: number, max: number): number =>
@@ -58,7 +58,7 @@ export interface SelectionLike {
   readonly anchorNode: {
     readonly parentElement: { readonly closest: BlockElementLike["closest"] } | null;
   } | null;
-  /** 焦点侧；`crossBlock` 用它比对**最近的块祖先**，而不是比节点身份（裁定 #11）。 */
+  /** 焦点侧；`crossBlock` 用它比对**最近的块祖先**，而不是比节点身份。 */
   readonly focusNodeParent?: { readonly closest: BlockElementLike["closest"] } | null;
   readonly anchorOffset: number;
   readonly focusNode: {
@@ -67,7 +67,7 @@ export interface SelectionLike {
   readonly focusOffset: number;
 }
 
-/** 选区 → 描述（AC5.1）：没有块祖先就返回 `undefined`，其余判定交给 `selectionIntentOf`。 */
+/** 选区 → 描述：没有块祖先就返回 `undefined`，其余判定交给 `selectionIntentOf`。 */
 interface BlockLike {
   readonly textContent: string | null;
   readonly getAttribute: (name: string) => string | null;
@@ -88,14 +88,14 @@ const anchorBlockOf = (selection: SelectionLike | null): BlockLike | undefined =
   return element.closest("[data-hr-id]") ?? undefined;
 };
 
-/** 块内**字符**偏移的度量器（真实实现用 `Range.toString()` 的前后长度差，裁定 #11）。 */
+/** 块内**字符**偏移的度量器（真实实现用 `Range.toString()` 的前后长度差）。 */
 export interface MeasureLike {
   readonly offsets: (selection: SelectionLike) => { readonly start: number; readonly end: number };
   readonly crossBlock: (selection: SelectionLike) => boolean;
 }
 
 /**
- * 选区 → 描述（AC5.1）。给了 `measure` 就用 Range 的字符偏移（支持反向拖拽）；
+ * 选区 → 描述。给了 `measure` 就用 Range 的字符偏移（支持反向拖拽）；
  * 没给就退回 anchor/focus 偏移（纯测/旧调用方仍可用）。
  */
 export const rawSelectionOf = (

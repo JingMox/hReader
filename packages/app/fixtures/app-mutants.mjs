@@ -1,4 +1,4 @@
-// 这层管：M2.2 的变异套件（真跑）——每个变异体落到 `packages/app/src`，跑**对应**测试文件，
+// 这层管：app 的变异套件（真跑）——每个变异体落到 `packages/app/src`，跑**对应**测试文件，
 // 记录"被杀/存活"，最后恢复原文件。反向变异（把安全/契约逻辑改坏）必须变红。
 
 import { spawnSync } from "node:child_process";
@@ -67,14 +67,14 @@ const MUTANTS = [
     tests: ["store.test.ts"],
   },
   {
-    label: "library: outline 没换也重建 TOC（AC2.2 反向）",
+    label: "library: outline 没换也重建 TOC（反向）",
     file: "src/widgets/library.ts",
     from: "if (next.outline !== outline) {",
     to: "if (next.outline !== outline || true) {",
     tests: ["widgets.test.ts"],
   },
   {
-    label: "canvas: doc.changed 整篇重载（AC2.4 反向变异）",
+    label: "canvas: doc.changed 整篇重载（反向变异）",
     file: "src/widgets/canvas.ts",
     from: "      diffBlocks(host, next, known);",
     to: "      host.html(`${parent} #hr-doc`, next.documentHtml);",

@@ -1,4 +1,4 @@
-// 这层管：D9 / §11.1 的交互 UI 与外部资源裁切（从树里删掉，不是 CSS 隐藏）；不编号、不拼文档。
+// 这层管：交互 UI 与外部资源裁切（从树里删掉，不是 CSS 隐藏）；不编号、不拼文档。
 
 import type { HtmlElementNode } from "@hreader/core";
 
@@ -21,13 +21,13 @@ const DROPPED_TAGS: ReadonlySet<string> = new Set([
   "input",
   "select",
   "textarea",
-  // §12.2：SVG 资源元素整删（`<use href="#sym">` 也不留，否则等于把外部资源面留给主题去赌）
+  // SVG 资源元素整删（`<use href="#sym">` 也不留，否则等于把外部资源面留给主题去赌）
   "image",
   "use",
   "feimage",
 ]);
 
-/** 交互 UI 类名（§1 实测：这些类在 app 侧 0 命中，故清单是防御性的，不是既有契约）。 */
+/** 交互 UI 类名（实测：这些类在 app 侧 0 命中，故清单是防御性的，不是既有契约）。 */
 const UI_CLASSES: readonly string[] = ["hr-sidebar", "hr-toc-toggle", "hr-mode-toggle"];
 
 const UI_ATTRIBUTES: readonly string[] = ["contenteditable", "data-hr-ui"];
@@ -37,14 +37,14 @@ const SCRIPT_SCHEME_ATTRIBUTES: ReadonlySet<string> = new Set(["href", "src", "x
 
 const SCRIPT_SCHEMES: readonly string[] = ["javascript:", "vbscript:", "data:text/html"];
 
-/** §11.1：资源属性只放行内联的 `data:image/…`；相对路径也删（单文件产物里它必然是坏图）。 */
+/** 资源属性只放行内联的 `data:image/…`；相对路径也删（单文件产物里它必然是坏图）。 */
 const RESOURCE_ATTRIBUTES: readonly string[] = ["src", "srcset", "poster"];
 
 const DATA_IMAGE_URL = /^data:image\//iu;
 
 /**
  * `srcset` 按候选逐个判，不能只看串首：`data:image/png;base64,AAA 1x, https://cdn/b.png 2x` 串首是内联图，
- * 第二个候选却会真的外联（M9 盲点）。描述符只抵密度/宽度两种；非 base64 的内联载荷（`;charset=…,<svg…>`）
+ * 第二个候选却会真的外联。描述符只抵密度/宽度两种；非 base64 的内联载荷（`;charset=…,<svg…>`）
  * 会被当成外链整张删掉——fail-closed，那个形状本来就是载荷面。
  */
 const INLINE_SRCSET_ITEM =
@@ -64,7 +64,7 @@ const hasExternalSrcset = (value: string): boolean => {
 
 const STYLE_EXTERNAL_URL = /url\(\s*['"]?(?:[a-z][a-z0-9+.-]*:)?\/\//iu;
 
-/** 被删时计入 `droppedImages` 的标签：`<img>` 与 SVG `<image>`（§13.3）；`<svg>` 内的 `<image>` 随 `<svg>` 整删，自然不计。 */
+/** 被删时计入 `droppedImages` 的标签：`<img>` 与 SVG `<image>`；`<svg>` 内的 `<image>` 随 `<svg>` 整删，自然不计。 */
 export const isCountedImage = (node: HtmlElementNode): boolean =>
   node.tag.toLowerCase() === "img" || node.tag.toLowerCase() === "image";
 

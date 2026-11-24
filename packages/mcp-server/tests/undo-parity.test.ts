@@ -1,9 +1,9 @@
 // 这层管：`hr_undo` 与 HTTP `POST /api/doc/<docId>/undo` 在**最反直觉的那个场景**下必须同样怪。
 //
 // 场景：`patch` → `applyStyle` → 一次 undo。`applyStyle` 不写快照（`packages/core/src/style/applyFile.ts`
-// 全文无 `writeSnapshot`，登记为 L-32），所以那唯一的快照是 patch 前的内容：一次 undo 把正文和样式一起回退。
-// 这不是本卡实现的行为，而是 `revertLast` 的行为——两条路径只要真的共用它，就必然一致；
-// 若不一致，说明 MCP 侧没走 `revertLast`（P0）。
+// 全文无 `writeSnapshot`），所以那唯一的快照是 patch 前的内容：一次 undo 把正文和样式一起回退。
+// 这不是本层实现的行为，而是 `revertLast` 的行为——两条路径只要真的共用它，就必然一致；
+// 若不一致，说明 MCP 侧没走 `revertLast`。
 //
 // 它会因为什么而红：`hr_undo` 换成 `undoPatch`/自写还原、HTTP 与 MCP 的锁等待或目标解析分叉。
 
@@ -112,15 +112,15 @@ const snapshotsOf = async (workspaceOf: string): Promise<readonly string[]> => {
 const styled = (): Promise<unknown> =>
   mcpCallOf("hr_apply_style", { filePath: FILE, visualId: PRESET });
 
-describe("hr_undo · L-32 的真实语义", () => {
-  it("换样式不留快照：一次 undo 连正文一起回退（L-32），第二次 nothing_to_undo", async () => {
+describe("hr_undo · 换样式不留快照的语义", () => {
+  it("换样式不留快照：一次 undo 连正文一起回退，第二次 nothing_to_undo", async () => {
     const base = await bytesIn(workspace);
     await patched();
     await styled();
     expect(await bytesIn(workspace)).not.toBe(base);
 
     const undo = await mcpCallOf("hr_undo", { filePath: FILE });
-    // 依据：`packages/core/src/style/applyFile.ts` 全文没有 `writeSnapshot`（L-32）——
+    // 依据：`packages/core/src/style/applyFile.ts` 全文没有 `writeSnapshot`——
     // 所以 undo 回到的是 patch 前那份快照，样式改动跟着一起没了。
     expect(undo.isError).toBe(false);
     expect(await bytesIn(workspace)).toBe(base);
@@ -130,7 +130,7 @@ describe("hr_undo · L-32 的真实语义", () => {
   });
 });
 
-describe("hr_undo · L-32 的第二个守卫", () => {
+describe("hr_undo · 不留快照的第二个守卫", () => {
   it("applyStyle 不改快照数量（换样式不留撤销台阶）", async () => {
     await patched();
     const before = await snapshotsOf(workspace);
@@ -155,7 +155,7 @@ describe("hr_undo · 与 HTTP undo 的差分", () => {
       // 两条路径的 sha256（revision = sha256 前 16 位）与整份字节都必须逐字相等。
       expect(mcpRevision).toBe(httpRevision);
       expect(await bytesIn(workspace)).toBe(await bytesIn(httpWorkspace));
-      // 并且都回到了 patch 前（再次确认 L-32 的语义在两边同样怪）。
+      // 并且都回到了 patch 前（再次确认这个语义在两边同样怪）。
       expect(await bytesIn(workspace)).toBe(ANNOTATED_DOC);
     } finally {
       await arm.close();

@@ -32,7 +32,7 @@ const isEditableTarget = (target: KeyTargetLike | null | undefined): boolean =>
 const diffShortcutOf = (event: KeyLike): ReaderIntent | undefined => {
   if (event.shiftKey === true && (event.key === "D" || event.key === "d"))
     return { kind: "diffToggled" };
-  // `w` 是 Revert（撤销上一 revision），不是"接受"——kind 名与语义必须一致（裁定 #2）。
+  // `w` 是 Revert（撤销上一 revision），不是"接受"——kind 名与语义必须一致。
   return event.key === "w" ? { kind: "revert" } : undefined;
 };
 

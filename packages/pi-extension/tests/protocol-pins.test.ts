@@ -1,4 +1,4 @@
-// 这层管：AC-7 的漂移钉子——扩展里那份 core 协议知识（端点表、事件名、patch 动作、错误码）
+// 这层管：漂移钉子——扩展里那份 core 协议知识（端点表、事件名、patch 动作、错误码）
 // 逐项对回 `packages/core/src` 的**源文件文本**。任一侧改名/增删 → 这里红。
 // 每个钉子都带非零下界：扩展侧用模板字符串拼路径时提取集可能为空，`every()` 真空为真必须被下界挡住。
 
@@ -72,7 +72,7 @@ const eventNamesOf = async (): Promise<ReadonlySet<string>> => {
   return new Set(names);
 };
 
-describe("AC-7 端点表 ↔ routes.ts", () => {
+describe("端点表 ↔ routes.ts", () => {
   it("core 的路由表解析出非零条，且每条都带 auth（下界挡住真空为真）", async () => {
     const source = await coreFileOf("server/routes.ts");
     const routes = await coreRoutesOf();
@@ -104,7 +104,7 @@ describe("AC-7 端点表 ↔ routes.ts", () => {
   });
 });
 
-describe("AC-7 帧字面量 ↔ event-ring.ts", () => {
+describe("帧字面量 ↔ event-ring.ts", () => {
   const frameNames = ["READY_FRAME", "KEEP_ALIVE_FRAME"] as const;
 
   it("core 的两个帧字面量提取到恰好 2 条（下界防正则抓空），且扩展对真值的行为正确", async () => {
@@ -124,7 +124,7 @@ describe("AC-7 帧字面量 ↔ event-ring.ts", () => {
   });
 });
 
-describe("AC-7 事件名 ↔ publish() 字面量", () => {
+describe("事件名 ↔ publish() 字面量", () => {
   it("core 发布的事件名解析出非零个，且包含 doc.changed", async () => {
     const names = await eventNamesOf();
     expect(names.size).toBeGreaterThanOrEqual(4);
@@ -140,7 +140,7 @@ describe("AC-7 事件名 ↔ publish() 字面量", () => {
   });
 });
 
-describe("AC-7 patch 动作 ↔ PatchAction", () => {
+describe("patch 动作 ↔ PatchAction", () => {
   it("五个动作与 `ops/patchNode/constants.ts` 的联合类型逐字相同", async () => {
     const source = await coreFileOf("ops/patchNode/constants.ts");
     const union = /export type PatchAction =([\s\S]*?);/.exec(source)?.[1] ?? "";
@@ -150,7 +150,7 @@ describe("AC-7 patch 动作 ↔ PatchAction", () => {
   });
 });
 
-describe("AC-7 错误码 ↔ HrErrorCode", () => {
+describe("错误码 ↔ HrErrorCode", () => {
   it("码表覆盖 core 的每个错误码，且不含 core 里没有的码", async () => {
     const source = await coreFileOf("hr-error.ts");
     const union = /export type HrErrorCode =([\s\S]*?);/.exec(source)?.[1] ?? "";
@@ -160,8 +160,8 @@ describe("AC-7 错误码 ↔ HrErrorCode", () => {
   });
 });
 
-describe("AC-5/D7 目录扫描哨兵", () => {
-  /** 扩展自己读目录 = 把 core 的主题发现规则又写了一遍（`L-13` 的第三份拼写）。 */
+describe("目录扫描哨兵", () => {
+  /** 扩展自己读目录 = 把 core 的主题发现规则又写了一遍（第三份拼写）。 */
   const SCANNERS = ["readdir", "readdirSync", "opendir"];
 
   it("扩展源码不读目录，风格 id 只经 `GET /api/theme`（端点表里的那一条）", async () => {
@@ -170,7 +170,7 @@ describe("AC-5/D7 目录扫描哨兵", () => {
     for (const scanner of SCANNERS) {
       expect(source, `扩展里出现了目录扫描：${scanner}`).not.toContain(scanner);
     }
-    // 路径字面量只有端点表一处（AC-7 的钉子钉的也是它），所以这里查的是端点表拼出来的值。
+    // 路径字面量只有端点表一处（漂移钉子钉的也是它），所以这里查的是端点表拼出来的值。
     expect(pathOf(ENDPOINTS.themes)).toBe("/api/theme");
     expect(pathOf(ENDPOINTS.style)).toBe("/api/style");
     const routes = await coreFileOf("server/routes.ts");

@@ -1,4 +1,4 @@
-// 这层管：MCP-UI 视图资源（`ui://hreader/view/{docId}`）——AC-7 的「没 daemon 也要能读」，
+// 这层管：MCP-UI 视图资源（`ui://hreader/view/{docId}`）——「没 daemon 也要能读」，
 // 以及 daemon 在跑时横幅指向它的真实端口（Marco 4：视图只引用端口，不代管进程）。
 
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
@@ -106,7 +106,7 @@ describe("ui://hreader/view · 不存在时不再回假成功", () => {
   it("should reject an unreadable document instead of returning a shell page", async () => {
     const { code, data } = await resourceErrorOf(viewUriOf("missing.html"));
 
-    // 锁的是 M3.1 的裁定（F6-②）：回一页"文档不可读"的壳对宿主是假成功。
+    // 钉的是既定行为：回一页"文档不可读"的壳对宿主是假成功。
     expect(code).toBe(-32002);
     expect(Reflect.get(Object(data), "code")).toBe("not_found");
   });

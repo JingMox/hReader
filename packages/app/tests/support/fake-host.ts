@@ -1,4 +1,4 @@
-// 这层管：`Host` 的假实现——记录**调用序列**（不是最终 DOM），AC2.2/AC2.4 的"只写变化"
+// 这层管：`Host` 的假实现——记录**调用序列**（不是最终 DOM），"只写变化"
 // 必须靠序列证明：整篇重载与按块更新在最终 DOM 上可能一样，在调用序列上不一样。
 
 import type { Host, NodeSpec, TargetLike } from "../../src/dom.ts";

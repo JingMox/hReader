@@ -16,7 +16,7 @@ import {
   styleCandidatesOf,
   styleDepsOf,
   styleRootWarningOf,
-} from "../src/styleDeps";
+} from "../src/style-deps";
 
 /** 一定不存在的一段路径：拿它冒充"产物被拷到仓库外"的布局。 */
 const ABSENT_ROOT = join(tmpdir(), "hreader-styles-root-that-is-not-there");
@@ -84,10 +84,10 @@ describe("候选顺序", () => {
   it("should put the package-local styles first, with core's repo root as the dev fallback", () => {
     const [first, second] = styleCandidatesOf("/workspace");
 
-    // 包内优先：发布版里包内那份才是真值源（AC-7：把顺序反了，这条必红）。
+    // 包内优先：发布版里包内那份才是真值源（把顺序反了，这条必红）。
     // 写精确值而不是 `toContain("packages/mcp-server/styles")`：任何包含该片段的路径（含仓库根那份）都能过子串断言。
     expect(first).toBe(fileURLToPath(new URL("../styles/", import.meta.url)));
-    // 仓库根只兜底源码直跑：它由 core 拼，本包不自己写一次深度（AC-3）。
+    // 仓库根只兜底源码直跑：它由 core 拼，本包不自己写一次深度。
     expect(second).toBe(nodeStyleDeps("/workspace").stylesRoot);
   });
 

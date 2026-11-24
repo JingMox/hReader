@@ -1,6 +1,6 @@
-// 这层管：AC-1 的"假安装"证据——`dist/` + `styles/` 一起拷到**没有仓库**的目录里，
+// 这层管："假安装"证据——`dist/` + `styles/` 一起拷到**没有仓库**的目录里，
 // 真子进程 stdio 握手，对三个内置预设逐个 `hr_apply_style`，并断言样式**真的生效**（不是"没报错"）。
-// 它测的是交付形态：`build` 里少了拷 `styles/` 那一步，本文件必红（M3.1.1 AC-7）。
+// 它测的是交付形态：`build` 里少了拷 `styles/` 那一步，本文件必红。
 
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -106,10 +106,10 @@ const applyPresetOf = async (
   const outcome = outcomeOf(textOf(frame));
   expect(outcome.changed).toBe(true);
   // 生效 = 落盘的 `<style id="hr-theme">` 内容与随包发布的那份 theme.css 逐字相同（core 原样拼接）。
-  // 拿"写了个 style 标签"或"没报错"当证据，正是上一张卡栽过的坑。
+  // 拿"写了个 style 标签"或"没报错"当证据，正是之前栽过的坑。
   expect(themeOf(written)).toBe(theme.shipped);
   // 哨兵：模拟目录那份与仓库那份**只差这一行注释**。实现若偷懒去读仓库根那份，这两条必红——
-  // 没有它们时 `shipped === repo`，"读包内"与"读仓库"在断言上完全不可分（F3-1）。
+  // 没有它们时 `shipped === repo`，"读包内"与"读仓库"在断言上完全不可分。
   expect(themeOf(written)).toContain(theme.sentinel);
   expect(themeOf(written)).not.toBe(theme.repo);
   expect(outcome.bytes).toBe(Buffer.byteLength(written, "utf8"));
