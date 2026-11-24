@@ -1,5 +1,8 @@
 // 这层管：模型响应文本 → `Suggestions`（逐字段校验、有据丢弃、永不抛）+ "能不能用"的判据；不合并。
 
+import { z } from "zod";
+
+import { jsonArray, jsonObject } from "../../../schema";
 import type { ExampleSpec } from "../../contracts";
 
 /** 卡 §4 的字数上限：超限整条丢弃而不是截断——半截人格比没有人格更坏。 */
@@ -25,7 +28,6 @@ const KNOWN_KEYS: readonly string[] = [
   "forbidden",
 ];
 
-const KNOWN_EXAMPLE_KEYS: readonly string[] = ["bad", "good"]; // 多出的叶子键按整项记 not_owned（字段名 examples[i]）
 const KNOWN_RHYTHM_KEYS: readonly string[] = ["style"]; // max_paragraph_sentences 归统计层（D3），出现即 not_owned
 
 export type DroppedReason = "not_owned" | "wrong_type" | "too_long" | "unparsable";
@@ -45,8 +47,21 @@ export interface Suggestions {
   readonly forbidden: readonly string[];
 }
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/** 只认 OpenAI 兼容形状的 `choices[0].message.content`；`choices` 里多出来的项不读。 */
+const completionSchema = z.object({
+  choices: z.tuple([z.object({ message: z.object({ content: z.string() }) })]).rest(z.unknown()),
+});
+
+/** 建议文本统一规格：先 trim 再判空与长度；空串与类型不对同属 `wrong_type`，超长才是 `too_long`。 */
+const trimmedText = z.string().trim().min(1);
+
+const textSchema = (maxChars: number) => trimmedText.max(maxChars);
+
+const exampleSchema = z.object({ bad: trimmedText, good: trimmedText });
+
+/** 失败的原因只有两种：太长，或者"不是可用的文本"（类型错 / 空白）。 */
+const reasonOf = (error: z.ZodError): DroppedReason =>
+  error.issues.some((issue) => issue.code === "too_big") ? "too_long" : "wrong_type";
 
 /**
  * 真实模型常把 JSON 包在 ``` / ```json 围栏里，BOM 也见过：解析前剥掉，剥完仍非法才算不可解析
@@ -70,17 +85,10 @@ const unparsableOf = (
   dropped: [{ field, reason: "unparsable" }],
 });
 
-/** 依次穿过 `choices[0].message.content`：任何一层不是期望的形状都归到"整份不可解析"。 */
+/** 任何一层不是期望的形状都归到"整份不可解析"。 */
 const contentTextOf = (raw: string): string | undefined => {
-  const root = tryJson(raw);
-  if (!isRecord(root)) return undefined;
-  const choices = root["choices"];
-  if (!Array.isArray(choices)) return undefined;
-  const choice: unknown = choices[0];
-  if (!isRecord(choice)) return undefined;
-  const message = choice["message"];
-  if (!isRecord(message)) return undefined;
-  return typeof message["content"] === "string" ? message["content"] : undefined;
+  const completion = completionSchema.safeParse(tryJson(raw));
+  return completion.success ? completion.data.choices[0].message.content : undefined;
 };
 
 const reportUnknown = (
@@ -93,9 +101,6 @@ const reportUnknown = (
     if (!known.includes(key)) dropped.push({ field: `${prefix}${key}`, reason: "not_owned" });
   }
 };
-
-const trimmedOf = (value: unknown): string | undefined =>
-  typeof value === "string" ? value.trim() : undefined;
 
 /** `field` 是进 `dropped` 的字段名：子对象里的键要带上前缀（`rhythm.style`）；列表字段同样只认它。 */
 interface FieldSpec {
@@ -112,16 +117,10 @@ const textFieldOf = (
 ): string | undefined => {
   const value = body[spec.key];
   if (value === undefined) return undefined;
-  const text = trimmedOf(value);
-  if (text === undefined || text.length === 0) {
-    dropped.push({ field: spec.field, reason: "wrong_type" });
-    return undefined;
-  }
-  if (text.length > spec.maxChars) {
-    dropped.push({ field: spec.field, reason: "too_long" });
-    return undefined;
-  }
-  return text;
+  const text = textSchema(spec.maxChars).safeParse(value);
+  if (text.success) return text.data;
+  dropped.push({ field: spec.field, reason: reasonOf(text.error) });
+  return undefined;
 };
 
 /**
@@ -136,14 +135,11 @@ const itemsOf = (
 ): readonly string[] => {
   const items: string[] = [];
   value.forEach((item, index) => {
-    const text = trimmedOf(item);
-    const at = `${field}[${String(index)}]`;
-    if (text === undefined || text.length === 0) {
-      dropped.push({ field: at, reason: "wrong_type" });
-    } else if (text.length > maxChars) {
-      dropped.push({ field: at, reason: "too_long" });
+    const text = textSchema(maxChars).safeParse(item);
+    if (text.success) {
+      items.push(text.data);
     } else {
-      items.push(text);
+      dropped.push({ field: `${field}[${String(index)}]`, reason: reasonOf(text.error) });
     }
   });
   return items;
@@ -157,31 +153,32 @@ const listFieldOf = (
 ): readonly string[] | undefined => {
   const value = body[spec.key];
   if (value === undefined) return undefined;
-  if (!Array.isArray(value)) {
+  const list = jsonArray.safeParse(value);
+  if (!list.success) {
     dropped.push({ field: spec.field, reason: "wrong_type" });
     return undefined;
   }
-  const items = itemsOf(value, spec.field, spec.maxChars, dropped);
+  const items = itemsOf(list.data, spec.field, spec.maxChars, dropped);
   if (items.length <= maxItems) return items;
   dropped.push({ field: spec.field, reason: "too_long" });
   return items.slice(0, maxItems);
 };
 
 const pairOf = (item: unknown, at: string, dropped: Dropped[]): ExampleSpec | undefined => {
-  if (!isRecord(item)) {
+  const record = jsonObject.safeParse(item);
+  if (!record.success) {
     dropped.push({ field: at, reason: "wrong_type" });
     return undefined;
   }
-  if (Object.keys(item).some((key) => !KNOWN_EXAMPLE_KEYS.includes(key))) {
+  if (Object.keys(record.data).some((key) => !Object.hasOwn(exampleSchema.shape, key))) {
     dropped.push({ field: at, reason: "not_owned" });
   }
-  const bad = trimmedOf(item["bad"]);
-  const good = trimmedOf(item["good"]);
-  if (bad === undefined || good === undefined || bad.length === 0 || good.length === 0) {
+  const pair = exampleSchema.safeParse(record.data);
+  if (!pair.success) {
     dropped.push({ field: at, reason: "wrong_type" });
     return undefined;
   }
-  return { bad, good };
+  return pair.data;
 };
 
 const examplesOf = (
@@ -190,11 +187,12 @@ const examplesOf = (
 ): readonly ExampleSpec[] | undefined => {
   const value = body["examples"];
   if (value === undefined) return undefined;
-  if (!Array.isArray(value)) {
+  const list = jsonArray.safeParse(value);
+  if (!list.success) {
     dropped.push({ field: "examples", reason: "wrong_type" });
     return undefined;
   }
-  const examples = value
+  const examples = list.data
     .map((item, index) => pairOf(item, `examples[${String(index)}]`, dropped))
     .filter((example): example is ExampleSpec => example !== undefined);
   if (examples.length <= MAX_EXAMPLES) return examples;
@@ -221,13 +219,14 @@ const rhythmStyleOf = (
     return flat;
   }
   if (rhythm === undefined) return undefined;
-  if (!isRecord(rhythm)) {
+  const rhythmRecord = jsonObject.safeParse(rhythm);
+  if (!rhythmRecord.success) {
     dropped.push({ field: "rhythm", reason: "wrong_type" });
     return undefined;
   }
-  reportUnknown(rhythm, KNOWN_RHYTHM_KEYS, "rhythm.", dropped);
+  reportUnknown(rhythmRecord.data, KNOWN_RHYTHM_KEYS, "rhythm.", dropped);
   return textFieldOf(
-    rhythm,
+    rhythmRecord.data,
     { key: "style", field: "rhythm.style", maxChars: MAX_RULE_CHARS },
     dropped,
   );
@@ -291,9 +290,9 @@ export const suggestionsOf = (
     return { suggestions: { forbidden: [] }, dropped: [{ field: "content", reason: "too_long" }] };
   }
   // `content` 本身还得是 JSON 对象：模型习惯在里面再包一层结构。
-  const body = tryJson(content);
-  if (!isRecord(body)) return unparsableOf("content");
+  const body = jsonObject.safeParse(tryJson(content));
+  if (!body.success) return unparsableOf("content");
   const dropped: Dropped[] = [];
 
-  return { suggestions: fieldsOf(body, dropped), dropped };
+  return { suggestions: fieldsOf(body.data, dropped), dropped };
 };

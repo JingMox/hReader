@@ -196,18 +196,28 @@ describe("ensureNoDaemon · 三条早退（续）", () => {
   });
 });
 
-describe("http-io · 非 JSON 请求体", () => {
-  it("should throw invalid_request for a body that is not JSON", async () => {
+describe("http-io · 请求体只接受 JSON 对象", () => {
+  const bodyOf = (text: string): ReturnType<typeof bodyRecordOf> => {
     const req = {
       on: (event: string, handler: (chunk?: Buffer) => void) => {
-        if (event === "data") handler(Buffer.from("not-json"));
+        if (event === "data") handler(Buffer.from(text));
         if (event === "end") handler();
         return req;
       },
     };
+    return bodyRecordOf(requestLike(req));
+  };
 
-    await expect(bodyRecordOf(requestLike(req))).rejects.toMatchObject({ code: "invalid_request" });
+  it("should accept a JSON object", async () => {
+    await expect(bodyOf('{"a":1}')).resolves.toEqual({ a: 1 });
   });
+
+  it.each([["not-json"], ["[]"], ["null"], ["1"], ['"x"'], ["{"], ["{}x"]])(
+    "should throw invalid_request for %j",
+    async (text) => {
+      await expect(bodyOf(text)).rejects.toMatchObject({ code: "invalid_request" });
+    },
+  );
 });
 
 describe("watcher · 回声窗口过期后仍要转发", () => {

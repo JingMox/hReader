@@ -1,5 +1,7 @@
 // 这层管：把 HTTP 语义翻成 core 调用（校验 → 加锁 → 落盘），返回"状态码 + 头 + 体"；不碰 socket、不分发路由。
 
+import { z } from "zod";
+
 import { HrError } from "../hr-error";
 import { decodeUtf8, encodeUtf8 } from "../io/bytes";
 import { writeAtomic } from "../io/atomic";
@@ -19,7 +21,7 @@ import type { StyleDeps } from "../style";
 import { appendAnnotation, type AnnotationInput, type AnnotationOutcome } from "./annotation";
 import type { Reply } from "./contracts";
 import { diffNodes } from "./diff-nodes";
-import { integerFieldOf, requiredStringOf, stringFieldOf } from "./body";
+import { integer, optionalString, parseBody, requiredString } from "./body";
 import { revisionOf } from "./revision";
 
 export interface HandlerContext {
@@ -132,38 +134,35 @@ export const documentReply = async (ctx: HandlerContext, docId: string): Promise
 const changedOf = (before: Uint8Array, after: Uint8Array, label: string): readonly string[] =>
   diffNodes(modelOf(before, label), modelOf(after, label));
 
-const ACTIONS: Readonly<Record<string, PatchAction>> = {
-  replace: "replace",
-  insert_before: "insert_before",
-  insert_after: "insert_after",
-  append: "append",
-  delete: "delete",
-};
+/** 标注成 `ZodType<PatchAction>`：枚举里混进 `PatchAction` 之外的值会在编译期报错。 */
+const patchAction: z.ZodType<PatchAction, z.ZodTypeDef, unknown> = z.enum([
+  "replace",
+  "insert_before",
+  "insert_after",
+  "append",
+  "delete",
+]);
 
-const actionOf = (record: Readonly<Record<string, unknown>>): PatchAction => {
-  const action = requiredStringOf(record, "action");
-  const known = ACTIONS[action];
-  if (known === undefined) throw new HrError("invalid_request", `未知 action：${action}`);
-  return known;
-};
-
-const requestOf = (record: Readonly<Record<string, unknown>>): PatchRequest => {
-  const targetId = requiredStringOf(record, "targetId");
-  const action = actionOf(record);
-  const fragment = stringFieldOf(record, "fragment");
-  return fragment === undefined ? { targetId, action } : { targetId, action, html: fragment };
-};
+const patchBody = z.object({
+  docId: requiredString,
+  targetId: requiredString,
+  // 先判"给没给"再判"认不认识"：空串报缺字段，而不是"未知 action："。
+  action: requiredString.pipe(patchAction),
+  fragment: optionalString,
+});
 
 export const patchReply = async (
   ctx: HandlerContext,
   body: Readonly<Record<string, unknown>>,
   lockMs: number,
 ): Promise<Written> => {
-  const docId = requiredStringOf(body, "docId");
+  const { docId, targetId, action, fragment } = parseBody(patchBody, body);
+  const request: PatchRequest =
+    fragment === undefined ? { targetId, action } : { targetId, action, html: fragment };
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
   const result = await busy(() =>
-    patchFile({ workspace: ctx.workspace, file: docId, request: requestOf(body) }, ctx.deps, {
+    patchFile({ workspace: ctx.workspace, file: docId, request }, ctx.deps, {
       lockTimeoutMs: lockMs,
     }),
   );
@@ -184,13 +183,14 @@ export const patchReply = async (
   };
 };
 
+const styleBody = z.object({ docId: requiredString, visualId: requiredString });
+
 export const styleReply = async (
   ctx: HandlerContext,
   body: Readonly<Record<string, unknown>>,
   lockMs: number,
 ): Promise<Written> => {
-  const docId = requiredStringOf(body, "docId");
-  const visualId = requiredStringOf(body, "visualId");
+  const { docId, visualId } = parseBody(styleBody, body);
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
   const result = await busy(() =>
@@ -209,12 +209,12 @@ export const styleReply = async (
   };
 };
 
-const inputOf = (body: Readonly<Record<string, unknown>>): AnnotationInput => ({
-  start: integerFieldOf(body, "start"),
-  end: integerFieldOf(body, "end"),
-  text: requiredStringOf(body, "text"),
-  note: stringFieldOf(body, "note"),
-  status: "pending",
+const annotationBody = z.object({
+  docId: requiredString,
+  start: integer,
+  end: integer,
+  text: requiredString,
+  note: optionalString,
 });
 
 /** 读-改-写必须整段在锁里：`appendAnnotation` 要读当前 `hr-meta` 再整篇重写，锁外读会丢并发写。 */
@@ -245,10 +245,15 @@ export const annotationReply = async (
   body: Readonly<Record<string, unknown>>,
   lockMs: number,
 ): Promise<Written> => {
-  const docId = requiredStringOf(body, "docId");
+  const { docId, start, end, text, note } = parseBody(annotationBody, body);
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
-  const written = await appendWithLock(ctx, target, inputOf(body), lockMs);
+  const written = await appendWithLock(
+    ctx,
+    target,
+    { start, end, text, note, status: "pending" },
+    lockMs,
+  );
   const after = await bytesOf(ctx, target);
   return {
     reply: jsonReply(201, {

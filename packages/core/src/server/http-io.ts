@@ -5,8 +5,9 @@ import { extname } from "node:path";
 
 import { HrError, type HrErrorCode } from "../hr-error";
 import { decodeUtf8, encodeUtf8 } from "../io/bytes";
+import { jsonObject, parseJson } from "../schema";
 import { COOKIE_NAME, CSRF_HEADER, cookieOf, csrfAllowed, tokenMatches } from "./auth";
-import { MAX_BODY_BYTES, jsonBodyOf } from "./body";
+import { MAX_BODY_BYTES } from "./body";
 import type { Reply } from "./contracts";
 import type { Route } from "./routes";
 import { isServerCode, statusOf } from "./status";
@@ -172,9 +173,9 @@ export const bodyRecordOf = async (
   req: IncomingMessage,
   timeoutMs = 10_000,
 ): Promise<Readonly<Record<string, unknown>>> => {
-  const parsed = jsonBodyOf(await bodyTextOf(req, timeoutMs));
-  if (!parsed.ok) throw new HrError("invalid_request", "请求体必须是 JSON 对象");
-  return parsed.value;
+  const parsed = jsonObject.safeParse(parseJson(await bodyTextOf(req, timeoutMs)));
+  if (!parsed.success) throw new HrError("invalid_request", "请求体必须是 JSON 对象");
+  return parsed.data;
 };
 
 interface AuthOutcome {

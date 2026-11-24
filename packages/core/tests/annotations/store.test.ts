@@ -158,6 +158,16 @@ describe("readAnnotations · 单条脏数据", () => {
 
     expect(read.diagnostics).toEqual(["hr-meta 含未知字段：a, b（已忽略）"]);
   });
+
+  it("should treat names inherited from Object.prototype as unknown fields", () => {
+    const read = readAnnotations(
+      docWith(
+        payloadOf({ nodeId: "hr-b", createdAt: "t", anchor: { exact: "x" }, constructor: 1 }),
+      ),
+    );
+
+    expect(read.diagnostics).toEqual(["hr-meta 含未知字段：constructor（已忽略）"]);
+  });
 });
 
 describe("readAnnotations · 超限截断", () => {

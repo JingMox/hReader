@@ -7,6 +7,7 @@ import { type HtmlElementNode, HR_ID_ATTRIBUTE, META_SCRIPT_ID } from "../html/c
 import { parseHtml } from "../html/parse";
 import { spanOf } from "../html/span";
 import { attributeOf } from "../model/attrs";
+import { jsonArray, jsonObject, parseJson } from "../schema";
 
 export interface AnnotationInput {
   /** 块内字符偏移（含头不含尾），与 `Lint` 的偏移同一口径。 */
@@ -25,9 +26,6 @@ export interface AnnotationOutcome {
 
 const META_OPEN = `<script id="${META_SCRIPT_ID}">`;
 const META_CLOSE = "</script>";
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** `</script>` 必须转义，否则批注正文能提前闭合 meta 脚本（与正文注入同一类问题）。 */
 const scriptSafeJson = (value: unknown): string => JSON.stringify(value).replaceAll("</", "<\\/");
@@ -90,22 +88,17 @@ const recordOf = (
   createdAt,
 });
 
-const isUnknownArray = (value: unknown): value is readonly unknown[] => Array.isArray(value);
-
 const annotationsOfMeta = (inner: string, file: string): readonly unknown[] => {
   if (inner.trim().length === 0) return [];
-  let value: unknown;
-  try {
-    value = JSON.parse(inner);
-  } catch (error: unknown) {
-    throw new HrError("invalid_document", `hr-meta 不是合法 JSON：${file}`, { cause: error });
-  }
-  if (!isRecord(value)) throw new HrError("invalid_document", `hr-meta 顶层不是对象：${file}`);
-  const annotations = value["annotations"];
-  if (annotations === undefined) return [];
-  if (!isUnknownArray(annotations))
+  const value = parseJson(inner);
+  if (value === undefined) throw new HrError("invalid_document", `hr-meta 不是合法 JSON：${file}`);
+  const root = jsonObject.safeParse(value);
+  if (!root.success) throw new HrError("invalid_document", `hr-meta 顶层不是对象：${file}`);
+  const annotations = jsonArray.optional().safeParse(root.data["annotations"]);
+  if (!annotations.success) {
     throw new HrError("invalid_document", `hr-meta.annotations 不是数组：${file}`);
-  return annotations;
+  }
+  return annotations.data ?? [];
 };
 
 /**
