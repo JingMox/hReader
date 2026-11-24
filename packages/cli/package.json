@@ -13,7 +13,8 @@
     "styles"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@hreader/core": "workspace:*",

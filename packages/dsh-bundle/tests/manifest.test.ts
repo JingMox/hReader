@@ -11,8 +11,9 @@ import { parse } from "yaml";
 const PKG_DIR = fileURLToPath(new URL("../", import.meta.url));
 const SRC_DIR = join(PKG_DIR, "src");
 
-/** 精确版本：`1.2.3` 或 `1.2.3-rc.1`；`^`/`~`/`*`/`latest`/`workspace:*` 都不匹配。 */
-const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u;
+/** 精确版本：`1.2.3`、`1.2.3-rc.1` 或 `catalog:`（版本收敛在 pnpm-workspace.yaml 的 catalog 里，
+ *  同样是精确版本单一真源）；`^`/`~`/`*`/`latest`/`workspace:*` 都不匹配。 */
+const EXACT_VERSION = /^(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?|catalog:)$/u;
 
 /** 一条**行首**的 import 语句的模块名是 `@deepseek-ai/*`（跨行也要认得出，注释里的 `import` 不算）。 */
 const DEEPSEEK_IMPORT = /^import\s+([\s\S]*?)\s+from\s+["']@deepseek-ai\/[^"']+["']/gmu;

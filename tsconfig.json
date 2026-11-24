@@ -11,7 +11,9 @@
     "packages/*/tests/**/*.mts",
     "packages/*/tests/**/*.cts",
     "scripts/**/*.ts",
+    "packages/*/vitest.config.ts",
     "packages/cli/scripts/**/*.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "vitest.shared.ts"
   ]
 }

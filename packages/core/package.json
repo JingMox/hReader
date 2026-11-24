@@ -19,5 +19,8 @@
     "write-file-atomic": "6.0.0",
     "yaml": "catalog:",
     "zod": "catalog:"
+  },
+  "scripts": {
+    "test": "vitest run"
   }
 }

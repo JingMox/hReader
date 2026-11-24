@@ -11,5 +11,8 @@
   "devDependencies": {
     "@hreader/core": "workspace:*",
     "vitest": "catalog:"
+  },
+  "scripts": {
+    "test": "vitest run"
   }
 }

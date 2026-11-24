@@ -13,7 +13,8 @@
     "hreader-mcp": "./dist/main.js"
   },
   "scripts": {
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
