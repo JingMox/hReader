@@ -1,4 +1,4 @@
-// 这层管：写路由的"按 kind 选处理器 + 同文档串行"（AC3.5 复用既有队列）；不解析 body 语义。
+// 这层管：写路由的"按 kind 选处理器 + 同文档串行"；不解析 body 语义。
 
 import type { IncomingMessage } from "node:http";
 
@@ -33,7 +33,7 @@ const docIdOf = (
 ): string => {
   const pathDocId = params["docId"];
   if (pathDocId === undefined) return parseBody(requiredDocId, body).docId;
-  // 路径 `<docId>` 是唯一真相（裁定 #6）：browser 端可省略 body.docId，但给了不一致的值必须拒收。
+  // 路径 `<docId>` 是唯一真相：browser 端可省略 body.docId，但给了不一致的值必须拒收。
   const { docId: bodyDocId } = parseBody(optionalDocId, body);
   if (bodyDocId !== undefined && bodyDocId !== pathDocId) {
     throw new HrError("invalid_payload", `body.docId（${bodyDocId}）与路径（${pathDocId}）不一致`);

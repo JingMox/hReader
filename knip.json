@@ -53,7 +53,7 @@
     }
   },
   "ignoreIssues": {
-    "packages/core/src/ops/patchNode/attrs.ts": ["exports"],
+    "packages/core/src/ops/patch-node/attrs.ts": ["exports"],
     "packages/app/src/boot.ts": ["exports"],
     "packages/app/src/main.ts": ["exports"]
   }

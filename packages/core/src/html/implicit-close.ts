@@ -9,7 +9,7 @@ import {
   type ParsedHtml,
   type SourceSpan,
 } from "./constants";
-import { attributeValue } from "./hrIds";
+import { attributeValue } from "./hr-ids";
 import { drainStack } from "./stack";
 
 /** 一段输出：`children` 是这一段的子节点（**未**处理过），复制后逐层填回。 */

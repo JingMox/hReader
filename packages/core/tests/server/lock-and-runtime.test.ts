@@ -1,4 +1,4 @@
-// 这层管：G3.11 的四处覆盖缺口——锁的两处 CAS 防线、无活动文档的库变更、runtime 的两个守门分支。
+// 这层管：锁的 CAS 防线与 runtime 的守门分支——锁的两处 CAS、无活动文档的库变更、默认文档回落、首次发布。
 
 import type { FileSystem } from "../../src/io/ports";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -62,7 +62,7 @@ const waitFor = async (ready: () => boolean, budgetMs = 3000): Promise<void> => 
   }
 };
 
-describe("lock.ts:118-121 · 抢锁副本的 CAS 不符", () => {
+describe("lock · 抢锁副本的 CAS 不符", () => {
   it("should drop the moved copy and re-create instead of writing the stale payload back", async () => {
     const fake = fakeFs({ "/ws/a.html": "x", [LOCK]: payloadText("staleaaa", 999_999) });
     const local = fixedClock(NOW);
@@ -81,7 +81,7 @@ describe("lock.ts:118-121 · 抢锁副本的 CAS 不符", () => {
   });
 });
 
-describe("lock.ts:167-169 · 取得后被接管", () => {
+describe("lock · 取得后被接管", () => {
   it("should throw locked when the first read after create returns a foreign nonce", async () => {
     const fake = fakeFs({ "/ws/a.html": "x" });
     const local = fixedClock(NOW);
@@ -110,7 +110,7 @@ describe("lock.ts:167-169 · 取得后被接管", () => {
   });
 });
 
-describe("runtime.ts:106-108 · 没有活动文档时的库变更", () => {
+describe("runtime · 没有活动文档时的库变更", () => {
   it("should publish library.changed and never doc.changed before any document is opened", async () => {
     const workspace = tmp("hr-nodoc-ws-");
     writeFileSync(join(workspace, "loose.html"), DOC, "utf8");
@@ -144,7 +144,7 @@ describe("runtime.ts:106-108 · 没有活动文档时的库变更", () => {
   });
 });
 
-describe("runtime.ts:155 · 路由没带 docId 参数时回落默认文档", () => {
+describe("runtime · 路由没带 docId 参数时回落默认文档", () => {
   it("should fall back to options.docId when params omit docId", async () => {
     const workspace = tmp("hr-docid-ws-");
     writeFileSync(join(workspace, "doc.html"), DOC, "utf8");
@@ -231,7 +231,7 @@ const publishFirstChange = async (
   return ring.since(0).events;
 };
 
-describe("runtime.ts:81 · 第一次发布（previous 还没有模型）", () => {
+describe("runtime · 第一次发布（previous 还没有模型）", () => {
   it("should use the empty changedNodes when the first publish has no previous model", async () => {
     const workspace = tmp("hr-first-ws-");
     writeFileSync(join(workspace, "doc.html"), DOC, "utf8");

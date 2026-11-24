@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { applyStyle } from "../../src/style/applyFile";
+import { applyStyle } from "../../src/style/apply-file";
 import { sha1Of } from "../io/harness";
 import { loadStyle } from "../../src/style/load";
 import {
@@ -205,7 +205,7 @@ describe("applyStyle · 文档读取失败", () => {
   });
 });
 
-describe("resolveStyle 单一解析链（R4）", () => {
+describe("resolveStyle 单一解析链", () => {
   it("should apply a builtin visual that loadStyle can resolve", async () => {
     const env = styleEnv(seed());
     const loaded = await loadStyle({ id: "atelier-editorial" }, env.deps);
@@ -219,7 +219,7 @@ describe("resolveStyle 单一解析链（R4）", () => {
   });
 });
 
-describe("resolveStyle 单一解析链 · 用户路径（R4）", () => {
+describe("resolveStyle 单一解析链 · 用户路径", () => {
   it("should apply a user style that loadStyle resolves from an explicit path", async () => {
     const env = styleEnv(
       seed({

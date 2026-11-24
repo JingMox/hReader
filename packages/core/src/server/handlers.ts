@@ -10,13 +10,13 @@ import { runLocked } from "../io/lock";
 import type { ResolvedTarget } from "../io/paths";
 import { resolveTarget } from "../io/paths";
 import type { PatchDeps } from "../io/ports";
-import { patchFile } from "../io/patchFile";
+import { patchFile } from "../io/patch-file";
 import { parseHtml } from "../html/parse";
 import { toDocumentModel } from "../model/derive";
 import type { DocumentModel } from "../model/constants";
 import { buildOutline } from "../ops/outline";
-import type { PatchAction, PatchRequest } from "../ops/patchNode";
-import { applyStyle } from "../style/applyFile";
+import type { PatchAction, PatchRequest } from "../ops/patch-node";
+import { applyStyle } from "../style/apply-file";
 import type { StyleDeps } from "../style";
 import { appendAnnotation, type AnnotationInput, type AnnotationOutcome } from "./annotation";
 import type { Reply } from "./contracts";
@@ -65,7 +65,7 @@ const JSON_HEADERS: Readonly<Record<string, string>> = {
   "content-type": "application/json; charset=utf-8",
 };
 
-/** @internal 由 M2.3 处理器（annotation-replies.ts）复用；不进公共导出面。 */
+/** @internal 由 annotation-replies.ts 的处理器复用；不进公共导出面。 */
 export const jsonReply = (status: number, value: unknown): Reply => ({
   status,
   headers: JSON_HEADERS,
@@ -227,7 +227,7 @@ const appendWithLock = async (
   busy(() =>
     runLocked(target, ctx.deps, { lockTimeoutMs: lockMs }, async () => {
       const html = decodeUtf8(await bytesOf(ctx, target), target.realPath);
-      // 时间戳只从注入的时钟来（`annotationOps` 同源），否则同一次写入不可复现。
+      // 时间戳只从注入的时钟来（`annotation-ops` 同源），否则同一次写入不可复现。
       const createdAt = ctx.deps.clock.now().toISOString();
       const outcome = appendAnnotation(html, input, `an_${nonce().slice(0, 8)}`, createdAt);
       if (outcome.changed) {

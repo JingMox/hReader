@@ -104,7 +104,7 @@ describe("matchRoute · 精确分段匹配（续）", () => {
     expect(matchRoute("GET", "/api/doc/a/b/model").kind).toBe("none");
     expect(matchRoute("GET", "/api/doc/a.html/model").kind).toBe("route");
     expect(matchRoute("GET", "/api/doc/a.html/outline").kind).toBe("route");
-    // M2.2 新增的两条静态入口：/assets/<任意深度路径> 与内置主题的 CSS。
+    // 两条静态入口：/assets/<任意深度路径> 与内置主题的 CSS。
     expect(matchRoute("GET", "/assets/app/main.js")).toMatchObject({
       kind: "route",
       params: { path: "app/main.js" },
@@ -123,7 +123,7 @@ describe("matchRoute · 精确分段匹配（续）", () => {
   });
 });
 
-describe("matchRoute · M2.3 的批注与撤销", () => {
+describe("matchRoute · 批注与撤销", () => {
   it("should match the five new POST/GET routes", () => {
     expect(matchRoute("GET", "/api/doc/a.html/annotations")).toMatchObject({
       kind: "route",

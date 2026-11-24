@@ -1,5 +1,5 @@
 // 这层管：批注的落盘编排（读 → 改 meta → 快照 → 原子写 → 裁剪）；不解析 HTML、不做校验。
-// 所有写路径与 patch 共用同一条 undo 快照链（AC2.3），只有一处 `writeAtomic`。
+// 所有写路径与 patch 共用同一条 undo 快照链，只有一处 `writeAtomic`。
 
 import {
   readAnnotations,

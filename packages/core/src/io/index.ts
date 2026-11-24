@@ -10,6 +10,6 @@ export type {
 export { writeAtomic } from "./atomic";
 export { isInside, isInsideOrSelf } from "./paths";
 export { nodePatchDeps } from "./node-fs";
-export { patchFile } from "./patchFile";
+export { patchFile } from "./patch-file";
 export type { Clock, FileStat, FileSystem, PatchDeps } from "./ports";
 export { undoPatch } from "./undo";

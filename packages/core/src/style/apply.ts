@@ -7,7 +7,7 @@ import { drainStack } from "../html/stack";
 import { HrError } from "../hr-error";
 import { assertThemeSafe } from "./css";
 
-/** 与 `ops/readNode/constants.ts` 的 `THEME_ANCHOR_ID` 同值：外壳锚点是 docs/02 §3.1 的规范常量。 */
+/** 与 `ops/read-node/constants.ts` 的 `THEME_ANCHOR_ID` 同值：外壳锚点是规范常量。 */
 const THEME_ANCHOR_ID = "hr-theme";
 
 /** 没有 `<html>` 时唯一的落点：紧跟 prologue（doctype/注释/缩进），绝不插到它前面。 */
@@ -16,7 +16,7 @@ const PROLOGUE = /^(?:\s|<!--[\s\S]*?-->)*<!doctype[^>]*>/iu;
 export interface ReplaceThemeResult {
   readonly html: string;
   readonly changed: boolean;
-  /** 被删掉的重复主题块数量：锚点始终收敛到一个（G2 P1-2）。 */
+  /** 被删掉的重复主题块数量：锚点始终收敛到一个。 */
   readonly removed: number;
 }
 
@@ -32,7 +32,7 @@ interface Anchor {
 }
 
 /** `locations: true` 下每个元素都有区间；`{ ...ZERO_SPAN, ...undefined }` 仍是零宽，无需分支。 */
-/** 与 `html/span.ts` 的 `spanOf` 不同：这里只取值——缺失（未开 locations）就补零宽，不回答"元素在不在"（P2-2）。 */
+/** 与 `html/span.ts` 的 `spanOf` 不同：这里只取值——缺失（未开 locations）就补零宽，不回答"元素在不在"。 */
 const spanOrZero = (node: HtmlElementNode): SourceSpan => ({ ...ZERO_SPAN, ...node.span });
 
 /** 源码里真的有字节：parse5 合成的 `<html>`/`<head>` 拿到零宽区间，与"源码里没有该标签"同义。 */
@@ -45,7 +45,7 @@ const attributeOf = (node: HtmlElementNode, wanted: string): string | undefined 
   return undefined;
 };
 
-/** 锚点 `id` 大小写不敏感（`id="HR-THEME"` 还是同一个锚点，G2 P2-4）。 */
+/** 锚点 `id` 大小写不敏感（`id="HR-THEME"` 还是同一个锚点）。 */
 const isThemeBlock = (node: HtmlElementNode): boolean =>
   node.tag === "style" && attributeOf(node, "id")?.toLowerCase() === THEME_ANCHOR_ID;
 
@@ -101,7 +101,7 @@ const splice = (start: number, end: number, text: string): Splice => ({ start, e
 
 const prologueEnd = (html: string): number => PROLOGUE.exec(html)?.[0].length ?? 0;
 
-/** 替换首个锚点、整块删掉其余：留着旧块就等于让 CSS 级联里的后者赢（G2 P1-2）。 */
+/** 替换首个锚点、整块删掉其余：留着旧块就等于让 CSS 级联里的后者赢。 */
 const rewriteSplices = (
   anchors: readonly Anchor[],
   chosen: Anchor,
@@ -119,7 +119,7 @@ const rewriteSplices = (
 /**
  * 没有锚点时的注入点：真实 `<head>` 走它的末尾；合成的 `<head>` 没有源码位置，
  * 就新建一个插在 `<html>` 开标签之后（无 `<html>` 时插在 doctype 之后）——否则会把
- * `<!doctype html>` 挤出字节 0，浏览器转进 quirks mode（G2 P0-1）。
+ * `<!doctype html>` 挤出字节 0，浏览器转进 quirks mode。
  */
 const insertSplices = (html: string, root: HtmlNode, css: string): readonly Splice[] => {
   const spans = tagSpansOf(root);

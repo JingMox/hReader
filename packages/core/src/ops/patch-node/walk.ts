@@ -5,7 +5,7 @@ import { drainStack } from "../../html/stack";
 
 /**
  * `document` 也要下钻：只写 `if (node.kind !== "element") continue` 会让遍历停在根上，
- * 整棵树一个元素都访问不到（本卡 R1 踩过一次，测试必须有一条"根在 document 下"的用例）。
+ * 整棵树一个元素都访问不到（测试必须有一条"根在 document 下"的用例）。
  */
 export const walkElements = (root: HtmlNode, visit: (node: HtmlElementNode) => void): void => {
   const stack: HtmlNode[] = [root];

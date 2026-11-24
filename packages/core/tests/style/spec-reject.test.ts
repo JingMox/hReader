@@ -72,7 +72,7 @@ describe("parseStyleText · 未知键逐层拒绝", () => {
 
 const legalOf = (text: string): string => errorIn(text).message;
 
-describe("parseStyleText · 未知键的提示按层列键集（R6）", () => {
+describe("parseStyleText · 未知键的提示按层列键集", () => {
   it("should list the document-root keys for an unknown root key", () => {
     const message = legalOf(`${DOC(BODY)}\nrender: x`);
 
@@ -104,7 +104,7 @@ describe("parseStyleText · 未知键的提示按层列键集（R6）", () => {
   });
 });
 
-describe("parseStyleText · 深层的键集提示（R6）", () => {
+describe("parseStyleText · 深层的键集提示", () => {
   it("should list vocabulary keys and example-item keys for nested layers", () => {
     const vocabulary = legalOf(
       DOC(BODY.replace("    forbidden: [赋能]", "    forbidden: [赋能]\n    banned: [x]")),
@@ -154,7 +154,7 @@ describe("parseStyleText · 类型与列表边界", () => {
   });
 });
 
-describe("parseStyleText · 空集合与缺省块合法（R5）", () => {
+describe("parseStyleText · 空集合与缺省块合法", () => {
   it.each([
     [
       "forbidden 空数组",
@@ -192,7 +192,7 @@ describe("parseStyleText · 空集合与缺省块合法（R5）", () => {
   });
 });
 
-describe("parseStyleText · 缺省块回落（R5）", () => {
+describe("parseStyleText · 缺省块回落", () => {
   it("should fall back to 3 sentences and 0 forbidden words when blocks are absent", () => {
     const text = [
       "id: s",
@@ -210,7 +210,7 @@ describe("parseStyleText · 缺省块回落（R5）", () => {
   });
 });
 
-describe("parseStyleText · rhythm.style 的非字符串（R5 相邻分支）", () => {
+describe("parseStyleText · rhythm.style 的非字符串", () => {
   it.each([
     ["数字", "    style: 3"],
     ["布尔", "    style: true"],

@@ -1,6 +1,6 @@
 // 这层管：`hr_undo` 与 HTTP `POST /api/doc/<docId>/undo` 在**最反直觉的那个场景**下必须同样怪。
 //
-// 场景：`patch` → `applyStyle` → 一次 undo。`applyStyle` 不写快照（`packages/core/src/style/applyFile.ts`
+// 场景：`patch` → `applyStyle` → 一次 undo。`applyStyle` 不写快照（`packages/core/src/style/apply-file.ts`
 // 全文无 `writeSnapshot`），所以那唯一的快照是 patch 前的内容：一次 undo 把正文和样式一起回退。
 // 这不是本层实现的行为，而是 `revertLast` 的行为——两条路径只要真的共用它，就必然一致；
 // 若不一致，说明 MCP 侧没走 `revertLast`。
@@ -120,7 +120,7 @@ describe("hr_undo · 换样式不留快照的语义", () => {
     expect(await bytesIn(workspace)).not.toBe(base);
 
     const undo = await mcpCallOf("hr_undo", { filePath: FILE });
-    // 依据：`packages/core/src/style/applyFile.ts` 全文没有 `writeSnapshot`——
+    // 依据：`packages/core/src/style/apply-file.ts` 全文没有 `writeSnapshot`——
     // 所以 undo 回到的是 patch 前那份快照，样式改动跟着一起没了。
     expect(undo.isError).toBe(false);
     expect(await bytesIn(workspace)).toBe(base);

@@ -1,6 +1,6 @@
 // 这层管：patch 落盘编排（路径校验 → 锁 → 备份 → 原子写 → 裁剪）；不做 HTML 变换。
 
-import { applyPatch, type PatchOutcome } from "../ops/patchNode";
+import { applyPatch, type PatchOutcome } from "../ops/patch-node";
 import { writeAtomic } from "./atomic";
 import { decodeUtf8, encodeUtf8, readBytes } from "./bytes";
 import type { PatchFileInput, PatchOptions, PatchResult } from "./contracts";
@@ -19,7 +19,7 @@ const readAndApply = async (
   deps: PatchDeps,
 ): Promise<{ original: Uint8Array; outcome: PatchOutcome }> => {
   const original = await readBytes(deps.fs, target.realPath);
-  // 只解码、不做 BOM 归一：BOM 由源码区间原样带过去，写回时不会再额外拼一份（v2#5）。
+  // 只解码、不做 BOM 归一：BOM 由源码区间原样带过去，写回时不会再额外拼一份。
   const html = decodeUtf8(original, target.realPath);
   // 函数形式的 request 在锁内、在**这份字节**上才求值：它的定位结果必须属于要写的那棵树。
   const request = typeof requestOf === "function" ? requestOf(html) : requestOf;

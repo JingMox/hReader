@@ -61,11 +61,11 @@ const assertUrlsLocal = (css: string): void => {
   }
 };
 
-/** 先反转义再摘注释：两类"写法变形"都先归一，判定只看归一后的文本（G2 P1-1 / P2-3）。 */
+/** 先反转义再摘注释：两类"写法变形"都先归一，判定只看归一后的文本。 */
 const normalizedOf = (css: string): string =>
   stripComments(decodeCharEscapes(decodeHexEscapes(css)));
 
-/** 注入前必过：主题 CSS 只能静态，不能联网、不能逃出 `<style>`（AC7.5 / 裁定 #9）。 */
+/** 注入前必过：主题 CSS 只能静态，不能联网、不能逃出 `<style>`。 */
 export const assertThemeSafe = (css: string): void => {
   const normalized = normalizedOf(css);
   for (const rule of FORBIDDEN) {

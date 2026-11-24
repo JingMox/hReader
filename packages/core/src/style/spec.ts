@@ -7,7 +7,7 @@ import { HrError } from "../hr-error";
 import type { LanguageSpec, StyleSpec } from "./contracts";
 import { foldWord } from "./words";
 
-/** 裁定 #5：`sentence_rhythm` 缺省时按"三段一视觉法则"取 3，"不约束"用空串表示。 */
+/** `sentence_rhythm` 缺省时按"三段一视觉法则"取 3，"不约束"用空串表示。 */
 const DEFAULT_MAX_SENTENCES = 3;
 
 const DEFAULT_VISUAL = "atelier-editorial";
@@ -20,7 +20,7 @@ const MAPPING = "必须是映射（YAML 的 key: value 结构）";
 
 /**
  * 严格映射：多余的键由 zod 的 `unrecognized_keys` 报出。issue 的 `message` 借来携带这一层的合法键集，
- * 报文才能提示"它那一层"而不是顶层（G2 P1-5）。
+ * 报文才能提示"它那一层"而不是顶层。
  */
 const mapping = <Shape extends z.ZodRawShape>(shape: Shape) =>
   z
@@ -32,7 +32,7 @@ const mapping = <Shape extends z.ZodRawShape>(shape: Shape) =>
     })
     .strict();
 
-/** 整块可省略（裁定 #5）：`sentence_rhythm:`（空值）与不写它等价，都走内置缺省。 */
+/** 整块可省略）：`sentence_rhythm:`（空值）与不写它等价，都走内置缺省。 */
 const optionalMapping = <Schema extends z.ZodTypeAny>(schema: Schema) =>
   z.preprocess((value) => value ?? {}, schema);
 
@@ -45,7 +45,7 @@ const styleId = nonEmptyText.pipe(
   z.string().regex(STYLE_ID, `id 必须匹配 ${STYLE_ID.source}（禁止 / 与 ..：会逃出风格目录）`),
 );
 
-/** `{单值 | 列表}` 都收；缺省与 `[]` 合法（裁定 #5：空列表 = 不约束）。 */
+/** `{单值 | 列表}` 都收；缺省与 `[]` 合法（空列表 = 不约束）。 */
 const stringList = z.preprocess(
   (value) => (value === undefined ? [] : typeof value === "string" ? [value] : value),
   z.array(nonEmptyText, { invalid_type_error: "必须是字符串或字符串列表" }),

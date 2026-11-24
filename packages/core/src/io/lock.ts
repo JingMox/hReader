@@ -43,7 +43,7 @@ const payloadOf = (value: unknown): LockPayload | undefined => {
 
 /**
  * 只有"锁已经不在了"（ENOENT）才算不存在；EACCES/EISDIR 是基础设施故障，
- * 当成"不存在"会直接把别人的锁抢掉（v3#15）。内容坏/不是 JSON 仍按"不可解析"处理。
+ * 当成"不存在"会直接把别人的锁抢掉。内容坏/不是 JSON 仍按"不可解析"处理。
  */
 const readPayloadOf = async (fsApi: FileSystem, path: string): Promise<LockPayload | undefined> => {
   let bytes: Uint8Array;

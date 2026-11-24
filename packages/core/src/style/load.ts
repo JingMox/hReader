@@ -28,7 +28,7 @@ import { parseStyleText } from "./spec";
 import { messageOf } from "./text";
 import { resolveThemePath } from "./theme";
 
-/** 风格文件自己的目录里若有 `theme.css` 就用它，否则回落到 `inherits_visual`（裁定 #3）。 */
+/** 风格文件自己的目录里若有 `theme.css` 就用它，否则回落到 `inherits_visual`。 */
 const themePathOf = async (
   spec: StyleSpec,
   ownDir: string | undefined,
@@ -86,7 +86,7 @@ const userStyleOf = async (id: string, deps: StyleDeps): Promise<LoadedStyle | u
 
 /**
  * 唯一解析链：`loadStyle`（语言维度）与 `applyStyle`（视觉维度）都必须走这里，
- * 否则"能加载的风格"与"能换肤的风格"会分叉（G2 P1-3 / R4）。
+ * 否则"能加载的风格"与"能换肤的风格"会分叉。
  */
 export const resolveStyle = async (
   input: LoadStyleInput,
@@ -118,7 +118,7 @@ interface DiscoveryState {
   readonly diagnostics: StyleDiagnostic[];
 }
 
-/** 坏一个不许毁掉全部：每个文件独立成诊断（AC6.6）。 */
+/** 坏一个不许毁掉全部：每个文件独立成诊断。 */
 const collectFrom = async (path: string, deps: StyleDeps, state: DiscoveryState): Promise<void> => {
   try {
     const text = await readOptionalText(path, deps);

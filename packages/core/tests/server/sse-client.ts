@@ -15,7 +15,7 @@
 //   `close()` 里 clear 掉，所以活过 3s 的连接不会被等帧 deadline 连带杀掉。
 //   这个 clear 是否真的执行，由 `sse-v4.test.ts` 里 `vi.getTimerCount()` 的 delta 断言保证（本模块不自报计数）。
 //
-// `Date.now()` 仅用于诊断时间戳（订阅时刻、帧到达偏移），不参与断言（`docs/04` 的例外）。
+// `Date.now()` 仅用于诊断时间戳（订阅时刻、帧到达偏移），不参与断言（规范允许的例外）。
 
 import { connect, type Socket } from "node:net";
 

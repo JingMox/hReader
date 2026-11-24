@@ -1,4 +1,4 @@
-// 这层管：v4#1 的三条 SSE 防线——首帧注释、429 自带重试间隔并关连接、5xx 广播成 error 事件。
+// 这层管：SSE 的三条防线——首帧注释、429 自带重试间隔并关连接、5xx 广播成 error 事件。
 
 import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
@@ -51,7 +51,7 @@ const bootOf = async (): Promise<{
   };
 };
 
-describe("v4#1a · 首帧是注释心跳", () => {
+describe("首帧是注释心跳", () => {
   it("should write a comment frame before the ready event", async () => {
     const boot = await bootOf();
     const sse = openSse(boot.port, "/api/events", { Cookie: cookieOf(boot.token) });
@@ -74,7 +74,7 @@ describe("v4#1a · 首帧是注释心跳", () => {
   });
 });
 
-describe("v4#1c · 第 65 个连接", () => {
+describe("第 65 个连接", () => {
   it("should answer 429 with retryAfterMs and close the socket", async () => {
     const boot = await bootOf();
     const clients = Array.from({ length: MAX_CLIENTS }, () =>
@@ -102,7 +102,7 @@ describe("v4#1c · 第 65 个连接", () => {
   }, 30_000);
 });
 
-describe("v4#1b · 5xx 广播成 error 事件", () => {
+describe("5xx 广播成 error 事件", () => {
   it("should broadcast an error frame instead of silently dropping the stream", async () => {
     const boot = await bootOf();
     const sse = openSse(boot.port, "/api/events", { Cookie: cookieOf(boot.token) });
@@ -128,7 +128,7 @@ describe("v4#1b · 5xx 广播成 error 事件", () => {
   });
 });
 
-describe("v4#1b · 事件类型里的换行（反向变异的靶子）", () => {
+describe("事件类型里的换行", () => {
   it("should escape CR/LF inside the type so the data line stays one JSON line", () => {
     const frames: string[] = [];
     const hub = createHub({ ring: createEventRing(2), heartbeatMs: 60_000 });
@@ -177,7 +177,7 @@ const portOf = (server: Server): number => {
   return address.port;
 };
 
-describe("R2 · 兜底定时器与断连自证", () => {
+describe("兜底定时器与断连自证", () => {
   it("should clear one socket life timer per connection on close", async () => {
     const boot = await bootOf();
     // 只 fake 定时器：socket 的真实事件不受影响，本用例也不靠真实时钟等帧。
@@ -216,7 +216,7 @@ const withEndingServer = async (run: (port: number) => Promise<void>): Promise<v
   }
 };
 
-describe("R2 · 断连自证", () => {
+describe("断连自证", () => {
   it("should reject with the socket error instead of waiting out the deadline", async () => {
     // 连保留端口 1：内核不会把 1 分给临时 server，比「bind 后立即 close」少一个复用窗口。
     const sse = openSse(1, "/api/events");

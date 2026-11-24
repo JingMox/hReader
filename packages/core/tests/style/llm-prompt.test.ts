@@ -1,4 +1,4 @@
-// 这层管：提示词的字节稳定性、语料截断与字段齐备（F2 约束 5）；模型响应另见 llm-suggest。
+// 这层管：提示词的字节稳定性、语料截断与字段齐备；模型响应另见 llm-suggest。
 
 import { describe, expect, it } from "vitest";
 

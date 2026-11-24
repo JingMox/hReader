@@ -5,7 +5,7 @@ import { z } from "zod";
 import { jsonArray, jsonObject } from "../../../schema";
 import type { ExampleSpec } from "../../contracts";
 
-/** 卡 §4 的字数上限：超限整条丢弃而不是截断——半截人格比没有人格更坏。 */
+/** 字数上限：超限整条丢弃而不是截断——半截人格比没有人格更坏。 */
 const MAX_PERSONA_CHARS = 200;
 const MAX_RULE_CHARS = 120;
 const MAX_RULES = 6;
@@ -18,7 +18,7 @@ const MAX_APPENDED_FORBIDDEN = 24;
 /** 响应 `content` 的字节上限：超过就当整份不可解析，不再逐字段读一个几十 MB 的串。 */
 const SUGGESTION_MAX_BYTES = 64 * 1024;
 
-/** 顶层已知键；其余一律 `not_owned`（AC-3① 的"未知键"就靠这一条）。 */
+/** 顶层已知键；其余一律 `not_owned`。 */
 const KNOWN_KEYS: readonly string[] = [
   "persona",
   "narrative_rules",
@@ -28,7 +28,7 @@ const KNOWN_KEYS: readonly string[] = [
   "forbidden",
 ];
 
-const KNOWN_RHYTHM_KEYS: readonly string[] = ["style"]; // max_paragraph_sentences 归统计层（D3），出现即 not_owned
+const KNOWN_RHYTHM_KEYS: readonly string[] = ["style"]; // max_paragraph_sentences 归统计层，出现即 not_owned
 
 export type DroppedReason = "not_owned" | "wrong_type" | "too_long" | "unparsable";
 
@@ -65,7 +65,7 @@ const reasonOf = (error: z.ZodError): DroppedReason =>
 
 /**
  * 真实模型常把 JSON 包在 ``` / ```json 围栏里，BOM 也见过：解析前剥掉，剥完仍非法才算不可解析
- * ——否则 F3 会把这种常见写法报成 `llm_failure`（假故障）。
+ * ——否则会把这种常见写法误报成 `llm_failure`（假故障）。
  */
 const tryJson = (text: string): unknown => {
   const stripped = text.trim().replace(/^\uFEFF/, "");
@@ -202,7 +202,7 @@ const examplesOf = (
 
 /**
  * 节奏描述：扁平的 `rhythm_style` 是 prompt 要的键，**也是权威**——它可用时 `rhythm` 对象整体记 `not_owned`
- * 后不再解析；扁平键**缺席或不可用时都**用 `rhythm.style` 兜底，其中 `max_paragraph_sentences` 归统计层（D3）。
+ * 后不再解析；扁平键**缺席或不可用时都**用 `rhythm.style` 兜底，其中 `max_paragraph_sentences` 归统计层。
  */
 const rhythmStyleOf = (
   body: Readonly<Record<string, unknown>>,
@@ -234,7 +234,7 @@ const rhythmStyleOf = (
 
 const nonBlankOf = (text: string | undefined): boolean => (text ?? "").trim().length > 0;
 /**
- * "这份建议能不能用"（AC-3②，B 案判据）：四个"模型才有"的字段里有任意一个非空白即可用；
+ * "这份建议能不能用"：四个"模型才有"的字段里有任意一个非空白即可用；
  * 整份不可解析时它们必然全空，故不必另看 `dropped`，`forbidden` 只是追加项也不参与判断。
  * 本谓词对外导出，调用方可能传没 trim 过的对象，所以 trim 在这里做，不假设入参已规范化。
  */

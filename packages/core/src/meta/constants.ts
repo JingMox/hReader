@@ -2,7 +2,7 @@
 
 import type { Diagnostic } from "../html/constants";
 
-/** 旧版（M1.x）meta 的待处理状态；新版阅读器写的是 `pending`。 */
+/** 旧版 meta 的待处理状态；新版阅读器写的是 `pending`。 */
 const PENDING_ANNOTATION_STATUS = "pending_ai";
 
 /** 进 `pendingAnnotations` 的状态：旧版 `pending_ai` 与阅读器写入的 `pending` 都算（与 `annotations/model` 的两态归一同口径）。 */

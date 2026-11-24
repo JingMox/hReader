@@ -50,7 +50,7 @@ export const BUSINESS_EVENT_TYPES: ReadonlySet<string> = new Set([
   "error",
 ]);
 
-/** patch 的五个动作（`packages/core/src/ops/patchNode/constants.ts:3` `PatchAction`）。 */
+/** patch 的五个动作（`packages/core/src/ops/patch-node/constants.ts:3` `PatchAction`）。 */
 export const PATCH_ACTIONS = [
   "replace",
   "insert_before",

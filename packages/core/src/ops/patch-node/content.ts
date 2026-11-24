@@ -64,7 +64,7 @@ const PHRASING_TAGS: ReadonlySet<string> = new Set([
 /**
  * 内容模型是 phrasing 的容器：块级子节点要么被解析器拆树（`p`：遇块级先闭合，块级变成兄弟），
  * 要么只是内容模型不合规、树本身不变（`pre`：解析器不重排）。
- * `dt` 按规范能装 flow（R1-F11 移出本表），`p`/`pre` 才是真的只装 phrasing。
+ * `dt` 按规范能装 flow，`p`/`pre` 才是真的只装 phrasing。
  */
 const INLINE_ONLY_CONTAINERS: ReadonlySet<string> = new Set([
   "p",
@@ -104,7 +104,7 @@ const ONLY_CHILDREN: Readonly<Record<string, ReadonlySet<string>>> = {
 
 /**
  * 会**把子节点挪走/拆成兄弟**的容器→子标签组合：这些才是写盘后解析器真的会改树的组合，命中即拒绝。
- * `<ul><p>`、`<dl><p>` 这类只是内容模型不合规、树不变的组合**不登记**（审计裁定边界）。
+ * `<ul><p>`、`<dl><p>` 这类只是内容模型不合规、树不变的组合**不登记**。
  * `<table>` 里能放什么由 `ONLY_CHILDREN.table` 反面收（foster parenting 对任何非表格内容都生效，
  * 列“禁止项”永远列不全）；本表只留直接挂 `<table>` 下会多插 `<tbody>`/`<colgroup>` 的那几个。
  * 每个键为什么改树：

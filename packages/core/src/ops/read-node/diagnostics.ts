@@ -1,4 +1,4 @@
-// 这层管：readNode 的诊断（M1.1 段的相关子集 + 本卡三个新码）；不改 ParsedHtml。
+// 这层管：readNode 的诊断（解析段子集 + 本层新码）；不改 ParsedHtml。
 
 import { type Diagnostic, type DiagnosticCode, DIAGNOSTIC_SEVERITY } from "../../html/constants";
 

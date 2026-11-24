@@ -1,4 +1,4 @@
-// 这层管：`<script id="hr-meta">` 里 `annotations` 的读出/写回（AC2.1/AC2.4）；
+// 这层管：`<script id="hr-meta">` 里 `annotations` 的读出/写回；
 // 纯函数：入字符串出字符串，不碰 IO、不读时钟。写回只做**源码区间拼接**，正文一个字节不动。
 
 import { parseHtml } from "../html/parse";
@@ -12,7 +12,7 @@ import { parseAnnotationOf, unknownFieldsOf, type Annotation } from "./model";
 
 export interface ReadResult {
   readonly annotations: readonly Annotation[];
-  /** 每条都是**人话**诊断：调用方直接展示，不再自己拼（AC2.4）。 */
+  /** 每条都是**人话**诊断：调用方直接展示，不再自己拼。 */
   readonly diagnostics: readonly string[];
 }
 
@@ -65,7 +65,7 @@ export const readAnnotations = (html: string): ReadResult => {
     }
   });
   if (unknown.size > 0) {
-    // 只报一条：逐字段刷屏会把真正的错误淹掉（AC2.4）。
+    // 只报一条：逐字段刷屏会把真正的错误淹掉。
     diagnostics.push(`hr-meta 含未知字段：${[...unknown].join(", ")}（已忽略）`);
   }
   return { annotations, diagnostics };
@@ -101,7 +101,7 @@ const scriptOf = (body: string): string =>
 
 /**
  * 写回：有 meta 脚本就只替换它的**内容区间**，没有就交给 `insertMeta`（`</body>` 前的字面文本不算定位）。
- * 其余字节原样保留——AC2.5 的"正文不动"就靠这一点。
+ * 其余字节原样保留——"正文不动"就靠这一点。
  */
 export const writeAnnotations = (html: string, annotations: readonly Annotation[]): string => {
   const parsed = parseHtml(html, { locations: true });

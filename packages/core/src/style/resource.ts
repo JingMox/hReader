@@ -16,7 +16,7 @@ const PROJECT_DIR = ".hreader";
 
 const USER_STYLES = "styles";
 
-/** 风格资源读不了 ≠ 文档读不了：给独立码，调用方才能提示"你的风格文件坏了"（AC 卡片 §3）。 */
+/** 风格资源读不了 ≠ 文档读不了：给独立码，调用方才能提示"你的风格文件坏了"。 */
 export const styleIo = (action: string, path: string, error: unknown): HrError =>
   new HrError("style_io_failure", `${action}失败：${path}`, { cause: error });
 
@@ -47,7 +47,7 @@ export const readOptionalText = async (
   }
 };
 
-/** 缺文件 = `false`（"这一级没有"是正常路径）；其余异常一律 `style_io_failure`（G2 P2-5）。 */
+/** 缺文件 = `false`（"这一级没有"是正常路径）；其余异常一律 `style_io_failure`。 */
 export const existsOf = async (path: string, deps: StyleDeps): Promise<boolean> => {
   try {
     await deps.fs.lstat(path);
@@ -58,7 +58,7 @@ export const existsOf = async (path: string, deps: StyleDeps): Promise<boolean> 
   }
 };
 
-/** 目录不存在 = 空集合（AC6.6）；`readdir` 的真故障仍要冒泡成 `style_io_failure`。 */
+/** 目录不存在 = 空集合；`readdir` 的真故障仍要冒泡成 `style_io_failure`。 */
 export const listDirsOrEmpty = async (dir: string, deps: StyleDeps): Promise<readonly string[]> => {
   try {
     return await deps.fs.readdir(dir);

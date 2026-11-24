@@ -1,4 +1,4 @@
-// 这层管：v3#16/post-R3 的 SSE `id:` 转义可逆性——反斜杠先转义再折换行，回放不退化、绝不伪造帧。
+// 这层管：SSE `id:` 转义可逆性——反斜杠先转义再折换行，回放不退化、绝不伪造帧。
 
 import { describe, expect, it } from "vitest";
 

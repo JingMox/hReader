@@ -103,7 +103,7 @@ const MAX_ASSET_PATH = 512;
 /** 文件名单段上限（多数文件系统 255）：更长的段交给内核只会拿到 `ENAMETOOLONG`。 */
 const MAX_SEGMENT_NAME = 255;
 
-/** `/assets/<path>` 的解码后白名单：空段、`.`、`..`、反斜杠、NUL、超长一律拒（AC1.2）。 */
+/** `/assets/<path>` 的解码后白名单：空段、`.`、`..`、反斜杠、NUL、超长一律拒。 */
 export const assetSegmentsOf = (rawPath: string): readonly string[] | undefined => {
   if (rawPath.length === 0 || rawPath.length > MAX_ASSET_PATH) return undefined;
   if (rawPath.includes("\0") || rawPath.includes("\\") || rawPath.startsWith("/")) return undefined;

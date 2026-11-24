@@ -1,4 +1,4 @@
-// 这层管：`server.ts` 两条"公开 API 到不了的兜底支"——按 R7 抽成 `@internal` 导出后单测。
+// 这层管：`server.ts` 两条"公开 API 到不了的兜底支"——抽成 `@internal` 导出后单测。
 // 从 `../../src/server/server` 直接引入（**不走** `@hreader/core` 公共面）：它们不属于对外契约，
 // 只是把 `req.url ?? "/"` 与 `address === null | string` 这两种解析器/运行时不变量提出来可测。
 

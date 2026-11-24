@@ -15,7 +15,7 @@ export interface ResolvedTarget {
   readonly realPath: string;
   /** 相对 workspace 的正斜杠路径：history 目录名与锁文件名都由它派生。 */
   readonly relative: string;
-  /** workspace 的真实路径：原子写每次落盘前都要拿它复核父目录（P0-1）。 */
+  /** workspace 的真实路径：原子写每次落盘前都要拿它复核父目录。 */
   readonly workspace: string;
   readonly storeDir: string;
   /** 该文件的锁文件路径：编排层用它加锁，锁的粒度是"一个文件"。 */
@@ -60,7 +60,7 @@ const storeErrorOf = (relativePath: string, file: string): HrError | undefined =
 /**
  * 两道校验各管一类逃逸：词法拦 `..`/绝对路径（文件不存在也要拦得住），
  * realpath 拦"父目录是指向 workspace 外的符号链接"（词法看不出来）。
- * 这里只是第一道；写盘前的两道复核在 `atomic.ts`（P0-1）。
+ * 这里只是第一道；写盘前的两道复核在 `atomic.ts`。
  *
  * `file` 也是 `serve` 的 docId、`/api/doc/:docId/*` 的路径参数：这里的三条就是它全部的合法面
  * （不是 workspace 绝对路径、不靠 `..` 逃跑、不进 `.hreader/**`），平铺目录里的 `a.html` 属于合法，

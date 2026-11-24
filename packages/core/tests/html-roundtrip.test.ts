@@ -31,7 +31,7 @@ const NASTY = {
   foreignContent: '<article><svg viewBox="0 0 1 1"><path d="M0 0"/></svg></article>',
   metaWithScriptClose: '<article><p>x</p></article><script id="hr-meta">{"x":"</script>"}</script>',
   textareaRaw: "<article><textarea></div>&amp;</textarea></article>",
-  // 真实文档（docs/02 §1 的骨架 + 真 meta JSON）：往返必须逐字稳定。
+  // 真实文档（真实文档骨架 + 真 meta JSON）：往返必须逐字稳定。
   realDocument: [
     "<!DOCTYPE html>",
     '<html lang="zh-CN"><head><meta charset="utf-8"><title>hReader</title></head><body><article>',

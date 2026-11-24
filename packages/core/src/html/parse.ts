@@ -5,7 +5,7 @@ import type { DefaultTreeAdapterTypes } from "parse5";
 
 import { HrError } from "../hr-error";
 import { tagBalanceDiagnostics } from "./balance";
-import { closeImplicitParagraphs } from "./implicitClose";
+import { closeImplicitParagraphs } from "./implicit-close";
 import {
   COMPONENT_ATTRIBUTE,
   COMPONENT_WHITELIST,
@@ -226,7 +226,7 @@ const buildTree = (document: P5Document, context: ParseContext): HtmlNode => {
 
 /**
  * meta 契约是"浏览器端可 JSON.parse"。原文里写了 `</script>` 会提前结束 raw text，
- * 剩下的 JSON 必然解析失败，所以 JSON 可解析性就是"是否被截断"的判据（M1.2 接结构校验后替换）。
+ * 剩下的 JSON 必然解析失败，所以 JSON 可解析性就是"是否被截断"的判据。
  */
 const metaScriptDiagnostics = (context: ParseContext): void => {
   for (const script of context.metaScripts) {
@@ -264,7 +264,7 @@ const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Docum
     },
   });
 
-/** `locations` 只在需要按源码区间回写时打开（M1.5 patch）：默认关，树与诊断与 M1.1 逐字一致。 */
+/** `locations` 只在需要按源码区间回写时打开：默认关，关闭时产出的树与诊断不变。 */
 export const parseHtml = (
   html: string,
   options: { readonly locations?: boolean } = {},

@@ -1,4 +1,4 @@
-// 这层管：`@hreader/core` 唯一公开入口（公共出口清单见 `.workflow/cards/R3.md` D1–D8 接口冻结表与 docs/05 M1.8）；不承载实现。
+// 这层管：`@hreader/core` 唯一公开入口；不承载实现。
 
 export { HrError } from "./hr-error";
 export type { HrErrorCode, HrErrorData } from "./hr-error";
@@ -85,7 +85,7 @@ export type {
   ParsedHtml,
 } from "./html";
 
-// ---- M2.3：批注（纯层）+ 落盘编排 + 撤销 ----
+// ---- 批注（纯层）+ 落盘编排 + 撤销 ----
 export {
   ANCHOR_LIMITS,
   annotationIdOf,
@@ -113,17 +113,17 @@ export {
   listAnnotations,
   reopenAnnotation,
   resolveAnnotation,
-} from "./ops/annotationOps";
+} from "./ops/annotation-ops";
 export type {
   AddAnnotationInput,
   AnnotationWriteResult,
   ListResult,
   ResolveInput,
-} from "./ops/annotationOps";
-export { revertLast } from "./ops/revertOp";
-export type { RevertResult } from "./ops/revertOp";
-export { normalizeFile } from "./ops/normalizeFile";
-export type { NormalizeInput, NormalizeResult } from "./ops/normalizeFile";
+} from "./ops/annotation-ops";
+export { revertLast } from "./ops/revert-op";
+export type { RevertResult } from "./ops/revert-op";
+export { normalizeFile } from "./ops/normalize-file";
+export type { NormalizeInput, NormalizeResult } from "./ops/normalize-file";
 
 // ---- 排版约束：组件规约、写入时检查、文档形态骨架 ----
 export {

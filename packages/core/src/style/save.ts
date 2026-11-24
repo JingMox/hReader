@@ -40,7 +40,7 @@ const resolvedPathOf = (path: string, workspace: string): string => {
 /**
  * 校验在写盘之前：产物写坏比写不出去更糟——用户之后每次 `hr style` 都会撞上它。
  * 已存在时默认拒绝（`file_exists`），`force` 才覆盖。
- * 父目录不自动建（AC-6）：风格目录的层级有语义（`.hreader/styles/<id>/`），
+ * 父目录不自动建：风格目录的层级有语义（`.hreader/styles/<id>/`），
  * 替用户 `mkdir -p` 会把打错的路径变成一个看起来合法的风格。
  */
 export const saveStyleText = async (

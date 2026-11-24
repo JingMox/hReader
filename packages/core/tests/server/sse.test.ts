@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { cookieOf, httpCall, openSse, type SseFrame, withServer } from "./harness";
 import { withPost } from "./wire";
 
-// 追加到 <p>（hr-d）的片段必须是行内内容：块级子节点会被 F6 的内容模型校验拒掉，
+// 追加到 <p>（hr-d）的片段必须是行内内容：块级子节点会被内容模型校验拒掉，
 // 而本文件的用例只关心“帧的形状”，不关心插进去的是段落还是强调。
 const bodyOf = (fragment: string): string =>
   JSON.stringify({ docId: "doc.html", action: "append", targetId: "hr-d", fragment });

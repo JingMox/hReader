@@ -1,4 +1,4 @@
-// 这层管：G3-R 覆盖率收尾——把"能真跑"的剩余分支跑掉；跑不到的（解析器先拦、运行时不可能为空）在报告 §5 归类。
+// 这层管：从真实 CLI 入口（args/run）打到的分支。
 
 import { createServer } from "node:http";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -21,7 +21,7 @@ const tmp = (prefix: string): string => {
 };
 
 describe("cli/args · --allow-host 列表", () => {
-  // G3.9：`tokens.ts` 的 VALUE_FLAGS 已补 `--allow-host`（BUG-1 修复），正例转正。
+  // `tokens.ts` 的 VALUE_FLAGS 已补 `--allow-host`，正例转正。
   it("should accept --allow-host from the real CLI entry", () => {
     const parsed = parseArgs(
       ["serve", "doc.html", "--port", "6100", "--allow-host", "a.example"],

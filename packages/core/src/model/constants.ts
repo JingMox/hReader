@@ -7,7 +7,7 @@ export interface DocumentModel {
   readonly component?: string;
   /** 本节点自身的可见文本：直接文本 + 内联后代，空白归一；不含块级后代的文本。 */
   readonly text: string;
-  /** 块级后代（M1.1 注入清单），文档顺序。 */
+  /** 块级后代（解析层注入清单），文档顺序。 */
   readonly children: readonly DocumentModel[];
 }
 

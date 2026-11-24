@@ -95,12 +95,12 @@ const publishChanged = (input: PublishInput): void => {
   );
 };
 
-/** 打开文档时才挂监听：整库递归监听在 10 万文件上会把 CPU 烧穿（卡 D8）。 */
+/** 打开文档时才挂监听：整库递归监听在 10 万文件上会把 CPU 烧穿。 */
 const watchOf = (deps: RuntimeDeps, hub: Hub, state: Watched, workspace: string): Watcher => {
   const onFileChange = (path: string): void => {
     if (internalOf(workspace, path)) return;
     const active = state.active;
-    // 载荷只给 workspace 相对路径：绝对路径不进浏览器（P1-7，与 `doc.changed` 同口径）。
+    // 载荷只给 workspace 相对路径：绝对路径不进浏览器（与 `doc.changed` 同口径）。
     const docPath = relative(workspace, path);
     if (active === undefined) {
       hub.publish("library.changed", { path: docPath });

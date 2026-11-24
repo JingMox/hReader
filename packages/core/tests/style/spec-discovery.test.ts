@@ -1,4 +1,4 @@
-// 这层管：`discoverStyles` 的坏文件隔离（AC6.6）——坏一个不许毁掉全部，且每条独立成诊断。
+// 这层管：`discoverStyles` 的坏文件隔离——坏一个不许毁掉全部，且每条独立成诊断。
 
 import { describe, expect, it } from "vitest";
 

@@ -1,4 +1,4 @@
-// 这层管：F11 的四条判定各自的"放行/拒绝"两侧 —— `scanTokens`（tokenizer 计数）、
+// 这层管：片段 token 扫描的四条判定各自的"放行/拒绝"两侧 —— `scanTokens`（tokenizer 计数）、
 // `assertNoAncestorClosed`（包装祖先被关闭）、`assertTokensSurvived`（解析器丢标签）、
 // `assertNothingEscaped`（foster parenting 把内容挪出包装器）；不建树、不碰 IO。
 //
@@ -7,13 +7,13 @@
 
 import type { HtmlElementNode, HtmlNode } from "../src/html/constants";
 import { parseHtml } from "../src/html/parse";
-import type { FragmentTokens } from "../src/ops/patchNode/fragmentTokens";
+import type { FragmentTokens } from "../src/ops/patch-node/fragment-tokens";
 import {
   assertNoAncestorClosed,
   assertNothingEscaped,
   assertTokensSurvived,
   scanTokens,
-} from "../src/ops/patchNode/fragmentTokens";
+} from "../src/ops/patch-node/fragment-tokens";
 import { describe, expect, it } from "vitest";
 
 /** 抛出的错误里取 code/message：判定退化成 no-op 时这里拿不到错误，`code` 会变成 `no_throw`。 */

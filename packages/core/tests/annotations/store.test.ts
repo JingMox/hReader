@@ -1,4 +1,4 @@
-// 这层管：`annotations/store.ts` 的读回容错（AC2.4）与写回"只拼区间"（AC2.5 的纯函数侧）。
+// 这层管：`annotations/store.ts` 的读回容错与写回"只拼区间"（纯函数侧）。
 // 每个诊断都断**文本内容**：只说"有诊断"等于没测。
 
 import { describe, expect, it } from "vitest";
@@ -34,7 +34,7 @@ const annotationOf = (patch: Partial<Annotation> = {}): Annotation => ({
 });
 
 describe("readAnnotations · 旧字段映射", () => {
-  it("should read M1.x names: targetId, comment and pending_ai", () => {
+  it("should read legacy names: targetId, comment and pending_ai", () => {
     const read = readAnnotations(
       docWith(
         payloadOf({
@@ -56,7 +56,7 @@ describe("readAnnotations · 旧字段映射", () => {
     });
   });
 
-  it("should skip M1.x entries that have no createdAt and say why (compat gap)", () => {
+  it("should skip legacy entries that have no createdAt and say why (compat gap)", () => {
     const read = readAnnotations(
       docWith(payloadOf({ targetId: "hr-b", comment: "旧批注", anchor: { exact: "正文" } })),
     );

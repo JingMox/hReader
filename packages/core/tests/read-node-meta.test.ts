@@ -1,4 +1,4 @@
-// 这层管：`hr-meta` 顶层字段表（卡片 v3 #20）——用 `docs/02` 的正典样本锁住“真实文档零无效诊断”；
+// 这层管：`hr-meta` 顶层字段表——用 `docs/02` 的正典样本锁住“真实文档零无效诊断”；
 // 不测批注状态过滤与排序（见 read-node.test.ts）。
 
 import { describe, expect, it } from "vitest";
@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import { parseHtml, readNode } from "../src/index";
 
 /**
- * 逐字取自 `docs/02-architecture-and-roadmap.md:100-118`。
- * v3 #20 的教训：禁止简化成 `{"annotations":[]}`——那会把“每份真实文档多 2 条 warning”锁成正确行为。
+ * 逐字取自 `docs/02-architecture-and-roadmap.md`。
+ * 教训：禁止简化成 `{"annotations":[]}`——那会把“每份真实文档多 2 条 warning”锁成正确行为。
  */
 const CANONICAL_META = `{
     "version": "1.0",
