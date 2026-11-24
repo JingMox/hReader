@@ -30,6 +30,19 @@ export const printParamsOf = (pageSize: PdfPageSize, outline: boolean): PdfPrint
   outline,
 });
 
+/**
+ * slides 打印稿的报文：页框交给产物里的 `@page`（13.333in × 7.5in 由骨架写死）。
+ * 宽高/余白仍按 puppeteer 的形状给全——产物 `@page` 缺失时 16:9 兜底也成立。
+ */
+export const cssPageParamsOf = (outline: boolean): PdfPrintOptions => ({
+  printBackground: true,
+  preferCSSPageSize: true,
+  width: "960pt",
+  height: "540pt",
+  margin: { top: `0${MM}`, bottom: `0${MM}`, left: `0${MM}`, right: `0${MM}` },
+  outline,
+});
+
 /** 两条渲染命令共用的开场：newPage → 写临时 HTML → navigate 等 load。 */
 const openPageOf = async (browser: BrowserLike, html: string, dir: string): Promise<PageLike> => {
   const page = await browser.newPage();
@@ -46,11 +59,16 @@ interface PdfRenderInput {
   readonly dir: string;
   readonly pageSize: PdfPageSize;
   readonly outline: boolean;
+  /** `true` = 产物自带 `@page` 纸张（slides 打印稿），Chrome 听 CSS 而不是 `pageSize`。 */
+  readonly preferCSSPageSize: boolean;
 }
 
 export const renderPdfOnBrowserOf = async (input: PdfRenderInput): Promise<Uint8Array> => {
   const page = await openPageOf(input.browser, input.html, input.dir);
-  return page.pdf(printParamsOf(input.pageSize, input.outline));
+  const params = input.preferCSSPageSize
+    ? cssPageParamsOf(input.outline)
+    : printParamsOf(input.pageSize, input.outline);
+  return page.pdf(params);
 };
 
 /** 量高用的临时视口高：给一个远大于首屏的值，先让宽度落定，再量整页高。 */

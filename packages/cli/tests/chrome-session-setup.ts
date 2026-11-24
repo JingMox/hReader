@@ -48,6 +48,7 @@ export const inputOf = (deps: PdfInput["deps"], overrides: Partial<PdfInput> = {
   html: "x",
   pageSize: "a4",
   outline: true,
+  preferCSSPageSize: false,
   stop: NEVER,
   timeoutMs: 1000,
   deps,

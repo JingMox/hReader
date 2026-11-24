@@ -8,7 +8,12 @@ import { pathToFileURL } from "node:url";
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-import { printParamsOf, renderPdfOnBrowserOf, renderPngOnBrowserOf } from "../src/chrome/render";
+import {
+  cssPageParamsOf,
+  printParamsOf,
+  renderPdfOnBrowserOf,
+  renderPngOnBrowserOf,
+} from "../src/chrome/render";
 import { PAGE_SIZES, isPdfPageSize, type PdfPageSize } from "../src/chrome/types";
 import { fakeBrowserOf, fakePageOf, type FakePageOptions } from "./chrome-helpers";
 
@@ -28,6 +33,7 @@ const renderPdfOf = (options: FakePageOptions, dir: string, outline = true) =>
     dir,
     pageSize: "a4",
     outline,
+    preferCSSPageSize: false,
   });
 
 const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
@@ -86,6 +92,7 @@ describe("renderPdfOnBrowserOf · 开场与产物", () => {
         dir,
         pageSize: "a4",
         outline: true,
+        preferCSSPageSize: false,
       });
       const htmlPath = join(dir, "input.html");
       expect(readFileSync(htmlPath, "utf8")).toBe("<p>hi</p>");
@@ -103,8 +110,38 @@ describe("renderPdfOnBrowserOf · 开场与产物", () => {
         dir,
         pageSize: "a4",
         outline: false,
+        preferCSSPageSize: false,
       });
       expect(page.pdfCalls[0]?.outline).toBe(false);
+    });
+  });
+});
+
+describe("cssPageParamsOf · slides 页框交给 CSS", () => {
+  it("preferCSSPageSize 为 true，宽高按 16:9 兜底且余白清零", () => {
+    const params = cssPageParamsOf(true);
+    expect(params.preferCSSPageSize).toBe(true);
+    // 兜底值只在产物缺 @page 时生效；960×540pt 与骨架的 13.333in×7.5in 同一页框。
+    expect(params.width).toBe("960pt");
+    expect(params.height).toBe("540pt");
+    expect(params.margin).toEqual({ top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" });
+    expect(params.outline).toBe(true);
+  });
+
+  it("preferCSSPageSize=true 时渲染层不看 pageSize：CSS 纸张参数直达 page.pdf", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({ pages: 1 });
+      await renderPdfOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        html: "<p>hi</p>",
+        dir,
+        // a5 是最远离 16:9 的合法值：还落进产物就说明分支没生效。
+        pageSize: "a5",
+        outline: true,
+        preferCSSPageSize: true,
+      });
+      expect(page.pdfCalls[0]?.preferCSSPageSize).toBe(true);
+      expect(page.pdfCalls[0]?.width).toBe("960pt");
     });
   });
 });

@@ -43,6 +43,7 @@ describe("renderPdfOf · stderr 洪流", () => {
       html: "<p>x</p>",
       pageSize: "a4",
       outline: true,
+      preferCSSPageSize: false,
       stop: NEVER,
       timeoutMs: 5000,
       deps,
