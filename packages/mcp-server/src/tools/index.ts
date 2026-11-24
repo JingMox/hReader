@@ -1,10 +1,11 @@
-// 这层管：七个工具的注册表（名字 → 入参 schema → core 原语调用）；工具实现各自一个文件。
+// 这层管：八个工具的注册表（名字 → 入参 schema → core 原语调用）；工具实现各自一个文件。
 // 拆成三组只是为了让每个函数短到能一眼读完：读写（看清现状 + 开篇）、改动（落盘 + 结批注）、撤销。
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { applyStyleCall, applyStyleShape } from "./apply-style";
 import { createDocCall, createDocShape } from "./create-doc";
+import { importDocCall, importDocShape } from "./import-doc";
 import { outlineCall, outlineShape } from "./outline";
 import { patchNodeCall, patchNodeShape } from "./patch-node";
 import { readNodeCall, readNodeShape } from "./read-node";
@@ -47,6 +48,16 @@ const registerReadingTools = (server: McpServer): void => {
       inputSchema: createDocShape,
     },
     createDocCall,
+  );
+  server.registerTool(
+    "hr_import_doc",
+    {
+      title: "导入外来 HTML",
+      description:
+        "把外来 HTML（网页另存、带脚本的演示稿）转成托管文档并落盘：剥脚本/事件/内联样式，按标题分节并补齐 data-hr-id。想让一份外来文档能被按块编辑、批注、换主题时用它；返回的 report 说明哪些内容被丢弃及原因",
+      inputSchema: importDocShape,
+    },
+    importDocCall,
   );
 };
 
