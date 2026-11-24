@@ -171,20 +171,34 @@ pub fn run(argv: &[String]) -> i32 {
                     cli,
                 })
             }
-            Err(cli_err) => {
-                let message = cli_err.to_string();
-                eprintln!("{message}");
-                show_native_error("hReader 启动失败", &message);
-                1
-            }
+            Err(cli_err) => fail_with_native_error(&cli_err.to_string()),
         },
-        Err(error) => {
-            let message = error.to_string();
-            eprintln!("{message}");
-            show_native_error("hReader 启动失败", &message);
-            1
-        }
+        Err(StartupError::Supervise(error)) => match locate_cli(&options) {
+            Ok(cli) => {
+                save_last_workspace(&options.home, &options.workspace);
+                // 与 connect 里同一条 document_of 路径再算一次，拿到拉不起来的那份文档。
+                // `hr serve` 失败只挡这一份：工作区照开、文件树可用。
+                let doc_id = open_arg::action_of(argv, &options.workspace)
+                    .ok()
+                    .and_then(|action| document_of(&action, &options.workspace).ok())
+                    .unwrap_or_default();
+                window::run(window::LaunchTarget::DocError {
+                    workspace: options.workspace,
+                    cli,
+                    doc_id,
+                    message: error.to_string(),
+                })
+            }
+            Err(cli_err) => fail_with_native_error(&cli_err.to_string()),
+        },
+        Err(error) => fail_with_native_error(&error.to_string()),
     }
+}
+
+fn fail_with_native_error(message: &str) -> i32 {
+    eprintln!("{message}");
+    show_native_error("hReader 启动失败", message);
+    1
 }
 
 fn has_flag(argv: &[String], flag: &str) -> bool {
@@ -254,18 +268,6 @@ fn default_gui_workspace(home: &Path) -> Option<PathBuf> {
     None
 }
 
-/// 保证手写 `.html` 已带 `data-hr-id`，避免桌面端打开即被 `hr serve` 拒收。
-pub(crate) fn ensure_doc_ready(cli: &Path, workspace: &Path, doc_id: &str) {
-    let target = workspace.join(doc_id);
-    let Ok(html) = std::fs::read_to_string(&target) else {
-        return;
-    };
-    if html.contains("data-hr-id=") {
-        return;
-    }
-    let _ = supervisor::run_cli_task(cli, workspace, &["normalize", doc_id, "--write"]);
-}
-
 /// 若桌面壳私有目录里残留着**另一个工作区**的 daemon，先停掉它，确保新打开的文档/工作区不被旧 daemon 拒收。
 pub(crate) fn clear_other_workspace_daemon(home: &Path, target_workspace: &Path) {
     let file = daemon_file::daemon_file_in(home);
@@ -301,14 +303,6 @@ fn prepare_gui_launch(argv: &[String], cwd: &Path, options: &mut ShellOptions) {
         }
     }
     clear_other_workspace_daemon(&options.home, &options.workspace);
-    if let Ok(action) = open_arg::action_of(argv, &options.workspace) {
-        if let (Ok(doc_id), Ok(cli)) = (
-            document_of(&action, &options.workspace),
-            locate_cli(options),
-        ) {
-            ensure_doc_ready(&cli, &options.workspace, &doc_id);
-        }
-    }
 }
 
 #[cfg(target_os = "macos")]

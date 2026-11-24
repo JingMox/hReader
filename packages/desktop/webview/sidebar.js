@@ -192,6 +192,20 @@ function buildNotesDrawerChrome() {
 
 function emptyStateHtml() {
   const ws = hrd.escapeHtmlText(hrd.state.ctx.workspace || "未选择工作区");
+  // docError 只挡这一份文档：标题说清是哪份、原因是什么，其余引导动作照常可用。
+  const docError =
+    hrd.state.ctx.docError && typeof hrd.state.ctx.docError === "object"
+      ? hrd.state.ctx.docError
+      : null;
+  const title = docError
+    ? `这份文档打不开：${hrd.escapeHtmlText(docError.docId || "")}`
+    : "当前目录暂无 HTML 笔记";
+  const sub = docError
+    ? hrd.escapeHtmlText(docError.message || "未知错误")
+    : "可以直接在当前工作区新建一篇排版文档，或者切换至包含 .html 文档的笔记库文件夹。";
+  const retryBtn = docError
+    ? '<button type="button" class="hrd-btn hrd-btn-primary" id="hrd-empty-retry">重试打开这份文档</button>'
+    : "";
   return `
     <div class="hrd-empty-state">
       <div class="hrd-empty-mark" aria-hidden="true">
@@ -200,10 +214,11 @@ function emptyStateHtml() {
           <path d="M12.2 15.2C14.8 11.8 18.4 10.8 21.8 11.8C24.9 12.7 26.5 15.3 26.5 19.1V28H20.3V19.9C20.3 17.5 19.2 16.4 17.3 16.4C15.1 16.4 13.4 18 12.2 20.1V15.2Z" fill="currentColor"/>
         </svg>
       </div>
-      <h1 class="hrd-empty-title">当前目录暂无 HTML 笔记</h1>
-      <p class="hrd-empty-sub">可以直接在当前工作区新建一篇排版文档，或者切换至包含 .html 文档的笔记库文件夹。</p>
+      <h1 class="hrd-empty-title">${title}</h1>
+      <p class="hrd-empty-sub">${sub}</p>
       <div class="hrd-empty-path">${ws}</div>
       <div class="hrd-empty-actions">
+        ${retryBtn}
         <button type="button" class="hrd-btn hrd-btn-primary" id="hrd-empty-new">+ 新建文档</button>
         <button type="button" class="hrd-btn" id="hrd-empty-folder">选择笔记库文件夹…</button>
         <button type="button" class="hrd-btn" id="hrd-empty-file">打开 HTML 文件…</button>
@@ -230,6 +245,15 @@ function renderEmptyState() {
   const docEl = document.getElementById("hr-doc");
   if (!docEl) return;
   docEl.innerHTML = emptyStateHtml();
+  const retryBtn = docEl.querySelector("#hrd-empty-retry");
+  if (retryBtn) {
+    retryBtn.addEventListener("click", () => {
+      const docError = hrd.state.ctx.docError;
+      if (docError && docError.docId) {
+        hrd.bridgeNavigate("/open?doc=" + encodeURIComponent(docError.docId));
+      }
+    });
+  }
   docEl.querySelector("#hrd-empty-new").addEventListener("click", hrd.openNewDocModal);
   docEl
     .querySelector("#hrd-empty-folder")

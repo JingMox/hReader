@@ -6,7 +6,7 @@ mod templates;
 mod themes;
 mod tree;
 
-pub use script::{init_script, sync_payload_js, WorkbenchContext};
+pub use script::{init_script, sync_payload_js, DocError, WorkbenchContext};
 pub use templates::{escape_html, starter_html, welcome_html};
 pub use themes::{ensure_user_themes_dir_in, load_custom_themes, user_themes_dir, CustomTheme};
 pub use tree::{is_html_file, list_html_files, scan_workspace_tree, TreeEntryKind, TreeNode};
