@@ -181,12 +181,15 @@ export const install = (
 export const themes = { themes: ["atelier-editorial", "manuscript"], default: "atelier-editorial" };
 export const model = { revision: "r1", model: { children: [{ id: "hr-a" }] } };
 export const outline = { outline: { nodes: [{ id: "hr-a", level: 1, text: "一" }] } };
+/** `GET /info` 的分流桩：默认 managed（旧行为），外来/未规范化用例自己叠 `info` 应答。 */
+export const info = { revision: "r1", cls: "managed" };
 export const ARTICLE = "<article data-hr-id='hr-a'><p>一</p></article>";
 export const CSS = ":root{--ink:#111}";
 
 export const happy = (url: string): Response => {
   if (url === "/api/theme") return jsonOf(themes);
   if (url.startsWith("/api/theme/")) return textOf(CSS);
+  if (url.endsWith("/info")) return jsonOf(info);
   if (url.endsWith("/model")) return jsonOf(model);
   if (url.endsWith("/outline")) return jsonOf(outline);
   if (url.endsWith("/annotations"))

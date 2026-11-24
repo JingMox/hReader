@@ -19,6 +19,12 @@ import { missingAnchorsOf, reportMissingAnchors } from "./anchors.ts";
 import type { RawSelection } from "./widgets/selection.ts";
 import { COPY } from "./widgets/copy.ts";
 import { mountPresent, type PresentShell, type PresentWidget } from "./widgets/present.ts";
+import {
+  mountForeign,
+  type ForeignHandle,
+  type ForeignInput,
+  type TrustLevel,
+} from "./widgets/foreign.ts";
 import { syncView } from "./wiring.ts";
 
 export interface ModelResponse {
@@ -63,6 +69,37 @@ export interface Booted {
   readonly destroy: () => void;
   /** 选区事件入口（`main.ts` 在 `mouseup` 时调；跨块/空白选区不产生意图）。 */
   readonly selection?: (selection: RawSelection) => void;
+}
+
+/** `GET /api/doc/<id>/info`：启动分流唯一依据；`trust`/`scripts` 只对外来文档有意义。 */
+export interface DocInfo {
+  readonly revision: string;
+  readonly cls: "managed" | "normalizable" | "foreign";
+  readonly reason?: string;
+  readonly kind?: string;
+  readonly trust?: TrustLevel;
+  readonly scripts?: boolean;
+}
+
+/** managed 路径才需要的页面数据（主题清单 + 正文 HTML）；iframe 路径不拉正文。 */
+export interface ManagedPage {
+  readonly themes: readonly string[];
+  readonly defaultTheme?: string;
+  readonly documentHtml: string;
+}
+
+export interface ClassifiedBootDeps extends Omit<
+  BootDeps,
+  "documentHtml" | "themes" | "defaultTheme"
+> {
+  /** `GET /api/doc/<id>/info`：先分档再决定走 `boot` 还是 iframe 路径。 */
+  readonly fetchInfo: () => Promise<DocInfo>;
+  /** managed 分支的数据源：foreign/normalizable 首屏不调它（iframe 自己加载 `/s/`）。 */
+  readonly fetchPage: () => Promise<ManagedPage>;
+  /** `POST /trust`；resolve 的值为服务端确认的档位。 */
+  readonly postTrust: (level: TrustLevel) => Promise<TrustLevel>;
+  /** `POST /normalize`；响应体不读——成功后靠 `bootDocument` 重取 info 分流。 */
+  readonly postNormalize: () => Promise<unknown>;
 }
 
 const ROOT = "#hr-root";
@@ -332,4 +369,83 @@ export const boot = (deps: BootDeps): Booted => {
     unsubscribe();
     stopFlows();
   });
+};
+
+const foreignSseOf = (store: Store, foreign: ForeignHandle): SseHandlers => ({
+  onEvent: (event: SseEvent): void => {
+    if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
+    const revision = event.payload["revision"];
+    foreign.refresh(typeof revision === "string" ? revision : undefined);
+  },
+  onState: (conn: ConnState): void => {
+    store.dispatch({ kind: "conn", conn });
+  },
+});
+
+/**
+ * 外来/未规范化路径：iframe + 横幅 + 状态栏三件是全部 UI——model 系功能（编辑、批注、
+ * 大纲、演示、快捷键）不接线，而不是"接了再禁用"。`doc.changed` 只重载 iframe。
+ */
+const bootForeign = (deps: ClassifiedBootDeps, cls: ForeignInput["cls"], info: DocInfo): Booted => {
+  const { host, store } = deps;
+  let inner: Booted | undefined;
+  let stopped = false;
+
+  const foreign = mountForeign({
+    host,
+    parent: ROOT,
+    docId: store.get().docId,
+    info: {
+      cls,
+      trust: info.trust ?? "off",
+      scripts: info.scripts === true,
+    },
+    setTrust: deps.postTrust,
+    normalize: async () => {
+      await deps.postNormalize();
+      // 重走完整分流而不是就地拼 managed：normalize 后 info/主题/正文全部要重取。
+      const next = await bootDocument(deps);
+      if (stopped) {
+        next.destroy();
+        return;
+      }
+      teardown();
+      inner = next;
+    },
+  });
+  const statusbar = mountStatusbar(host, ROOT);
+  host.text(`${ROOT} #hr-shortcuts`, COPY.foreignShortcuts);
+  const unsubscribe = deps.store.subscribe(syncView({ host, widgets: [statusbar] }));
+  const sse = deps.openSse(foreignSseOf(store, foreign));
+  sse.start();
+
+  // 点击回调只可能晚于装配完成，hoist 的函数声明让 normalize 能向前引用它。
+  // 至多跑一次：destroy 置 stopped 后 normalize 的续跑走早退，normalize 成功后 destroy 转给 inner。
+  function teardown(): void {
+    sse.close();
+    unsubscribe();
+    foreign.destroy();
+  }
+
+  return {
+    destroy: () => {
+      if (stopped) return;
+      stopped = true;
+      if (inner === undefined) {
+        teardown();
+        return;
+      }
+      inner.destroy();
+    },
+  };
+};
+
+/** 启动分流：先 `info` 分档——managed 原样走 `boot`；normalizable/foreign 走 iframe 壳。 */
+export const bootDocument = async (deps: ClassifiedBootDeps): Promise<Booted> => {
+  const info = await deps.fetchInfo();
+  if (info.cls === "managed") {
+    const page = await deps.fetchPage();
+    return boot({ ...deps, ...page });
+  }
+  return bootForeign(deps, info.cls, info);
 };

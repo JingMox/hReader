@@ -26,6 +26,7 @@ describe("main · 文档定位与首屏", () => {
     install("doc.html", "http://x/?doc=other", happy);
     await load();
     expect(stubs.fetched).toEqual([
+      "/api/doc/doc.html/info",
       "/api/theme",
       "/s/doc.html",
       "/api/doc/doc.html/annotations",
@@ -68,7 +69,11 @@ describe("main · 文档定位与首屏（续）", () => {
   it("should fall back to the ?doc= query when the body attribute is empty", async () => {
     install("", "http://x/?doc=from-url", happy);
     await load();
-    expect(stubs.fetched.slice(0, 2)).toEqual(["/api/theme", "/s/from-url"]);
+    expect(stubs.fetched.slice(0, 3)).toEqual([
+      "/api/doc/from-url/info",
+      "/api/theme",
+      "/s/from-url",
+    ]);
   });
 
   it("should explain how to open a document when no id is given", async () => {
@@ -341,7 +346,11 @@ describe("main · 文档定位（续）", () => {
     install(null, "http://x/?doc=from-href", happy);
     await load();
 
-    expect(stubs.fetched.slice(0, 2)).toEqual(["/api/theme", "/s/from-href"]);
+    expect(stubs.fetched.slice(0, 3)).toEqual([
+      "/api/doc/from-href/info",
+      "/api/theme",
+      "/s/from-href",
+    ]);
   });
 });
 

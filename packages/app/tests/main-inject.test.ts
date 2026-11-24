@@ -83,25 +83,27 @@ const ioOf = (css: string, asked: string[] = []): AppIo => ({
     const candidate: unknown =
       path === "/api/theme"
         ? themes
-        : path.endsWith("/model")
-          ? model
-          : path.endsWith("/outline")
-            ? outline
-            : path.endsWith("/annotations")
-              ? {
-                  annotations: [
-                    {
-                      id: "an-1a2b3c4d",
-                      nodeId: "hr-a",
-                      note: "批注",
-                      status: "pending",
-                      anchor: { exact: "一", prefix: "", suffix: "", start: 0 },
-                      createdAt: "2024-01-01T00:00:00.000Z",
-                    },
-                  ],
-                  lost: [],
-                }
-              : { chunks: [{ kind: "ins", text: "新段落" }], degraded: false };
+        : path.endsWith("/info")
+          ? { revision: "r1", cls: "managed" }
+          : path.endsWith("/model")
+            ? model
+            : path.endsWith("/outline")
+              ? outline
+              : path.endsWith("/annotations")
+                ? {
+                    annotations: [
+                      {
+                        id: "an-1a2b3c4d",
+                        nodeId: "hr-a",
+                        note: "批注",
+                        status: "pending",
+                        anchor: { exact: "一", prefix: "", suffix: "", start: 0 },
+                        createdAt: "2024-01-01T00:00:00.000Z",
+                      },
+                    ],
+                    lost: [],
+                  }
+                : { chunks: [{ kind: "ins", text: "新段落" }], degraded: false };
     return guard(candidate)
       ? Promise.resolve(candidate)
       : Promise.reject(new Error(`${path} → 响应形状不符`));
@@ -114,7 +116,13 @@ const failingIoOf = (broken: string): AppIo => ({
     path === broken ? Promise.reject(new Error(`${path} → 500`)) : Promise.resolve(ARTICLE),
   json: (path, guard) => {
     const candidate: unknown =
-      path === "/api/theme" ? themes : path.endsWith("/model") ? model : outline;
+      path === "/api/theme"
+        ? themes
+        : path.endsWith("/info")
+          ? { revision: "r1", cls: "managed" }
+          : path.endsWith("/model")
+            ? model
+            : outline;
     return guard(candidate)
       ? Promise.resolve(candidate)
       : Promise.reject(new Error(`${path} → 响应形状不符`));

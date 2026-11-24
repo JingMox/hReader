@@ -1,7 +1,14 @@
 // 这层管：唯一的浏览器入口——把真 `document`/`fetch`/`EventSource`/`window` 塞进纯层。
 // （`wiring.ts` 的 `keySourceOf` 为了同处拥有键盘事件源，也持有一份最小 `window` 声明。）
 
-import { boot, type ModelResponse, type OutlineResponse } from "./boot.ts";
+import {
+  boot,
+  bootDocument,
+  type Booted,
+  type DocInfo,
+  type ModelResponse,
+  type OutlineResponse,
+} from "./boot.ts";
 import type { AppIo } from "./io.ts";
 export type { AppIo, RevisionResponse } from "./io.ts";
 import { createDomHost, type DocumentLike, type Host } from "./dom.ts";
@@ -20,9 +27,10 @@ export {
   revertOf,
   submitAnnotationOf,
 } from "./wiring.ts";
-import { createStore } from "./store.ts";
+import { createStore, type Store } from "./store.ts";
 import { createStyleSwitch } from "./style-switch.ts";
 import type { PresentShell } from "./widgets/present.ts";
+import type { TrustLevel } from "./widgets/foreign.ts";
 
 /** 浏览器全局的最小声明（本仓库 tsconfig 不带 DOM lib）：只写我们真正用到的成员。 */
 declare const document: DocumentLike;
@@ -155,6 +163,21 @@ export const isModelResponse = (value: unknown): value is ModelResponse =>
 export const isOutlineResponse = (value: unknown): value is OutlineResponse =>
   isRecord(value) && isRecord(value["outline"]) && Array.isArray(value["outline"]["nodes"]);
 
+const isDocClass = (value: unknown): value is DocInfo["cls"] =>
+  value === "managed" || value === "normalizable" || value === "foreign";
+
+/** `GET /api/doc/<id>/info`：启动分流的唯一依据；`trust`/`scripts` 缺席即"无信任档/无脚本"。 */
+export const isDocInfo = (value: unknown): value is DocInfo =>
+  isRecord(value) && typeof value["revision"] === "string" && isDocClass(value["cls"]);
+
+const isTrustResponse = (value: unknown): value is { readonly trust: TrustLevel } =>
+  isRecord(value) && (value["trust"] === "off" || value["trust"] === "local");
+
+const isNormalizeResponse = (
+  value: unknown,
+): value is { readonly revision: string; readonly cls: DocInfo["cls"] } =>
+  isRecord(value) && typeof value["revision"] === "string" && isDocClass(value["cls"]);
+
 /** 缺省的 `AppIo`：真 `fetch`（`@internal`：测试可换掉它，不必起服务器）。 */
 export const createHttpIo = (): AppIo => ({
   text: async (path) => {
@@ -249,13 +272,18 @@ const bindOf =
   async () =>
     await io.json(path, guard);
 
-export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
-  const { docId, themes, documentHtml, io, host, present = presentShellOf() } = input;
+/** 两条 boot 路径共用的依赖装配（store 由调用方给：managed 与 iframe 的初始主题不同）。 */
+const depsCoreOf = (core: {
+  readonly docId: string;
+  readonly io: AppIo;
+  readonly host: Host;
+  readonly present: PresentShell;
+  readonly store: Store;
+}) => {
+  const { docId, io, host, present, store } = core;
   const encoded = encodeURIComponent(docId);
   const bind = bindOf(io);
-  const store = createStore(initialState(docId, themes.default));
-  const blockTextOf = textOfBlocks(host, () => store.get().documentHtml);
-  return boot({
+  return {
     host,
     store,
     openSse,
@@ -265,9 +293,6 @@ export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
         host.text("#hr-theme", css);
       },
     }),
-    documentHtml,
-    themes: themes.themes,
-    defaultTheme: themes.default,
     fetchDocument: async () => await io.text(`/s/${encoded}`),
     fetchModel: bind(`/api/doc/${encoded}/model`, isModelResponse),
     fetchOutline: bind(`/api/doc/${encoded}/outline`, isOutlineResponse),
@@ -284,7 +309,64 @@ export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
           `/api/doc/${encoded}/notes/${encodeURIComponent(annotationId)}/diff`,
           isDiffResponse,
         ),
-      textOf: blockTextOf,
+      textOf: textOfBlocks(host, () => store.get().documentHtml),
+    },
+  };
+};
+
+export const bootWith = (input: BootInput): ReturnType<typeof boot> => {
+  const { docId, themes, documentHtml, io, host, present = presentShellOf() } = input;
+  const store = createStore(initialState(docId, themes.default));
+  return boot({
+    ...depsCoreOf({ docId, io, host, present, store }),
+    documentHtml,
+    themes: themes.themes,
+    defaultTheme: themes.default,
+  });
+};
+
+export interface BootDocumentInput {
+  readonly docId: string;
+  readonly io: AppIo;
+  readonly host: Host;
+  readonly present?: PresentShell;
+}
+
+/** 写命令的唯一封装点：trust/normalize 与批注走同一条 cookie+csrf 通道（`io.post` 缺席即明确报错）。 */
+const postJson = async <T>(
+  io: AppIo,
+  path: string,
+  body: Readonly<Record<string, unknown>>,
+  guard: (value: unknown) => value is T,
+): Promise<T> => {
+  if (io.post === undefined) throw new Error("当前 IO 未实现写请求（POST）");
+  return await io.post(path, body, guard);
+};
+
+/**
+ * 真正的入口：`/info` 先分档——managed 走 `boot`；normalizable/foreign 走 iframe 壳。
+ * normalize 成功后由 `bootDocument` 递归重进 managed，那时才拉主题与正文。
+ */
+export const bootDocumentWith = async (input: BootDocumentInput): Promise<Booted> => {
+  const { docId, io, host, present = presentShellOf() } = input;
+  const encoded = encodeURIComponent(docId);
+  const bind = bindOf(io);
+  // iframe 路径没有主题选择器：主题名先空着，managed（含 normalize 后重进）由 fetchPage 落到 store。
+  const store = createStore(initialState(docId, ""));
+  return await bootDocument({
+    ...depsCoreOf({ docId, io, host, present, store }),
+    fetchInfo: bind(`/api/doc/${encoded}/info`, isDocInfo),
+    fetchPage: async () => {
+      const [themes, documentHtml] = await Promise.all([
+        io.json("/api/theme", assertThemeList),
+        io.text(`/s/${encoded}`),
+      ]);
+      return { themes: themes.themes, defaultTheme: themes.default, documentHtml };
+    },
+    postTrust: async (level) =>
+      (await postJson(io, `/api/doc/${encoded}/trust`, { level }, isTrustResponse)).trust,
+    postNormalize: async () => {
+      await postJson(io, `/api/doc/${encoded}/normalize`, {}, isNormalizeResponse);
     },
   });
 };
@@ -322,12 +404,7 @@ export const main = async (options: MainOptions = {}): Promise<void> => {
     host.text("#hr-doc", "没有指定文档：用 /?doc=<docId> 打开");
     return;
   }
-  const encoded = encodeURIComponent(docId);
-  const [themes, html] = await Promise.all([
-    io.json("/api/theme", assertThemeList),
-    io.text(`/s/${encoded}`),
-  ]);
-  const booted = bootWith({ docId, themes, documentHtml: html, io, host });
+  const booted = await bootDocumentWith({ docId, io, host });
   // 划词 → 选区描述：字符偏移用 Range 量，跨块用"最近块祖先"判定。
   window.addEventListener("mouseup", () => {
     const raw = rawSelectionOf(window.getSelection?.() ?? null, measureSelection());

@@ -21,6 +21,12 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-theme-select",
   "#hr-focus-label",
   "#hr-doc",
+  // 外来/未规范化文档：横幅（文案 / 动作 / 错误）+ iframe 承载
+  "#hr-foreign",
+  "#hr-foreign-text",
+  "#hr-foreign-action",
+  "#hr-foreign-error",
+  "#hr-foreign-frame",
   // 演示模式：入口按钮 / 覆盖层容器 / 页码 / 退出
   "#hr-present-btn",
   "#hr-present",
