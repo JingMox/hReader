@@ -19,8 +19,7 @@
     },
     "packages/cli": {
       "entry": [
-        "src/args.ts",
-        "src/tokens.ts",
+        "src/args/index.ts",
         "src/input.ts",
         "src/output.ts",
         "src/run.ts",
