@@ -1,4 +1,4 @@
-// 这层管：批注引流（AC-4）——`doc.changed` 只对**本会话绑定文档**触发、`anId` 进程内去重、
+// 这层管：批注引流——`doc.changed` 只对**本会话绑定文档**触发、`anId` 进程内去重、
 // `confirm=false` 后同一批注不再问、无 UI 模式只提示；全程走真扩展（命令 → 订阅 → 拉批注 → 注入）。
 
 import { describe, expect, it } from "vitest";

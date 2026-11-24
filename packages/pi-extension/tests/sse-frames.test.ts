@@ -1,5 +1,5 @@
 // 这层管：SSE 帧解码器的三类跨块切点与"哪些行不算帧"；帧字面量逐字抄自 core 的
-// `packages/core/src/server/event-ring.ts`（AC-3 要求扩展侧独立拼写，由 AC-7 的钉子约束漂移）。
+// `packages/core/src/server/event-ring.ts`（扩展侧独立拼写，由 protocol-pins 的钉子约束漂移）。
 
 import { describe, expect, it } from "vitest";
 
