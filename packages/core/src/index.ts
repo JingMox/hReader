@@ -134,6 +134,8 @@ export { revertLast } from "./ops/revert-op";
 export type { RevertResult } from "./ops/revert-op";
 export { normalizeFile } from "./ops/normalize-file";
 export type { NormalizeInput, NormalizeResult } from "./ops/normalize-file";
+export { importForeign } from "./ops/import";
+export type { ImportDiscard, ImportOptions, ImportReport, ImportResult } from "./ops/import";
 
 // ---- 排版约束：组件规约、写入时检查、文档形态骨架 ----
 export {

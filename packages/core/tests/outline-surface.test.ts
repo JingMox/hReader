@@ -96,12 +96,13 @@ describe("core public surface · outline boundary", () => {
 });
 
 describe("ops facade", () => {
-  it("should expose exactly applyPatch/buildOutline/locateTarget/parseFragment/patchTargetIdOf/readNode at runtime", () => {
+  it("should expose exactly applyPatch/buildOutline/importForeign/locateTarget/parseFragment/patchTargetIdOf/readNode at runtime", () => {
     // `locateTarget` 是 `read`/`patch` 共用的 `<nodeId|selector>` 解析器，
     // 必须与它们同住一层，否则 `patch` 会自己再写一份重试链；`patchTargetIdOf` 是给 patch 的“取一个 id”收口。
     expect(Object.keys(opsEntry).sort()).toEqual([
       "applyPatch",
       "buildOutline",
+      "importForeign",
       "locateTarget",
       "parseFragment",
       "patchTargetIdOf",
