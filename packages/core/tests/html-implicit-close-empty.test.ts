@@ -90,7 +90,7 @@ const idsOf = (parsed: ParsedHtml): readonly string[] =>
 const codesOf = (parsed: ParsedHtml): readonly string[] =>
   injectNodeIds(parsed).parsed.diagnostics.map((diagnostic) => diagnostic.code);
 
-describe("implicitClose · 空首段的 id 归属（F20 / BLOCKER-2）", () => {
+describe("implicitClose · 空首段的 id 归属", () => {
   it("should keep the author id on an empty first piece instead of dropping the paragraph", () => {
     const parsed = quirks(DOC_WITH_IDS);
 
@@ -118,7 +118,7 @@ describe("implicitClose · 空首段的 id 归属（F20 / BLOCKER-2）", () => {
   });
 });
 
-describe("implicitClose · 空段过滤与幂等（F20 / BLOCKER-2）", () => {
+describe("implicitClose · 空段过滤与幂等", () => {
   it("should drop an id-less empty piece so the fix does not keep every empty paragraph", () => {
     const parsed = quirks(DOC_WITH_ID_LESS_EMPTY);
 
@@ -135,7 +135,7 @@ describe("implicitClose · 空段过滤与幂等（F20 / BLOCKER-2）", () => {
   });
 });
 
-describe("implicitClose · 块级判据的深度（F20 / BLOCKER-2 顺带补齐的覆盖）", () => {
+describe("implicitClose · 块级判据的深度", () => {
   it("should find a block nested below an inline wrapper and move the wrapper out", () => {
     const parsed = quirks(DOC_WITH_DEEP_BLOCK);
 
@@ -154,7 +154,7 @@ describe("implicitClose · 块级判据的深度（F20 / BLOCKER-2 顺带补齐�
   });
 });
 
-describe("落盘 · 空首段的 id（F20 / BLOCKER-2）", () => {
+describe("落盘 · 空首段的 id", () => {
   it("should write the id back on a paragraph and never report id_reassigned", () => {
     const html = injectedHtml(DOC_WITH_IDS);
 
@@ -192,7 +192,7 @@ interface OutlinedNode {
 const collectOutlinedIds = (nodes: readonly OutlinedNode[]): readonly string[] =>
   nodes.flatMap((node) => [node.id, ...collectOutlinedIds(node.children)]);
 
-describe("applyPatch · 未 normalize 的零长空首段（F20 / assertByteSpan）", () => {
+describe("applyPatch · 未 normalize 的零长空首段", () => {
   it("should reject delete on a zero-span empty paragraph with needs_normalize", () => {
     expect(() => applyPatch(DOC_WITH_IDS, { targetId: "p-1", action: "delete" })).toThrowError(
       HrError,

@@ -71,7 +71,7 @@ describe("applyPatch · replacedIds 的 id 变更对", () => {
   });
 });
 
-describe("applyPatch · replacedIds 的预置红（等 F17 接数据源）", () => {
+describe("applyPatch · replacedIds 的预置红", () => {
   it("should report the ignored fragment id as one pair whose `to` is the inherited target id", () => {
     // RULING-1：`replacedIds` = 「片段根自带的 id 被忽略」：`from` = 片段带来的 id、`to` = 继承到的目标 id。
     const outcome = patch({

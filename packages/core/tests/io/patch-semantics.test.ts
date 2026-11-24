@@ -46,7 +46,7 @@ const SPLICE_DOC = [
 const p1Start = (html: string): number => html.indexOf("<p data-hr-id='p1'");
 const p1End = (html: string): number => html.indexOf("</p>", p1Start(html)) + "</p>".length;
 
-describe("v2#1 AC4' · 只改目标源码区间", () => {
+describe("patch · 只改目标源码区间", () => {
   it("should keep CRLF, single quotes, entities and the BOM byte-identical outside the target", async () => {
     await withWorkspace(async (dir) => {
       const file = join(dir, DOC_FILE);
@@ -73,7 +73,7 @@ describe("v2#1 AC4' · 只改目标源码区间", () => {
   });
 });
 
-describe("v2#1 AC4' · 只改目标源码区间（续）", () => {
+describe("patch · 只改目标源码区间（续）", () => {
   it("should remove exactly the target interval when deleting", async () => {
     await withWorkspace(async (dir) => {
       const file = join(dir, DOC_FILE);
@@ -94,7 +94,7 @@ describe("v2#1 AC4' · 只改目标源码区间（续）", () => {
 
 // v3 裁定 #12 覆盖了 v2#2 的字面读法：幂等按"剥 ID 后的内容"判定，
 // 内容等价时直接返回原字节（不重注入 ID、changed:false、不留历史）。
-describe("v3#12 · 内容等价即原字节返回", () => {
+describe("patch · 内容等价即原字节返回", () => {
   it("should keep the original bytes and history when only the entity spelling differs", async () => {
     await withWorkspace(async (dir) => {
       const file = join(dir, DOC_FILE);
@@ -117,7 +117,7 @@ describe("v3#12 · 内容等价即原字节返回", () => {
   });
 });
 
-describe("v2#6 · undo 快照哈希自证", () => {
+describe("undo · 快照哈希自证", () => {
   it("should name the snapshot with the sha256-16 prefix of the original bytes", async () => {
     await withWorkspace(async (dir) => {
       const file = join(dir, DOC_FILE);
@@ -179,7 +179,7 @@ const patchOnFake = (fake: ReturnType<typeof fakeFs>): ReturnType<typeof patchFi
     { lockTimeoutMs: 0 },
   );
 
-describe("v2#7 · 锁接管条件", () => {
+describe("patch · 锁接管条件", () => {
   it("should not take over a lock whose pid is alive but 90s old", async () => {
     const fake = fakeFs({
       [DOC]: '<article data-hr-id="root"><p data-hr-id="p1">a</p></article>',
@@ -207,7 +207,7 @@ describe("v2#7 · 锁接管条件", () => {
   });
 });
 
-describe("v2#8 · tmp 只清死进程", () => {
+describe("patch · tmp 只清死进程", () => {
   it("should keep a live pid tmp and delete a dead pid tmp", async () => {
     const live = `${WS}/.hr-tmp.${String(process.pid)}.live.post.html`;
     const dead = `${WS}/.hr-tmp.${String(DEAD_PID)}.dead.post.html`;

@@ -99,7 +99,7 @@ describe("toDocumentModel · 空白归一", () => {
     expect(child(modelOf("<article><p>  a  </p></article>"), 0).text).toBe("a");
   });
 
-  it("should collapse NBSP and the ideographic space through the shared M1.1 normaliser", () => {
+  it("should collapse NBSP and the ideographic space through the shared parser normaliser", () => {
     // 卡片契约 5 要求复用 src/html/text.ts 的既有归一（\s+），而 \s 含 U+00A0/U+3000，
     // 所以这两类"看起来不是空格"的字符也被压成单空格——这是规格选择，不是本实例的取舍。
     expect(child(modelOf("<article><p>a\u00a0\u3000 b</p></article>"), 0).text).toBe("a b");

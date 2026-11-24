@@ -57,7 +57,7 @@ describe("assertThemeSafe · 远程与危险 url()", () => {
   });
 });
 
-describe("assertThemeSafe · 转义先反转义再判（R1 修好的 P1-1）", () => {
+describe("assertThemeSafe · 转义先反转义再判", () => {
   it.each([
     ["十六进制转义的 http", ".a{background:url(\\68 ttp://evil.example/x.png)}"],
     ["十六进制转义的 @import", "@im\\70 ort 'x.css';"],

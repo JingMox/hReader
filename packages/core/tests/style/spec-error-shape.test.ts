@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { HrError } from "../../src/hr-error";
 import { syntaxErrorOf } from "../../src/style/spec";
 
-describe("syntaxErrorOf · 报文的两种形状（v3#16 第三方边界）", () => {
+describe("syntaxErrorOf · 报文的两种形状", () => {
   it("should omit the line marker when the third-party error carries no pos", () => {
     const error = syntaxErrorOf({ message: "bad" }, "style.yaml", "a: 1");
 

@@ -141,7 +141,7 @@ const expectOwnBlockOnly = (
   expect(fieldOf(left, "reason")).toBeUndefined();
 };
 
-describe("GET …/diff · 粒度是块（P1-4）", () => {
+describe("GET …/diff · 粒度是块", () => {
   it("should diff only the annotation's own block", async () => {
     await withServer(async (ctx) => {
       const { left, right, leftNodeId, rightNodeId } = await twoBlockDiffs(ctx);

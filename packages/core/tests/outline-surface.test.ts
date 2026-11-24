@@ -82,7 +82,7 @@ const leaked = (
         FORBIDDEN_PREFIXES.some((prefix) => name.startsWith(prefix))),
   );
 
-describe("core public surface · M1.3 boundary", () => {
+describe("core public surface · outline boundary", () => {
   it("should keep every prior runtime export and add buildOutline", () => {
     // M1.4 的 readNode 由 `PRIOR_RUNTIME_EXPORTS` 覆盖（同一张表覆盖到最新一版公开面）。
     for (const name of PRIOR_RUNTIME_EXPORTS) {
@@ -97,7 +97,7 @@ describe("core public surface · M1.3 boundary", () => {
 });
 
 describe("ops facade", () => {
-  it("should expose exactly applyPatch/buildOutline/locateTarget/parseFragment/patchTargetIdOf/readNode at runtime（R1.4 + docs/05:98）", () => {
+  it("should expose exactly applyPatch/buildOutline/locateTarget/parseFragment/patchTargetIdOf/readNode at runtime", () => {
     // `locateTarget` 是 `read`/`patch` 共用的 `<nodeId|selector>` 解析器（docs/05:98 AC9），
     // 必须与它们同住一层，否则 `patch` 会自己再写一份重试链；`patchTargetIdOf` 是 F18 给 patch 的“取一个 id”收口。
     expect(Object.keys(opsEntry).sort()).toEqual([

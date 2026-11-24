@@ -125,7 +125,7 @@ const plainTitlesOf = (file: string): { file: string; line: number; title: strin
   });
 };
 
-describe("M2.3 · 负向钉住禁令", () => {
+describe("负向钉住禁令", () => {
   it("should never pin a defect with a plain it(): use it.fails + KD instead", () => {
     const offences = testFilesOf(PACKAGES)
       .flatMap(plainTitlesOf)

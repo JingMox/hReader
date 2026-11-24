@@ -1,6 +1,6 @@
 // 这层管：`locateTarget` / `patchTargetIdOf` 的**真链路**（parseSelector → resolveSelector → 双跳交叉校验）。
 // 与 `locate-target.test.ts` 分工：那份把两个底层件都 mock 成"只会抛"，专钉白盒走不到的**防御臂**；
-// 本文件**不 mock 任何东西**，钉的是用户真正会走到的每一条成功与拒绝路径（docs/05:99 AC9）。
+// 本文件**不 mock 任何东西**，钉的是用户真正会走到的每一条成功与拒绝路径。
 //
 // 为什么必须单独有真链路：CLI 的 e2e 走 `spawn` 子进程，子进程里 `@hreader/core` 解析到 dist，
 // 本仓的 src 覆盖率账面上就永远是 0——命中路径"跑过但不算数"。这里在**进程内**直调，跑的就是 src。
@@ -100,7 +100,7 @@ describe("locateTarget · 选择器命中多个可寻址元素", () => {
   });
 });
 
-describe("locateTarget · 两种解释都成立时拒绝且不选（docs/05:99 AC9）", () => {
+describe("locateTarget · 两种解释都成立时拒绝且不选", () => {
   it("should refuse a literal that is both a tag and another element's id", () => {
     const error = errorOf(() => locateTarget(DUAL, "h2"));
     const data = dataOf(error);
@@ -155,7 +155,7 @@ describe("locateTarget · 两跳都失败时的码由目标形态定", () => {
   });
 });
 
-describe("patchTargetIdOf · patch 只接受一个 id（docs/05:99 AC9）", () => {
+describe("patchTargetIdOf · patch 只接受一个 id", () => {
   it("should return the single hit's id", () => {
     expect(patchTargetIdOf(PLAIN, "h2")).toBe("hr-h2");
   });

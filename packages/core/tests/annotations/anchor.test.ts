@@ -103,7 +103,7 @@ describe("resolveAnchor · 失败是返回值", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("should adopt a unique hit even when the prefix was edited (裁定 #3)", () => {
+  it("should adopt a unique hit even when the prefix was edited", () => {
     const anchor = anchorOf({ exact: "行人稀少", prefix: "白天的城市\n" });
     const at = TEXT.indexOf("行人稀少");
 

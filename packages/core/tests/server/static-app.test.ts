@@ -111,7 +111,7 @@ describe("static · 未构建与读失败（直接调 Reply 层）", () => {
 });
 
 describe("GET / · 构建产物与回退", () => {
-  it("should 302 to /?doc= when the app is built and no doc is pinned (裁定 #1)", async () => {
+  it("should 302 to /?doc= when the app is built and no doc is pinned", async () => {
     const raw = await get("/", true);
     expect(statusOf(raw)).toBe("HTTP/1.1 302 Found");
     const location = raw.split("\r\n").find((line) => line.toLowerCase().startsWith("location:"));
@@ -134,7 +134,7 @@ describe("GET / · 构建产物与回退", () => {
   });
 });
 
-describe("GET /assets/* · 穿越攻击（AC1.2）", () => {
+describe("GET /assets/* · 穿越攻击", () => {
   it("should serve a nested asset with the right type and nosniff", async () => {
     const js = await get("/assets/app.js");
     expect(statusOf(js)).toBe("HTTP/1.1 200 OK");
@@ -183,7 +183,7 @@ describe("GET /api/theme · 清单（runtime 的 themes 分支）", () => {
   });
 });
 
-describe("GET /api/theme/* · CSS 而不是 JSON（AC5.2）", () => {
+describe("GET /api/theme/* · CSS 而不是 JSON", () => {
   it("should serve the built-in theme as text/css", async () => {
     const raw = await get("/api/theme/atelier-editorial");
     expect(statusOf(raw)).toBe("HTTP/1.1 200 OK");

@@ -144,8 +144,8 @@ describe("validateDocument · article 数量", () => {
   });
 });
 
-describe("validateDocument · 与 M1.1 诊断合并", () => {
-  it("should keep M1.1 diagnostics first and remain stable across calls", () => {
+describe("validateDocument · 与解析诊断合并", () => {
+  it("should keep parser diagnostics first and remain stable across calls", () => {
     // 注入先改名：`Bad Id` → invalid_hr_id（原地的）、第二个 `dup` → id_reassigned；
     // 没过注入的 `duplicate_id` 在这里已经不存在了（R2-11）。
     const html =
@@ -179,7 +179,7 @@ describe("validateDocument · 与 M1.1 诊断合并", () => {
   });
 });
 
-describe("validateDocument · 与 M1.1 诊断合并 · 续", () => {
+describe("validateDocument · 与解析诊断合并 · 续", () => {
   it("should flag an illegal id that reached validate without injection", () => {
     const diagnostics = validateDocument(
       parseHtml('<article data-hr-id="Bad Id"><p>a</p></article>'),

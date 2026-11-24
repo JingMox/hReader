@@ -61,7 +61,7 @@ describe("loadThemeCss · 探路与读取之间的竞态", () => {
   });
 });
 
-describe("existsOf · 非缺文件异常冒泡（R1 新增）", () => {
+describe("existsOf · 非缺文件异常冒泡", () => {
   it("should map an EACCES lstat to style_io_failure instead of 'missing'", async () => {
     const env = styleEnv({ "/work/styles/t/theme.css": "body{}" });
     env.fake.fail("lstat", systemError("EACCES"), (path) => path === "/work/styles/t/theme.css");

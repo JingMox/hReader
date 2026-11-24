@@ -1,21 +1,50 @@
-// 这层管：只有"注入 deps"才能打到的分支——runtime 的 doc.error / library.changed / 无变化不广播、
-// ensureNoDaemon 的三条早退、watcher 回声窗口过期。
+// 这层管：只能靠注入 deps 或内部入口打到的 server 分支——runtime 广播、daemon 早退、watcher、
+// limits 计时器、http-io 协议守卫、hub/event-ring 边界与各模块的可单测小部件。
 
-import { mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { disposeWatchers, watcherLike } from "./casts";
-import { createWatcher } from "../../src/server/watcher";
-import type { WatchFn } from "../../src/server/watcher";
-import { writeDaemonOf, daemonFileOf } from "../../src/server/daemon";
+import { HrError } from "../../src/hr-error";
 import { nodePatchDeps } from "../../src/io/node-fs";
-import { nodeStyleDeps } from "../../src/style";
+import type { PatchDeps } from "../../src/io/ports";
+import { appendAnnotation, type AnnotationInput } from "../../src/server/annotation";
+import { defaultHostsOf, hostAllowed } from "../../src/server/auth";
+import type { SseEvent } from "../../src/server/contracts";
+import {
+  daemonAlive,
+  parseDaemon,
+  portOpen,
+  removeDaemonOf,
+  writeDaemonOf,
+} from "../../src/server/daemon";
+import { frameOf, frameTokenOf } from "../../src/server/event-ring";
+import {
+  CONNECT_COMMENT,
+  MAX_CLIENTS,
+  RETRY_AFTER_MS,
+  createHub,
+  createServerHub,
+} from "../../src/server/hub";
+import { HttpFault, contentTypeOf, errorReply } from "../../src/server/http-io";
+import {
+  READY_FRAME,
+  createEventRing,
+  daemonFileOf,
+  matchRoute,
+  statusOf,
+} from "../../src/server/index";
+import { REVISION_CHARS } from "../../src/server/revision";
+import { ROUTES } from "../../src/server/routes";
 import { startServer } from "../../src/server/server";
-import { cookieOf, DOC, httpCall, openSse, withServer } from "./harness";
-import { mkdirSync } from "node:fs";
+import { DEBOUNCE_MS, ECHO_MS, createWatcher } from "../../src/server/watcher";
+import type { WatchFn } from "../../src/server/watcher";
+import { nodeStyleDeps } from "../../src/style";
+import { disposeWatchers, responseLike, watcherLike } from "./casts";
+import { cookieOf, DOC, httpCall, openSse, rawExchange, withServer } from "./harness";
 
 const roots: string[] = [];
 const root = (prefix: string): string => {
@@ -23,10 +52,55 @@ const root = (prefix: string): string => {
   roots.push(dir);
   return dir;
 };
+
+const dirs: string[] = [];
+const tmp = (prefix: string): string => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  dirs.push(dir);
+  return dir;
+};
+
 afterAll(() => {
   disposeWatchers();
-  for (const dir of roots) rmSync(dir, { recursive: true, force: true });
+  for (const dir of [...roots, ...dirs]) rmSync(dir, { recursive: true, force: true });
 });
+
+const withCode = (error: Error, code: string): Error => Object.assign(error, { code });
+
+/** 写入时间戳由调用方从注入时钟取；纯函数层只透传，测试里用固定值保证字节级可比。 */
+const CREATED_AT = "2026-01-01T00:00:00.000Z";
+
+const messageOf = (body: string | Uint8Array): string => {
+  const text = typeof body === "string" ? body : Buffer.from(body).toString("utf8");
+  const parsed: unknown = JSON.parse(text);
+  const message: unknown = Reflect.get(Object(parsed), "message");
+  return typeof message === "string" ? message : "";
+};
+
+interface Sink {
+  readonly chunks: string[];
+  readonly stub: object;
+}
+
+/** `ServerResponse` 替身：真类外壳 + 结构化的 write/flush，收集写出的帧。 */
+const sinkOf = (): Sink => {
+  const chunks: string[] = [];
+  return {
+    chunks,
+    stub: {
+      writeHead: () => undefined,
+      write: (chunk: string) => {
+        chunks.push(chunk);
+        return true;
+      },
+      end: () => undefined,
+      on: () => undefined,
+      once: () => undefined,
+      flushHeaders: () => undefined,
+      destroyed: false,
+    },
+  };
+};
 
 interface WatchSlot {
   /** `remember` 会给同一目录再挂一个带文件名的 watcher，所以回调是多个：全部触发。 */
@@ -276,5 +350,729 @@ describe("startServer · 端口被占用", () => {
     } finally {
       blocker.close();
     }
+  });
+});
+
+describe("http-io · errorReply 的三条映射", () => {
+  it("should map an unexpected Error to a 500 with a fixed public message", () => {
+    const reply = errorReply(new Error("内部细节不要泄露"));
+
+    expect(reply.status).toBe(500);
+    expect(reply.body).toContain('"code":"io_failure"');
+    expect(reply.body).not.toContain("内部细节");
+  });
+
+  it("should prefer the frozen message of a known HrError code", () => {
+    const reply = errorReply(new HrError("node_not_found", "细节"));
+
+    expect(reply.status).toBe(404);
+    expect(reply.body).toContain('"code":"node_not_found"');
+  });
+});
+
+describe("http-io · 走私面守卫（真 socket）", () => {
+  const head = (port: number, token: string, extra: readonly string[]): string =>
+    [
+      "POST /api/patch HTTP/1.1",
+      `Host: 127.0.0.1:${String(port)}`,
+      `Cookie: ${cookieOf(token)}`,
+      "X-HR-CSRF: 1",
+      ...extra,
+      "",
+      "",
+    ].join("\r\n");
+
+  it("should reject Transfer-Encoding together with Content-Length (400)", async () => {
+    await withServer(async (ctx) => {
+      const text = await rawExchange(
+        ctx.port,
+        head(ctx.port, ctx.token, ["Transfer-Encoding: chunked", "Content-Length: 5", "0"]),
+        "HTTP/1.1",
+        1500,
+      );
+
+      expect(text).toMatch(/^HTTP\/1\.1 400/u);
+    });
+  });
+
+  it("should reject a non-chunked Transfer-Encoding as a bad request", async () => {
+    await withServer(async (ctx) => {
+      const text = await rawExchange(
+        ctx.port,
+        head(ctx.port, ctx.token, ["Transfer-Encoding: gzip"]),
+        "HTTP/1.1",
+        1500,
+      );
+
+      expect(text).toMatch(/^HTTP\/1\.1 400/u);
+    });
+  });
+});
+
+describe("http-io · 方法不允许（405 + allow）", () => {
+  it("should answer 405 and advertise the allowed methods", async () => {
+    await withServer(async (ctx) => {
+      const text = await rawExchange(
+        ctx.port,
+        [
+          "PUT /api/patch HTTP/1.1",
+          `Host: 127.0.0.1:${String(ctx.port)}`,
+          `Cookie: ${cookieOf(ctx.token)}`,
+          "X-HR-CSRF: 1",
+          "",
+          "",
+        ].join("\r\n"),
+        "HTTP/1.1",
+        1500,
+      );
+
+      expect(text).toMatch(/^HTTP\/1\.1 405/u);
+      expect(text.toLowerCase()).toContain("allow: ");
+    });
+  });
+});
+
+describe("auth · allowHosts 的三条分支", () => {
+  it("should fall back to loopback for empty/absent lists and accept a custom list", () => {
+    expect(hostAllowed(undefined, 6080)).toBe(false);
+    expect(hostAllowed("127.0.0.1:6080", 6080, [])).toBe(true);
+    expect(hostAllowed(" LocalHost:6080 ", 6080)).toBe(true);
+    expect(hostAllowed("hr.local:6080", 6080, ["hr.local:6080"])).toBe(true);
+    expect(hostAllowed("hr.local:6080", 6080, ["other:6080"])).toBe(false);
+  });
+});
+
+describe("event-ring · 帧头转义与诊断出口", () => {
+  it("should replace CR/LF in the type token and report it once", () => {
+    const notes: string[] = [];
+    const event: SseEvent = { id: 7, type: "doc\r\nchanged", payload: {} };
+
+    const frame = frameOf(event, (message) => notes.push(message));
+
+    expect(notes).toHaveLength(1);
+    expect(frame.split("\n")).toHaveLength(4);
+    expect(frame).not.toContain("doc\r\nchanged");
+  });
+
+  it("should keep the plain path silent", () => {
+    const notes: string[] = [];
+    const frame = frameOf({ id: 1, type: "doc.changed", payload: {} }, (message) =>
+      notes.push(message),
+    );
+
+    expect(notes).toHaveLength(0);
+    expect(frame).toContain('"type":"doc.changed"');
+  });
+
+  it("should sanitize without a note callback", () => {
+    const frame = frameOf({ id: 3, type: "a\nb", payload: {} });
+
+    expect(frame).toContain('"type":"a-b"');
+  });
+});
+
+describe("hub · createServerHub 的两个 arity", () => {
+  it("should build a hub with and without a diagnostic sink", () => {
+    const plain = createServerHub();
+    const noisy: string[] = [];
+    const reported = createServerHub((message) => noisy.push(message));
+    const ring = createEventRing(2);
+    const hub = createHub({ ring, heartbeatMs: 60_000 });
+
+    const pushed = reported.publish("doc.changed", { n: 1 });
+    reported.close();
+    hub.close();
+    plain.close();
+
+    expect(pushed.id).toBe(1);
+    expect(noisy).toEqual([]);
+    expect(ring.newest()).toBe(0);
+  });
+});
+
+describe("server · bind 的非 EADDRINUSE 分支", () => {
+  it("should surface the OS error unchanged when binding a privileged port", async () => {
+    const workspace = tmp("hr-bind2-ws-");
+    writeFileSync(
+      join(workspace, "doc.html"),
+      '<article data-hr-id="hr-a"><p>x</p></article>',
+      "utf8",
+    );
+
+    await expect(
+      startServer(
+        { workspace, port: 80, home: tmp("hr-bind2-home-"), docId: "doc.html" },
+        { patch: nodePatchDeps, style: nodeStyleDeps(workspace), now: Date.now },
+      ),
+    ).rejects.toMatchObject({ code: "EACCES" });
+  });
+});
+
+describe("http-io · 公开文案的两道裁剪", () => {
+  it("should hide absolute paths and truncate anything over 200 chars", () => {
+    const pathy = errorReply(new HttpFault(400, "写入 /Users/someone/secret/dir/doc.html 失败"));
+    expect(messageOf(pathy.body)).toBe("写入 [路径已隐藏] 失败");
+
+    const long = errorReply(new HttpFault(400, "x".repeat(250)));
+    expect(messageOf(long.body)).toHaveLength(201);
+  });
+});
+
+describe("server · 多个 Host 头（解析器先拒，handler 分支不可达）", () => {
+  it("should be rejected with 400 before our gate runs", async () => {
+    await withServer(async (ctx) => {
+      const text = await rawExchange(
+        ctx.port,
+        [
+          "GET /api/status HTTP/1.1",
+          `Host: 127.0.0.1:${String(ctx.port)}`,
+          "Host: evil.example",
+          `Cookie: ${cookieOf(ctx.token)}`,
+          "",
+          "",
+        ].join("\r\n"),
+        "HTTP/1.1",
+        1500,
+      );
+
+      expect(text).toMatch(/^HTTP\/1\.1 400/u);
+    });
+  });
+});
+
+describe("auth · defaultHostsOf", () => {
+  it("should advertise both loopback spellings for the given port", () => {
+    expect(defaultHostsOf(6080)).toEqual(["127.0.0.1:6080", "localhost:6080"]);
+  });
+});
+
+describe("annotation · meta 缺 annotations 键", () => {
+  it("should treat a meta object without annotations as empty", () => {
+    const html =
+      '<article data-hr-id="hr-a"><p data-hr-id="hr-b">x</p></article><script id="hr-meta">{}</script>';
+
+    const input: AnnotationInput = { start: 0, end: 1, text: "x", note: undefined, status: "open" };
+    const outcome = appendAnnotation(html, input, "hr-note-new", CREATED_AT);
+
+    expect(outcome.html).toContain('"id":"hr-note-new"');
+  });
+});
+
+describe("watcher · 重复 add 同一目录", () => {
+  it("should not attach a second watcher for the same dir/file key", () => {
+    let attached = 0;
+    const watcher = createWatcher({ now: () => 0, onFileChange: () => undefined }, () => {
+      attached += 1;
+      return watcherLike();
+    });
+
+    watcher.add("/ws", "doc.html");
+    watcher.add("/ws", "doc.html");
+    watcher.close();
+
+    expect(attached).toBe(1);
+  });
+});
+
+describe("daemon · portOpen 的计时器臂", () => {
+  it("should resolve false when the timeout fires before connect", async () => {
+    await expect(portOpen(80, 0)).resolves.toBe(false);
+  });
+});
+
+describe("server · 非法百分号编码", () => {
+  it("should answer 400 for a path segment that is not valid percent-encoding", async () => {
+    await withServer(async (ctx) => {
+      const text = await rawExchange(
+        ctx.port,
+        `GET /s/%zz HTTP/1.1\r\nHost: 127.0.0.1:${String(ctx.port)}\r\nCookie: ${cookieOf(ctx.token)}\r\n\r\n`,
+        "HTTP/1.1",
+        1500,
+      );
+
+      expect(text).toMatch(/^HTTP\/1\.1 400/u);
+    });
+  });
+});
+
+describe("limits · keep-alive 空闲到点", () => {
+  // v4#2：空闲到点只关连接，不再发 408（Node `keepAliveTimeout` 的语义）。
+  it("should close without a 408 once the idle window elapses", async () => {
+    await withServer(
+      async (ctx) => {
+        const socket = connect({ host: "127.0.0.1", port: ctx.port });
+        const chunks: Buffer[] = [];
+        let closed = false;
+        await new Promise<void>((resolve) => {
+          socket.on("connect", () => {
+            socket.write(
+              `GET /api/doc/doc.html/model HTTP/1.1\r\nHost: 127.0.0.1:${String(ctx.port)}\r\nCookie: ${cookieOf(ctx.token)}\r\nConnection: keep-alive\r\n\r\n`,
+            );
+          });
+          socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+          socket.on("close", () => {
+            closed = true;
+            resolve();
+          });
+          setTimeout(() => {
+            socket.destroy();
+            resolve();
+          }, 3000);
+        });
+
+        const raw = Buffer.concat(chunks).toString("latin1");
+        expect(raw).toMatch(/^HTTP\/1\.1 200/u);
+        expect(raw).not.toContain("408");
+        expect(closed).toBe(true);
+      },
+      { headersMs: 200, bodyMs: 200, idleMs: 200 },
+    );
+  });
+});
+
+describe("runtime · 打开文档后的 library.changed", () => {
+  it("should broadcast library.changed for another file while a doc is open", async () => {
+    const workspace = tmp("hr-rt2-ws-");
+    writeFileSync(join(workspace, "doc.html"), '<article data-hr-id="hr-a"><p>x</p></article>');
+    writeFileSync(join(workspace, "other.html"), "<article><p>y</p></article>");
+    const server = await startServer(
+      { workspace, port: 0, home: tmp("hr-rt2-home-"), docId: "doc.html" },
+      { patch: nodePatchDeps, style: nodeStyleDeps(workspace), now: Date.now },
+    );
+    const sse = openSse(server.port, "/api/events", { Cookie: cookieOf(server.token) });
+
+    try {
+      await sse.waitFor(1);
+      await httpCall(server.port, {
+        path: "/s/doc.html",
+        headers: { cookie: cookieOf(server.token) },
+      });
+      writeFileSync(join(workspace, "other.html"), "<article><p>z</p></article>");
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline && !sse.frames.some((f) => f.event === "library.changed")) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 25);
+        });
+      }
+
+      expect(sse.frames.some((frame) => frame.event === "library.changed")).toBe(true);
+    } finally {
+      sse.close();
+      await server.close();
+    }
+  });
+});
+
+describe("hub · 没有 Last-Event-ID 也不崩", () => {
+  it("should backfill from the ring when lastEventId is omitted", () => {
+    const ring = createEventRing(4);
+    ring.push("doc.changed", { n: 1 });
+    const hub = createHub({ ring, heartbeatMs: 60_000 });
+    const sink = sinkOf();
+
+    hub.addClient(responseLike(sink.stub), undefined);
+    hub.close();
+
+    // 没有 header 时 id 记为 0：只发 ready，不补发整环（补发会把历史事件重放一遍）。
+    const text = sink.chunks.join("");
+    expect(text).toContain('"type":"ready"');
+    expect(text).not.toContain("events_expired");
+    expect(text).not.toContain('"n":1');
+  });
+});
+
+const idleAfterResponse = async (port: number, cookie: string): Promise<string> =>
+  new Promise<string>((resolve) => {
+    const socket = connect({ host: "127.0.0.1", port });
+    let text = "";
+    socket.on("data", (chunk: Buffer) => {
+      text += chunk.toString("latin1");
+    });
+    socket.on("close", () => {
+      resolve(text);
+    });
+    socket.on("connect", () => {
+      socket.write(
+        `GET /api/doc/doc.html/model HTTP/1.1\r\nHost: 127.0.0.1:${String(port)}\r\nCookie: ${cookie}\r\nConnection: keep-alive\r\n\r\n`,
+      );
+    });
+    setTimeout(() => {
+      socket.destroy();
+      resolve(text);
+    }, 3000);
+  });
+
+describe("limits · idle 计时器自己触发（不是 header 计时器）", () => {
+  // v4#2 裁定：keep-alive 空闲到点由 Node 的 `keepAliveTimeout` 静默关连接，不再发明 408 帧。
+  it("should close a completed-then-idle keep-alive socket without inventing a 408", async () => {
+    await withServer(
+      async (ctx) => {
+        const started = Date.now();
+        const raw = await idleAfterResponse(ctx.port, cookieOf(ctx.token));
+
+        expect(raw).toMatch(/^HTTP\/1\.1 200/u);
+        expect(raw).not.toContain("408");
+        // 必须是真的"到点被关"，而不是测试自己的 3s 兜底 destroy 造成的假通过。
+        expect(Date.now() - started).toBeLessThan(2000);
+      },
+      { headersMs: 5000, bodyMs: 5000, idleMs: 100 },
+    );
+  });
+});
+
+describe("http-io · TE+CL 到底谁拒", () => {
+  it("should surface a 400 (ours or the parser's) and never smuggle", async () => {
+    await withServer(async (ctx) => {
+      const text = await rawExchange(
+        ctx.port,
+        [
+          "POST /api/patch HTTP/1.1",
+          `Host: 127.0.0.1:${String(ctx.port)}`,
+          `Cookie: ${cookieOf(ctx.token)}`,
+          "X-HR-CSRF: 1",
+          "Transfer-Encoding: chunked",
+          "Content-Length: 5",
+          "",
+          "0",
+          "",
+          "",
+        ].join("\r\n"),
+        "HTTP/1.1",
+        1500,
+      );
+
+      const statusOf = (): string => text.split("\r\n")[0] ?? "";
+      // 实测由 Node 的 llhttp 抢先拒绝（裸 400，无我们的 JSON 体）——见报告：我们的守卫是死代码。
+      expect(statusOf()).toMatch(/400|501/u);
+      expect(text).not.toContain('"code":"ok"');
+    });
+  });
+});
+
+describe("daemon · portOpen 的超时臂（假时钟）", () => {
+  it("should give up after timeoutMs when neither connect nor error arrives", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = portOpen(9, 25_000);
+      vi.advanceTimersByTime(25_000);
+      await expect(pending).resolves.toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("limits · 关闭时清理挂起的 header 计时器", () => {
+  it("should clear pending timers when the server closes with a half-open socket", async () => {
+    await withServer(
+      async (ctx) => {
+        const socket = connect({ host: "127.0.0.1", port: ctx.port });
+        socket.write(
+          `GET /api/doc/doc.html/model HTTP/1.1\r\nHost: 127.0.0.1:${String(ctx.port)}\r\n`,
+        );
+        await new Promise((resolve) => {
+          setTimeout(resolve, 30);
+        });
+        socket.destroy();
+      },
+      { headersMs: 5000, bodyMs: 5000, idleMs: 5000 },
+    );
+  });
+});
+
+describe("hub · 缺省 Last-Event-ID", () => {
+  it("should treat an undefined id as 0 and send no backfill", () => {
+    const written: string[] = [];
+    const res = responseLike({
+      writeHead: () => undefined,
+      write: (chunk: string) => written.push(chunk),
+      end: () => undefined,
+      on: () => undefined,
+      once: () => undefined,
+      flushHeaders: () => undefined,
+      destroyed: false,
+    });
+    const hub = createHub({ ring: createEventRing(4), heartbeatMs: 60_000 });
+
+    const client = hub.addClient(res, undefined);
+    hub.publish("doc.changed", { docId: "doc.html" });
+    hub.removeClient(client);
+    hub.close();
+
+    expect(client).toBeGreaterThan(0);
+    expect(written.join("")).toContain("doc.changed");
+  });
+});
+
+describe("event-ring · 负数 id 落在 newest 之前", () => {
+  it("should answer a negative Last-Event-ID from an empty ring with an empty backfill", () => {
+    const ring = createEventRing(4);
+
+    expect(ring.since(-1)).toEqual({ hit: true, events: [] });
+    ring.push("doc.changed", {});
+    expect(ring.since(-1)).toEqual({ hit: false, events: [] });
+  });
+});
+
+describe("daemon · portOpen 的计时器臂", () => {
+  it("should resolve false when the connect never completes before the timer", async () => {
+    // TEST-NET-1（RFC 5737）不该有主机：SYN 被丢，connect 一直挂到我们的计时器。
+    await expect(portOpen(81, 120)).resolves.toBe(false);
+  }, 5_000);
+});
+
+describe("daemon · removeDaemonOf 的 ENOENT 与其它故障", () => {
+  const seed = async (home: string): Promise<void> => {
+    const { writeDaemonOf } = await import("../../src/server/daemon");
+    await writeDaemonOf(
+      { port: 6000, token: "t".repeat(32), pid: process.pid, workspace: "/ws" },
+      home,
+      nodePatchDeps,
+    );
+  };
+
+  it("should return false when the file vanished between read and unlink", async () => {
+    const home = tmp("hr-daemon2-");
+    await seed(home);
+    const missing = (): never => {
+      throw withCode(new Error("gone"), "ENOENT");
+    };
+    const deps: PatchDeps = { ...nodePatchDeps, fs: { ...nodePatchDeps.fs, unlink: missing } };
+
+    await expect(removeDaemonOf(home, process.pid, deps)).resolves.toBe(false);
+  });
+
+  it("should surface a non-ENOENT unlink failure as io_failure", async () => {
+    const home = tmp("hr-daemon3-");
+    await seed(home);
+    const denied = (): never => {
+      throw withCode(new Error("denied"), "EACCES");
+    };
+    const deps: PatchDeps = { ...nodePatchDeps, fs: { ...nodePatchDeps.fs, unlink: denied } };
+
+    await expect(removeDaemonOf(home, process.pid, deps)).rejects.toMatchObject({
+      code: "io_failure",
+    });
+  });
+});
+
+describe("limits · keep-alive 上重挂 idle 计时器", () => {
+  it("should serve two requests on one socket and clear timers when the server closes", async () => {
+    await withServer(
+      async (ctx) => {
+        const socket = connect({ host: "127.0.0.1", port: ctx.port });
+        const chunks: Buffer[] = [];
+        let statuses = 0;
+        await new Promise<void>((resolve) => {
+          socket.on("data", (chunk: Buffer) => {
+            chunks.push(chunk);
+            statuses += (chunk.toString("latin1").match(/^HTTP\/1\.1 200/gu) ?? []).length;
+            if (statuses === 1) {
+              socket.write(
+                `GET /healthz HTTP/1.1\r\nHost: 127.0.0.1:${String(ctx.port)}\r\nCookie: ${cookieOf(ctx.token)}\r\nConnection: keep-alive\r\n\r\n`,
+              );
+            }
+            if (statuses >= 2) {
+              socket.destroy();
+              resolve();
+            }
+          });
+          socket.on("error", () => {
+            resolve();
+          });
+          socket.on("connect", () => {
+            socket.write(
+              `GET /api/doc/doc.html/model HTTP/1.1\r\nHost: 127.0.0.1:${String(ctx.port)}\r\nCookie: ${cookieOf(ctx.token)}\r\nConnection: keep-alive\r\n\r\n`,
+            );
+          });
+          setTimeout(resolve, 2000);
+        });
+
+        expect(Buffer.concat(chunks).toString("latin1")).toMatch(/^HTTP\/1\.1 200/u);
+      },
+      { headersMs: 500, bodyMs: 500, idleMs: 5_000 },
+    );
+  });
+});
+
+const idleClose = async (port: number, token: string): Promise<string> => {
+  const socket = connect({ host: "127.0.0.1", port });
+  const chunks: Buffer[] = [];
+  const closed = new Promise<void>((resolve) => {
+    socket.on("close", () => {
+      resolve();
+    });
+    socket.on("error", () => {
+      resolve();
+    });
+  });
+  socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+  await new Promise<void>((resolve) => {
+    socket.on("connect", () => {
+      socket.write(
+        `GET /healthz HTTP/1.1\r\nHost: 127.0.0.1:${String(port)}\r\nCookie: ${token}\r\nConnection: keep-alive\r\n\r\n`,
+      );
+      resolve();
+    });
+  });
+  await closed;
+  return Buffer.concat(chunks).toString("latin1");
+};
+
+const headTimeout = async (port: number): Promise<string> => {
+  const socket = connect({ host: "127.0.0.1", port });
+  const chunks: Buffer[] = [];
+  socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+  await new Promise<void>((resolve) => {
+    socket.on("connect", () => {
+      socket.write("GET /healthz HTTP/1.1\r\n");
+      resolve();
+    });
+  });
+  await new Promise<void>((resolve) => {
+    socket.on("close", () => {
+      resolve();
+    });
+    socket.on("error", () => {
+      resolve();
+    });
+    setTimeout(resolve, 1_000);
+  });
+  socket.destroy();
+  return Buffer.concat(chunks).toString("latin1");
+};
+
+describe("limits · 两档计时器的收尾路径", () => {
+  // v4#2：空闲到点 = 静默关连接（Node `keepAliveTimeout`），不再有自造 408。
+  it("should close an idle keep-alive socket without a 408 frame", async () => {
+    await withServer(
+      async (ctx) => {
+        const raw = await idleClose(ctx.port, cookieOf(ctx.token));
+
+        expect(raw).toMatch(/^HTTP\/1\.1 200/u);
+        expect(raw).not.toContain("408");
+      },
+      { headersMs: 1_000, bodyMs: 1_000, idleMs: 120 },
+    );
+  });
+
+  // v4#2：请求头半截由 Node 的 `requestTimeout` 处理——它可能回 408，也可能直接关连接，两者都合规。
+  it("should either answer 408 or close when the request head never finishes", async () => {
+    await withServer(
+      async (ctx) => {
+        const raw = await headTimeout(ctx.port);
+
+        expect(raw === "" || raw.startsWith("HTTP/1.1 408")).toBe(true);
+      },
+      { headersMs: 120, bodyMs: 1_000, idleMs: 1_000 },
+    );
+  });
+});
+
+describe("matchRoute · 清单路由", () => {
+  it("should match /api/theme as the themes route with no params", () => {
+    expect(matchRoute("GET", "/api/theme")).toMatchObject({
+      kind: "route",
+      params: {},
+      route: { kind: "themes", auth: "none", method: "GET" },
+    });
+  });
+
+  it("should still refuse a path that is shorter than every route", () => {
+    expect(matchRoute("GET", "/api")).toEqual({ kind: "none" });
+  });
+
+  it("should refuse a trailing-slash variant instead of treating it as the themes route", () => {
+    expect(matchRoute("GET", "/api/theme/")).toEqual({ kind: "none" });
+  });
+});
+
+describe("contentTypeOf · 未知扩展名", () => {
+  it("should fall back to application/octet-stream", () => {
+    expect(contentTypeOf("/app/assets/font.woff2")).toBe("application/octet-stream");
+    expect(contentTypeOf("/app/assets/README")).toBe("application/octet-stream");
+  });
+});
+
+describe("auth · 小工具", () => {
+  it("should list both loopback hosts for the given port", () => {
+    expect(defaultHostsOf(7421)).toEqual(["127.0.0.1:7421", "localhost:7421"]);
+  });
+});
+
+describe("daemon · 记录解析与存活判定", () => {
+  it("should build the store path under .hreader", () => {
+    expect(daemonFileOf("/home/u")).toBe("/home/u/.hreader/daemon.json");
+  });
+
+  it("should reject malformed payloads instead of half-trusting them", () => {
+    const good = JSON.stringify({ port: 7421, token: "t", pid: 12, workspace: "/ws" });
+    expect(parseDaemon(good)).toEqual({ port: 7421, token: "t", pid: 12, workspace: "/ws" });
+    expect(parseDaemon("{not json")).toBeUndefined();
+    expect(parseDaemon("[]")).toBeUndefined();
+    expect(
+      parseDaemon(JSON.stringify({ port: 0, token: "t", pid: 12, workspace: "/ws" })),
+    ).toBeUndefined();
+    expect(
+      parseDaemon(JSON.stringify({ port: 7421, token: "", pid: 12, workspace: "/ws" })),
+    ).toBeUndefined();
+  });
+
+  it("should treat the current pid as alive and a dead one as not", () => {
+    expect(daemonAlive({ port: 7421, token: "t", pid: process.pid, workspace: "/ws" })).toBe(true);
+    expect(daemonAlive({ port: 7421, token: "t", pid: 999_999, workspace: "/ws" })).toBe(false);
+  });
+});
+
+describe("event-ring/watcher · 帧头转义与常量", () => {
+  it("should fold CR/LF and escape backslashes in header tokens", () => {
+    expect(frameTokenOf("a\nb")).toBe("a-b");
+    expect(frameTokenOf("a\\b")).toBe("a\\\\b");
+    expect(frameTokenOf("a\r\nb")).toBe("a--b");
+    expect(frameTokenOf("plain")).toBe("plain");
+  });
+
+  it("should pin the protocol constants", () => {
+    expect(CONNECT_COMMENT).toBe(": ready\n\n");
+    expect(READY_FRAME).toContain("ready");
+    expect(RETRY_AFTER_MS).toBe(2000);
+    expect(MAX_CLIENTS).toBe(64);
+    expect(DEBOUNCE_MS).toBe(100);
+    expect(ECHO_MS).toBe(200);
+    expect(REVISION_CHARS).toBe(16);
+  });
+});
+
+describe("门面 · 可单测部件仍可用", () => {
+  it("should create a hub whose ring starts empty", () => {
+    const ring = createEventRing(4);
+    const hub = createHub({ ring, heartbeatMs: 60_000 });
+    hub.close();
+
+    expect(hub.clientCount).toBe(0);
+    expect(ring.since(0).events).toEqual([]);
+  });
+
+  it("should create a watcher with the three-method surface", () => {
+    const watcher = createWatcher({ now: () => 0, onFileChange: () => undefined });
+    watcher.close();
+
+    expect(typeof watcher.add).toBe("function");
+    expect(typeof watcher.noteSelfWrite).toBe("function");
+  });
+
+  it("should match routes and map error codes to statuses", () => {
+    const hit = matchRoute("GET", "/api/events");
+    expect(hit.kind).toBe("route");
+    expect(hit.kind === "route" ? hit.route.kind : "").toBe("events");
+
+    const wrong = matchRoute("POST", "/api/events");
+    expect(wrong.kind).toBe("method");
+
+    // M2.2 让冻结路由表 9 → 12，M2.3 的批注/撤销五条 → 17。
+    expect(ROUTES).toHaveLength(17);
+    expect(statusOf("locked")).toBe(409);
+    expect(statusOf("too_many_clients")).toBe(429);
+    expect(statusOf("path_outside_workspace")).toBe(403);
   });
 });

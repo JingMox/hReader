@@ -129,7 +129,7 @@ describe("annotations · projection of hr-meta", () => {
   });
 });
 
-describe("diagnostics · the M1.1 subset inside the target subtree", () => {
+describe("diagnostics · the parser subset inside the target subtree", () => {
   const html = `<article data-hr-id="post"><section data-hr-id="s1"><div data-hr-component="bad">a</div></section><section data-hr-id="s2"><p>b</p></section></article>`;
 
   // v2 #12 统一了 path 口径（同标签序号、不带前导 `>`），`withinSubtree` 才解得开前缀比较：

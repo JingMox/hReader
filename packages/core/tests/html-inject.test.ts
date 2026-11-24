@@ -51,7 +51,7 @@ describe("injectNodeIds · 注入范围", () => {
 });
 
 describe("injectNodeIds · 注入范围 · 续", () => {
-  it("should inject the article element itself since M1.2 v2", () => {
+  it("should inject the article element itself as the model root", () => {
     const injected = inject("<article><p>a</p></article>");
 
     // v2 裁定 1 反转了 M1.1 的旧断言：模型根必须带 data-hr-id，所以 article 自身是注入目标。

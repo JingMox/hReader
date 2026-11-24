@@ -38,7 +38,7 @@ describe("hr_outline · hr-meta 畸形输入", () => {
     expect(messagesOf(outline)).toContain("hr-meta 为空");
   });
 
-  it("should diagnose non-JSON text (and M1.1 script_in_meta reports the same defect)", () => {
+  it("should diagnose non-JSON text (and the parser's script_in_meta reports the same defect)", () => {
     const outline = outlineOf(withMeta("not json"));
 
     expect(codesOf(outline)).toContain("invalid_meta");

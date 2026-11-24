@@ -123,7 +123,7 @@ describe("matchRoute · 精确分段匹配（续）", () => {
   });
 });
 
-describe("matchRoute · M2.3 的批注与撤销", () => {
+describe("matchRoute · 批注与撤销", () => {
   it("should match the five new POST/GET routes", () => {
     expect(matchRoute("GET", "/api/doc/a.html/annotations")).toMatchObject({
       kind: "route",

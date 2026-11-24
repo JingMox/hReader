@@ -38,7 +38,7 @@ const EXTRACTED = extractStyle({
 });
 
 describe("fixtures/extract · 语料字节", () => {
-  it("should keep the three corpora byte-identical to the card §4 pins", () => {
+  it("should keep the three corpora byte-identical to their pinned bytes", () => {
     for (const name of CORPUS_FILES) {
       const digest = createHash("sha256")
         .update(readFileSync(pathOf(name)))
@@ -49,7 +49,7 @@ describe("fixtures/extract · 语料字节", () => {
 });
 
 describe("extractStyle · 真语料的统计量", () => {
-  it("should report exactly the stats the card §4 pins", () => {
+  it("should report exactly the pinned stats", () => {
     expect(EXTRACTED.stats).toEqual({
       paragraphs: 148,
       sentences: 223,

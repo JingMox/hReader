@@ -72,7 +72,7 @@ describe("diffText · 20 000 字符上限", () => {
 });
 
 describe("diffText · 单侧超限与性能", () => {
-  it("should degrade a single-sided 20k edit (char gate is per side, AC4.2)", () => {
+  it("should degrade a single-sided 20k edit (char gate is per side)", () => {
     // 单侧超 20 000 就降级：`tooLong` 看的是两侧各自长度，不是总和。
     const result = diffText(longer, "b");
 

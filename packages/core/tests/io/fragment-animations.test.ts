@@ -15,7 +15,7 @@ const codeOfFragment = (html: string): string => {
   }
 };
 
-describe("v3#17 · values 是分号列表，必须逐项判（回归：审计漏洞）", () => {
+describe("values 是分号列表，必须逐项判", () => {
   it.each([
     '<svg><animate attributeName="href" values="safe;javascript:alert(1)"/></svg>',
     '<svg><animate attributeName="href" values="0 ; 1 ; JavaScript:alert(1)"/></svg>',
@@ -25,7 +25,7 @@ describe("v3#17 · values 是分号列表，必须逐项判（回归：审计漏
     expect(codeOfFragment(fragment)).toBe("forbidden_content");
   });
 
-  it("should not treat a single-value semicolon as a list separator (v3#17)", () => {
+  it("should not treat a single-value semicolon as a list separator ", () => {
     expect(codeOfFragment('<svg><animate attributeName="href" to="safe;../x.html"/></svg>')).toBe(
       "no_throw",
     );
@@ -38,7 +38,7 @@ describe("v3#17 · values 是分号列表，必须逐项判（回归：审计漏
   });
 });
 
-describe("v3#16 · 动画目标 URL 属性与直接写 href 同口径", () => {
+describe("动画目标 URL 属性与直接写 href 同口径", () => {
   it.each([
     '<svg><animate attributeName="href" to="javascript:alert(1)"/></svg>',
     '<svg><animate attributeName="href" from="  JaVaScRiPt:alert(1)"/></svg>',
@@ -74,7 +74,7 @@ describe("meta · 只带 charset 也要拒", () => {
   });
 });
 
-describe("G3.4 · 输入类矩阵（元素 × 属性 × 单值/列表）现成缺的那几条", () => {
+describe("动画元素 · URL 属性矩阵（元素 × 属性 × 单值/列表）", () => {
   // 语料表里原先只有 href 一个属性名；src/by/xlink:href 与 from/by 这两条轴一直是空的。
   it.each([
     ['<svg><animate attributeName="src" from="javascript:alert(1)"/></svg>', "src + from 单值"],

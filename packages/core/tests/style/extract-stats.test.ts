@@ -153,7 +153,7 @@ describe("forbiddenPhrasesOf · 语料 0 次", () => {
     expect(phrases[0]).toBe("说实话");
   });
 
-  it("should fill exactly the card §4 cap when the corpus uses no filler at all", () => {
+  it("should fill exactly the pinned cap when the corpus uses no filler at all", () => {
     // F1 的 binding 点是套话表长度本身；F2 的 LLM 追加才真正考验这条上限。
     expect(forbiddenPhrasesOf("").length).toBe(MAX_FORBIDDEN);
   });

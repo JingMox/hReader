@@ -55,7 +55,7 @@ const twoPiecesOf = (parsed: ParsedHtml): readonly [HtmlElementNode, HtmlElement
   return [first, second];
 };
 
-describe("parseHtml · 分裂出来的段落 id 归属（R2-06a）", () => {
+describe("parseHtml · 分裂出来的段落 id 归属", () => {
   it("should keep the original id on the first piece and leave the later piece id-less", () => {
     const parsed = parseHtml(QUIRKS_DOC);
 
@@ -95,7 +95,7 @@ describe("parseHtml · 分裂出来的段落 id 归属（R2-06a）", () => {
   });
 });
 
-describe("parseHtml · 分裂出来的段落区间与嵌套块（R2-06a）", () => {
+describe("parseHtml · 分裂出来的段落区间与嵌套块", () => {
   it("should give each piece its own source range when locations are on", () => {
     const parsed = parseHtml(QUIRKS_DOC, { locations: true });
     const [first, second] = twoPiecesOf(parsed);
