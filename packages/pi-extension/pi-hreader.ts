@@ -40,8 +40,8 @@ const CSRF_VALUE = "1";
 export const RECONNECT_MS = 2000;
 /** 无换行的巨型错误体不许一路攒到 `flush()`：超过就弃帧重连（环里有 `Last-Event-ID` 兜底）。 */
 const SSE_BUFFER_LIMIT = 1024 * 1024;
-/** 批注的"待处理"状态（`packages/core/src/meta/constants.ts:6` `PENDING_ANNOTATION_STATUS`）。 */
-const PENDING_STATUS = "pending_ai";
+/** 批注的"待处理"状态集（`packages/core/src/meta/constants.ts` `PENDING_ANNOTATION_STATUSES`）：旧版 `pending_ai` 与阅读器写的 `pending` 两态并存。 */
+const PENDING_ANNOTATION_STATUSES: ReadonlySet<string> = new Set(["pending_ai", "pending"]);
 /** `doc.changed` 的正文只有这四个业务类型（`runtime.ts:88/106/110/118/232`、`server.ts:159`）。 */
 export const BUSINESS_EVENT_TYPES: ReadonlySet<string> = new Set([
   "doc.changed",
@@ -788,13 +788,14 @@ interface PendingAnnotation {
   readonly note: string;
 }
 
-/** 只认 `pending_ai`：已解决/已拒绝的批注不该再问用户一次。 */
+/** 认 `pending_ai` 与 `pending`（与 core 同口径）；`resolved`/已拒绝等其它状态一律排除，不该再问用户一次。 */
 const pendingOf = (value: unknown): PendingAnnotation | undefined => {
   if (!isRecord(value)) return undefined;
   const id = value["id"];
   const nodeId = value["nodeId"];
   if (!isNonEmptyString(id) || !isNonEmptyString(nodeId)) return undefined;
-  if (value["status"] !== PENDING_STATUS) return undefined;
+  const status = value["status"];
+  if (typeof status !== "string" || !PENDING_ANNOTATION_STATUSES.has(status)) return undefined;
   const note = value["note"];
   return { id, nodeId, note: typeof note === "string" ? note : "" };
 };
@@ -925,8 +926,7 @@ const PATCH_NODE_PARAMS = Type.Object({
 const outlineToolOf = (deps: HreaderDeps): HreaderTool<typeof OUTLINE_PARAMS> => ({
   name: "hreader_outline",
   label: "读文档大纲",
-  description:
-    "写稿前先看结构：返回标题层级、每节字数与未处理的 `pending_ai` 批注。要挑一个节点改时先调它",
+  description: "写稿前先看结构：返回标题层级、每节字数与未处理的批注。要挑一个节点改时先调它",
   parameters: OUTLINE_PARAMS,
   execute: async (_toolCallId, params) =>
     runToolOf(deps, params.path, async ({ info, docId }) => {

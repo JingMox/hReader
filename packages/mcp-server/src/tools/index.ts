@@ -23,7 +23,7 @@ const registerReadingTools = (server: McpServer): void => {
     {
       title: "读文档大纲",
       description:
-        "写稿前先看结构：返回标题层级、每节字数与未处理的 `pending_ai` 批注。不知道文档里有什么、或要挑一个节点改时先调它",
+        "写稿前先看结构：返回标题层级、每节字数与未处理的批注。不知道文档里有什么、或要挑一个节点改时先调它",
       inputSchema: outlineShape,
     },
     outlineCall,

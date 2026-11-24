@@ -138,8 +138,42 @@ describe("批注引流的确认策略", () => {
   });
 });
 
+describe("批注引流的待处理状态口径（与 core 同：`pending_ai` + `pending`）", () => {
+  it("阅读器新建的 `pending` 批注与旧版 `pending_ai` 批注都问、都注入", async () => {
+    const { fake, context } = await runOf({
+      events: [CHANGED],
+      annotations: [
+        annotationsOf([
+          annotationOf("an-new", "p1", "阅读器写的", "pending"),
+          annotationOf("an-old", "p2", "旧版写的", "pending_ai"),
+        ]),
+      ],
+    });
+    expect(context.confirms).toHaveLength(2);
+    expect(fake.sentMessages).toHaveLength(2);
+    expect(fake.sentMessages[0]?.content).toContain("阅读器写的");
+    expect(fake.sentMessages[1]?.content).toContain("旧版写的");
+  });
+
+  it("已解决/已拒绝/缺 `status`/非字符串 `status` 的批注不问", async () => {
+    const { fake, context } = await runOf({
+      events: [CHANGED],
+      annotations: [
+        annotationsOf([
+          annotationOf("an-a", "p1", "已完成", "resolved"),
+          annotationOf("an-b", "p1", "已拒绝", "rejected"),
+          { id: "an-c", nodeId: "p1", note: "没状态" },
+          { id: "an-d", nodeId: "p1", note: "状态是数字", status: 1 },
+        ]),
+      ],
+    });
+    expect(context.confirms).toEqual([]);
+    expect(fake.sentMessages).toEqual([]);
+  });
+});
+
 describe("批注引流的过滤与认证", () => {
-  it("已解决的批注（非 `pending_ai`）不问", async () => {
+  it("已解决的批注（非 `pending_ai`/`pending`）不问", async () => {
     const { fake, context } = await runOf({
       events: [CHANGED],
       annotations: [annotationsOf([annotationOf("an-a", "p1", "已完成", "resolved")])],
