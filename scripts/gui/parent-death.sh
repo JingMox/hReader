@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# W2 稳态：daemon 已经 ready 之后父进程被 kill -9 → 1s 内自己退出、端口释放、daemon.json 消失。
+# 稳态：daemon 已经 ready 之后父进程被 kill -9 → 1s 内自己退出、端口释放、daemon.json 消失。
 set -u
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 
-root=$(mktemp_root hr-w2-parent) || exit 1
+root=$(mktemp_root hr-parent-death) || exit 1
 echo "root=$root"
 make_dirs "$root"
 port=49311

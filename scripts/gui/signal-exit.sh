@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# W1：SIGTERM 之后壳与它拉起的 daemon 都要走、daemon.json 都不能留。
+# SIGTERM 之后壳与它拉起的 daemon 都要走、daemon.json 都不能留。
 set -u
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 require_app
 
-root=$(mktemp_root hr-w1-term) || exit 1
+root=$(mktemp_root hr-signal-term) || exit 1
 echo "root=$root"
 make_dirs "$root"
 make_cli_shim "$root/hr"
