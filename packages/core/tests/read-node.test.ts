@@ -3,10 +3,10 @@
 import { describe, expect, it } from "vitest";
 
 import * as coreEntry from "../src/index";
-import { resolveSelector } from "../src/ops/readNode/resolve";
+import { resolveSelector } from "../src/ops/read-node/resolve";
 import { HrError, injectNodeIds, parseHtml, readNode } from "../src/index";
 import type { Diagnostic } from "../src/html/constants";
-import { withinSubtree } from "../src/ops/readNode/diagnostics";
+import { withinSubtree } from "../src/ops/read-node/diagnostics";
 import type { ReadNodeResult } from "../src/index";
 
 const META =

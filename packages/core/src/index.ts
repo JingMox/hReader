@@ -113,17 +113,17 @@ export {
   listAnnotations,
   reopenAnnotation,
   resolveAnnotation,
-} from "./ops/annotationOps";
+} from "./ops/annotation-ops";
 export type {
   AddAnnotationInput,
   AnnotationWriteResult,
   ListResult,
   ResolveInput,
-} from "./ops/annotationOps";
-export { revertLast } from "./ops/revertOp";
-export type { RevertResult } from "./ops/revertOp";
-export { normalizeFile } from "./ops/normalizeFile";
-export type { NormalizeInput, NormalizeResult } from "./ops/normalizeFile";
+} from "./ops/annotation-ops";
+export { revertLast } from "./ops/revert-op";
+export type { RevertResult } from "./ops/revert-op";
+export { normalizeFile } from "./ops/normalize-file";
+export type { NormalizeInput, NormalizeResult } from "./ops/normalize-file";
 
 // ---- 排版约束：组件规约、写入时检查、文档形态骨架 ----
 export {

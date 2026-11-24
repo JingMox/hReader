@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { injectNodeIds, parseHtml, readNode } from "../../src";
 import { nodePatchDeps, patchFile } from "../../src/io";
-import type { PatchRequest } from "../../src/ops/patchNode";
+import type { PatchRequest } from "../../src/ops/patch-node";
 import { CORPUS_DOC, DOC_FILE } from "./fixtures";
 import { codeOf, readTextAt, withWorkspace, writeTextAt } from "./harness";
 

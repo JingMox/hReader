@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeAnchor } from "../../src/annotations/model";
 import { nodePatchDeps } from "../../src/io/node-fs";
-import { addAnnotation, resolveAnnotation } from "../../src/ops/annotationOps";
-import { revertLast } from "../../src/ops/revertOp";
+import { addAnnotation, resolveAnnotation } from "../../src/ops/annotation-ops";
+import { revertLast } from "../../src/ops/revert-op";
 import {
   codeOfAsync,
   fixedClock,

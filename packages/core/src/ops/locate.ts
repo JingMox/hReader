@@ -1,15 +1,15 @@
 // 这层管：`<nodeId|selector>` 两种解释的唯一实现（先选择器、再 node id）；不改树、不序列化、不判外壳。
 // 放在 `ops/` 顶层的理由：`read` 与 `patch` 都是它的调用方，它不是 `readNode` 的内部件；
-// 它只借用 `readNode/` 的选择器文法与先序解析（那两件是 `readNode` 的实现细节，不对外）。
+// 它只借用 `read-node/` 的选择器文法与先序解析（那两件是 `readNode` 的实现细节，不对外）。
 // `read` 与 `patch` 共用它：两条命令对同一个串必须解析到同一个节点（同输入同 id），
 // 各写一份"重试链"必然漂移。
 
 import type { ParsedHtml } from "../html/constants";
 import { HR_ID_PATTERN } from "../html/constants";
 import { HrError } from "../hr-error";
-import { identifierOf } from "./readNode/attrs";
-import { resolveSelector } from "./readNode/resolve";
-import { parseSelector } from "./readNode/selector";
+import { identifierOf } from "./read-node/attrs";
+import { resolveSelector } from "./read-node/resolve";
+import { parseSelector } from "./read-node/selector";
 
 /** 一次定位的结果：`selector` 是喂给 `readNode` 的串，`nodeId` 是 `patch` 要的 `data-hr-id`。 */
 export interface LocatedTarget {

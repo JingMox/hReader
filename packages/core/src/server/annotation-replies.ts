@@ -7,8 +7,8 @@ import { diffText, resolveAnchor, type Annotation, type TextAnchor } from "../an
 import { HrError } from "../hr-error";
 import { jsonObject } from "../schema";
 import type { DocumentModel } from "../model/constants";
-import { addAnnotation, listAnnotations, resolveAnnotation } from "../ops/annotationOps";
-import { revertLast } from "../ops/revertOp";
+import { addAnnotation, listAnnotations, resolveAnnotation } from "../ops/annotation-ops";
+import { revertLast } from "../ops/revert-op";
 import { blockBasisOf, flattenOf, modelOf } from "./annotation-basis";
 import { integer, optionalString, parseBody, requiredString } from "./body";
 import type { AnnotationDiffBody, Reply } from "./contracts";

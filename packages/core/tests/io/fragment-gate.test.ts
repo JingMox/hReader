@@ -1,10 +1,10 @@
-// 这层管：纯层片段校验的对抗矩阵（只 import ops/patchNode，不经过 io）与"宽容边界"记录。
+// 这层管：纯层片段校验的对抗矩阵（只 import ops/patch-node，不经过 io）与"宽容边界"记录。
 
 import { describe, expect, it } from "vitest";
 
 import type { HtmlElementNode } from "../../src/html/constants";
 
-import { parseFragment } from "../../src/ops/patchNode";
+import { parseFragment } from "../../src/ops/patch-node";
 import { ACCEPTED_FRAGMENTS, REJECTED_FRAGMENTS, rejectedFragmentOf } from "./fragments";
 
 describe("parseFragment · 必须拒绝的片段", () => {

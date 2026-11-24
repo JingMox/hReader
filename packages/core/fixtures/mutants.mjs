@@ -25,7 +25,7 @@ const MUTANTS = [
   {
     id: "M2",
     name: 'history 用"重新序列化"而不是原字节（CRLF 被折成 LF）',
-    file: "packages/core/src/io/patchFile.ts",
+    file: "packages/core/src/io/patch-file.ts",
     find: "  const historyPath = await writeSnapshot({ dir: historyDir, workspace: target.workspace, data: original }, deps);",
     replace:
       '  const historyPath = await writeSnapshot({ dir: historyDir, workspace: target.workspace, data: encodeUtf8(decodeUtf8(original, target.realPath).replace(/\\r\\n/gu, "\\n")) }, deps);',
@@ -42,7 +42,7 @@ const MUTANTS = [
   {
     id: "M4",
     name: "changed:false 仍然写盘 + 留历史",
-    file: "packages/core/src/io/patchFile.ts",
+    file: "packages/core/src/io/patch-file.ts",
     find: "  if (!outcome.changed) {",
     replace: "  if (false) {",
     tests: ["packages/core/tests/io/patch-file.test.ts"],
@@ -50,7 +50,7 @@ const MUTANTS = [
   {
     id: "M5",
     name: "root replace 用整个元素区间（丢掉 <article> 属性）",
-    file: "packages/core/src/ops/patchNode/apply.ts",
+    file: "packages/core/src/ops/patch-node/apply.ts",
     find: "  return isRoot ? { from: span.innerStart, to: span.innerEnd } : { from: span.start, to: span.end };",
     replace: "  return { from: span.start, to: span.end };",
     tests: ["packages/core/tests/io/patch-actions.test.ts"],

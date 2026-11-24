@@ -1,4 +1,4 @@
-// 这层管：`ops/annotationOps.ts` + `ops/revertOp.ts` 的落盘编排（AC2.1/AC2.3/AC2.5）。
+// 这层管：`ops/annotation-ops.ts` + `ops/revert-op.ts` 的落盘编排（AC2.1/AC2.3/AC2.5）。
 // 全部走真盘：篇幅断言用 sha256，不靠"看起来没变"。
 
 import { join } from "node:path";
@@ -13,8 +13,8 @@ import {
   listAnnotations,
   reopenAnnotation,
   resolveAnnotation,
-} from "../../src/ops/annotationOps";
-import { revertLast } from "../../src/ops/revertOp";
+} from "../../src/ops/annotation-ops";
+import { revertLast } from "../../src/ops/revert-op";
 import {
   codeOfAsync,
   fixedClock,

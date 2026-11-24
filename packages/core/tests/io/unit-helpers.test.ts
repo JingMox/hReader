@@ -12,7 +12,7 @@ import {
   attributeValueLoose,
   hasAttribute,
   hasAttributeLoose,
-} from "../../src/ops/patchNode/attrs";
+} from "../../src/ops/patch-node/attrs";
 import { isProcessAlive } from "../../src/io/process";
 import { codeOfAsync, depsOf, fakeFs, fixedClock, recordingSleep, systemError } from "./harness";
 

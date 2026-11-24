@@ -5,8 +5,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { PatchRequest } from "../../src/ops/patchNode";
-import { applyPatch } from "../../src/ops/patchNode";
+import type { PatchRequest } from "../../src/ops/patch-node";
+import { applyPatch } from "../../src/ops/patch-node";
 
 const DOC =
   '<article data-hr-id="root"><h2 data-hr-id="h1">标题</h2>' +

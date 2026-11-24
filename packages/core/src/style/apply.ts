@@ -7,7 +7,7 @@ import { drainStack } from "../html/stack";
 import { HrError } from "../hr-error";
 import { assertThemeSafe } from "./css";
 
-/** 与 `ops/readNode/constants.ts` 的 `THEME_ANCHOR_ID` 同值：外壳锚点是 docs/02 §3.1 的规范常量。 */
+/** 与 `ops/read-node/constants.ts` 的 `THEME_ANCHOR_ID` 同值：外壳锚点是 docs/02 §3.1 的规范常量。 */
 const THEME_ANCHOR_ID = "hr-theme";
 
 /** 没有 `<html>` 时唯一的落点：紧跟 prologue（doctype/注释/缩进），绝不插到它前面。 */

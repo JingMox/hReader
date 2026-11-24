@@ -8,8 +8,8 @@ import { describe, expect, it } from "vitest";
 
 import type { HtmlElementNode } from "../../src/html/constants";
 import { HrError } from "../../src/hr-error";
-import { assertFragmentFits } from "../../src/ops/patchNode/content";
-import { applyPatch } from "../../src/ops/patchNode";
+import { assertFragmentFits } from "../../src/ops/patch-node/content";
+import { applyPatch } from "../../src/ops/patch-node";
 
 const codeOf = (run: () => unknown): string => {
   try {

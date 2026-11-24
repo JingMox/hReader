@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { nodePatchDeps } from "../../src/io/node-fs";
-import { normalizeFile } from "../../src/ops/normalizeFile";
+import { normalizeFile } from "../../src/ops/normalize-file";
 import { withWorkspace, writeTextAt } from "./harness";
 
 const DRAFT = "<article><h1>第一章</h1><p>正文。</p></article>";

@@ -7,13 +7,13 @@
 
 import type { HtmlElementNode, HtmlNode } from "../src/html/constants";
 import { parseHtml } from "../src/html/parse";
-import type { FragmentTokens } from "../src/ops/patchNode/fragmentTokens";
+import type { FragmentTokens } from "../src/ops/patch-node/fragment-tokens";
 import {
   assertNoAncestorClosed,
   assertNothingEscaped,
   assertTokensSurvived,
   scanTokens,
-} from "../src/ops/patchNode/fragmentTokens";
+} from "../src/ops/patch-node/fragment-tokens";
 import { describe, expect, it } from "vitest";
 
 /** 抛出的错误里取 code/message：判定退化成 no-op 时这里拿不到错误，`code` 会变成 `no_throw`。 */

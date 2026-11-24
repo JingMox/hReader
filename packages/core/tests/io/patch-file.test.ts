@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { nodePatchDeps, patchFile } from "../../src/io";
-import type { PatchRequest } from "../../src/ops/patchNode";
+import type { PatchRequest } from "../../src/ops/patch-node";
 import { ARTICLE_DOC, DOC_FILE } from "./fixtures";
 import {
   historyDirAt,

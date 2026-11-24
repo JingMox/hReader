@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { parseFragment } from "../../src/ops/patchNode";
+import { parseFragment } from "../../src/ops/patch-node";
 
 const codeOfFragment = (html: string): string => {
   try {

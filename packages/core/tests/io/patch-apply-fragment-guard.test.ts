@@ -10,9 +10,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { applyPatch } from "../../src/ops/patchNode";
+import { applyPatch } from "../../src/ops/patch-node";
 
-vi.mock("../../src/ops/patchNode/fragment", async (importOriginal) => {
+vi.mock("../../src/ops/patch-node/fragment", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,

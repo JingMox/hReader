@@ -11,7 +11,7 @@ import {
   type ParsedHtml,
 } from "./constants";
 import { HASH_SEED, mixHex, stableHex8 } from "./hash";
-import { attributeValue, collectValidIdCounts, uniqueId, withHrId } from "./hrIds";
+import { attributeValue, collectValidIdCounts, uniqueId, withHrId } from "./hr-ids";
 import { joinPath, pathSegment } from "./path";
 import { type InjectSeed, ROOT_SEED } from "./seed";
 import { childSlots } from "./slots";

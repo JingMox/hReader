@@ -4,12 +4,12 @@
 //
 // 为什么要单独钉 `data-hr-id` 的归属：注入阶段会把重复 id 改名，所以"照抄原 id"在**最终字节**上
 // 可能看不出差别（第二个分段照样拿到一个合法新 id）——只有直接看解析产树才能证明第二个分段
-// 本来**不带** id（`implicitClose.ts` 的 `withoutHrId`）。否则这段判据会被注入的去重逻辑吞掉。
+// 本来**不带** id（`implicit-close.ts` 的 `withoutHrId`）。否则这段判据会被注入的去重逻辑吞掉。
 
 import { describe, expect, it } from "vitest";
 
 import { injectNodeIds, parseHtml, serializeHtml } from "../src/index";
-import { closeImplicitParagraphs } from "../src/html/implicitClose";
+import { closeImplicitParagraphs } from "../src/html/implicit-close";
 import type { HtmlElementNode, HtmlNode, ParsedHtml } from "../src/index";
 import { attributeValue, childrenOf, requireElement } from "./html-support.test";
 

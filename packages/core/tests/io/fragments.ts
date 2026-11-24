@@ -1,6 +1,6 @@
 // 这层管：片段校验的对抗语料与"取错误码 + 报文"的唯一入口；不含断言。
 
-import { parseFragment } from "../../src/ops/patchNode";
+import { parseFragment } from "../../src/ops/patch-node";
 
 export interface RejectedFragment {
   readonly fragment: string;

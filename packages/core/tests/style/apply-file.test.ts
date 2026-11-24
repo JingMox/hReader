@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { applyStyle } from "../../src/style/applyFile";
+import { applyStyle } from "../../src/style/apply-file";
 import { sha1Of } from "../io/harness";
 import { loadStyle } from "../../src/style/load";
 import {

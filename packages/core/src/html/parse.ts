@@ -5,7 +5,7 @@ import type { DefaultTreeAdapterTypes } from "parse5";
 
 import { HrError } from "../hr-error";
 import { tagBalanceDiagnostics } from "./balance";
-import { closeImplicitParagraphs } from "./implicitClose";
+import { closeImplicitParagraphs } from "./implicit-close";
 import {
   COMPONENT_ATTRIBUTE,
   COMPONENT_WHITELIST,

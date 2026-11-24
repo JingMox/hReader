@@ -537,7 +537,7 @@ M3.2 的收尾轮出现一次：`packages/pi-extension/` 是**新目录、尚未
 
 ### 11.18 注释宣称的保证必须由代码兑现（M3.4，2026-11-16）
 
-**事故**：`packages/core/src/ops/revertOp.ts:2` 写着"复用 patch 的同一条快照链"、"patch / style / 批注共用同一条链"。立卡时我把这句当事实写进了 AC-3（"patch → 换样式 → undo 只回退样式"）。写者实现时撞红，回头 `grep -rn "snapshot" packages/core/src/style/*.ts` → **零命中**：`applyFile` 从不写快照，所以一次 undo 会**把正文和样式一起回退**。注释撒了谎，而它撒的谎被写进了验收标准。
+**事故**：`packages/core/src/ops/revert-op.ts:2` 写着"复用 patch 的同一条快照链"、"patch / style / 批注共用同一条链"。立卡时我把这句当事实写进了 AC-3（"patch → 换样式 → undo 只回退样式"）。写者实现时撞红，回头 `grep -rn "snapshot" packages/core/src/style/*.ts` → **零命中**：`applyFile` 从不写快照，所以一次 undo 会**把正文和样式一起回退**。注释撒了谎，而它撒的谎被写进了验收标准。
 
 这是 `L-13` 判据（同一事实只拼写一处）的第十例，也是最贵的一例：**注释是契约的一部分**，不是备忘。一句"共用同一条链"读起来像事实陈述，实际是作者的期望。
 

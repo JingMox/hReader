@@ -1,9 +1,9 @@
-// 这层管：纯层 `ops/patchNode` 的五种 action 与请求边界（直接 import 纯函数，不经过 io）；不测落盘。
+// 这层管：纯层 `ops/patch-node` 的五种 action 与请求边界（直接 import 纯函数，不经过 io）；不测落盘。
 
 import { describe, expect, it } from "vitest";
 
-import type { PatchOutcome, PatchRequest } from "../../src/ops/patchNode";
-import { applyPatch } from "../../src/ops/patchNode";
+import type { PatchOutcome, PatchRequest } from "../../src/ops/patch-node";
+import { applyPatch } from "../../src/ops/patch-node";
 import { attrValues, childIds, childTags, countOf, elementById, found, textIn } from "./tree-probe";
 
 const DOC = [

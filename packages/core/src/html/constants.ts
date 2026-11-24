@@ -76,7 +76,7 @@ export const ADDRESSABLE_TAGS: ReadonlySet<string> = new Set([
 /**
  * 可作 `hr patch` 目标的标签：默认与 `ADDRESSABLE_TAGS` 同集（能拿到 id 的都能被改）。
  * "可寻址但不可作目标"只能在这里表达（从集合里减掉 + 写清理由），不许在 `isPatchableTarget` 里加 if 链。
- * 当前例外为空：目标里面能装什么由 `ops/patchNode/content.ts` 的内容模型判，与"能不能当目标"正交。
+ * 当前例外为空：目标里面能装什么由 `ops/patch-node/content.ts` 的内容模型判，与"能不能当目标"正交。
  */
 // 独立实例（不是 `ADDRESSABLE_TAGS` 的别名）：两套口径要能分开演进，减项不许传染寻址面。
 export const PATCHABLE_TAGS: ReadonlySet<string> = new Set(ADDRESSABLE_TAGS);

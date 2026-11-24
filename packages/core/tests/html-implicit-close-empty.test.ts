@@ -18,7 +18,7 @@ import {
   readNode,
   serializeHtml,
 } from "../src/index";
-import { closeImplicitParagraphs } from "../src/html/implicitClose";
+import { closeImplicitParagraphs } from "../src/html/implicit-close";
 import type { HtmlElementNode, HtmlNode, ParsedHtml } from "../src/index";
 import { attributeValue, childrenOf, collectElements, requireElement } from "./html-support.test";
 

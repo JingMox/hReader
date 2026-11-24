@@ -23,7 +23,7 @@ import {
   scanTokens,
   shellChildren,
   singleElementOf,
-} from "./fragmentTokens";
+} from "./fragment-tokens";
 import { walkElements } from "./walk";
 
 /**

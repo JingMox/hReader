@@ -7,13 +7,13 @@
 // 下面那行 `import type {}` 空种子（不绑名字、会被 tsc 从 d.ts 擦掉，理由见原处）。
 
 /**
- * `PatchAction` 的形状镜像：字段与取值逐字对齐 `packages/core/src/ops/patchNode/constants.ts:3`。
+ * `PatchAction` 的形状镜像：字段与取值逐字对齐 `packages/core/src/ops/patch-node/constants.ts:3`。
  */
 export type HreaderPatchAction = "replace" | "insert_before" | "insert_after" | "append" | "delete";
 
 /**
  * `PatchRequest` 的形状镜像（结构相同、字段与可选性逐字对齐）：
- * 源定义在 `packages/core/src/ops/patchNode/constants.ts:5`。漂移由两条断言合起来抓：
+ * 源定义在 `packages/core/src/ops/patch-node/constants.ts:5`。漂移由两条断言合起来抓：
  * 字段与可选性靠 `tests/drift.test-d.ts` 的双向子类型，**多出可选字段**靠
  * `tests/shape-no-extra-keys.test-d.ts` 的 `keyof` 差集（可选增量对双向可赋值不可见）。
  */

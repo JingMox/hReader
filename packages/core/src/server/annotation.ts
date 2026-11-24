@@ -103,7 +103,7 @@ const annotationsOfMeta = (inner: string, file: string): readonly unknown[] => {
 
 /**
  * 返回新 id 与整篇新文本；调用方负责加锁与原子写。
- * `createdAt` 由调用方从注入的时钟取（本层不读时钟），与 `annotationOps` 的时间来源同一处。
+ * `createdAt` 由调用方从注入的时钟取（本层不读时钟），与 `annotation-ops` 的时间来源同一处。
  * `changed` 恒为真（追加一条批注必然改变文本），保留字段是为了和 `patch/style` 同一形状。
  */
 export const appendAnnotation = (

@@ -1,7 +1,7 @@
 // 这层管：io 对外的裸入参/结果类型；不含逻辑、不碰 fs。
 
 import type { Diagnostic } from "../html/constants";
-import type { PatchRequest, ReplacedId } from "../ops/patchNode";
+import type { PatchRequest, ReplacedId } from "../ops/patch-node";
 
 export interface PatchTargetInput {
   readonly workspace: string;

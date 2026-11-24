@@ -141,8 +141,8 @@ describe("AC-7 事件名 ↔ publish() 字面量", () => {
 });
 
 describe("AC-7 patch 动作 ↔ PatchAction", () => {
-  it("五个动作与 `ops/patchNode/constants.ts` 的联合类型逐字相同", async () => {
-    const source = await coreFileOf("ops/patchNode/constants.ts");
+  it("五个动作与 `ops/patch-node/constants.ts` 的联合类型逐字相同", async () => {
+    const source = await coreFileOf("ops/patch-node/constants.ts");
     const union = /export type PatchAction =([\s\S]*?);/.exec(source)?.[1] ?? "";
     const actions = quotedOf(union);
     expect(actions.length).toBeGreaterThanOrEqual(5);
