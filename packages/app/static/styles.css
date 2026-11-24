@@ -240,6 +240,51 @@ body {
   }
 }
 
+/* 外来/未规范化文档模式（`#hr-root[data-hr-doc]`，foreign widget 是唯一写点）：
+   侧栏、控制条、演示壳全部退场，正文区让给 iframe；横幅是唯一的提示面。 */
+#hr-root[data-hr-doc] #hr-library,
+#hr-root[data-hr-doc] #hr-notes,
+#hr-root[data-hr-doc] #hr-controls,
+#hr-root[data-hr-doc] #hr-present {
+  display: none;
+}
+
+#hr-root[data-hr-doc] #hr-canvas {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#hr-root[data-hr-doc] #hr-doc {
+  display: none;
+}
+
+/* `.foreign-banner` 不设 display：作者层 display 会压掉 UA 的 `[hidden]{display:none}`。 */
+.foreign-banner {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hr-rule);
+  font-size: 13px;
+}
+
+.foreign-error {
+  color: #8a1f11;
+  font-size: 12px;
+}
+
+.foreign-error:empty {
+  display: none;
+}
+
+/* iframe 承载原页：白底与阅读器的纸色互不串染；`flex:1` 只在 `#hr-canvas` 变 flex 时生效。 */
+.foreign-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+
 /* 1100px 折点：两栏（书库折叠成抽屉），旁注落到正文下方。 */
 @media (max-width: 1100px) {
   #hr-root {
