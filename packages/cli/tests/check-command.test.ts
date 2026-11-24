@@ -48,7 +48,8 @@ describe("hr check · 人读输出", () => {
       writeFileSync(join(dir, "plain.html"), "<p>不是文档</p>");
 
       expect((await runIn(dir, ["check", "plain.html"])).stdout).toBe(
-        "error: missing_article — 文档里没有 <article>\nplain.html：1 条问题\n",
+        "error: missing_article — 文档里没有 <article>\nplain.html：1 条问题\n" +
+          "外来 HTML 文档：hReader 会以只读方式打开，不支持按块编辑\n",
       );
     });
   });
@@ -64,7 +65,8 @@ describe("hr check · JSON 与错误", () => {
       );
       const first = atOf(fieldOf(data, "issues"), 0);
 
-      expect(keysOf(data)).toEqual(["issues", "count"]);
+      expect(keysOf(data)).toEqual(["issues", "count", "cls", "reason"]);
+      expect(fieldOf(data, "cls")).toBe("foreign");
       expect(fieldOf(data, "count")).toBe(1);
       expect(keysOf(first)).toEqual(["code", "severity", "message", "path"]);
       expect(fieldOf(first, "path")).toBeNull();
@@ -93,8 +95,11 @@ describe("output · check/new 形状", () => {
   it("should keep the issue path in JSON when there is one", () => {
     const issue = { code: "inline_style", severity: "warning", message: "m", path: "p[0]" };
 
-    expect(dataCheck([issue])).toBe(
-      '{"issues":[{"code":"inline_style","severity":"warning","message":"m","path":"p[0]"}],"count":1}',
+    expect(dataCheck([issue], "managed")).toBe(
+      '{"issues":[{"code":"inline_style","severity":"warning","message":"m","path":"p[0]"}],"count":1,"cls":"managed"}',
+    );
+    expect(dataCheck([issue], "foreign", "r")).toBe(
+      '{"issues":[{"code":"inline_style","severity":"warning","message":"m","path":"p[0]"}],"count":1,"cls":"foreign","reason":"r"}',
     );
     expect(humanCheck([issue], "a.html")).toBe(
       "warning: inline_style — m @ p[0]\na.html：1 条问题\n",

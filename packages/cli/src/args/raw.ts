@@ -45,6 +45,9 @@ const OPTION_SPECS = {
   "no-llm": { type: "boolean" },
   "no-outline": { type: "boolean" },
   outline: { type: "boolean" },
+  // `--strict` 取 boolean 形态：裸旗标是开关，`--strict=warning` 走 token.value——
+  // 这正是「可选值」在 tokens 模式下的表达（string 形态会把下一个位置参数吞成取值）。
+  strict: { type: "boolean" },
   help: { type: "boolean" },
   write: { type: "boolean" },
 } satisfies Record<string, ParseArgsOptionDescriptor>;
@@ -82,6 +85,11 @@ export const tokenize = (argv: readonly string[]): Tokenized => {
       continue;
     }
     if (token.value !== undefined) {
+      // 唯一允许 `=值` 的开关：语义校验（error | warning）归意图层，这里只收串。
+      if (token.name === "strict") {
+        values.set(flag, token.value);
+        continue;
+      }
       return { ok: false, message: `参数 ${token.rawName} 不接受取值` };
     }
     switches.add(flag);

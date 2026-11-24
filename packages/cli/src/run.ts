@@ -21,7 +21,8 @@ import { readCommand } from "./commands/read";
 import { styleCommand } from "./commands/style";
 import { styleExtractCommand } from "./commands/style-extract";
 import { undoCommand } from "./commands/undo";
-import { EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./exit-codes";
+import { HintedError, StrictFailure } from "./errors";
+import { EXIT_FAILURE, EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./exit-codes";
 import { sourceText } from "./input";
 import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
 import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
@@ -328,7 +329,10 @@ const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
   }
   // 只走一条通道：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段。
   if (json) io.stdout(jsonError(error.code, error.message, error.data));
-  else io.stderr(`${error.message}\n`);
+  else {
+    io.stderr(`${error.message}\n`);
+    if (error instanceof HintedError) io.stderr(error.hint);
+  }
   return exitCodeOf(error.code);
 };
 
@@ -346,6 +350,12 @@ export const run = async (argv: readonly string[], io: CliIo): Promise<number> =
     return EXIT_OK;
   } catch (error: unknown) {
     if (error instanceof UsageError) return usageFailure(error.message, topic, io);
+    if (error instanceof StrictFailure) {
+      // 报告是契约输出（`--json` 时仍是单行 envelope）：先原样进 stdout，错误行只走 stderr。
+      io.stdout(error.report);
+      io.stderr(`${error.message}\n`);
+      return EXIT_FAILURE;
+    }
     return reportFailure(error, json, io);
   }
 };

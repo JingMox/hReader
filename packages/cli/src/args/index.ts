@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 
 import { COMMAND_NAMES, isCommandName, type CommandName } from "../usage";
 import {
+  checkIntent,
   newIntent,
   normalizeIntent,
   outlineIntent,
@@ -16,7 +17,7 @@ import { commonOf, failure, intInRange, unusedFlag, absoluteOf, type ParsedArgs 
 import { allowHostsOf, tokenize, type Raw } from "./raw";
 import { styleIntent } from "./style";
 
-export type { HtmlSource, Intent, ParsedArgs, StyleMode } from "./intent";
+export type { HtmlSource, Intent, ParsedArgs, StrictLevel, StyleMode } from "./intent";
 
 const MAX_PORT = 65_535;
 
@@ -69,9 +70,9 @@ const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
   outline: outlineIntent,
   read: readIntent,
   patch: patchIntent,
-  check: (raw, rest, cwd) => plainIntent(raw, rest, cwd, "check"),
+  check: checkIntent,
   style: styleIntent,
-  undo: (raw, rest, cwd) => plainIntent(raw, rest, cwd, "undo"),
+  undo: plainIntent,
   export: exportIntent,
   pdf: pdfIntent,
   png: pngIntent,
