@@ -204,6 +204,29 @@ article > .print-chapter:first-child {
 }
 `;
 
+/**
+ * slides 形态的骨架：纸张尺寸本身就是契约（横版 16:9 一页一屏），不走 `--page-size` 三档。
+ * 没有封面与目录页，每个顶层 slide 元素一条强制分页；版式细节仍归主题（骨架只保底分页）。
+ * `@page` 的 margin 只在主题没声明命名页时生效：主题写 `page: hr-slide` + `@page hr-slide`
+ * 时命名页整体接管，0.5in 这里只是无主题 slides 的兜底余白。
+ */
+const SLIDES_PRINT_CSS = `@page {
+  size: 13.333in 7.5in;
+  margin: 0.5in;
+}
+:root {
+  color-scheme: light;
+}
+body {
+  margin: 0;
+}
+article > h1,
+article > section {
+  break-after: page;
+  page-break-after: always;
+}
+`;
+
 const PAPER_TOKEN = "@@paper@@";
 
 /**
@@ -225,3 +248,6 @@ export const printCssOf = (paper: PaperSize): string =>
   PRINT_CSS_TEMPLATE.replace(PAPER_TOKEN, paperKeywordOf(paper));
 
 export const PRINT_CSS = printCssOf("a4");
+
+/** slides 打印稿的骨架 CSS：常量不是模板——slides 纸张不接受 `--page-size` 参数化。 */
+export const slidesPrintCssOf = (): string => SLIDES_PRINT_CSS;

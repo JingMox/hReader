@@ -3,7 +3,7 @@
 import { HrError } from "@hreader/core";
 
 import { escapeAttribute, escapeText, utf8LengthOf } from "./markup";
-import { printCssOf } from "./print-css";
+import { printCssOf, slidesPrintCssOf } from "./print-css";
 import type { PaperSize } from "./print-css";
 import type { TocEntry } from "./numbering";
 
@@ -66,7 +66,7 @@ const tocOf = (
  */
 const escapedThemeCssOf = (css: string): string => css.replaceAll(/<\/(style)/giu, "<\\/$1");
 
-const headOf = (sheet: PrintSheet): readonly string[] => [
+const headOf = (sheet: PrintSheet, printCss: string): readonly string[] => [
   "<head>",
   '<meta charset="utf-8">',
   `<meta name="hr-doc-id" content="${escapeAttribute(sheet.docId)}">`,
@@ -74,7 +74,7 @@ const headOf = (sheet: PrintSheet): readonly string[] => [
   `<title>${escapeText(sheet.title)}</title>`,
   // 主题在前、骨架在后：两者特异度相同时**印刷骨架压主题**（物理层优先）。
   `<style class="hr-theme">${escapedThemeCssOf(sheet.themeCss)}</style>`,
-  `<style class="hr-print">${printCssOf(sheet.paper)}</style>`,
+  `<style class="hr-print">${printCss}</style>`,
   "</head>",
 ];
 
@@ -106,10 +106,28 @@ export const printSheetOf = (sheet: PrintSheet): string =>
   productOf([
     "<!DOCTYPE html>",
     '<html lang="zh-CN">',
-    ...headOf(sheet),
+    ...headOf(sheet, printCssOf(sheet.paper)),
     bodyOpenOf(sheet.bodyClass),
     ...coverOf(sheet.title),
     ...tocOf(sheet.tocItems, sheet.tocIds),
+    sheet.articleOpen,
+    sheet.body,
+    "</article>",
+    "</body>",
+    "</html>",
+    "",
+  ]);
+
+/**
+ * slides 形态：没有封面与目录（标题页就是第一个 h1，多两页会让"页数 = slide 数"失约）。
+ * 分页骨架用 slides 专用 CSS——纸张固定 16:9，`sheet.paper` 在这条路径上不起作用。
+ */
+export const slidesSheetOf = (sheet: PrintSheet): string =>
+  productOf([
+    "<!DOCTYPE html>",
+    '<html lang="zh-CN">',
+    ...headOf(sheet, slidesPrintCssOf()),
+    bodyOpenOf(sheet.bodyClass),
     sheet.articleOpen,
     sheet.body,
     "</article>",

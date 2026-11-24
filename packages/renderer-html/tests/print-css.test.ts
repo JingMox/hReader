@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { HrError } from "@hreader/core";
 
 import { PRINT_CSS } from "../src/index";
-import { printCssOf } from "../src/print-css";
+import { printCssOf, slidesPrintCssOf } from "../src/print-css";
 
 /** 空白归一化后再比对规则体：格式化改动（缩行、换行）不该弄红规则级测试。 */
 const flat = PRINT_CSS.replaceAll(/\s+/gu, " ");
@@ -146,5 +146,20 @@ describe("printCssOf · 纸张守卫", () => {
       (paper) => /size: ([^;]+);/u.exec(printCssOf(paper))?.[1],
     );
     expect(sizes).toEqual(["A4", "letter", "A5"]);
+  });
+});
+
+describe("slidesPrintCssOf · 一页一屏的保底骨架", () => {
+  const css = slidesPrintCssOf();
+
+  it("页框写死 16:9：没有纸张参数是刻意的（slides 不接受 --page-size）", () => {
+    expect(css).toContain("size: 13.333in 7.5in;");
+    expect(css).not.toContain("@@paper@@");
+  });
+
+  it("顶层 slide 元素（首个 h1 与其余 section）都强制分页", () => {
+    expect(css).toContain("article > h1");
+    expect(css).toContain("article > section");
+    expect(css).toContain("break-after: page;");
   });
 });
