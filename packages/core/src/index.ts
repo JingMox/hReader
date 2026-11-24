@@ -5,6 +5,7 @@ export type { HrErrorCode, HrErrorData } from "./hr-error";
 export { injectNodeIds, parseHtml, serializeHtml, hasArticle } from "./html";
 export {
   attributeOf,
+  hasExecutableContent,
   hasExternalResource,
   isCountedImage,
   isDroppedNode,
@@ -18,6 +19,7 @@ export type { LocatedTarget, Outline, OutlineNode, PendingAnnotation, ReadNodeRe
 export { applyPatch, parseFragment } from "./ops";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./ops";
 export { isInside, isInsideOrSelf, nodePatchDeps, patchFile, undoPatch, writeAtomic } from "./io";
+export type { TrustLevel } from "./io";
 export { startServer } from "./server";
 export type { DaemonInfo, RunningServer, ServerDeps, ServerOptions } from "./server";
 export {

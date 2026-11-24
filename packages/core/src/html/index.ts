@@ -6,6 +6,7 @@ export type { InjectedNodeIds } from "./inject";
 export { parseHtml } from "./parse";
 export {
   attributeOf,
+  hasExecutableContent,
   hasExternalResource,
   isCountedImage,
   isDroppedNode,

@@ -150,8 +150,21 @@ describe("matchRoute · 批注与撤销", () => {
     });
   });
 
-  it("should freeze the table at 18 entries (12 + 5 + info)", () => {
-    expect(ROUTES).toHaveLength(18);
+  it("should match the trust and normalize write routes", () => {
+    expect(matchRoute("POST", "/api/doc/a.html/trust")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html" },
+      route: { kind: "docTrust", auth: "cookie+csrf" },
+    });
+    expect(matchRoute("POST", "/api/doc/a.html/normalize")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html" },
+      route: { kind: "docNormalize", auth: "cookie+csrf" },
+    });
+  });
+
+  it("should freeze the table at 20 entries (12 + 5 + info + trust/normalize)", () => {
+    expect(ROUTES).toHaveLength(20);
     expect(matchRoute("GET", "/api/doc/a.html/info")).toMatchObject({
       kind: "route",
       params: { docId: "a.html" },

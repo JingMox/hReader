@@ -27,7 +27,7 @@ describe("foreign doc · 启动", () => {
     }, foreignSeed);
   });
 
-  it("should serve the raw HTML with the document CSP for a foreign docId", async () => {
+  it("should serve the raw HTML with the sandboxed off-trust CSP for a foreign docId", async () => {
     await withServer(async (ctx) => {
       const response = await httpCall(ctx.port, {
         path: "/s/doc.html",
@@ -36,7 +36,7 @@ describe("foreign doc · 启动", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers["content-security-policy"]).toBe(
-        "default-src 'none'; style-src 'unsafe-inline'",
+        "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
       );
       expect(response.body).toContain("外来内容");
     }, foreignSeed);

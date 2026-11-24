@@ -15,8 +15,10 @@ import { HrError } from "../hr-error";
 import {
   annotationReply,
   LOCK_WAIT_MS,
+  normalizeReply,
   patchReply,
   styleReply,
+  trustReply,
   type HandlerContext,
   type Written,
 } from "./handlers";
@@ -56,6 +58,8 @@ const writeReplyOf = (
     return annotationResolveReply(context, ids, body, LOCK_WAIT_MS);
   }
   if (route.kind === "undo") return undoReply(context, ids.docId, LOCK_WAIT_MS);
+  if (route.kind === "docTrust") return trustReply(context, ids.docId, body, LOCK_WAIT_MS);
+  if (route.kind === "docNormalize") return normalizeReply(context, ids.docId, LOCK_WAIT_MS);
   return annotationReply(context, body, LOCK_WAIT_MS);
 };
 

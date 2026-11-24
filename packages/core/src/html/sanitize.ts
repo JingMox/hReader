@@ -1,7 +1,9 @@
-// 这层管：把不可信 HTML 裁成安全语义内容的判定（整删的元素、剥掉的属性、伪协议与外链口径）；
-// `print`（打印稿）与 `import`（外来文档托管化）两个预设共用同一套判定、两张规则表；不改树、不解析、不序列化。
+// 这层管：把不可信 HTML 裁成安全语义内容的判定（整删的元素、剥掉的属性、伪协议与外链口径），
+// 外加"文档有没有可执行面"的探测；`print`（打印稿）与 `import`（外来文档托管化）两个预设共用
+// 同一套判定、两张规则表；不改树、不解析、不序列化。
 
-import type { HtmlAttribute, HtmlElementNode } from "./constants";
+import type { HtmlAttribute, HtmlElementNode, HtmlNode } from "./constants";
+import { drainStack } from "./stack";
 
 /**
  * `print`：打印稿裁切，行为是既有契约（逐字节兼容），相对宽松——源文档本身就是托管文档。
@@ -273,3 +275,70 @@ export const sanitizedAttributesOf = (
   preset: SanitizePreset,
 ): readonly HtmlAttribute[] =>
   node.attrs.filter((attribute) => !isDroppedAttribute(attribute, RULES[preset]));
+
+/**
+ * 可执行面的元素清单：`IMPORT_DROPPED_TAGS` 里"能跑代码/能再开一份文档"的子集
+ * （`style`/`link`/`template` 这类非执行容器不算）。与整删名单同源演进：
+ * 将来 import 预设新删的可执行容器要同步加进这里。
+ */
+const EXECUTABLE_TAGS: ReadonlySet<string> = new Set([
+  "script",
+  "iframe",
+  "object",
+  "embed",
+  "applet",
+  "frame",
+  "frameset",
+  // SMIL 能改写父节点属性（`attributeName="onload"`、`values="javascript:…"`），属性级探测挡不住。
+  "animate",
+  "animatemotion",
+  "animatetransform",
+  "set",
+  "discard",
+  "mpath",
+  "foreignobject",
+]);
+
+const hasExecutableAttribute = (node: HtmlElementNode): boolean => {
+  // `srcdoc` 把整份 HTML 载荷收进属性值：元素级探测摸不到里面，只能按属性本身算。
+  if (attributeOf(node, "srcdoc") !== undefined) return true;
+  const refreshMeta =
+    node.tag.toLowerCase() === "meta" &&
+    normalizedUrl(attributeOf(node, "http-equiv") ?? "") === "refresh";
+  return node.attrs.some(([name, value]) => {
+    const key = name.toLowerCase();
+    if (isEventAttribute(key)) return true;
+    if (SCRIPT_URL_ATTRIBUTES.has(key)) {
+      const normalized = normalizedUrl(value);
+      if (hasAnyPrefix(normalized, SCRIPT_SCHEMES)) return true;
+    }
+    // `<meta http-equiv="refresh" content="0; url=javascript:…">`：协议藏在 content 里，
+    // 归一化后按子串判（前面还有 `0;url=` 前缀，不能用 startsWith）。
+    return (
+      refreshMeta &&
+      key === "content" &&
+      SCRIPT_SCHEMES.some((scheme) => normalizedUrl(value).includes(scheme))
+    );
+  });
+};
+
+/**
+ * 文档级"有没有可执行内容"的探测（`GET /api/doc/:id/info` 的 `scripts` 字段）。
+ * 它只回答"阅读器该不该给用户'允许脚本'的入口"——真正的防线是 `/s/` 下发的 CSP `sandbox`，
+ * 漏报最坏是入口不显，不构成放行。
+ */
+export const hasExecutableContent = (root: HtmlNode): boolean => {
+  const stack: HtmlNode[] = [root];
+  for (const node of drainStack(stack)) {
+    if (
+      node.kind === "element" &&
+      (EXECUTABLE_TAGS.has(node.tag.toLowerCase()) || hasExecutableAttribute(node))
+    ) {
+      return true;
+    }
+    if (node.kind === "element" || node.kind === "document") {
+      for (const child of node.children) stack.push(child);
+    }
+  }
+  return false;
+};
