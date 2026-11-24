@@ -12,4 +12,6 @@ export { isInside, isInsideOrSelf } from "./paths";
 export { nodePatchDeps } from "./node-fs";
 export { patchFile } from "./patch-file";
 export type { Clock, FileStat, FileSystem, PatchDeps } from "./ports";
+export { readTrust, writeTrust } from "./trust";
+export type { TrustGrant, TrustInput, TrustLevel } from "./trust";
 export { undoPatch } from "./undo";
