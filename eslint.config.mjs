@@ -191,6 +191,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ["packages/desktop/webview/**/*.js"],
+    extends: [js.configs.recommended],
+    languageOptions: { sourceType: "script", globals: globals.browser },
+    rules: { ...sharedRules },
+  },
+  {
     files: ["**/*.mjs"],
     extends: [js.configs.recommended],
     languageOptions: { sourceType: "module", globals: globals.node },

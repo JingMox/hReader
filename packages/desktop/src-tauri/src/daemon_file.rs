@@ -5,7 +5,11 @@
 
 use std::fmt;
 use std::fs;
+use std::num::{NonZeroU16, NonZeroU32};
 use std::path::{Path, PathBuf};
+
+use serde::de::IgnoredAny;
+use serde::Deserialize;
 
 /// core 的落盘位置：`<home>/.hreader/daemon.json`（`packages/core/src/server/daemon.ts`）。
 pub const STORE_DIR: &str = ".hreader";
@@ -51,6 +55,32 @@ impl fmt::Display for BadDaemonFile {
 
 impl std::error::Error for BadDaemonFile {}
 
+/// 字段级宽松反序列化：值不合类型时吞掉原值，避免 serde 错误文本把敏感字段值（如 `token`）带进报错。
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Field<T> {
+    Valid(T),
+    #[allow(dead_code)]
+    Invalid(IgnoredAny),
+}
+
+impl<T> Field<T> {
+    fn valid(self) -> Option<T> {
+        match self {
+            Self::Valid(value) => Some(value),
+            Self::Invalid(_) => None,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct RawDaemonFile {
+    port: Option<Field<NonZeroU16>>,
+    pid: Option<Field<NonZeroU32>>,
+    token: Option<Field<String>>,
+    workspace: Option<Field<String>>,
+}
+
 pub fn daemon_file_in(home: &Path) -> PathBuf {
     home.join(STORE_DIR).join(DAEMON_FILE)
 }
@@ -76,29 +106,37 @@ fn parse_daemon(path: &Path, text: &str) -> Result<DaemonState, BadDaemonFile> {
         path: path.to_path_buf(),
         reason,
     };
-    let value: serde_json::Value = serde_json::from_str(text).map_err(|_| bad("不是 JSON"))?;
-    let object = value.as_object().ok_or_else(|| bad("顶层不是对象"))?;
-    let port = number(object.get("port"), u64::from(u16::MAX)).ok_or_else(|| bad("port 不可用"))?;
-    let pid = number(object.get("pid"), u64::from(u32::MAX)).ok_or_else(|| bad("pid 不可用"))?;
-    let token = string(object.get("token")).ok_or_else(|| bad("token 不可用"))?;
-    let workspace = string(object.get("workspace")).ok_or_else(|| bad("workspace 不可用"))?;
+    let raw: RawDaemonFile = serde_json::from_str(text).map_err(|error| {
+        if error.is_syntax() || error.is_eof() {
+            bad("不是 JSON")
+        } else {
+            bad("顶层不是对象")
+        }
+    })?;
+    let port = raw
+        .port
+        .and_then(Field::valid)
+        .ok_or_else(|| bad("port 不可用"))?;
+    let pid = raw
+        .pid
+        .and_then(Field::valid)
+        .ok_or_else(|| bad("pid 不可用"))?;
+    let token = raw
+        .token
+        .and_then(Field::valid)
+        .filter(|text| !text.is_empty())
+        .ok_or_else(|| bad("token 不可用"))?;
+    let workspace = raw
+        .workspace
+        .and_then(Field::valid)
+        .filter(|text| !text.is_empty())
+        .ok_or_else(|| bad("workspace 不可用"))?;
     Ok(DaemonState::Present(DaemonInfo {
-        port: port as u16,
-        token: token.to_string(),
-        pid: pid as u32,
+        port: port.get(),
+        token,
+        pid: pid.get(),
         workspace: PathBuf::from(workspace),
     }))
-}
-
-/// 正整数才有意义（`port: 0` / `pid: 0` 不是"默认值"，是坏文件）。
-fn number(value: Option<&serde_json::Value>, max: u64) -> Option<u64> {
-    let number = value?.as_u64()?;
-    (1..=max).contains(&number).then_some(number)
-}
-
-fn string(value: Option<&serde_json::Value>) -> Option<&str> {
-    let text = value?.as_str()?;
-    (!text.is_empty()).then_some(text)
 }
 
 #[cfg(test)]
@@ -157,6 +195,7 @@ mod tests {
 
     #[test]
     fn ac1_top_level_non_object_is_error() {
-        assert!(read_daemon(&fixture("not-an-object.json")).is_err());
+        let error = read_daemon(&fixture("not-an-object.json")).expect_err("非对象必须报错");
+        assert!(error.to_string().contains("顶层不是对象"));
     }
 }

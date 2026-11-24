@@ -5,7 +5,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::time::Duration;
 
-use serde_json::json;
+use serde::Serialize;
 
 use crate::cli_locate;
 use crate::daemon_file;
@@ -91,15 +91,26 @@ fn probe(argv: &[String], options: &ShellOptions) -> Result<String, String> {
         return Err(format!("文档页没拿到（status {}）", document.status));
     }
 
-    let line = json!({
-        "ok": true,
-        "checks": ["healthz", "bootstrap-cookie", "document"],
-        "port": info.port,
-        "pid": info.pid,
-        "nav": redact::redact(&nav, &info.token),
-        "documentBytes": document.body.len(),
-    });
-    Ok(line.to_string())
+    let report = SmokeReport {
+        ok: true,
+        checks: ["healthz", "bootstrap-cookie", "document"],
+        port: info.port,
+        pid: info.pid,
+        nav: redact::redact(&nav, &info.token),
+        document_bytes: document.body.len(),
+    };
+    serde_json::to_string(&report).map_err(|error| format!("smoke 输出序列化失败：{error}"))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SmokeReport {
+    ok: bool,
+    checks: [&'static str; 3],
+    port: u16,
+    pid: u32,
+    nav: String,
+    document_bytes: usize,
 }
 
 struct Response {

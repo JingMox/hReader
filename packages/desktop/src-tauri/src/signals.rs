@@ -1,11 +1,11 @@
 //! SIGTERM/SIGINT → 优雅收尾。壳被杀时 daemon 也必须有归宿，否则端口被一个没人管的进程永远占着
 //! （`Child` 的 Drop 不会替你 kill）。
 //!
-//! 信号处理器里只做一次原子写入（异步信号安全），真正的收尾交给轮询线程。
-//!
-//! 平台：Unix 用 `signal-hook-registry` + `kill`；Windows 没有这套东西，走的是空桩——
-//! 那边的收尸靠 `hr serve --exit-with-parent` 的 parent-death 看门狗兜底（W2），
-//! 所以桩不是"忘了实现"，而是"Windows 上本来就不该有信号收尸"。
+//! 平台：Unix 使用 `signal-hook` 的安全高层 `flag::register` 接口写入原子标志，真正的收尾交给后台线程；
+//! Windows 没有这套机制，走空桩并依赖 `hr serve --exit-with-parent` 的父进程看门狗兜底。
+
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 /// `watch()` 的产物，也是 `connect_with` 的实参：没有它就调不通连 daemon 的那一步。
 ///
@@ -21,34 +21,36 @@ impl SignalSubscription {
         Self { installed }
     }
 
-    /// 装没装上要能被断言：`--hold` 的 W1 证据不能只靠一句"应该装上了"。
+    /// 装没装上要能被断言：`--hold` 的验证不能只靠"应该装上了"。
     pub fn installed(&self) -> bool {
         self.installed
     }
 }
 
-/// 平台注册器：把"信号 → 回调"交给操作系统；`Err` 表示这次没装上（调用方回滚并告警）。
-pub type Registrar = dyn Fn(i32, fn()) -> Result<(), String>;
+/// 平台注册器：把"信号 → 原子标志"交给操作系统；`Err` 表示这次没装上（调用方回滚并告警）。
+pub type Registrar = dyn Fn(i32, Arc<AtomicBool>) -> Result<(), String>;
 
 #[cfg(unix)]
 mod platform {
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, LazyLock};
     use std::time::Duration;
 
+    use signal_hook::consts::signal::{SIGINT, SIGTERM};
+
     /// 信号收尾的全部可变状态。生产代码用 `GLOBAL` 单例；测试各自造一份独占夹具，
-    /// 于是用例之间不再共享 `WATCHED`/`FAILED`，也就不需要"跑完再 reset 回去"
-    /// （那正是并行用例互踩、`r1_watch_with_reports_each_signal_it_registers` 偶发红的根因）。
+    /// 于是用例之间不再共享状态，也不需要跑完再重置。
     pub(super) struct Hub {
-        stopped: AtomicBool,
+        stopped: Arc<AtomicBool>,
         watched: AtomicBool,
         failed: AtomicBool,
         announced: AtomicBool,
     }
 
     impl Hub {
-        pub(super) const fn new() -> Self {
+        pub(super) fn new() -> Self {
             Self {
-                stopped: AtomicBool::new(false),
+                stopped: Arc::new(AtomicBool::new(false)),
                 watched: AtomicBool::new(false),
                 failed: AtomicBool::new(false),
                 announced: AtomicBool::new(false),
@@ -59,7 +61,7 @@ mod platform {
             self.stopped.load(Ordering::Relaxed)
         }
 
-        /// 幂等：`run()` 与 `window::run()` 都会调，重复注册只会把同一处原子写装两遍。
+        /// 幂等：`run()` 与 `window::run()` 都会调，重复注册只会装一次。
         pub fn watch(&self) -> super::SignalSubscription {
             match self.watch_with(&register) {
                 Ok(subscription) => subscription,
@@ -88,8 +90,8 @@ mod platform {
             if self.watched.swap(true, Ordering::SeqCst) {
                 return Ok(super::SignalSubscription::new(true));
             }
-            for signal in [libc::SIGTERM, libc::SIGINT] {
-                if let Err(reason) = registrar(signal, mark_stopped) {
+            for signal in [SIGTERM, SIGINT] {
+                if let Err(reason) = registrar(signal, Arc::clone(&self.stopped)) {
                     self.watched.store(false, Ordering::SeqCst);
                     self.failed.store(true, Ordering::SeqCst);
                     return Err(reason);
@@ -106,19 +108,12 @@ mod platform {
     }
 
     /// 生产单例：真的接操作系统信号的那一份。
-    pub(super) static GLOBAL: Hub = Hub::new();
+    pub(super) static GLOBAL: LazyLock<Hub> = LazyLock::new(Hub::new);
 
     const POLL: Duration = Duration::from_millis(50);
 
-    /// 信号处理器只有一次原子写，因此对"任意线程、任意时刻"都是异步信号安全的。
-    /// 它写生产单例——测试夹具从不接收真实信号，所以不需要（也不该）可携带的处理器。
-    fn mark_stopped() {
-        GLOBAL.stopped.store(true, Ordering::Relaxed);
-    }
-
-    fn register(signal: i32, handler: fn()) -> Result<(), String> {
-        // `register` 要求 unsafe：处理函数必须是异步信号安全的——`mark_stopped` 只有一次原子写。
-        unsafe { signal_hook_registry::register(signal, handler) }
+    fn register(signal: i32, flag: Arc<AtomicBool>) -> Result<(), String> {
+        signal_hook::flag::register(signal, flag)
             .map(|_id| ())
             .map_err(|error| error.to_string())
     }
@@ -163,7 +158,7 @@ mod platform {
     pub(super) struct Hub;
 
     impl Hub {
-        pub(super) const fn new() -> Self {
+        pub(super) fn new() -> Self {
             Self
         }
 
@@ -220,8 +215,6 @@ mod tests {
 
     #[test]
     fn ac14_watching_twice_is_idempotent() {
-        // `run()` 和 `window::run()` 都会装一遍：装两次既不能 panic 也不能把标志弄反。
-        // 每个用例一份独占 hub：不再共享全局 `WATCHED`，也就不必"跑完再 reset"。
         let hub = platform::Hub::new();
         hub.watch();
         hub.watch();
@@ -231,16 +224,15 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn r3_register_failure_rolls_back_and_is_not_retried() {
-        // 注册失败还留着 watched=true 的话，后面再调会以为"已经装好了"，信号就永远收不到；
-        // 但"回滚 + 重试"会让 `--hold` 的三个调用点各失败、各告警一次，所以失败要记在 failed 上不再重试。
         let hub = platform::Hub::new();
-        let failing =
-            |_signal: i32, _handler: fn()| -> Result<(), String> { Err("boom".to_string()) };
+        let failing = |_signal: i32, _flag: Arc<AtomicBool>| -> Result<(), String> {
+            Err("boom".to_string())
+        };
         match hub.watch_with(&failing) {
             Ok(_) => panic!("注册失败必须冒泡"),
             Err(error) => assert!(error.contains("boom"), "原因要原样带出来：{error}"),
         }
-        let never = |_signal: i32, _handler: fn()| -> Result<(), String> {
+        let never = |_signal: i32, _flag: Arc<AtomicBool>| -> Result<(), String> {
             panic!("失败之后不该再碰注册器")
         };
         match hub.watch_with(&never) {
@@ -252,28 +244,28 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn r3_installed_reports_a_handler_that_is_really_registered() {
-        // W1 的证据要能断言"信号真装上了"，而不是靠注释。真注册走生产单例（只此一处当真），
-        // 布尔路径用独占 hub——原先全局 `WATCHED` 被并发用例抢先置位，这条会误报 true。
         assert!(watch().installed(), "本机应当装得上 SIGTERM/SIGINT");
         let hub = platform::Hub::new();
-        let accepting = |_signal: i32, _handler: fn()| -> Result<(), String> { Ok(()) };
+        let accepting = |_signal: i32, _flag: Arc<AtomicBool>| -> Result<(), String> { Ok(()) };
         assert!(hub.watch_with(&accepting).expect("应当装上").installed());
     }
 
     #[cfg(unix)]
     #[test]
     fn r1_watch_with_reports_each_signal_it_registers() {
+        use signal_hook::consts::signal::{SIGINT, SIGTERM};
+
         let hub = platform::Hub::new();
-        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
         let recorded = seen.clone();
-        let registrar = move |signal: i32, _handler: fn()| -> Result<(), String> {
+        let registrar = move |signal: i32, _flag: Arc<AtomicBool>| -> Result<(), String> {
             recorded.lock().expect("锁没中毒").push(signal);
             Ok(())
         };
         hub.watch_with(&registrar).expect("应当装上");
         let mut signals = seen.lock().expect("锁没中毒").clone();
         signals.sort_unstable();
-        assert_eq!(signals, vec![libc::SIGINT, libc::SIGTERM]);
+        assert_eq!(signals, vec![SIGINT, SIGTERM]);
     }
 
     #[test]
