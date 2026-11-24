@@ -20,7 +20,8 @@
     "@hreader/core": "workspace:*",
     "@hreader/renderer-html": "workspace:*",
     "esbuild": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@types/node": "catalog:"
   },
   "dependencies": {
     "pdf-lib": "1.17.1",

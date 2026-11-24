@@ -10,7 +10,8 @@
   },
   "devDependencies": {
     "@hreader/core": "workspace:*",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@types/node": "catalog:"
   },
   "scripts": {
     "test": "vitest run"

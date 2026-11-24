@@ -96,6 +96,9 @@ importers:
       '@hreader/renderer-html':
         specifier: workspace:*
         version: link:../renderer-html
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
       esbuild:
         specifier: 'catalog:'
         version: 0.28.2
@@ -121,6 +124,9 @@ importers:
         specifier: 'catalog:'
         version: 3.25.76
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
       '@types/write-file-atomic':
         specifier: 4.0.3
         version: 4.0.3
@@ -195,6 +201,9 @@ importers:
         specifier: 1.3.27
         version: 1.3.27
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
@@ -213,6 +222,9 @@ importers:
       '@hreader/core':
         specifier: workspace:*
         version: link:../core
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)
