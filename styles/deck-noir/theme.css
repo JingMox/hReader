@@ -492,6 +492,13 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
   opacity: 0;
 }
 
+/* 演示态下非当前页由阅读器 display:none 掉，CSS 计数器会跳过它们，每页都数成 1；
+   这时页码交给阅读器自己的 pager（N / 总数），主题这份关掉。 */
+[data-hr-present] article[data-hr-kind="slides"] > section::after,
+[data-hr-present] article[data-hr-kind="slides"] > h1::before {
+  content: none;
+}
+
 /* deep-dive 是讲者备注：演示与投影都不该出现。 */
 [data-hr-present] [data-hr-component="deep-dive"],
 [data-hr-slide-state] [data-hr-component="deep-dive"] {

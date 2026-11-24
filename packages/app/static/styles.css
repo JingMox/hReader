@@ -226,6 +226,8 @@ body {
 #hr-root[data-hr-present] #hr-present {
   display: flex;
   position: fixed;
+  /* 主题会给当前页定位加 z-index，不抬高的话页码与退出按钮会被整页盖住。 */
+  z-index: 10;
   right: var(--hr-gap);
   bottom: var(--hr-gap);
   align-items: center;
