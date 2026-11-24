@@ -8,8 +8,9 @@ import { HrError } from "../hr-error";
 import { writeAtomic } from "../io/atomic";
 import { decodeUtf8, encodeUtf8, readBytes } from "../io/bytes";
 import type { PatchOptions } from "../io/contracts";
+import { pruneSnapshots, writeSnapshot } from "../io/history";
 import { runLocked } from "../io/lock";
-import { resolveTarget } from "../io/paths";
+import { historyDirOf, resolveTarget } from "../io/paths";
 import type { PatchDeps } from "../io/ports";
 
 export interface NormalizeInput {
@@ -17,6 +18,11 @@ export interface NormalizeInput {
   readonly file: string;
   /** `true` = 原地写回；`false` = 只算出结果，磁盘一个字节都不动。 */
   readonly write: boolean;
+  /**
+   * `true` = 写回前把原字节存进 `.hreader/history`（与 patch 同一条快照链，undo 可回滚）。
+   * `hr normalize --write` 不传它："normalize 不留历史"是 CLI 的既有行为，不能顺手改掉。
+   */
+  readonly history?: boolean;
 }
 
 export interface NormalizeResult {
@@ -54,8 +60,8 @@ export const normalizeFile = async (
   options: PatchOptions = {},
 ): Promise<NormalizeResult> => {
   const target = await resolveTarget({ workspace: input.workspace, file: input.file }, deps.fs);
-  const original = decodeUtf8(await readBytes(deps.fs, target.realPath), target.realPath);
-  const normalized = normalizedOf(original);
+  const original = await readBytes(deps.fs, target.realPath);
+  const normalized = normalizedOf(decodeUtf8(original, target.realPath));
   const incomplete = normalized.injected > 0;
   const bytes = encodeUtf8(normalized.html);
   const result: NormalizeResult = {
@@ -70,7 +76,15 @@ export const normalizeFile = async (
   };
   if (!result.changed) return result;
   await runLocked(target, deps, options, async () => {
+    // 与 patch-file 同一顺序：写前先备份、写后再裁剪——中途失败多一份历史可接受，少一份则 undo 丢数据。
+    if (input.history === true) {
+      await writeSnapshot(
+        { dir: historyDirOf(target), workspace: target.workspace, data: original },
+        deps,
+      );
+    }
     await writeAtomic({ path: target.realPath, workspace: target.workspace, data: bytes }, deps);
+    if (input.history === true) await pruneSnapshots(deps, historyDirOf(target));
   });
   return result;
 };

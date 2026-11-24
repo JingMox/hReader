@@ -1,4 +1,4 @@
-// 这层管：`GET /api/doc/:docId/info`——三档文档各自的 `{revision, cls, reason?, kind?}` 形状与鉴权。
+// 这层管：`GET /api/doc/:docId/info`——三档文档各自的 `{revision, cls, trust, scripts, reason?, kind?}` 形状与鉴权。
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,6 +9,8 @@ import { cookieOf, defaultSeed, httpCall, jsonBodyOf, withServer } from "./harne
 
 interface InfoBody {
   readonly cls?: string;
+  readonly trust?: string;
+  readonly scripts?: boolean;
   readonly reason?: string;
   readonly kind?: string;
   readonly revision?: string;
@@ -50,6 +52,8 @@ describe("doc info · managed", () => {
 
       expect(status).toBe(200);
       expect(body.cls).toBe("managed");
+      expect(body.trust).toBe("off");
+      expect(body.scripts).toBe(false);
       expect(body.revision).toMatch(/^[0-9a-f]{16}$/u);
       expect(body.reason).toBeUndefined();
       expect(body.kind).toBeUndefined();
@@ -94,6 +98,8 @@ describe("doc info · foreign", () => {
 
       expect(status).toBe(200);
       expect(body.cls).toBe("foreign");
+      expect(body.trust).toBe("off");
+      expect(body.scripts).toBe(true);
       expect(body.reason).toContain("<article>");
       expect(body.kind).toBeUndefined();
     }, foreignHtml);

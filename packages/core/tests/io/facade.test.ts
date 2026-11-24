@@ -39,8 +39,10 @@ describe("门面导出面", () => {
       "isInsideOrSelf",
       "nodePatchDeps",
       "patchFile",
+      "readTrust",
       "undoPatch",
       "writeAtomic",
+      "writeTrust",
     ]);
   });
 
