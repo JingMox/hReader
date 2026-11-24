@@ -24,7 +24,7 @@ import {
 
 const APPLY_ID = 5;
 
-/** 三个内置预设：换肤 id 就是预设 id（仓库只发一份 theme，三个预设都继承它）。 */
+/** 内置预设逐个测：换肤入口是预设 id，真正落盘的主题按各预设的 `inheritsVisual` 找。 */
 const PRESETS = BUILTIN_STYLES;
 
 const DOC_HTML =
@@ -128,23 +128,26 @@ describe("假安装（/tmp，无仓库）", () => {
 
     // 前提断言：这里真的没有仓库，资源就在产物旁边。
     expect(existsSync(join(sim, "packages"))).toBe(false);
-    // 把模拟安装目录那份改写成"仓库原件 + 一行哨兵注释"：两份内容不同，才分得出实现读的是哪一份。
-    const repo = await readFile(
-      join(REPO_ROOT, "styles", "atelier-editorial", "theme.css"),
-      "utf8",
-    );
-    const sentinel = `/* SENTINEL ${basename(sim)} */`;
-    expect(repo).not.toContain("SENTINEL");
-    const shippedTheme: ShippedTheme = { repo, sentinel, shipped: `${repo}\n${sentinel}\n` };
-    await writeFile(
-      join(sim, "styles", "atelier-editorial", "theme.css"),
-      shippedTheme.shipped,
-      "utf8",
-    );
+    // 每个视觉主题目录都改写成"仓库原件 + 一行哨兵注释"：两份内容不同，才分得出实现读的是哪一份。
+    const themes = new Map<string, ShippedTheme>();
+    for (const preset of PRESETS) {
+      const visualId = preset.inheritsVisual;
+      if (themes.has(visualId)) continue;
+      const repo = await readFile(join(REPO_ROOT, "styles", visualId, "theme.css"), "utf8");
+      const sentinel = `/* SENTINEL ${basename(sim)} ${visualId} */`;
+      expect(repo).not.toContain("SENTINEL");
+      const theme: ShippedTheme = { repo, sentinel, shipped: `${repo}\n${sentinel}\n` };
+      themes.set(visualId, theme);
+      await writeFile(join(sim, "styles", visualId, "theme.css"), theme.shipped, "utf8");
+    }
 
     const outcomes: ApplyOutcome[] = [];
-    for (const preset of PRESETS) outcomes.push(await applyPresetOf(sim, shippedTheme, preset));
-    // 结构性断言：三个预设都真的跑过（把循环改成"只测第一个"，这条立刻红）。
+    for (const preset of PRESETS) {
+      const theme = themes.get(preset.inheritsVisual);
+      if (theme === undefined) throw new Error(`哨兵缺视觉主题：${preset.inheritsVisual}`);
+      outcomes.push(await applyPresetOf(sim, theme, preset));
+    }
+    // 结构性断言：每个预设都真的跑过（把循环改成"只测第一个"，这条立刻红）。
     expect(outcomes).toHaveLength(PRESETS.length);
   }, 120_000);
 });

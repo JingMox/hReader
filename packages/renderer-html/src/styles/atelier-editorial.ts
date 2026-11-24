@@ -18,4 +18,9 @@ export const THEMES: Readonly<Record<string, VisualTheme>> = {
     bodyClass: "visual-atelier-editorial",
     label: "Atelier 编辑体",
   },
+  "deck-noir": {
+    id: "deck-noir",
+    bodyClass: "visual-deck-noir",
+    label: "Deck Noir 暗夜演示",
+  },
 };

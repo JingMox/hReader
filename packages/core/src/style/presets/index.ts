@@ -2,6 +2,7 @@
 
 import type { StyleSpec } from "../contracts";
 import { ATELIER_EDITORIAL } from "./atelier-editorial";
+import { DECK_NOIR } from "./deck-noir";
 import { EXECUTIVE_BRIEF } from "./executive-brief";
 import { FEYNMAN_TECH } from "./feynman-tech";
 
@@ -12,6 +13,7 @@ export const BUILTIN_STYLES: readonly StyleSpec[] = [
   ATELIER_EDITORIAL,
   FEYNMAN_TECH,
   EXECUTIVE_BRIEF,
+  DECK_NOIR,
 ];
 
 export const findBuiltinStyle = (id: string): StyleSpec | undefined =>
