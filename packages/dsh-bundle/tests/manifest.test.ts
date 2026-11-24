@@ -1,4 +1,4 @@
-// 这层管：包清单契约——dsh 靠这几个字段发现并写下这个包（AC-1），外加 D4 的 import 纪律。
+// 这层管：包清单契约——dsh 靠这几个字段发现并写下这个包，外加 import 纪律。
 // 解析结果的类型是 unknown：只做 `toMatchObject`/`stringMatching` 断言，不走 `as`（本仓禁断言）。
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -92,13 +92,13 @@ describe("cordis.patch.yml", () => {
   });
 });
 
-describe("import 纪律（D4）：扫荡真的扫到了东西", () => {
+describe("import 纪律：扫荡真的扫到了东西", () => {
   it("扫到的 src 文件非空：目录一改名，下面两条 `违规数为 0` 就会恒绿", () => {
     expect(SRC_FILES).toEqual(expect.arrayContaining(["index.ts", "events.ts"]));
   });
 });
 
-describe("import 纪律（D4）", () => {
+describe("import 纪律", () => {
   it("src 里对 @deepseek-ai/* 只有 import type，没有任何值导入", () => {
     const valueImports = SRC_FILES.flatMap((file) => {
       const text = readText(join(SRC_DIR, file));
