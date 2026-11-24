@@ -96,7 +96,7 @@ function handlePlainKeydown(e, editable) {
 
 function handleModShortcut(e, editable) {
   const k = e.key.toLowerCase();
-  const handler = e.shiftKey ? SHIFT_MOD_SHORTCUTS[k] : MOD_SHORTCUTS[k];
+  const handler = MOD_SHORTCUTS[k] || (e.shiftKey ? SHIFT_MOD_SHORTCUTS[k] : undefined);
   if (handler) {
     e.preventDefault();
     handler();
