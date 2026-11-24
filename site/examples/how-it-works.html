@@ -1,0 +1,492 @@
+<!DOCTYPE html><html lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hReader 原理：Agent 怎样只改一段</title>
+<style id="hr-theme">/* Atelier Editorial：纸感日间 / 暗夜双模（自动 + 手动覆盖），正文 68ch、侧栏 280px、≤420px 折叠单列。 */
+/* 对比度按 WCAG 2.1 公式（sRGB → 相对亮度 → (L1+0.05)/(L2+0.05)）计算，正文/背景均 ≥ 4.5:1。 */
+
+:root,
+:root[data-hr-mode="light"] {
+  --hr-bg: #faf8f5;
+  --hr-fg: #1b1a17; /* 正文/背景 = 16.42:1 */
+  --hr-muted: #6a645d; /* 次要文字/背景 = 5.51:1 */
+  --hr-accent: #8a4a22; /* 强调色/背景 = 6.43:1 */
+  --hr-warning: #a3341a; /* 警示色/背景 = 6.47:1 */
+  --hr-border: #ddd6cb;
+  --hr-code-bg: #f0ece3;
+  --hr-measure: 68ch;
+  --hr-sidebar: 280px;
+  --hr-space-1: 0.5rem;
+  --hr-space-2: 0.75rem;
+  --hr-space-3: 1rem;
+  --hr-space-4: 1.5rem;
+  --hr-space-5: 2.5rem;
+  --hr-radius: 0.5rem;
+  --hr-serif: "Iowan Old Style", "Songti SC", Georgia, serif;
+  --hr-sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  --hr-mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+/* 手动深色：`data-hr-mode="dark"` 优先于系统偏好（三条路径之一）。 */
+:root[data-hr-mode="dark"] {
+  --hr-bg: #121316;
+  --hr-fg: #e9e6e1; /* 正文/背景 = 14.92:1 */
+  --hr-muted: #9d968c; /* 次要文字/背景 = 6.35:1 */
+  --hr-accent: #e0a97a; /* 强调色/背景 = 8.96:1 */
+  --hr-warning: #ff9b73; /* 警示色/背景 = 9.01:1 */
+  --hr-border: #2b2d33;
+  --hr-code-bg: #1b1d22;
+}
+
+/* 自动深色：`prefers-color-scheme` 只在没有手动声明浅色时生效（第三条路径）。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-hr-mode="light"]) {
+    --hr-bg: #121316;
+    --hr-fg: #e9e6e1;
+    --hr-muted: #9d968c;
+    --hr-accent: #e0a97a;
+    --hr-warning: #ff9b73;
+    --hr-border: #2b2d33;
+    --hr-code-bg: #1b1d22;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--hr-bg);
+  color: var(--hr-fg);
+  font-family: var(--hr-serif);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  text-rendering: optimizeLegibility;
+}
+
+.hr-layout {
+  display: grid;
+  grid-template-columns: minmax(0, var(--hr-measure)) var(--hr-sidebar);
+  gap: var(--hr-space-5);
+  justify-content: center;
+  padding: var(--hr-space-5) var(--hr-space-3);
+}
+
+/* 没有 min-width: 0，长 token 会把 280px 侧栏撑破 → 320px 视宽必然横滚。 */
+.hr-layout > * {
+  min-width: 0;
+}
+
+.hr-sidebar {
+  width: var(--hr-sidebar);
+  font-family: var(--hr-sans);
+  font-size: 0.875rem;
+  color: var(--hr-muted);
+}
+
+article[data-hr-id] {
+  max-width: 68ch; /* = --hr-measure：结构断言要认字面量，令牌留给 grid */
+  overflow-wrap: anywhere;
+}
+
+article[data-hr-id] h1,
+article[data-hr-id] h2,
+article[data-hr-id] h3 {
+  line-height: 1.3;
+  margin: var(--hr-space-5) 0 var(--hr-space-2);
+  letter-spacing: -0.01em;
+}
+
+article[data-hr-id] h2 {
+  border-bottom: 1px solid var(--hr-border);
+  padding-bottom: var(--hr-space-1);
+}
+
+article[data-hr-id] a {
+  color: var(--hr-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+article[data-hr-id] code,
+article[data-hr-id] pre {
+  font-family: var(--hr-mono);
+  font-size: 0.9em;
+  background: var(--hr-code-bg);
+  border-radius: var(--hr-radius);
+}
+
+article[data-hr-id] code {
+  padding: 0.1em 0.35em;
+}
+
+article[data-hr-id] pre {
+  padding: var(--hr-space-3);
+  overflow-x: auto;
+}
+
+article[data-hr-id] blockquote {
+  margin: var(--hr-space-4) 0;
+  padding-left: var(--hr-space-3);
+  border-left: 3px solid var(--hr-border);
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--hr-space-3);
+  margin: var(--hr-space-4) 0;
+}
+
+[data-hr-component="kpi-bento"] > * {
+  padding: var(--hr-space-3);
+  background: var(--hr-code-bg);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="callout-insight"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border-left: 3px solid var(--hr-accent);
+  background: var(--hr-code-bg);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="callout-warning"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border-left: 3px solid var(--hr-warning);
+  background: var(--hr-code-bg);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="split-compare"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--hr-space-3);
+  margin: var(--hr-space-4) 0;
+}
+
+[data-hr-component="split-compare"] > * {
+  min-width: 0;
+  padding: var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="deep-dive"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-2) var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="deep-dive"] > summary {
+  cursor: pointer;
+  font-family: var(--hr-sans);
+  color: var(--hr-muted);
+}
+
+[data-hr-component="step-timeline"] {
+  margin: var(--hr-space-4) 0;
+  padding-left: var(--hr-space-4);
+  border-left: 1px solid var(--hr-border);
+  counter-reset: hr-step;
+}
+
+[data-hr-component="step-timeline"] > li {
+  counter-increment: hr-step;
+  list-style: none;
+  margin-bottom: var(--hr-space-3);
+}
+
+[data-hr-component="diagram-stage"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  background: var(--hr-code-bg);
+  overflow-x: auto;
+}
+
+[data-hr-component="diagram-stage"] figcaption {
+  font-family: var(--hr-sans);
+  font-size: 0.8125rem;
+  color: var(--hr-muted);
+}
+
+/* 组件细节：KPI 大数字、时间线节点、标题层级、侧栏卡片（只增不改，上面的结构规则保持原样）。 */
+article[data-hr-id] > h1 {
+  font-size: 2.25rem;
+  line-height: 1.2;
+  margin-top: 0;
+}
+
+article[data-hr-id] > header p {
+  font-family: var(--hr-sans);
+  font-size: 0.875rem;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] > * > p {
+  margin: 0;
+  font-family: var(--hr-sans);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] > * > p:first-child {
+  margin-bottom: var(--hr-space-1);
+  font-family: var(--hr-serif);
+  font-size: 1.875rem;
+  line-height: 1.15;
+  color: var(--hr-accent);
+}
+
+[data-hr-component="callout-insight"] > p,
+[data-hr-component="callout-warning"] > p {
+  margin: 0;
+}
+
+[data-hr-component="split-compare"] > * > p:first-child {
+  margin-top: 0;
+  font-family: var(--hr-sans);
+}
+
+[data-hr-component="deep-dive"][open] > summary {
+  margin-bottom: var(--hr-space-2);
+}
+
+[data-hr-component="step-timeline"] > li {
+  position: relative;
+}
+
+[data-hr-component="step-timeline"] > li::before {
+  content: counter(hr-step);
+  position: absolute;
+  left: calc(-1 * var(--hr-space-4) - 0.75rem);
+  top: 0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--hr-bg);
+  border: 1px solid var(--hr-accent);
+  color: var(--hr-accent);
+  font-family: var(--hr-sans);
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+[data-hr-component="step-timeline"] > li > p:first-child {
+  margin-bottom: 0;
+}
+
+[data-hr-component="diagram-stage"] {
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="diagram-stage"] img,
+[data-hr-component="diagram-stage"] svg,
+[data-hr-component="diagram-stage"] video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+[data-hr-component="diagram-stage"] audio {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--hr-space-2);
+}
+
+.hr-sidebar > * {
+  position: sticky;
+  top: var(--hr-space-5);
+}
+
+.hr-sidebar dl {
+  margin: 0;
+}
+
+.hr-sidebar dt {
+  margin-top: var(--hr-space-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hr-sidebar dd {
+  margin: 0;
+  color: var(--hr-fg);
+}
+
+.hr-sidebar a {
+  color: var(--hr-accent);
+  text-underline-offset: 0.2em;
+}
+
+/* ≤420px 视宽折叠成单列：结构断言只查这条断点与 grid-template-columns 的单值。 */
+@media (max-width: 420px) {
+  .hr-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--hr-space-3);
+    padding: var(--hr-space-3) var(--hr-space-2);
+  }
+
+  .hr-sidebar {
+    width: auto;
+  }
+}
+
+@media print {
+  .hr-sidebar,
+  .hr-toc-toggle,
+  .hr-mode-toggle,
+  button {
+    display: none;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  [data-hr-component="callout-insight"],
+  [data-hr-component="callout-warning"],
+  [data-hr-component="kpi-bento"] {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
+
+/* M4.3 打印稿：纸面永远是日间配色（AC-6「深色变量覆盖」）。
+   打印稿是独立文件，读者的 `prefers-color-scheme: dark` 与 `data-hr-mode` 都可能命中，
+   故这里用比上面三条路径更高的选择器优先级强制回落成日间值；只影响 print 介质。 */
+@media print {
+  :root,
+  :root[data-hr-mode="dark"],
+  :root:not([data-hr-mode="light"]) {
+    --hr-bg: #ffffff;
+    --hr-fg: #000000;
+    --hr-muted: #4a4a4a;
+    --hr-accent: #6b3a1a;
+    --hr-warning: #8a2a12;
+    --hr-border: #b8b8b8;
+    --hr-code-bg: #f4f4f4;
+  }
+}
+</style></head>
+<body>
+<main class="hr-layout">
+<article data-hr-id="root">
+<header data-hr-id="hr-dd2e047a">
+<p data-hr-id="hr-7f63c066">示例文档 · 技术说明 · 适合想把 hReader 接进自己 Agent 的读者</p>
+</header>
+<h1 data-hr-id="hr-892d72a0">hReader 原理：Agent 怎样只改一段</h1>
+
+<aside data-hr-component="callout-insight" data-hr-id="hr-ac5093bb">
+<p data-hr-id="hr-713f59e9">一句话：hReader 给 HTML 文档里的每个块分配稳定的 <code>data-hr-id</code>，Agent 先看大纲、再读一块、只改一块；所有写入都是原子的，并且留下可撤销的快照。</p>
+</aside>
+
+<section data-hr-component="kpi-bento" data-hr-id="hr-0a0848c1">
+<div data-hr-id="hr-dfc199ed"><p data-hr-id="hr-a1edd03f">7 个</p><p data-hr-id="hr-c4a34beb">MCP 工具，CLI 里有同名命令</p></div>
+<div data-hr-id="hr-52be1e7a"><p data-hr-id="hr-6ac2c266">5 种</p><p data-hr-id="hr-038b29ec">修改动作：替换、前插、后插、追加、删除</p></div>
+<div data-hr-id="hr-83580c6d"><p data-hr-id="hr-b7e192a7">10 份</p><p data-hr-id="hr-6b5ebb90">默认保留的撤销快照</p></div>
+</section>
+
+<section data-hr-id="hr-2227e110">
+<h2 data-hr-id="hr-673f12ef">一次修改的完整回路</h2>
+<figure data-hr-component="diagram-stage" data-hr-id="hr-aa5e8ae2">
+<svg viewBox="0 0 720 230" width="720" height="230" role="img" aria-label="人批注、Agent 读大纲、读节点、修改节点、阅读器刷新的回路">
+<g font-family="-apple-system, PingFang SC, sans-serif" font-size="14" text-anchor="middle">
+<rect x="10" y="30" width="150" height="56" rx="8" fill="none" stroke="#8a4a22"></rect>
+<text x="85" y="55" fill="#1b1a17">人在阅读器里</text>
+<text x="85" y="74" fill="#6a645d" font-size="12">选中一句，写批注</text>
+<rect x="200" y="30" width="150" height="56" rx="8" fill="none" stroke="#8a4a22"></rect>
+<text x="275" y="55" fill="#1b1a17">hr_outline</text>
+<text x="275" y="74" fill="#6a645d" font-size="12">看结构和待办批注</text>
+<rect x="390" y="30" width="150" height="56" rx="8" fill="none" stroke="#8a4a22"></rect>
+<text x="465" y="55" fill="#1b1a17">hr_read_node</text>
+<text x="465" y="74" fill="#6a645d" font-size="12">只读要改的那一块</text>
+<rect x="580" y="30" width="130" height="56" rx="8" fill="none" stroke="#8a4a22"></rect>
+<text x="645" y="55" fill="#1b1a17">hr_patch_node</text>
+<text x="645" y="74" fill="#6a645d" font-size="12">原子替换 + 快照</text>
+<rect x="290" y="150" width="160" height="56" rx="8" fill="none" stroke="#8a4a22"></rect>
+<text x="370" y="175" fill="#1b1a17">阅读器自动刷新</text>
+<text x="370" y="194" fill="#6a645d" font-size="12">SSE 推送，高亮改动</text>
+<g stroke="#6a645d" fill="none">
+<path d="M160 58 H196"></path><path d="M350 58 H386"></path><path d="M540 58 H576"></path>
+<path d="M645 86 V178 H454"></path><path d="M290 178 H85 V90"></path>
+</g>
+<g fill="#6a645d">
+<path d="M196 54 L204 58 L196 62 Z"></path><path d="M386 54 L394 58 L386 62 Z"></path><path d="M576 54 L584 58 L576 62 Z"></path>
+<path d="M458 174 L450 178 L458 182 Z"></path><path d="M81 94 L85 86 L89 94 Z"></path>
+</g>
+</g>
+</svg>
+<figcaption data-hr-id="hr-c17e2fca">图 1 · 人负责指方向，Agent 负责动手。整个回路里，Agent 从头到尾只碰被批注的那一块。</figcaption>
+</figure>
+</section>
+
+<section data-hr-id="hr-34e1bc18">
+<h2 data-hr-id="hr-da20b705">为什么不整篇重写</h2>
+<section data-hr-component="split-compare" data-hr-id="hr-cf55232f">
+<div data-hr-id="hr-c4816da6">
+<p data-hr-id="hr-be556d42"><strong>整篇重新生成</strong></p>
+<p data-hr-id="hr-50f937b3">每次都把全文塞进上下文；改好一处，其他地方的措辞和版式也可能跟着变。</p>
+</div>
+<div data-hr-id="hr-4fd252b6">
+<p data-hr-id="hr-f84d3672"><strong>按块修改</strong></p>
+<p data-hr-id="hr-ef7c4d5e">只读、只写目标块，其余字节原样保留；写错了一条命令撤销。</p>
+</div>
+</section>
+</section>
+
+<section data-hr-id="hr-df6a239e">
+<h2 data-hr-id="hr-39504c6b">Agent 的五步工作流</h2>
+<ol data-hr-component="step-timeline" data-hr-id="hr-6cf854e6">
+<li data-hr-id="hr-d75cee33"><p data-hr-id="hr-64557b96"><strong>看结构</strong></p><p data-hr-id="hr-5a2268fb"><code>hr outline doc.html</code>：每行一个块 id、标题和字数。</p></li>
+<li data-hr-id="hr-1b1629a0"><p data-hr-id="hr-94b9f9fd"><strong>读原文</strong></p><p data-hr-id="hr-d7317039"><code>hr read doc.html &lt;id&gt;</code>：拿到这一块的 HTML 片段。</p></li>
+<li data-hr-id="hr-0b073084"><p data-hr-id="hr-e52f8935"><strong>写片段</strong></p><p data-hr-id="hr-09d64d36">把新内容写进临时文件，只用 8 个语义组件。</p></li>
+<li data-hr-id="hr-218ed493"><p data-hr-id="hr-10338d23"><strong>落盘</strong></p><p data-hr-id="hr-af334b21"><code>hr patch doc.html &lt;id&gt; --action replace --html-file new.html</code>。</p></li>
+<li data-hr-id="hr-02792186"><p data-hr-id="hr-13e78397"><strong>验证</strong></p><p data-hr-id="hr-cb4d5b20"><code>hr style doc.html --lint</code> 检查禁用词；不满意就 <code>hr undo doc.html</code>。</p></li>
+</ol>
+</section>
+
+<section data-hr-id="hr-d4490ada">
+<h2 data-hr-id="hr-3228585f">安全边界</h2>
+<aside data-hr-component="callout-warning" data-hr-id="hr-3e0f9360">
+<p data-hr-id="hr-456aec8d">写入的片段不允许出现脚本、iframe、事件属性和 <code>javascript:</code> 链接，命中就整体拒绝，文件一个字节都不会变。路径也被限制在工作区之内。</p>
+</aside>
+<details data-hr-component="deep-dive" data-hr-id="hr-51f353b3">
+<summary>展开：块 id 是怎么来的</summary>
+<p data-hr-id="hr-95425184">没有 id 的块会由 <code>hr normalize</code> 按内容派生一个确定的 id（形如 <code>hr-24a9f952</code>）。同一份内容得到同一个 id，所以 Agent 拿到的 id 可以直接喂回下一条命令；内容变化后应以最新的 <code>outline</code> 为准。</p>
+</details>
+</section>
+
+<section data-hr-id="hr-60bfc13c">
+<h2 data-hr-id="hr-ee5c8b38">接入方式</h2>
+<pre data-hr-id="hr-8255ffa0"><code>{
+  "mcpServers": {
+    "hreader": {
+      "command": "node",
+      "args": ["/path/to/hreader-mcp-server/dist/main.js", "--workspace", "/path/to/docs"]
+    }
+  }
+}</code></pre>
+<p data-hr-id="hr-1618070c">也可以把 Agent Skill 包放进 Agent 的 skills 目录，或者直接用 CLI。详见项目 README。</p>
+</section>
+</article>
+<aside class="hr-sidebar">
+<div>
+<dl>
+<dt>文档类型</dt><dd>技术说明</dd>
+<dt>MCP 工具</dt><dd>hr_outline、hr_read_node、hr_create_doc、hr_patch_node、hr_apply_style、hr_resolve_annotation、hr_undo</dd>
+<dt>更多示例</dt><dd><a href="../index.html">示例库</a></dd>
+</dl>
+</div>
+</aside>
+</main>
+
+
+</body></html>

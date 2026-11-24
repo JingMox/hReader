@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>同一份会议纪要的三种写法</title>
+<style>
+body { margin: 0; background: #ece8e1; font-family: -apple-system, "PingFang SC", sans-serif; color: #1b1a17; }
+.wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 28px; }
+.col h2 { margin: 0 0 4px; font-size: 20px; }
+.col p { margin: 0 0 12px; font-size: 13px; color: #6a645d; }
+.frame { height: 1180px; overflow: hidden; border-radius: 10px; border: 1px solid #d6cfc3; background: #fff; }
+.frame iframe { width: 166.6667%; height: 166.6667%; border: 0; transform: scale(.6); transform-origin: 0 0; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #fff; border: 1px solid #d6cfc3; margin-left: 6px; vertical-align: middle; }
+@media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="col"><h2>Markdown<span class="tag">能写，难看</span></h2><p>音频只能是链接或裸播放器，摘要、逐字稿、方案对比全挤在正文里。</p><div class="frame"><iframe src="markdown.html" title="Markdown 版本"></iframe></div></div>
+<div class="col"><h2>AI 自由生成 HTML<span class="tag">好看，但乱</span></h2><p>每块一种风格：渐变、虚线框、表格、彩色格子。换一次生成就换一套长相。（示意）</p><div class="frame"><iframe src="freeform.html" title="AI 自由生成 HTML 版本"></iframe></div></div>
+<div class="col"><h2>hReader<span class="tag">好看，而且整齐</span></h2><p>只用 7 个语义组件：录音卡片、摘要、折叠逐字稿永远在同一位置。</p><div class="frame"><iframe src="../examples/meeting-notes.html" title="hReader 版本"></iframe></div></div>
+</div>
+</body>
+</html>

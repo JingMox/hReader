@@ -16,3 +16,7 @@ skills/hreader/scripts/styles
 packages/desktop/src-tauri/resources
 # 故意的坏 JSON：格式化器会把「坏」当成错
 packages/desktop/src-tauri/tests/fixtures/daemon/bad-json.json
+
+# 示例库：examples/ 由 hr normalize + hr style 生成，compare/ 是刻意保留原样的对比素材
+site/examples
+site/compare
