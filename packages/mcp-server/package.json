@@ -24,5 +24,23 @@
     "@hreader/core": "workspace:*",
     "@types/node": "catalog:",
     "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JingMox/hReader.git",
+    "directory": "packages/mcp-server"
+  },
+  "description": "MCP server exposing hReader document operations (outline, read, patch, undo, style) to AI agents over stdio.",
+  "keywords": [
+    "hreader",
+    "mcp",
+    "mcp-server",
+    "ai-agent"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -23,8 +23,7 @@ const PROBES: readonly Probe[] = [
   {
     name: "对象字面量断言",
     ruleId: "@typescript-eslint/consistent-type-assertions",
-    source:
-      "export const casted = { a: 1 } as { a: number; b: number };\nconsole.log(casted);",
+    source: "export const casted = { a: 1 } as { a: number; b: number };\nconsole.log(casted);",
   },
   {
     name: "ts-ignore 注释",

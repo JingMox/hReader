@@ -39,5 +39,13 @@
     "@types/node": "catalog:",
     "vitest": "catalog:",
     "yaml": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JingMox/hReader.git",
+    "directory": "packages/dsh-bundle"
   }
 }

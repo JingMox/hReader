@@ -25,5 +25,23 @@
   "dependencies": {
     "pdf-lib": "1.17.1",
     "puppeteer-core": "25.17.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JingMox/hReader.git",
+    "directory": "packages/cli"
+  },
+  "description": "hr — standalone CLI for hReader single-file HTML documents (outline, patch, undo, print export).",
+  "keywords": [
+    "hreader",
+    "html",
+    "cli",
+    "document"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }
