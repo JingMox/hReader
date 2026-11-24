@@ -1,9 +1,9 @@
 // 这层管：hReader 的 Pi 扩展——订阅 daemon 的 SSE 事件、把文档推给阅读器、向会话注入批注。
 // Pi 只把**单个模块**当扩展加载（`~/.pi/agent/extensions/*/pi-hreader.ts` 或 `pi -e ./pi-hreader.ts`），
-// 所以全部实现都在本文件：零本地相对 import、零 `@hreader/*`（M3.2 AC-1）。
-// 因此这里是 core 协议知识的第二份拼写（卡内 D9 已裁定接受），约束手段是 AC-7 的漂移钉子，不是共享代码。
+// 所以全部实现都在本文件：零本地相对 import、零 `@hreader/*`。
+// 因此这里是 core 协议知识的第二份拼写（有意的重复），约束手段是 `tests/protocol-pins.test.ts` 的漂移钉子，不是共享代码。
 // 纯层（帧解析 / 路径推导 / 错误文本 / 节点切片）在前；副作用（文件/网络/定时器）只经 `HreaderDeps` 注入。
-// Pi 的类型是从 `pi-coding-agent@1.5.2` 的 d.ts **手抄**的（D10：不装该依赖，它的 d.ts 要求 DOM 与完整
+// Pi 的类型是从 `pi-coding-agent@1.5.2` 的 d.ts **手抄**的（不装该依赖，它的 d.ts 要求 DOM 与完整
 // `@types/node`，与本仓 `lib: ["ES2023"]` + `types: []` + `skipLibCheck: false` 冲突）。原文如下，类型一漂移就比这几段：
 //   ExtensionUIContext（dist/core/extensions/types.d.ts:83-91）
 //     confirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>;
@@ -84,7 +84,7 @@ const jsonOfText = (text: string): unknown => {
   }
 };
 
-/** core 从不下发 `event:` 行，类型只在 `data` 的 JSON 里（D3）：取不出来就是坏帧。 */
+/** core 从不下发 `event:` 行，类型只在 `data` 的 JSON 里：取不出来就是坏帧。 */
 const eventOf = (envelope: SseEnvelope): HreaderEvent | undefined => {
   const value = jsonOfText(envelope.data);
   if (!isRecord(value) || typeof value["type"] !== "string") return undefined;
@@ -150,7 +150,7 @@ export const readerUrlOf = (info: DaemonInfo, docId: string): string =>
 
 /**
  * 扩展用到的每一条 HTTP 端点，逐条对应 `packages/core/src/server/routes.ts` 的 `route(...)` 行。
- * 所有 URL 都由这张表拼出来（不再有第二处路径字面量），所以 AC-7 的钉子钉的就是真实用法。
+ * 所有 URL 都由这张表拼出来（不再有第二处路径字面量），所以漂移钉子钉的就是真实用法。
  */
 export const ENDPOINTS = {
   events: { method: "GET", segments: ["api", "events"], auth: "cookie" },
@@ -161,7 +161,7 @@ export const ENDPOINTS = {
     auth: "cookie",
   },
   patch: { method: "POST", segments: ["api", "patch"], auth: "cookie+csrf" },
-  // AC-5/D7：可选视觉 id 的**唯一**来源（`static.ts:136` 返回 `{ themes, default }`）。
+  // 可选视觉 id 的**唯一**来源（`static.ts:136` 返回 `{ themes, default }`）。
   themes: { method: "GET", segments: ["api", "theme"], auth: "none" },
   style: { method: "POST", segments: ["api", "style"], auth: "cookie+csrf" },
   document: { method: "GET", segments: ["s", ":docId"], auth: "token" },
@@ -389,7 +389,7 @@ export interface HreaderDeps {
   readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
-/** daemon 的错误码文案（`packages/core/src/hr-error.ts` 的 `HrErrorCode` 全集，漏一个 AC-7 的钉子会红）。 */
+/** daemon 的错误码文案（`packages/core/src/hr-error.ts` 的 `HrErrorCode` 全集，漏一个漂移钉子会红）。 */
 export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   invalid_html: "HTML 不合法",
   no_article: "文档里没有 `<article>`",
@@ -570,7 +570,7 @@ const jsonOf = async (reply: FetchReply): Promise<unknown> => {
 };
 
 const failureTextOf = (status: number, value: unknown): string => {
-  // G2：2xx 却不是 JSON 时，说“返回 200：未知错误”会把人往错方向引（那是代理/前端页插进来的时候）。
+  // 2xx 却不是 JSON 时，说“返回 200：未知错误”会把人往错方向引（那是代理/前端页插进来的时候）。
   if (status < 400 && !isRecord(value)) {
     return `daemon 返回 ${String(status)} 但响应不是 JSON（看 daemon 日志）`;
   }
@@ -668,7 +668,7 @@ const dispatchOf = (context: CycleContext, envelope: SseEnvelope): void => {
     context.reported.clear();
     context.handlers.onEvent(event);
   }
-  // `ready` 的 `id: 0` 不在环里（D4）：拿它当 `Last-Event-ID` 会让重连从"环首"重新回放。
+  // `ready` 的 `id: 0` 不在环里：拿它当 `Last-Event-ID` 会让重连从"环首"重新回放。
   if (event.id !== undefined && event.id !== "0") context.lastEventId = event.id;
 };
 
@@ -897,7 +897,7 @@ interface ToolContext {
   readonly docId: string;
 }
 
-/** 三工具共同的壳：daemon 缺失/路径越界都变成**文本**，绝不抛裸异常（AC-6）。
+/** 三工具共同的壳：daemon 缺失/路径越界都变成**文本**，绝不抛裸异常。
  * 这里没有 `try/catch`：三个 IO 缝各自内部就把异常收成 `undefined` / `ok: false`，所以 `work` 只剩
  * 不抛的纯计算。往 `work` 里加 IO 前，先把那个缝 total 化，否则工具的"永不抛"承诺会在这里破掉。 */
 const runToolOf = async (
@@ -996,7 +996,7 @@ const patchNodeToolOf = (deps: HreaderDeps): HreaderTool<typeof PATCH_NODE_PARAM
 });
 
 const statusHintOf = (info: DaemonInfo, session: HreaderSession): string => {
-  // 只看**当前绑定文档**的记录：别的文档的风格与本篇无关（G1）。
+  // 只看**当前绑定文档**的记录：别的文档的风格与本篇无关。
   const themeId = session.docId === undefined ? undefined : session.themeOf.get(session.docId);
   const style = themeId === undefined ? "" : `，风格 ${safeTextOf(themeId)}`;
   return `${USAGE_HINT}\ndaemon 在跑：127.0.0.1:${String(info.port)}，workspace ${safeTextOf(info.workspace)}${style}`;
@@ -1023,7 +1023,7 @@ const handlersOf = (
         notifyOf(ctx, "处理 hReader 批注事件时出错（见 Pi 日志）", "warning");
       });
   },
-  // D4/D5：环过期是“你断了太久”，必须让用户知道，不能让“未知类型”把它吞掉。
+  // 环过期是“你断了太久”，必须让用户知道，不能让“未知类型”把它吞掉。
   onStale: () => {
     notifyOf(
       ctx,
@@ -1049,7 +1049,7 @@ const hreaderCommandOf =
     }
     const target = args.trim();
     if (target === "") {
-      // AC-2（D11）：无参只给用法 + daemon 状态。`GET /` 是 cookie 认证、`/s/:docId` 是 token 认证，
+      // 无参只给用法 + daemon 状态。`GET /` 是 cookie 认证、`/s/:docId` 是 token 认证，
       // 无参时没有可点的合法链接，打印根 URL 就是死链。
       notifyOf(ctx, statusHintOf(info, session), "info");
       return;
@@ -1113,8 +1113,8 @@ const styleDoneTextOf = (_changed: boolean, docId: string, requested: string): s
     ? `已把 ${safeTextOf(docId)} 换成 ${safeTextOf(requested)}`
     : `${safeTextOf(requested)} 与当前视觉相同，文档没变`;
 
-/** AC-5/D7/D10：`/hr-style <id>` 的唯一语义是**换视觉**；id 只从 `GET /api/theme` 来（扩展不扫主题目录）。
- * G4：入场先取号，带号码回写——先发慢响一律静默丢弃，不 notify 也不改状态（“后发起的命令赢”）。 */
+/** `/hr-style <id>` 的唯一语义是**换视觉**；id 只从 `GET /api/theme` 来（扩展不扫主题目录）。
+ * 入场先取号，带号码回写——先发慢响一律静默丢弃，不 notify 也不改状态（“后发起的命令赢”）。 */
 const styleCommandOf =
   (deps: HreaderDeps, session: HreaderSession) =>
   async (args: string, ctx: HreaderContext): Promise<void> => {
@@ -1171,7 +1171,7 @@ export const hreaderExtensionOf =
     });
   };
 
-/** 默认重连等待：`unref()` 是硬要求（卡内风险点 4；真是否住进程由 smoke 脚本的退出码证明）。 */
+/** 默认重连等待：`unref()` 是硬要求（真是否住进程由 smoke 脚本的退出码证明）。 */
 export const delayOf = (ms: number, signal: AbortSignal): Promise<void> =>
   new Promise((done) => {
     if (signal.aborted) {
