@@ -56,15 +56,28 @@ describe("createWatcher · 目录事件与重复订阅", () => {
   });
 
   it("should dedupe repeated add() calls for the same dir+file", async () => {
-    await withWatcher(async ({ dir, watcher, changes }) => {
-      watcher.add(dir, "a.html");
-      watcher.add(dir, "a.html");
-      writeFileSync(join(dir, "a.html"), "x");
-      expect(await waitFor(() => changes.length > 0, 2000)).toBe(true);
-      await wait(DEBOUNCE_MS * 3);
+    // 不碰真实 fs.watch：注入源记下 attach 次数与回调，dedupe 的判据是
+    // "同一 dir+file 只挂一个句柄 + 事件只报一次"，与时序无关、coverage 负载下不抖。
+    const changes: string[] = [];
+    const fires: ((event: string, name: string | undefined) => void)[] = [];
+    const watcher = createWatcher(
+      { now: Date.now, onFileChange: (path) => changes.push(path) },
+      (_dir, onEvent) => {
+        fires.push(onEvent);
+        return { close: () => undefined };
+      },
+    );
+    try {
+      watcher.add("/tmp", "a.html");
+      watcher.add("/tmp", "a.html");
+      expect(fires).toHaveLength(1);
+      fires[0]?.("rename", "a.html");
+      await wait(DEBOUNCE_MS * 2);
 
-      expect(changes).toEqual([join(dir, "a.html")]);
-    });
+      expect(changes).toEqual([join("/tmp", "a.html")]);
+    } finally {
+      watcher.close();
+    }
   });
 });
 
