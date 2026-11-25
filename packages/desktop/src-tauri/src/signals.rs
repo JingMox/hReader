@@ -142,7 +142,10 @@ mod platform {
 
     /// 无窗口模式（`--hold`）：等到信号或超时，返回后调用方的 `Drop` 会收尸。
     pub fn wait_or_timeout(timeout: Duration) {
-        let deadline = std::time::Instant::now() + timeout;
+        // options 层已把 --hold 卡在 86400s；这里 checked_add 兜底，溢出按"立即超时"收口而不是 panic。
+        let deadline = std::time::Instant::now()
+            .checked_add(timeout)
+            .unwrap_or_else(std::time::Instant::now);
         while !stopped() && std::time::Instant::now() < deadline {
             std::thread::sleep(POLL);
         }

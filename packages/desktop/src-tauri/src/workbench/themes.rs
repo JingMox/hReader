@@ -105,7 +105,7 @@ fn read_themes_from_dir(dir: &Path, out: &mut Vec<CustomTheme>) {
         .collect();
     paths.sort();
     for path in paths {
-        let Ok(raw) = fs::read_to_string(&path) else {
+        let Some(raw) = read_theme_file_capped(&path) else {
             continue;
         };
         let stem = path
@@ -121,6 +121,22 @@ fn read_themes_from_dir(dir: &Path, out: &mut Vec<CustomTheme>) {
             out.push(theme);
         }
     }
+}
+
+/// 主题 JSON 也是有界输入：超限直接跳过，不为不可能合法的输入付出无界内存。
+const MAX_THEME_FILE_BYTES: u64 = 1024 * 1024;
+
+fn read_theme_file_capped(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let file = fs::File::open(path).ok()?;
+    let mut buffer = Vec::new();
+    file.take(MAX_THEME_FILE_BYTES + 1)
+        .read_to_end(&mut buffer)
+        .ok()?;
+    if buffer.len() as u64 > MAX_THEME_FILE_BYTES {
+        return None;
+    }
+    String::from_utf8(buffer).ok()
 }
 
 fn parse_custom_theme_json(raw: &str, fallback_stem: &str) -> Option<CustomTheme> {

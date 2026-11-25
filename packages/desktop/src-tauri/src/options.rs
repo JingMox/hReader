@@ -83,6 +83,11 @@ pub fn parse(
                 let seconds = raw
                     .parse::<u64>()
                     .map_err(|_| OptionsError::BadHold(raw.clone()))?;
+                // `--hold` 是调试用开关；不设上限时 `Instant + Duration::from_secs(u64::MAX)`
+                // 会溢出 panic。
+                if seconds > 86_400 {
+                    return Err(OptionsError::BadHold(raw));
+                }
                 options.hold = Some(seconds);
             }
             "--open" => {

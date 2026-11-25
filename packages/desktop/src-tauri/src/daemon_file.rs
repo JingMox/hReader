@@ -81,23 +81,38 @@ struct RawDaemonFile {
     workspace: Option<Field<String>>,
 }
 
+/// `daemon.json` 是几十字段以内的小信封；合法文件远比这个小。
+const MAX_DAEMON_FILE_BYTES: u64 = 64 * 1024;
+
 pub fn daemon_file_in(home: &Path) -> PathBuf {
     home.join(STORE_DIR).join(DAEMON_FILE)
 }
 
 pub fn read_daemon(path: &Path) -> Result<DaemonState, BadDaemonFile> {
-    let text = match fs::read_to_string(path) {
-        Ok(text) => text,
+    let bad = |reason: &'static str| BadDaemonFile {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(DaemonState::Absent)
         }
-        Err(_) => {
-            return Err(BadDaemonFile {
-                path: path.to_path_buf(),
-                reason: "无法读取",
-            })
-        }
+        Err(_) => return Err(bad("无法读取")),
     };
+    use std::io::Read;
+    let mut buffer = Vec::new();
+    if file
+        .take(MAX_DAEMON_FILE_BYTES + 1)
+        .read_to_end(&mut buffer)
+        .is_err()
+    {
+        return Err(bad("无法读取"));
+    }
+    if buffer.len() as u64 > MAX_DAEMON_FILE_BYTES {
+        return Err(bad("文件过大"));
+    }
+    let text = String::from_utf8(buffer).map_err(|_| bad("不是 UTF-8 文本"))?;
     parse_daemon(path, &text)
 }
 
