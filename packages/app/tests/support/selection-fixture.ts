@@ -4,7 +4,7 @@
 import { vi } from "vitest";
 
 import { fakeElement, type FakeElement } from "./fake-dom.ts";
-import { flush, install, stubs } from "./main-stubs.ts";
+import { flush, install, stubs, until } from "./main-stubs.ts";
 
 export const ROOT = "#hr-root";
 
@@ -48,10 +48,14 @@ export const toggleDiffWithShiftD = async (input: {
   // 首屏没有块；`doc.changed` 按模型重建块列表，`activeId` 才落到 `hr-a`，diff 路由才有目标。
   const source = stubs.sources[0];
   source?.onopen?.();
+  const fetches = stubs.fetched.length;
   source?.fire("doc.changed", JSON.stringify({ changedNodes: ["hr-a"] }), "7");
-  await flush(5);
+  await until(() => stubs.fetched.length > fetches, "doc.changed 触发的模型重取");
+  await flush();
+  const beforeDiff = stubs.fetched.length;
   stubs.keyHandlers[0]?.({ key: "d", shiftKey: true });
-  await flush(5);
+  await until(() => stubs.fetched.length > beforeDiff, "Shift+D 的 diff 请求");
+  await flush();
   return chunks;
 };
 

@@ -258,22 +258,33 @@ const sseHandlersOf = (
   store: Store,
   pump: (task: () => Promise<void>) => void,
   hooks: { readonly reload: () => Promise<void>; readonly flash: { stop?: () => void } },
-): SseHandlers => ({
-  onEvent: (event: SseEvent): void => {
-    if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
-    // 上一次闪烁的计时器先收掉：连发 `doc.changed` 时不留下孤儿定时器（也因此 `clearTimeout` 可达）。
-    hooks.flash.stop?.();
-    hooks.flash.stop = flashChanged(
-      deps.host,
-      changedNodesOf(event.payload),
-      deps.schedule ?? defaultSchedule,
-    );
-    pump(hooks.reload);
-  },
-  onState: (conn: ConnState): void => {
-    store.dispatch({ kind: "conn", conn });
-  },
-});
+): SseHandlers => {
+  // 连发 doc.changed 合并：reload 是"全量重取"，排队未跑的那一个一定会取到
+  // 最新状态——事件落在已排队段就不再叠泵；落在执行段则新排一个（其变更晚于在途取数）。
+  // 不合并的话，一串补丁在泵上积成多次全量重取，高负载下末次刷新会拖过等待时限。
+  let reloadQueued = false;
+  return {
+    onEvent: (event: SseEvent): void => {
+      if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
+      // 上一次闪烁的计时器先收掉：连发 `doc.changed` 时不留下孤儿定时器（也因此 `clearTimeout` 可达）。
+      hooks.flash.stop?.();
+      hooks.flash.stop = flashChanged(
+        deps.host,
+        changedNodesOf(event.payload),
+        deps.schedule ?? defaultSchedule,
+      );
+      if (reloadQueued) return;
+      reloadQueued = true;
+      pump(async () => {
+        reloadQueued = false;
+        await hooks.reload();
+      });
+    },
+    onState: (conn: ConnState): void => {
+      store.dispatch({ kind: "conn", conn });
+    },
+  };
+};
 
 const bootedOf = (wired: ReturnType<typeof wireNotes> | undefined, stop: () => void): Booted => ({
   ...(wired === undefined

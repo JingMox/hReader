@@ -28,6 +28,9 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:coverage
+      # 乱序回归：顺序敏感的失败（共享状态、泄漏句柄、隐式文件依赖）只有打乱才暴露；
+      # 种子每次随机，vitest 会在输出里打出 seed，失败可按它复现。
+      - run: pnpm vitest run --sequence.shuffle
       # ubuntu-latest 自带 Chrome：两个 e2e 自检脚本（打印稿分页、外来文档沙箱）在 CI 真跑。
       - run: pnpm test:e2e
         env:

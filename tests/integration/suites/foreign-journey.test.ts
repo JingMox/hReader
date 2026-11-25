@@ -157,6 +157,14 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
     // sha 变、sha 键信任失效。挑一个与当前值不同的主题，保证 change 真的发起写。
     const target = ids.find((id) => id !== current);
     assert(target !== undefined, "/api/theme 清单没有可切换的备选主题");
+    // 先挂 load 计数再触发写盘：iframe 元素被复用、靠 src 重写导航，
+    // `load` 提交 = 旧文档（旧心跳源）已死——比"心跳停了"更早的确定性信号。
+    await page.eval(`(() => {
+      const f = document.querySelector('#hr-foreign-frame');
+      f.__hrLoads = 0;
+      f.addEventListener('load', () => { f.__hrLoads += 1; });
+      return true;
+    })()`);
     const switched = await page.eval(`(() => {
       const sel = document.querySelector('#hr-theme-select');
       sel.value = ${JSON.stringify(target)};
@@ -171,7 +179,14 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
     assert(off === true, "主题写盘后 trust 没有失效回 off");
     const themeWritten = (await readFile(docPath(home.ws, DOC), "utf8")).includes('id="hr-theme"');
     assert(themeWritten, "主题 <style id=hr-theme> 没有写进文件");
-    // iframe 被 doc.changed 重载、服务端 CSP 按 off 档收口：心跳应停。
+    // iframe 被 doc.changed 重载、服务端 CSP 按 off 档收口：导航提交与 sandbox 收紧先钉死。
+    const reloaded = await page.wait(
+      `(() => { const f = document.querySelector('#hr-foreign-frame'); return f && f.__hrLoads >= 1 && f.getAttribute('sandbox') === ''; })()`,
+      15_000,
+    );
+    assert(reloaded === true, "trust 失效后 iframe 没有按 off 档重载");
+    // 剩下的负向窗口只证"在途心跳已尽"：postMessage 已派发的帧导航后仍可送达，
+    // 这段窗量的是排空余量，不是事件本身的时序。
     const stopped = await page.wait(
       `new Promise(resolve => {
         const before = window.__foreignMsgs.length;
@@ -197,8 +212,13 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
     );
     assert(back === true, "undo 回原 sha 后 trust 没有恢复 local");
     // iframe 再重载：sandbox 仍是 allow-scripts + CSP 回到 local → 心跳恢复。
-    const beatingAgain = await beating(1500);
-    assert(beatingAgain, "信任恢复后外来脚本没有复活");
+    // 正向等待：等到"计数涨过采样值"就算活，不睡固定窗口再比大小。
+    const beforeBeats = await msgCount();
+    const beatingAgain = await page.wait(
+      `Array.isArray(window.__foreignMsgs) && window.__foreignMsgs.length > ${String(beforeBeats)}`,
+      15_000,
+    );
+    assert(beatingAgain === true, "信任恢复后外来脚本没有复活");
   });
 
   test("hr import 收编为 *.hr.html：原文件字节不变，进入托管流程", async () => {

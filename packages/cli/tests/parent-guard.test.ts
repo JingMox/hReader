@@ -16,7 +16,7 @@ import {
   startWatched,
   stopHandle,
   timerStillHoldsProcess,
-  settle,
+  waitGone,
 } from "./serve-helpers";
 import { run } from "../src/run";
 
@@ -316,7 +316,7 @@ describe("run · --exit-with-parent 从 argv 到看门狗", () => {
         },
       );
       stop();
-      await settle();
+      await waitGone(join(dir.home, ".hreader", "daemon.json"));
 
       expect(code).toBe(0);
       expect(out.join("")).toContain('"port":');

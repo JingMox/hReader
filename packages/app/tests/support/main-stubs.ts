@@ -222,6 +222,15 @@ export const flush = async (ms = 0): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 };
 
+/** 有界条件等待：桩的副作用（fetched/calls/bySelector 写入）同步可见，等它出现而不是睡固定毫秒。 */
+export const until = async (ready: () => boolean, what: string): Promise<void> => {
+  const deadline = Date.now() + 3_000;
+  while (!ready() && Date.now() < deadline) {
+    await flush();
+  }
+  if (!ready()) throw new Error(`等「${what}」超时`);
+};
+
 export const load = async (): Promise<void> => {
   vi.resetModules();
   await import("../../src/main.ts");

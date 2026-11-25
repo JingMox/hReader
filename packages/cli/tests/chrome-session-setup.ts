@@ -8,6 +8,7 @@ import {
   fakePageOf,
   type FakeBrowser,
   type FakeChrome,
+  type FakePage,
   type FakePageOptions,
 } from "./chrome-helpers";
 
@@ -19,6 +20,7 @@ export const DEVTOOLS_LINE = "DevTools listening on ws://127.0.0.1:9222/devtools
 export interface SessionSetup {
   readonly fake: FakeChrome;
   readonly browser: FakeBrowser;
+  readonly page: FakePage;
   readonly dirs: string[];
   readonly spawnedArgs: string[][];
   readonly deps: ReturnType<typeof depsWithOf>;
@@ -26,7 +28,8 @@ export interface SessionSetup {
 
 export const renderSetupOf = (options: FakePageOptions = { pages: 2 }): SessionSetup => {
   const fake = fakeChromeOf();
-  const browser = fakeBrowserOf(fakePageOf(options));
+  const page = fakePageOf(options);
+  const browser = fakeBrowserOf(page);
   const dirs: string[] = [];
   const spawnedArgs: string[][] = [];
   const deps = depsWithOf({
@@ -38,7 +41,7 @@ export const renderSetupOf = (options: FakePageOptions = { pages: 2 }): SessionS
       spawnedArgs.push([...args]);
     },
   });
-  return { fake, browser, dirs, spawnedArgs, deps };
+  return { fake, browser, page, dirs, spawnedArgs, deps };
 };
 
 type PdfInput = Parameters<typeof renderPdfOf>[0];
