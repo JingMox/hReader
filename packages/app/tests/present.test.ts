@@ -205,7 +205,26 @@ describe("present · 入口按钮与页码", () => {
     // kind 读的是挂载出的 `<article>` 的 DOM 属性：主题 CSS 里就含 `data-hr-kind="slides"` 选择器文本，
     // 对 `documentHtml` 做字符串匹配会连 note 文档都误判成 slides。
     fake.all.set(kindSelector, [fakeElement("article")]);
-    widget.update(stateOf({ documentHtml: SLIDES_HTML }));
+    widget.update(stateOf({ documentHtml: SLIDES_HTML, pages: ["hr-a"] }));
+    hidden = fake.calls.filter(
+      (call) => call.op === "attr" && call.args[0] === `${ROOT} #hr-present-btn`,
+    );
+    expect(hidden.at(-1)?.args[2]).toBe("<removed>");
+  });
+
+  it("should keep the button hidden until the page table arrives", () => {
+    const fake = createFakeHost();
+    const widget = mountOf(fake, shellOf().shell);
+    fake.all.set(kindSelector, [fakeElement("article")]);
+    // 记账帧先到：slides 的 <article> 已渲染但页表还没回来——此刻放出按钮，
+    // 点击发的 presentEntered 会被 reduce 拒掉（pages 空），用户点的是死按钮。
+    widget.update(stateOf({ documentHtml: SLIDES_HTML, pages: [] }));
+    let hidden = fake.calls.filter(
+      (call) => call.op === "attr" && call.args[0] === `${ROOT} #hr-present-btn`,
+    );
+    expect(hidden.at(-1)?.args[2]).toBe("");
+    // 页表随水合帧落地：按钮这才放出来。
+    widget.update(stateOf({ documentHtml: SLIDES_HTML, pages: ["hr-a"] }));
     hidden = fake.calls.filter(
       (call) => call.op === "attr" && call.args[0] === `${ROOT} #hr-present-btn`,
     );
