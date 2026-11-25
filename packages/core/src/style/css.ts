@@ -67,6 +67,9 @@ const normalizedOf = (css: string): string =>
 
 /** 注入前必过：主题 CSS 只能静态，不能联网、不能逃出 `<style>`。 */
 export const assertThemeSafe = (css: string): void => {
+  // `</style` 要在归一化之前查：注释剥掉会把 `/*</style>*/` 洗成空格，但那串字节照样落进样式块、
+  // 照样终结 raw text（注释里的普通 `<` 如 `<article` 不终结，仍走归一化后的 `<` 禁则放行不了注释外）。
+  if (/<\/style/iu.test(css)) throw invalidTheme("禁止出现 `</style`（防止逃出样式块）");
   const normalized = normalizedOf(css);
   for (const rule of FORBIDDEN) {
     if (rule.pattern.test(normalized)) throw invalidTheme(rule.reason);
