@@ -272,4 +272,85 @@ describe("foreign · destroy", () => {
     // allow-scripts 档的脚本只有换源才停：撤 src 比摘 iframe 更彻底。
     expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
   });
+
+  it("should swallow a trust write that lands after destroy instead of resurrecting the frame", async () => {
+    const fake = createFakeHost();
+    let release: (value: "off" | "local") => void = () => undefined;
+    const handle = mountForeign(
+      depsOf(fake, {
+        setTrust: () =>
+          new Promise<"off" | "local">((resolve) => {
+            release = resolve;
+          }),
+      }),
+    );
+
+    fake.fire(ACTION, "click", {});
+    handle.destroy();
+
+    // 用户点了"允许脚本"又立刻切走：promise 落地时外壳已归还，横幅不能复活、src 不能回写。
+    release("local");
+    await flush();
+
+    expect(attrsOf(fake, BANNER, "hidden").at(-1)).toBe("");
+    expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
+    expect(attrsOf(fake, FRAME, "sandbox").at(-1)).toBe("");
+  });
+
+  it("should swallow a normalize failure that lands after destroy", async () => {
+    const fake = createFakeHost();
+    let reject: (cause: unknown) => void = () => undefined;
+    const handle = mountForeign(
+      depsOf(fake, {
+        info: { cls: "normalizable", trust: "off", scripts: false },
+        normalize: () =>
+          new Promise<void>((_resolve, rej) => {
+            reject = rej;
+          }),
+      }),
+    );
+
+    fake.fire(ACTION, "click", {});
+    handle.destroy();
+
+    reject(new Error("迟到失败"));
+    await flush();
+
+    // 迟到的错误同样不许复活横幅——否则 managed 文档的壳上挂着外来横幅。
+    expect(attrsOf(fake, BANNER, "hidden").at(-1)).toBe("");
+    expect(lastText(fake, ERROR)).toBe("");
+  });
+
+  it("should swallow a trust rejection that lands after destroy", async () => {
+    const fake = createFakeHost();
+    let reject: (cause: unknown) => void = () => undefined;
+    const handle = mountForeign(
+      depsOf(fake, {
+        setTrust: () =>
+          new Promise<"off" | "local">((_resolve, rej) => {
+            reject = rej;
+          }),
+      }),
+    );
+
+    fake.fire(ACTION, "click", {});
+    handle.destroy();
+
+    reject(new Error("迟到拒绝"));
+    await flush();
+
+    expect(attrsOf(fake, BANNER, "hidden").at(-1)).toBe("");
+    expect(lastText(fake, ERROR)).toBe("");
+  });
+
+  it("should ignore a refresh that arrives after destroy", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(depsOf(fake));
+
+    handle.destroy();
+    handle.refresh("late");
+
+    // 销毁后的事件（close 前挤进来的 doc.changed）不许回写 src。
+    expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
+  });
 });
