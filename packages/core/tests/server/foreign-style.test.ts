@@ -19,17 +19,13 @@ const foreignSeed = (workspace: string): void => {
   writeFileSync(join(workspace, "doc.html"), FOREIGN, "utf8");
 };
 
-const post = (
-  ctx: TestServer,
-  path: string,
-  body: Readonly<Record<string, unknown>>,
-): Promise<{ readonly status: number; readonly body: string }> =>
+const post = (ctx: TestServer, path: string, body: Readonly<Record<string, unknown>>) =>
   httpCall(ctx.port, {
     method: "POST",
     path,
     headers: withPost(ctx.token),
     body: JSON.stringify(body),
-  }).then((response) => ({ status: response.status, body: response.body }));
+  });
 
 const applyTheme = (ctx: TestServer, visualId: string, docId = "doc.html") =>
   post(ctx, "/api/style", { docId, visualId });
