@@ -267,14 +267,20 @@ export const styleReply = async (
   const { docId, visualId } = parseBody(styleBody, body);
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
-  const beforeModel = modelOf(before, target.realPath);
+  const parsed = parseHtml(decodeUtf8(before, target.realPath));
+  // 外来文档没有可派生模型，但换主题是确认的例外：`applyStyle` 只拼接
+  // `<style id="hr-theme">` 区间。跳过派生与 diff，才不会先写盘再 422；
+  // 内容写（patch/批注）依旧先派生再放行，零写盘拒绝。
+  const foreign = classifyDocument(parsed).cls === "foreign";
+  const beforeModel = foreign ? undefined : toDocumentModel(parsed);
   const result = await busy(() =>
     applyStyle({ workspace: ctx.workspace, file: docId, visualId }, ctx.styleDeps, {
       lockTimeoutMs: lockMs,
     }),
   );
   const after = await bytesOf(ctx, target);
-  const changedNodes = result.changed ? diffOf(beforeModel, after, target.realPath) : [];
+  const changedNodes =
+    beforeModel !== undefined && result.changed ? diffOf(beforeModel, after, target.realPath) : [];
   return {
     reply: jsonReply(200, { changed: result.changed, revision: revisionOf(after), changedNodes }),
     target,

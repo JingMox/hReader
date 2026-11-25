@@ -137,13 +137,12 @@ describe("foreign doc · /api/style", () => {
 
         expect(response.status).toBe(200);
         const html = readFileSync(ctx.file, "utf8");
-        // 主题块插进 `</head>` 之前；BOM 与块外的 CRLF 逐字节不动（块内换行来自主题 CSS 本身）。
-        expect(
-          html.startsWith("\ufeff<!doctype html>\r\n<html><head><title>b</title>"),
-        ).toBe(true);
-        expect(
-          html.endsWith("</style></head>\r\n<body><p>带 BOM 的外来页</p></body></html>\r\n"),
-        ).toBe(true);
+        // BOM 先于 doctype 时 `replaceTheme` 按既有口径在 prologue 后补一个合成 head；
+        // 原文件的 BOM、doctype 与块外 CRLF 仍逐字节保留（块内换行来自主题 CSS 本身）。
+        expect(html.startsWith("\ufeff<!doctype html>")).toBe(true);
+        expect(html).toContain(
+          "</style></head>\r\n<html><head><title>b</title></head>\r\n<body><p>带 BOM 的外来页</p></body></html>\r\n",
+        );
         expect(countThemeAnchors(html)).toBe(1);
       },
       (workspace) => {
