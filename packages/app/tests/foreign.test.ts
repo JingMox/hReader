@@ -36,6 +36,7 @@ const depsOf = (fake: FakeHost, over: Partial<ForeignDeps> = {}): ForeignDeps =>
   info: { cls: "foreign", trust: "off", scripts: true },
   setTrust: (level) => Promise.resolve(level),
   normalize: () => Promise.resolve(),
+  theme: undefined,
   ...over,
 });
 

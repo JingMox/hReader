@@ -19,6 +19,7 @@ const depsOf = (host: ReturnType<typeof createFakeHost>["host"]): ForeignDeps =>
   info: { cls: "foreign", trust: "off", scripts: true },
   setTrust: (level) => Promise.resolve(level),
   normalize: () => Promise.resolve(),
+  theme: undefined,
 });
 
 describe("foreign · sandbox/src 落位顺序", () => {

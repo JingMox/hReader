@@ -1,5 +1,5 @@
 // 这层管：入口 `main` 的"info 先分档"端到端——
-// foreign 只发一个 /info 就进 iframe 壳（model/theme/正文一概不拉），
+// foreign 只发 /info + /api/theme 就进 iframe 壳（正文与 model/outline 一概不拉），
 // normalizable 一键规范化后重进 managed（那时才拉主题与正文）。
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -89,8 +89,9 @@ describe("main · 外来文档首屏", () => {
     const root = installForeignDom();
     await load();
 
-    // 分流的硬边界：iframe 自己加载 /s/，阅读器不拉正文、不拉主题、不拉 model/outline。
-    expect(stubs.fetched).toEqual(["/api/doc/doc.html/info"]);
+    // 分流的硬边界：iframe 自己加载 /s/，阅读器只多拿主题清单（下拉要画选项），
+    // 正文与 model/outline 一概不拉。
+    expect(stubs.fetched).toEqual(["/api/doc/doc.html/info", "/api/theme"]);
 
     const frame = el(FRAME);
     expect(root.attrs.get("data-hr-doc")).toBe("framed");
@@ -154,7 +155,11 @@ describe("main · 信任开关（POST /trust）", () => {
     const io: AppIo = {
       text: () => Promise.resolve(""),
       json: (path, guard) => {
-        const candidate: unknown = path.endsWith("/info") ? foreignInfo : {};
+        const candidate: unknown = path.endsWith("/info")
+          ? foreignInfo
+          : path === "/api/theme"
+            ? { themes: ["atelier-editorial"], default: "atelier-editorial" }
+            : {};
         return guard(candidate)
           ? Promise.resolve(candidate)
           : Promise.reject(new Error(`${path} → 响应形状不符`));

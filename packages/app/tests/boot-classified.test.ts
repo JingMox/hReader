@@ -55,6 +55,9 @@ const classifiedOf = (
     },
     postTrust: (level) => Promise.resolve(level),
     postNormalize: () => Promise.resolve({ revision: "r2", cls: "managed" }),
+    fetchThemes: () =>
+      Promise.resolve({ themes: ["atelier-editorial"], default: "atelier-editorial" }),
+    postStyle: () => Promise.resolve({ changed: true, revision: "r2" }),
     ...over,
   };
   return { deps, handlers, pageCalls };
@@ -260,5 +263,195 @@ describe("bootDocument · normalize 重进", () => {
     booted.destroy();
 
     expect(h.fake.calls.length).toBe(callsAfterFirst);
+  });
+});
+
+const SELECT = `${ROOT} #hr-theme-select`;
+const THEME_LABEL = `${ROOT} #hr-theme-label`;
+
+interface OptionSpec {
+  readonly attrs?: { readonly value?: string; readonly selected?: string };
+}
+
+const optionSpecsOf = (h: Harness): readonly OptionSpec[] => {
+  const call = h.fake.calls.find((c) => c.op === "children" && c.args[0] === SELECT);
+  return call === undefined ? [] : (JSON.parse(call.args[1] ?? "[]") as OptionSpec[]);
+};
+
+describe("bootDocument · 信任对账", () => {
+  it("should re-pull info on doc.changed and re-sandbox when trust dropped server-side", async () => {
+    let current: DocInfo = { revision: "r1", cls: "foreign", trust: "local", scripts: true };
+    const h = harnessOf(true);
+    const { deps, handlers } = classifiedOf(h, () => current);
+    const booted = await bootDocument(deps);
+    expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
+
+    // 外部写盘（比如换了主题）：sha 变了，服务端信任档随之失效。
+    current = { revision: "r2", cls: "foreign", trust: "off", scripts: true };
+    handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
+    await flush();
+
+    expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("");
+    expect(lastText(h, TEXT)).toContain(COPY.foreignScriptsOff);
+    // 事件刷新一次 + sandbox 收紧必须重载一次。
+    expect(attrsOf(h, FRAME, "src")).toEqual([
+      "/s/doc.html",
+      "/s/doc.html?r=r2",
+      "/s/doc.html?r=n1",
+    ]);
+    booted.destroy();
+  });
+
+  it("should restore the banner and sandbox when undo returns a trusted sha", async () => {
+    let current: DocInfo = { revision: "r1", cls: "foreign", trust: "off", scripts: true };
+    const h = harnessOf(true);
+    const { deps, handlers } = classifiedOf(h, () => current);
+    await bootDocument(deps);
+
+    current = { revision: "r2", cls: "foreign", trust: "local", scripts: true };
+    handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
+    await flush();
+
+    expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
+    expect(lastText(h, TEXT)).toContain(COPY.foreignScriptsOn);
+    expect(lastText(h, ACTION)).toBe(COPY.foreignDisallow);
+  });
+
+  it("should swap the banner when the doc re-classifies normalizable → foreign", async () => {
+    let current: DocInfo = { revision: "r1", cls: "normalizable" };
+    const h = harnessOf(true);
+    const { deps, handlers } = classifiedOf(h, () => current);
+    await bootDocument(deps);
+    expect(lastText(h, TEXT)).toBe(COPY.normalizableBanner);
+
+    current = { revision: "r2", cls: "foreign", trust: "off", scripts: true };
+    handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
+    await flush();
+
+    expect(lastText(h, TEXT)).toContain(COPY.foreignReadonly);
+    expect(lastText(h, ACTION)).toBe(COPY.foreignAllow);
+    expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("");
+  });
+
+  it("should re-boot as managed when the file was overwritten into a managed doc", async () => {
+    let current: DocInfo = { revision: "r1", cls: "foreign", trust: "off", scripts: true };
+    const h = harnessOf(true);
+    const { deps, handlers, pageCalls } = classifiedOf(h, () => current);
+    await bootDocument(deps);
+
+    current = managedInfo;
+    handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
+    await flush();
+
+    expect(pageCalls.count).toBe(1);
+    expect(h.fake.ops()).toContain("html");
+    expect(h.closed()).toBe(true);
+  });
+
+  it("should settle to the latest server state across rapid consecutive changes", async () => {
+    const queue: DocInfo[] = [
+      { revision: "r2", cls: "foreign", trust: "off", scripts: true },
+      { revision: "r3", cls: "foreign", trust: "local", scripts: true },
+    ];
+    const h = harnessOf(true);
+    let pulls = 0;
+    const { deps, handlers } = classifiedOf(h, () => foreignInfo, {
+      fetchInfo: () => {
+        pulls += 1;
+        // 第一次是分流那次；之后每次对账都取队列头。
+        return Promise.resolve(
+          queue.shift() ?? { revision: "r3", cls: "foreign", trust: "local", scripts: true },
+        );
+      },
+    });
+    await bootDocument(deps);
+
+    handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
+    handlers.current?.onEvent({ id: 2, type: "doc.changed", payload: { revision: "r3" } });
+    await flush();
+
+    // 两次对账都跑完，最终状态以最后一次服务端值为准。
+    expect(pulls).toBe(3);
+    expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
+    expect(lastText(h, TEXT)).toContain(COPY.foreignScriptsOn);
+  });
+});
+
+describe("bootDocument · 外来主题", () => {
+  it("should list the server themes in the select for foreign docs", async () => {
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, {
+      fetchThemes: () =>
+        Promise.resolve({
+          themes: ["atelier-editorial", "deck-noir"],
+          default: "atelier-editorial",
+        }),
+    });
+    await bootDocument(deps);
+
+    expect(lastText(h, THEME_LABEL)).toBe(COPY.controlsTheme);
+    expect(optionSpecsOf(h).map((spec) => spec.attrs?.value)).toEqual([
+      "atelier-editorial",
+      "deck-noir",
+    ]);
+    expect(attrsOf(h, SELECT, "value").at(-1)).toBe("atelier-editorial");
+  });
+
+  it("should POST /api/style and reload the iframe after a theme switch", async () => {
+    const posted: string[] = [];
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, {
+      fetchThemes: () =>
+        Promise.resolve({
+          themes: ["atelier-editorial", "deck-noir"],
+          default: "atelier-editorial",
+        }),
+      postStyle: (id) => {
+        posted.push(id);
+        return Promise.resolve({ changed: true, revision: "r2" });
+      },
+    });
+    await bootDocument(deps);
+
+    h.fake.fire(SELECT, "change", { value: "deck-noir" });
+    await flush();
+
+    expect(posted).toEqual(["deck-noir"]);
+    // 写盘成功后重载 iframe：新主题随 /s/ 文档一起进壳。
+    expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html", "/s/doc.html?r=n1"]);
+  });
+
+  it("should roll the select back and surface the error when the write fails", async () => {
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, {
+      fetchThemes: () =>
+        Promise.resolve({
+          themes: ["atelier-editorial", "deck-noir"],
+          default: "atelier-editorial",
+        }),
+      postStyle: () => Promise.reject(new Error("写盘失败")),
+    });
+    await bootDocument(deps);
+
+    h.fake.fire(SELECT, "change", { value: "deck-noir" });
+    await flush();
+
+    expect(attrsOf(h, SELECT, "value").at(-1)).toBe("atelier-editorial");
+    expect(lastText(h, ERROR)).toBe("写盘失败");
+    // 失败路径不重载 iframe。
+    expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html"]);
+  });
+
+  it("should leave the select unwired when the theme list is empty", async () => {
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, {
+      fetchThemes: () => Promise.resolve({ themes: [], default: "" }),
+    });
+    await bootDocument(deps);
+
+    expect(optionSpecsOf(h)).toEqual([]);
+    h.fake.fire(SELECT, "change", { value: "deck-noir" });
+    await flush();
+    expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html"]);
   });
 });
