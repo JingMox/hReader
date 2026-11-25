@@ -16,19 +16,16 @@ import { checked, seed } from "./cli-support";
 import { runCli, withTempDir } from "./harness";
 
 describe("怪异文件名（真子进程）", () => {
-  it.each(["带 空格.html", "中文文档.html", "emoji 🚀.html"])(
-    "should outline %s",
-    async (name) => {
-      await withTempDir(async (raw) => {
-        const dir = realpathSync(raw);
-        seed(dir, name);
-        const result = checked(await runCli(["outline", name], { cwd: dir }));
+  it.each(["带 空格.html", "中文文档.html", "emoji 🚀.html"])("should outline %s", async (name) => {
+    await withTempDir(async (raw) => {
+      const dir = realpathSync(raw);
+      seed(dir, name);
+      const result = checked(await runCli(["outline", name], { cwd: dir }));
 
-        expect(result.code).toBe(0);
-        expect(result.stdout).toContain("标题");
-      });
-    },
-  );
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("标题");
+    });
+  });
 
   it("should reject a dash-leading filename as an option, then accept it after --", async () => {
     await withTempDir(async (raw) => {
@@ -134,9 +131,7 @@ describe("hr import · 文件系统矩阵（真子进程）", () => {
       const dir = realpathSync(raw);
       writeFileSync(join(dir, "src.html"), FOREIGN);
 
-      const result = checked(
-        await runCli(["import", "src.html", "--kind", "bogus"], { cwd: dir }),
-      );
+      const result = checked(await runCli(["import", "src.html", "--kind", "bogus"], { cwd: dir }));
 
       expect(result.code).toBe(2);
       expect(result.stderr).toContain("--kind");

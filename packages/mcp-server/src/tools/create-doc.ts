@@ -14,12 +14,7 @@ import { z } from "zod";
 
 import { guarded, okResult } from "../errors";
 import { docIdOf, UI_URI_PREFIX } from "../ui";
-import {
-  FILE_PATH_HINT,
-  assertInsideWorkspace,
-  createNewFileOf,
-  documentTargetOf,
-} from "./target";
+import { FILE_PATH_HINT, assertInsideWorkspace, createNewFileOf, documentTargetOf } from "./target";
 
 export const createDocShape = {
   filePath: z.string().min(1).describe(FILE_PATH_HINT),

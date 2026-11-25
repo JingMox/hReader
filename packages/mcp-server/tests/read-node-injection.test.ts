@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { codeOf, isErrorResultOf, sessionOf, textOf } from "./harness";
 
 const DOC = [
-  "<!doctype html><html><body><article data-hr-id=\"hr-0\">",
+  '<!doctype html><html><body><article data-hr-id="hr-0">',
   '<section data-hr-id="s1"><p data-hr-id="p-1">第一段</p></section>',
   '<section data-hr-id="s2"><img data-hr-id="i-1" alt="占位"></section>',
   "</article></body></html>",

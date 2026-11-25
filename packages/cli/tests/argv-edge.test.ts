@@ -7,12 +7,14 @@ import { CWD, expectFailure, parse } from "./args-helpers";
 
 describe("argv · 重复旗标（后值赢）", () => {
   it("should let the last occurrence win for string flags", () => {
-    expect(
-      parse(["import", "a.html", "--kind", "report", "--kind", "brief"]),
-    ).toMatchObject({ ok: true, intent: { docKind: "brief" } });
-    expect(
-      parse(["export", "a.html", "--out", "one.html", "--out", "two.html"]),
-    ).toMatchObject({ ok: true, intent: { out: `${CWD}/two.html` } });
+    expect(parse(["import", "a.html", "--kind", "report", "--kind", "brief"])).toMatchObject({
+      ok: true,
+      intent: { docKind: "brief" },
+    });
+    expect(parse(["export", "a.html", "--out", "one.html", "--out", "two.html"])).toMatchObject({
+      ok: true,
+      intent: { out: `${CWD}/two.html` },
+    });
   });
 
   it("should let the last --visual win too", () => {
@@ -127,9 +129,10 @@ describe("argv · 边界取值", () => {
   });
 
   it("should treat `--html=` as an empty inline fragment (command layer rejects it)", () => {
-    expect(
-      parse(["patch", "a.html", "x", "--action", "replace", "--html="]),
-    ).toMatchObject({ ok: true, intent: { html: { kind: "inline", text: "" } } });
+    expect(parse(["patch", "a.html", "x", "--action", "replace", "--html="])).toMatchObject({
+      ok: true,
+      intent: { html: { kind: "inline", text: "" } },
+    });
   });
 
   it("should carry unicode filenames through unchanged", () => {

@@ -161,10 +161,7 @@ const TMP_PREFIX = ".hr-create-";
  * tmp 内容由 `writeFileAtomic` 先落定（fsync + 权限沿用），任何一步失败 tmp 都被收走。
  * mkdir 的 EEXIST（中间段是文件）与 link 的 EEXIST（目标已存在）是两回事，分开折。
  */
-export const createNewFileOf = async (
-  target: DocumentTarget,
-  html: string,
-): Promise<void> => {
+export const createNewFileOf = async (target: DocumentTarget, html: string): Promise<void> => {
   const dir = dirname(target.absolute);
   const tmp = join(dir, `${TMP_PREFIX}${randomUUID()}`);
   try {

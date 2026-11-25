@@ -81,7 +81,7 @@ describe("dist/cli.mjs · 写盘路径", () => {
     await withTempDir(async (dir) => {
       writeFileSync(
         join(dir, "src.html"),
-        '<!doctype html><html><body><main><section><h1>外来</h1></section></main></body></html>',
+        "<!doctype html><html><body><main><section><h1>外来</h1></section></main></body></html>",
       );
 
       const imported = await runDist(["import", "src.html"], dir);

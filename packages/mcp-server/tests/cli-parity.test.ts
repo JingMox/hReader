@@ -19,7 +19,7 @@ const CLI_MAIN = fileURLToPath(new URL("../../cli/src/main.ts", import.meta.url)
 const FOREIGN = [
   "<!doctype html><html><head><title>外来演示</title>",
   "<script>boot()</script></head>",
-  "<body><main><section><h1>页一</h1><p onclick=\"x()\">要点</p></section>",
+  '<body><main><section><h1>页一</h1><p onclick="x()">要点</p></section>',
   "<section><h1>页二</h1><p>收束</p></section></main></body></html>",
 ].join("");
 
@@ -89,7 +89,10 @@ describe("MCP ↔ CLI · apply_style 字节一致", () => {
     await writeFile(join(dir, "cli", "doc.html"), DOC, "utf8");
     await writeFile(join(dir, "mcp", "doc.html"), DOC, "utf8");
 
-    const cliCode = await runCli(["style", "doc.html", "--visual", "atelier-editorial"], join(dir, "cli"));
+    const cliCode = await runCli(
+      ["style", "doc.html", "--visual", "atelier-editorial"],
+      join(dir, "cli"),
+    );
     const session = await sessionOf();
     const isError = await mcpCall(session, "hr_apply_style", {
       filePath: "doc.html",

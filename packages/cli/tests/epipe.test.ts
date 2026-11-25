@@ -13,10 +13,7 @@ import { epipeGuard } from "../src/epipe";
 import { MAIN, withTempDir, type CliResult } from "./harness";
 
 /** 读端建管即毁：子进程第一口写满缓冲后，下一口必撞 EPIPE（产物 >64KiB 时确定发生）。 */
-const runCliClosedStdout = async (
-  args: readonly string[],
-  cwd: string,
-): Promise<CliResult> =>
+const runCliClosedStdout = async (args: readonly string[], cwd: string): Promise<CliResult> =>
   new Promise<CliResult>((resolve, reject) => {
     const child = spawn(process.execPath, ["--experimental-strip-types", MAIN, ...args], {
       cwd,
