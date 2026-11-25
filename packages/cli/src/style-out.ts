@@ -6,6 +6,7 @@ import { projectStylePath, STYLE_FILE, userStyleDir } from "@hreader/core";
 import type { StyleDeps } from "@hreader/core";
 
 import { realpathThroughAncestors } from "./canonical";
+import { term } from "./output";
 
 /**
  * 发现链只有两条（`packages/core/src/style/load.ts` 的 `resolveStyle`）：项目级
@@ -22,4 +23,6 @@ export const isDiscoveredStylePath = (path: string, id: string, deps: StyleDeps)
 
 /** 提示文案：不报错，只把"怎么写才接得上"说清楚。 */
 export const undiscoveredHint = (path: string, id: string, deps: StyleDeps): string =>
-  `提示：${path} 不在风格发现路径里；要让 --tone ${id} 找到它，请写到 ${projectStylePath(deps)} 或 ${join(userStyleDir(id, deps), STYLE_FILE)}\n`;
+  term(
+    `提示：${path} 不在风格发现路径里；要让 --tone ${id} 找到它，请写到 ${projectStylePath(deps)} 或 ${join(userStyleDir(id, deps), STYLE_FILE)}\n`,
+  );

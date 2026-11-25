@@ -38,6 +38,24 @@ type DroppedItem = ExtractStyleLlmResult["dropped"][number];
 const quote = (value: string): string => JSON.stringify(value);
 
 /**
+ * 人读回执的终端安全化：标题、文件名、诊断正文来自不受信的文档与磁盘，
+ * 原样写进终端能染色、挪光标、OSC 8 挂假链接、bidi 反转显示。
+ * 先整段剥 CSI/OSC 序列，再清残余的 C0/C1/DEL 与 bidi 覆盖符；
+ * \n 与 \t 是回执自己的排版（不是注入向量），留着。
+ * `--json` 不走这里：`JSON.stringify` 已逐字转义，剥字符反而是改数据。
+ * 文档产物（`humanExport` 的 html、`humanTone` 的 prompt）同样不走：它们是可以重定向落盘的字节契约。
+ */
+/* eslint-disable no-control-regex -- 这三条就是在匹配控制字符：整段剥 CSI/OSC、清残余 C0/C1/DEL。 */
+const CSI = /\x1b\[[0-?]*[ -/]*[@-~]/g;
+const OSC = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+const CONTROL = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
+/* eslint-enable no-control-regex -- 控制字符匹配到此为止。 */
+const BIDI = /[\u202a-\u202e\u2066-\u2069]/g;
+
+export const term = (text: string): string =>
+  text.replace(OSC, "").replace(CSI, "").replace(CONTROL, "").replace(BIDI, "");
+
+/**
  * 回执里的路径一律按用户视角回显：文档在 cwd 内就用相对 cwd 的形式（用户本来就是这么写的），
  * 在 cwd 外（或 cwd 就是它）才印绝对路径。命令层只知道 workspace 相对名、`--out` 只知道真实路径，
  * 所以"用户给的串"只能由分发层（`run.ts`）算好后传进来；所有印路径的回执必须走同一口径。
@@ -141,7 +159,7 @@ export const dataExport = (report: PrintHtmlResult, out: string | null): string 
 export const humanExport = (report: PrintHtmlResult): string => report.html;
 
 export const humanExportWritten = (out: string, bytes: number): string =>
-  `exported ${out} (${String(bytes)} bytes)\n`;
+  term(`exported ${out} (${String(bytes)} bytes)\n`);
 
 /** `pdf` 是产物的 base64：`--json` 要么给全部字节，要么不给（与 `dataExport` 的 `html` 同一取舍）。
  * `outline` 是**产物里的大纲条目数**（读 PDF 的 `/Outlines` 树）：`--no-outline` 或无标题时为 0。 */
@@ -158,7 +176,7 @@ export const dataPdf = (report: PdfReport): string =>
   `"outline":${String(report.outline)},"out":${quote(report.out)}}`;
 
 export const humanPdf = (report: PdfReport, path: string = report.out): string =>
-  `${path} (${String(report.pages)} 页, ${String(report.outline)} 条书签)\n`;
+  term(`${path} (${String(report.pages)} 页, ${String(report.outline)} 条书签)\n`);
 
 /** `png` 与 `pdf` 同一取舍：`--json` 给整张图的 base64；`width`/`height` 是反读 IHDR 的设备像素
 （已乘 `--scale`，与 `--width`/`--max-height` 的 CSS 像素不是一套口径，别直接对比）。 */
@@ -175,11 +193,13 @@ export const dataPng = (report: PngReport): string =>
   `{"png":${quote(report.base64)},"bytes":${String(report.bytes)},"width":${String(report.width)},"height":${String(report.height)},"clipped":${String(report.clipped)},"out":${quote(report.out)}}`;
 
 export const humanPng = (report: PngReport, path: string = report.out): string =>
-  `exported ${path} (${String(report.bytes)} bytes, ${String(report.width)}×${String(report.height)}${report.clipped ? ", clipped" : ""})\n`;
+  term(
+    `exported ${path} (${String(report.bytes)} bytes, ${String(report.width)}×${String(report.height)}${report.clipped ? ", clipped" : ""})\n`,
+  );
 
 const outlineLines = (nodes: readonly OutlineNode[], depth: number): readonly string[] =>
   nodes.flatMap((node) => [
-    `${"  ".repeat(depth)}- ${node.id}  ${node.text}  (${String(node.wordCount)}w)`,
+    `${"  ".repeat(depth)}- ${term(node.id)}  ${term(node.text)}  (${String(node.wordCount)}w)`,
     ...outlineLines(node.children, depth + 1),
   ]);
 
@@ -189,19 +209,19 @@ const outlineLines = (nodes: readonly OutlineNode[], depth: number): readonly st
  */
 export const humanOutline = (outline: Outline, displayPath = "<文件>"): string =>
   outline.nodes.length === 0
-    ? `（没有标题）\n本文没有标题；用 hr read ${displayPath} <nodeId|selector> 取内容\n`
+    ? term(`（没有标题）\n本文没有标题；用 hr read ${displayPath} <nodeId|selector> 取内容\n`)
     : [...outlineLines(outline.nodes, 0), ""].join("\n");
 
 /** 人读模式下的诊断行：与 `--json` 的 `diagnostics` 同源，只是压成一行。 */
 export const humanDiagnostic = (diagnostic: DiagnosticShape): string =>
-  `${diagnostic.severity}: ${diagnostic.message}\n`;
+  term(`${diagnostic.severity}: ${diagnostic.message}\n`);
 
 /** 截断不能只写在 JSON 的 `diagnostics` 里：人读模式的 stdout 与未截断时逐字相同，用户只会以为节点就这么长。
  * 打的是 core 那条 `truncated_output` 原文（不另排一套数字）：两个输出源同源，就不会各说一套。
  */
 export const humanRead = (result: ReadNodeResult): string => {
   const truncation = result.diagnostics.find((item) => item.code === "truncated_output");
-  return `${result.html}\n${truncation === undefined ? "" : `${truncation.message}\n`}`;
+  return `${result.html}\n${truncation === undefined ? "" : `${term(truncation.message)}\n`}`;
 };
 
 /**
@@ -214,33 +234,43 @@ export const humanPatch = (result: PatchResult, path: string = result.path): str
     .map((diagnostic) => `warning: ${diagnostic.code} — ${diagnostic.message}\n`)
     .join("");
   if (!result.changed) {
-    return `unchanged ${path} (${String(result.bytes)} bytes)\n${warnings}`;
+    return term(`unchanged ${path} (${String(result.bytes)} bytes)\n${warnings}`);
   }
   const replaced = result.replacedIds;
   if (replaced.length === 0) {
     const ids = result.newIds.length === 0 ? "" : ` ids: ${result.newIds.join(", ")}`;
-    return `patched ${path} (${String(result.bytes)} bytes, +${String(result.newIds.length)}${ids})\n${warnings}`;
+    return term(
+      `patched ${path} (${String(result.bytes)} bytes, +${String(result.newIds.length)}${ids})\n${warnings}`,
+    );
   }
   const mapped = new Set(replaced.map((pair) => pair.to));
   const extras = result.newIds.filter((id) => !mapped.has(id));
   const extraText =
     extras.length === 0 ? "" : `, +${String(extras.length)} ids: ${extras.join(", ")}`;
   const pairs = replaced.map((pair) => `${pair.from} → ${pair.to}`).join(", ");
-  return `patched ${path} (${String(result.bytes)} bytes, id 变更: ${pairs}${extraText})\n${warnings}`;
+  return term(
+    `patched ${path} (${String(result.bytes)} bytes, id 变更: ${pairs}${extraText})\n${warnings}`,
+  );
 };
 
 export const humanLint = (report: LintReport): string =>
-  [
-    ...report.hits.map((hit) => `${hit.path}:${String(hit.offset)}: ${hit.word} — ${hit.excerpt}`),
-    "",
-  ].join("\n");
+  term(
+    [
+      ...report.hits.map(
+        (hit) => `${hit.path}:${String(hit.offset)}: ${hit.word} — ${hit.excerpt}`,
+      ),
+      "",
+    ].join("\n"),
+  );
 
 export const humanTone = (prompt: string): string => `${prompt}\n`;
 
 export const humanStyle = (result: ApplyStyleResult, path: string = result.path): string =>
   result.changed
-    ? `styled ${path} (${String(result.bytes)} bytes)\n`
-    : `unchanged ${path} (${String(result.bytes)} bytes，主题已与文档里的 <style id="hr-theme"> 一致)\n`;
+    ? term(`styled ${path} (${String(result.bytes)} bytes)\n`)
+    : term(
+        `unchanged ${path} (${String(result.bytes)} bytes，主题已与文档里的 <style id="hr-theme"> 一致)\n`,
+      );
 
 /** 人能直接粘进浏览器的地址：首访带合法 token，服务端落 cookie 后 302 回干净的 `/`。 */
 export const serveUrlOf = (info: DaemonInfo): string =>
@@ -252,7 +282,7 @@ export const dataServe = (info: DaemonInfo): string =>
   `"pid":${String(info.pid)},"workspace":${quote(info.workspace)}}`;
 
 export const humanServe = (info: DaemonInfo, path: string = info.workspace): string =>
-  `serving ${path} on ${serveUrlOf(info)} (pid ${String(info.pid)})\n`;
+  term(`serving ${path} on ${serveUrlOf(info)} (pid ${String(info.pid)})\n`);
 
 export const dataUndo = (result: UndoResult): string =>
   jsonOk(
@@ -260,7 +290,7 @@ export const dataUndo = (result: UndoResult): string =>
   );
 
 export const humanUndo = (result: UndoResult, path: string = result.path): string =>
-  `undone ${path} (${String(result.bytes)} bytes, from ${result.restoredFrom})\n`;
+  term(`undone ${path} (${String(result.bytes)} bytes, from ${result.restoredFrom})\n`);
 
 /** `html` 原样进 JSON：调用方拿它能直接与磁盘/`--out` 逐字节比。 */
 export const dataNormalize = (result: NormalizeResult): string =>
@@ -271,12 +301,14 @@ export const humanNormalizeWritten = (
   path: string = result.path,
 ): string =>
   result.changed
-    ? `normalized ${path} (+${String(result.injected)} ids, ${String(result.bytes)} bytes)\n`
-    : `unchanged ${path} (${String(result.bytes)} bytes，已带齐 data-hr-id)\n`;
+    ? term(`normalized ${path} (+${String(result.injected)} ids, ${String(result.bytes)} bytes)\n`)
+    : term(`unchanged ${path} (${String(result.bytes)} bytes，已带齐 data-hr-id)\n`);
 
 export const humanStyleExtract = (result: ExtractStyleResult, path: string): string =>
-  `extracted ${path} (${String(result.stats.paragraphs)} 段、${String(result.stats.sentences)} 句，` +
-  `平均句长 ${String(result.stats.averageSentenceChars)} 字，每段 ≤ ${String(result.stats.maxParagraphSentences)} 句)\n`;
+  term(
+    `extracted ${path} (${String(result.stats.paragraphs)} 段、${String(result.stats.sentences)} 句，` +
+      `平均句长 ${String(result.stats.averageSentenceChars)} 字，每段 ≤ ${String(result.stats.maxParagraphSentences)} 句)\n`,
+  );
 
 /** `Diagnostic` 不在 core 的公开面单列 `path` 之外的形状；这里用结构类型，与 `DiagnosticShape` 同一取舍。 */
 interface IssueShape {
@@ -308,7 +340,9 @@ export const dataCheck = (issues: readonly IssueShape[], cls: string, reason?: s
   `"cls":${quote(cls)}${reason === undefined ? "" : `,"reason":${quote(reason)}`}}`;
 
 const issueLine = (issue: IssueShape): string =>
-  `${issue.severity}: ${issue.code} — ${issue.message}${issue.path === undefined ? "" : ` @ ${issue.path}`}\n`;
+  term(
+    `${issue.severity}: ${issue.code} — ${issue.message}${issue.path === undefined ? "" : ` @ ${issue.path}`}\n`,
+  );
 
 /** 外来文档的说明行：跟在诊断输出之后，告诉用户「能看、不能按块改」。 */
 const FOREIGN_NOTE = "外来 HTML 文档：hReader 会以只读方式打开，不支持按块编辑\n";
@@ -316,8 +350,8 @@ const FOREIGN_NOTE = "外来 HTML 文档：hReader 会以只读方式打开，�
 /** 没问题也要有一行：0 字节 stdout 读起来像“没跑”。 */
 export const humanCheck = (issues: readonly IssueShape[], path: string, foreign = false): string =>
   (issues.length === 0
-    ? `ok ${path}（没有排版问题）\n`
-    : `${issues.map(issueLine).join("")}${path}：${String(issues.length)} 条问题\n`) +
+    ? term(`ok ${path}（没有排版问题）\n`)
+    : `${issues.map(issueLine).join("")}${term(`${path}：${String(issues.length)} 条问题\n`)}`) +
   (foreign ? FOREIGN_NOTE : "");
 
 export const dataNew = (report: NewDocReport): string =>
@@ -329,7 +363,7 @@ export const dataNew = (report: NewDocReport): string =>
   });
 
 export const humanNew = (report: NewDocReport, path: string): string =>
-  `created ${path} (${report.kind}, ${String(report.bytes)} bytes)\n`;
+  term(`created ${path} (${report.kind}, ${String(report.bytes)} bytes)\n`);
 
 const discardJson = (item: ImportDiscard): string =>
   `{"what":${quote(item.what)},"reason":${quote(item.reason)},"count":${String(item.count)}}`;
@@ -362,10 +396,10 @@ export const humanImport = (report: ImportReport, out: string, bytes: number): s
   const dropped = report.discarded
     .map((item) => `\n    ${item.what} ×${String(item.count)}（${item.reason}）`)
     .join("");
-  return (
+  return term(
     `imported ${out} (${report.kind}, ${String(report.sections)} 节, ${String(bytes)} bytes)\n` +
-    `  标题「${report.title}」（${TITLE_SOURCE_LABEL[report.titleSource]}）；主干：${trunk}；` +
-    `剥除元素 ${String(report.removedElements)} 个、属性 ${String(report.strippedAttributes)} 个` +
-    `${dropped === "" ? "" : `\n  丢弃明细：${dropped}`}\n`
+      `  标题「${report.title}」（${TITLE_SOURCE_LABEL[report.titleSource]}）；主干：${trunk}；` +
+      `剥除元素 ${String(report.removedElements)} 个、属性 ${String(report.strippedAttributes)} 个` +
+      `${dropped === "" ? "" : `\n  丢弃明细：${dropped}`}\n`,
   );
 };

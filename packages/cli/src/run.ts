@@ -27,7 +27,7 @@ import { EXIT_FAILURE, EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./
 import { sourceText } from "./input";
 import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
 import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
-import { displayedPathOf, jsonError } from "./output";
+import { displayedPathOf, jsonError, term } from "./output";
 import { serveCommandOf } from "./run-serve";
 import { isDiscoveredStylePath, undiscoveredHint } from "./style-out";
 import { usageText, type CommandName } from "./usage";
@@ -334,7 +334,7 @@ const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
 };
 
 const usageFailure = (message: string, topic: CommandName | undefined, io: CliIo): number => {
-  io.stderr(`${message}\n${usageText(topic)}`);
+  io.stderr(`${term(message)}\n${usageText(topic)}`);
   return EXIT_USAGE;
 };
 
@@ -343,15 +343,15 @@ const topicOf = (kind: Runnable["kind"]): CommandName => (kind === "styleExtract
 
 const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
   if (!(error instanceof HrError)) {
-    io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+    io.stderr(`${term(error instanceof Error ? error.message : String(error))}\n`);
     if (io.debug && error instanceof Error) io.stderr(`${error.stack ?? ""}\n`);
     return EXIT_INTERNAL;
   }
   // 只走一条通道：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段。
   if (json) io.stdout(jsonError(error.code, error.message, error.data));
   else {
-    io.stderr(`${error.message}\n`);
-    if (error instanceof HintedError) io.stderr(error.hint);
+    io.stderr(`${term(error.message)}\n`);
+    if (error instanceof HintedError) io.stderr(term(error.hint));
   }
   return exitCodeOf(error.code);
 };
@@ -373,7 +373,7 @@ export const run = async (argv: readonly string[], io: CliIo): Promise<number> =
     if (error instanceof StrictFailure) {
       // 报告是契约输出（`--json` 时仍是单行 envelope）：先原样进 stdout，错误行只走 stderr。
       io.stdout(error.report);
-      io.stderr(`${error.message}\n`);
+      io.stderr(`${term(error.message)}\n`);
       return EXIT_FAILURE;
     }
     return reportFailure(error, json, io);
