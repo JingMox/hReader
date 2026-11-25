@@ -71,6 +71,15 @@ describe("intentOf · 演示态按键", () => {
     expect(intentOf(key("ArrowRight", { metaKey: true }), presenting())).toBeUndefined();
   });
 
+  it.each(["ArrowRight", "ArrowLeft", "PageDown", "PageUp", "Home", "End", " ", "F5"])(
+    "should not turn shift+%s into a nav command while presenting",
+    (name) => {
+      // 阅读态放行 Shift 是给 Shift+D/Shift+J 留的；演示态没有这类命令，
+      // Shift+方向键是浏览器的原生组合键，翻页就是误触发。
+      expect(intentOf(key(name, { shiftKey: true }), presenting())).toBeUndefined();
+    },
+  );
+
   it("should ignore present keys inside editable targets", () => {
     const target = { tagName: "INPUT" };
     expect(intentOf(key("ArrowRight", { target }), presenting())).toBeUndefined();
