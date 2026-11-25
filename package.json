@@ -34,6 +34,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "node scripts/print-e2e.ts && node scripts/foreign-sandbox-e2e.ts",
     "theme:check": "node scripts/check-theme-contrast.mjs",
+    "test:integration": "node tests/integration/run.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json --pretty false",
     "verify": "pnpm format:check && pnpm lint && pnpm lint:sh && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm theme:check && pnpm depcruise && pnpm knip"
   },

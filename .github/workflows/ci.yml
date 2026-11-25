@@ -33,6 +33,10 @@ jobs:
         env:
           CHROME_BIN: /usr/bin/google-chrome
       - run: pnpm theme:check
+      # 跨包集成/用户旅程（真 dist 产物 + 真 Chrome；ubuntu runner 自带 Chrome，desktop 冒烟会自动 SKIP）。
+      - run: pnpm test:integration
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
       - run: pnpm depcruise
       - run: pnpm knip
 
