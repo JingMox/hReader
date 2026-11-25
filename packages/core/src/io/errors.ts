@@ -26,11 +26,17 @@ const permissionHint = (error: unknown): string =>
 export const ioFailure = (action: string, path: string, error: unknown): HrError =>
   new HrError("io_failure", `${action}失败：${path}${permissionHint(error)}`, { cause: error });
 
-/** 缺文件 → `not_a_file`（调用方指错了路），其余 → `io_failure`。 */
-export const failureOf = (action: string, path: string, error: unknown): HrError =>
-  isMissing(error)
-    ? new HrError("not_a_file", `${action}时路径不存在：${path}`, { cause: error })
-    : ioFailure(action, path, error);
+/** `ENAMETOOLONG`/`EINVAL` 是"名字不合法"而非磁盘故障：与 static.ts 的 BAD_NAME 同一口径，按 not_a_file 处理。 */
+const BAD_NAME = new Set(["ENAMETOOLONG", "EINVAL"]);
+
+/** 缺文件/非法名 → `not_a_file`（调用方指错了路），其余 → `io_failure`。 */
+export const failureOf = (action: string, path: string, error: unknown): HrError => {
+  const code = codeOf(error);
+  if (isMissing(error) || (typeof code === "string" && BAD_NAME.has(code))) {
+    return new HrError("not_a_file", `${action}时路径不存在：${path}`, { cause: error });
+  }
+  return ioFailure(action, path, error);
+};
 
 export const unlinkOf = async (fsApi: FileSystem, path: string): Promise<void> => {
   try {
