@@ -3,6 +3,7 @@
 
 import type { Host, NodeSpec } from "../dom.ts";
 import type { OutlineNode, ReaderIntent, ReaderState } from "../state.ts";
+import { escapeAttr } from "../escape-attr.ts";
 import { COPY } from "./copy.ts";
 
 export interface Widget {
@@ -32,7 +33,7 @@ export const mountLibrary = (
     if (target.tocId === undefined) return;
     // 滚动的拥有者是左栏自己（它知道 TOC 与正文的选择器），intent 只负责状态：
     // 若把 scroll 再挂在 `boot.dispatchIntent` 上，同一个意图就有两个出口。
-    host.scrollTo(`${parent} [data-hr-id="${target.tocId}"]`);
+    host.scrollTo(`${parent} [data-hr-id="${escapeAttr(target.tocId)}"]`);
     onIntent({ kind: "scrollTo", id: target.tocId });
   });
 
@@ -43,7 +44,11 @@ export const mountLibrary = (
       outline = next.outline;
     }
     for (const id of next.blocks) {
-      host.cls(`${parent} [data-toc-id="${id}"]`, "toc__item--on", next.activeId === id);
+      host.cls(
+        `${parent} [data-toc-id="${escapeAttr(id)}"]`,
+        "toc__item--on",
+        next.activeId === id,
+      );
     }
   };
 

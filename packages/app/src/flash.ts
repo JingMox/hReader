@@ -2,6 +2,7 @@
 // 纯接线：`schedule` 由 `boot` 注入（真实现是 `setTimeout`），因此这里可测且没有全局。
 
 import type { Host } from "./dom.ts";
+import { escapeAttr } from "./escape-attr.ts";
 
 /** 闪烁时长：2 秒。 */
 const FLASH_MS = 2000;
@@ -33,7 +34,7 @@ export const flashChanged = (
   schedule: Schedule,
 ): (() => void) => {
   const cancels = ids.map((id) => {
-    const selector = `[data-hr-id="${id}"]`;
+    const selector = `[data-hr-id="${escapeAttr(id)}"]`;
     host.cls(selector, FLASH_CLASS, true);
     return schedule(FLASH_MS, () => {
       host.cls(selector, FLASH_CLASS, false);
