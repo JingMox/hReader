@@ -178,6 +178,11 @@ const isNormalizeResponse = (
 ): value is { readonly revision: string; readonly cls: DocInfo["cls"] } =>
   isRecord(value) && typeof value["revision"] === "string" && isDocClass(value["cls"]);
 
+const isStyleResponse = (
+  value: unknown,
+): value is { readonly changed: boolean; readonly revision: string } =>
+  isRecord(value) && typeof value["revision"] === "string" && typeof value["changed"] === "boolean";
+
 /** 缺省的 `AppIo`：真 `fetch`（`@internal`：测试可换掉它，不必起服务器）。 */
 export const createHttpIo = (): AppIo => ({
   text: async (path) => {
@@ -367,6 +372,10 @@ export const bootDocumentWith = async (input: BootDocumentInput): Promise<Booted
       (await postJson(io, `/api/doc/${encoded}/trust`, { level }, isTrustResponse)).trust,
     postNormalize: async () => {
       await postJson(io, `/api/doc/${encoded}/normalize`, {}, isNormalizeResponse);
+    },
+    fetchThemes: bind(`/api/theme`, assertThemeList),
+    postStyle: async (visualId) => {
+      await postJson(io, `/api/style`, { docId, visualId }, isStyleResponse);
     },
   });
 };

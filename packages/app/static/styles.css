@@ -243,11 +243,16 @@ body {
 }
 
 /* 外来/未规范化文档模式（`#hr-root[data-hr-doc]`，foreign widget 是唯一写点）：
-   侧栏、控制条、演示壳全部退场，正文区让给 iframe；横幅是唯一的提示面。 */
+   侧栏与演示壳退场，正文区让给 iframe；控制条只留主题位——外来文档也能换主题，
+   其余控件（专注、演示入口）没有接线意义。 */
 #hr-root[data-hr-doc] #hr-library,
 #hr-root[data-hr-doc] #hr-notes,
-#hr-root[data-hr-doc] #hr-controls,
 #hr-root[data-hr-doc] #hr-present {
+  display: none;
+}
+
+#hr-root[data-hr-doc] #hr-focus-label,
+#hr-root[data-hr-doc] #hr-present-btn {
   display: none;
 }
 

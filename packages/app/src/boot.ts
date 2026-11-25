@@ -100,6 +100,13 @@ export interface ClassifiedBootDeps extends Omit<
   readonly postTrust: (level: TrustLevel) => Promise<TrustLevel>;
   /** `POST /normalize`；响应体不读——成功后靠 `bootDocument` 重取 info 分流。 */
   readonly postNormalize: () => Promise<unknown>;
+  /** `GET /api/theme`：外来壳的主题下拉也要清单（managed 从 `fetchPage` 一起拿）。 */
+  readonly fetchThemes: () => Promise<{
+    readonly themes: readonly string[];
+    readonly default?: string;
+  }>;
+  /** `POST /api/style {docId, visualId}`：外来文档的主题写进文件里的 `<style id="hr-theme">`。 */
+  readonly postStyle: (visualId: string) => Promise<unknown>;
 }
 
 const ROOT = "#hr-root";
@@ -371,11 +378,13 @@ export const boot = (deps: BootDeps): Booted => {
   });
 };
 
-const foreignSseOf = (store: Store, foreign: ForeignHandle): SseHandlers => ({
+const foreignSseOf = (store: Store, foreign: ForeignHandle, resync: () => void): SseHandlers => ({
   onEvent: (event: SseEvent): void => {
     if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
     const revision = event.payload["revision"];
     foreign.refresh(typeof revision === "string" ? revision : undefined);
+    // 写盘/换 sha 之后服务端的 trust/cls 都可能变：异步回拉 info 对账，不只换 src。
+    resync();
   },
   onState: (conn: ConnState): void => {
     store.dispatch({ kind: "conn", conn });
@@ -383,11 +392,17 @@ const foreignSseOf = (store: Store, foreign: ForeignHandle): SseHandlers => ({
 });
 
 /**
- * 外来/未规范化路径：iframe + 横幅 + 状态栏三件是全部 UI——model 系功能（编辑、批注、
- * 大纲、演示、快捷键）不接线，而不是"接了再禁用"。`doc.changed` 只重载 iframe。
+ * 外来/未规范化路径：iframe + 横幅 + 主题下拉 + 状态栏是全部 UI——model 系功能（编辑、批注、
+ * 大纲、演示、快捷键）不接线，而不是"接了再禁用"。`doc.changed` 重载 iframe 并回拉 info。
  */
-const bootForeign = (deps: ClassifiedBootDeps, cls: ForeignInput["cls"], info: DocInfo): Booted => {
+const bootForeign = (
+  deps: ClassifiedBootDeps,
+  cls: ForeignInput["cls"],
+  info: DocInfo,
+  themes: { readonly themes: readonly string[]; readonly default?: string },
+): Booted => {
   const { host, store } = deps;
+  const pump = createPump();
   let inner: Booted | undefined;
   let stopped = false;
 
@@ -403,24 +418,55 @@ const bootForeign = (deps: ClassifiedBootDeps, cls: ForeignInput["cls"], info: D
     setTrust: deps.postTrust,
     normalize: async () => {
       await deps.postNormalize();
-      // 重走完整分流而不是就地拼 managed：normalize 后 info/主题/正文全部要重取。
-      const next = await bootDocument(deps);
-      if (stopped) {
-        next.destroy();
-        return;
-      }
-      teardown();
-      inner = next;
+      await reboot();
     },
+    theme:
+      themes.themes.length === 0
+        ? undefined
+        : {
+            themes: themes.themes,
+            current: themes.default ?? themes.themes[0] ?? "",
+            apply: async (id) => {
+              await deps.postStyle(id);
+            },
+          },
   });
   const statusbar = mountStatusbar(host, ROOT);
   host.text(`${ROOT} #hr-shortcuts`, COPY.foreignShortcuts);
   const unsubscribe = deps.store.subscribe(syncView({ host, widgets: [statusbar] }));
-  const sse = deps.openSse(foreignSseOf(store, foreign));
+  const sse = deps.openSse(
+    foreignSseOf(store, foreign, () => {
+      pump(async () => {
+        const next = await deps.fetchInfo();
+        if (stopped) return;
+        // 外部把文档写成了托管形态：整壳重进分流，和 normalize 一条路径。
+        if (next.cls === "managed") {
+          await reboot();
+          return;
+        }
+        foreign.syncInfo({
+          cls: next.cls,
+          trust: next.trust ?? "off",
+          scripts: next.scripts === true,
+        });
+      });
+    }),
+  );
   sse.start();
 
-  // 点击回调只可能晚于装配完成，hoist 的函数声明让 normalize 能向前引用它。
-  // 至多跑一次：destroy 置 stopped 后 normalize 的续跑走早退，normalize 成功后 destroy 转给 inner。
+  // 重走完整分流而不是就地拼 managed：normalize 或 cls 重分档后 info/主题/正文全部要重取。
+  // 至多跑一次：destroy 置 stopped 后续跑走早退，成功后 destroy 转给 inner。
+  async function reboot(): Promise<void> {
+    const next = await bootDocument(deps);
+    if (stopped) {
+      next.destroy();
+      return;
+    }
+    teardown();
+    inner = next;
+  }
+
+  // 点击回调只可能晚于装配完成，hoist 的函数声明让 normalize/reboot 能向前引用它。
   function teardown(): void {
     sse.close();
     unsubscribe();
@@ -447,5 +493,6 @@ export const bootDocument = async (deps: ClassifiedBootDeps): Promise<Booted> =>
     const page = await deps.fetchPage();
     return boot({ ...deps, ...page });
   }
-  return bootForeign(deps, info.cls, info);
+  const themes = await deps.fetchThemes();
+  return bootForeign(deps, info.cls, info, themes);
 };
