@@ -376,7 +376,7 @@ describe("foreign · destroy", () => {
           themes: ["atelier-editorial", "deck-noir"],
           current: "atelier-editorial",
           apply: () =>
-            new Promise((resolve) => {
+            new Promise<unknown>((resolve) => {
               release = resolve;
             }),
         },
