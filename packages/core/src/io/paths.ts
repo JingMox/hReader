@@ -74,6 +74,9 @@ export const resolveTarget = async (
     throw new HrError("invalid_input", `workspace 必须是绝对路径：${input.workspace}`);
   }
   if (input.file.length === 0) throw new HrError("not_a_file", "file 不能为空");
+  // NUL 永远过不了任何 fs 调用（ERR_INVALID_ARG_VALUE 不是 HrError，会兜底成 500）：
+  // 在触碰磁盘前按坏输入拒掉。
+  if (input.file.includes("\0")) throw new HrError("invalid_request", "file 不能含 NUL 字节");
   if (isAbsolute(input.file)) throw outside("不接受绝对路径", input.file);
   const workspaceAbs = resolve(input.workspace);
   const lexical = resolve(workspaceAbs, input.file);

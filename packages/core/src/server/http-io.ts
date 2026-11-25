@@ -170,7 +170,12 @@ const bodyTextOf = async (req: IncomingMessage, timeoutMs: number): Promise<stri
     joined.set(bytes, offset);
     offset += bytes.length;
   }
-  return decodeUtf8(joined, "请求体");
+  try {
+    return decodeUtf8(joined, "请求体");
+  } catch {
+    // `invalid_utf8` 是给文档文件的码（500）：请求体里的坏字节是客户端的错，按 400 走。
+    throw new HrError("invalid_request", "请求体不是合法 UTF-8");
+  }
 };
 
 export const bodyRecordOf = async (

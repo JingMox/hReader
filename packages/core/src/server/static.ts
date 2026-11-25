@@ -156,8 +156,10 @@ export const indexReply = async (
   };
 };
 
-/** 越界一律 404（不暴露"那里有东西"），未知文件同样 404。 */
+/** 越界一律 404（不暴露"那里有东西"），未知文件同样 404。
+ *  `appDir === ""`（未构建）时先拒：`join("", "assets", …)` 会落到 `<cwd>/assets`，把本地同名文件服务出去。 */
 export const assetReply = async (ctx: HandlerContext, rawPath: string): Promise<Reply> => {
+  if (ctx.appDir === "") return notFound("应用未构建");
   const segments = assetSegmentsOf(rawPath);
   if (segments === undefined) return notFound("资源路径不合法");
   const path = join(ctx.appDir, "assets", ...segments);
@@ -178,8 +180,11 @@ export const themesReply = async (ctx: HandlerContext): Promise<Reply> => {
   const ids: string[] = [];
   for (const id of [...builtin, ...users]) {
     if (ids.includes(id)) continue;
-    const path = builtin.includes(id) ? builtinThemeDir(id, deps) : userThemePath(id, deps);
-    if (await existsOf(`${path}/${THEME_FILE}`, deps)) ids.push(id);
+    // 两边形状不同：`builtinThemeDir` 是目录、`userThemePath` 已是文件；统一成"要探测的文件"。
+    const path = builtin.includes(id)
+      ? join(builtinThemeDir(id, deps), THEME_FILE)
+      : userThemePath(id, deps);
+    if (await existsOf(path, deps)) ids.push(id);
   }
   return jsonReply(200, {
     themes: ids.length === 0 ? [DEFAULT_THEME] : ids,

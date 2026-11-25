@@ -13,7 +13,7 @@
    - **总数不得超过表头 `CAP`**（只减不增）。要加就必须先经协调者批准并下调别的条目。
 4. 修掉一条：删 `it.fails` 的用例 → 改成 `it` 的**正向断言** → 从本表删行 → 下调 `CAP`。**不许**只是删行。
 
-**CAP = 9**（M2.2 冻结基线 10；M4.7 R3 退掉 KD-07 后下调 1）
+**CAP = 8**（M2.2 冻结基线 10；M4.7 R3 退掉 KD-07、本轮修掉 KD-06 后各下调 1）
 
 ## 登记
 
@@ -24,7 +24,6 @@
 | KD-03 | latin run 计数偏差 | `packages/core/tests/outline-text.test.ts:81` | M2.4 | 待修 |
 | KD-04 | 多 `<article>` 只取首个 | `packages/core/tests/outline-structure.test.ts:230` | M2.4 | 待修 |
 | KD-05 | 截断切坏孤悬组合符 / ZWJ 家族 | `packages/core/tests/read-node-truncate.test.ts:131`、`:168` | M2.4 | 待修 |
-| KD-06 | `\0` 在路径里应 400 而非 404 | `packages/core/tests/server/paths.test.ts:78` | M2.4 | 待修 |
 | KD-08 | 鉴权边界（见测试注释） | `packages/core/tests/server/auth.test.ts:68` | M2.4 | 待修 |
 | KD-09 | `--json` 下 usage 信封形状不一致 | `packages/cli/tests/run.test.ts:142` | M2.4 | 待修 |
 | KD-10 | 空 `--html-stdin` 未报错 | `packages/cli/tests/run.test.ts:163` | M2.4 | 待修 |

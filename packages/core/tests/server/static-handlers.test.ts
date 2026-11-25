@@ -139,11 +139,8 @@ describe("themesReply · 内建清单", () => {
   });
 });
 
-describe("themesReply · 空清单回退", () => {
-  // 已知缺陷：`static.ts:133` 对用户主题也拼 `${path}/theme.css`，
-  // 而 `userThemePath()` 已经是文件路径 → 探测变成 `.../mine/theme.css/theme.css`（ENOENT），
-  // 于是**用户安装的主题永远不出现在 /api/theme**。下面先钉住现状，修好后应改为"出现在清单里"。
-  it("should currently fail the whole list when a user theme exists (see report)", async () => {
+describe("themesReply · 用户主题", () => {
+  it("should list a user theme alongside builtin themes", async () => {
     const home = mkdtempSync(join(tmpdir(), "hr-useronly-"));
     mkdirSync(join(home, ".hreader", "styles", "mine"), { recursive: true });
     writeFileSync(
@@ -152,10 +149,11 @@ describe("themesReply · 空清单回退", () => {
       "utf8",
     );
     const base = ctxOf(fx.appDir);
-    await expect(
-      themesReply({ ...base, styleDeps: { ...base.styleDeps, home } }),
-    ).rejects.toMatchObject({ code: "style_io_failure" });
+    const reply = await themesReply({ ...base, styleDeps: { ...base.styleDeps, home } });
     rmSync(home, { recursive: true, force: true });
+
+    expect(reply.status).toBe(200);
+    expect(themesOf(JSON.parse(String(reply.body)))).toContain("mine");
   });
 });
 

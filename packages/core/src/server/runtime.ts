@@ -241,6 +241,9 @@ const noteWriterOf =
     const { options, deps, hub, state, watcher } = context;
     if (!written.changed) return;
     watcher.noteSelfWrite(written.target.realPath);
+    // 写路由可能是这份文档的第一次接触：remember 没跑过就不会挂监听，
+    // 子目录文档的外部编辑会漏报（workspace 目录监听是 depth:0）。
+    watcher.add(dirname(written.target.realPath), basename(written.target.realPath));
     state.active = written.target;
     state.revision = written.revision;
     hub.publish("doc.changed", {
@@ -269,10 +272,14 @@ const rememberOf =
       ctx.deps.patch.fs,
     );
     if (ctx.state.active?.realPath === target.realPath) return target;
+    // 先加载再认领 active：二进制/坏 UTF-8 文档加载失败时不得改指，
+    // 否则前一个文档的外部编辑会漏成 library.changed。
+    const load = await loadOfPath(ctx.deps, target);
+    const revision = revisionOf(await ctx.deps.patch.fs.readFile(target.realPath));
     ctx.state.active = target;
     // 外来文档不拒：`remember` 只负责定位与缓存分档，托管与否由 `model`/`outline` 各自判（422/409 契约照旧）。
-    ctx.state.load = await loadOfPath(ctx.deps, target);
-    ctx.state.revision = revisionOf(await ctx.deps.patch.fs.readFile(target.realPath));
+    ctx.state.load = load;
+    ctx.state.revision = revision;
     ctx.watcher.add(dirname(target.realPath), basename(target.realPath));
     return target;
   };

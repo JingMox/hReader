@@ -71,6 +71,9 @@ export const annotationAddReply = async (
   const target = await targetOf(ctx, docId);
   const { nodeId, note } = parseBody(addBody, body);
   const anchor = anchorOf(body["anchor"]);
+  // 与 patch/style 同一道闸：外来/不可派生文档在锁与写之前就拒——
+  // `addAnnotation` 本身不判分档，会把 hr-meta 写进外来文档还报 201。
+  modelOf(await bytesOf(ctx, target), target.realPath);
   const result = await busy(() =>
     addAnnotation(
       { workspace: ctx.workspace, file: docId, nodeId, anchor, note: note ?? "" },
