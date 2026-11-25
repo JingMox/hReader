@@ -22,14 +22,16 @@ const withDir = async (run: (dir: string) => Promise<void>): Promise<void> =>
   });
 
 describe("parseArgs · pdf/png 的 --visual", () => {
-  it("should default to the same DEFAULT_STYLE_ID export uses", () => {
+  it("should leave visual undefined when --visual is not given (doc theme wins)", () => {
+    // 缺省不再在这里焊死 DEFAULT_STYLE_ID：命令层先取文档已嵌入的 `#hr-theme`，
+    // 文档没有主题时才回落默认主题。
     expect(parse(["pdf", "a.html", "--out", "o.pdf"])).toMatchObject({
       ok: true,
-      intent: { visual: "atelier-editorial" },
+      intent: { visual: undefined },
     });
     expect(parse(["png", "a.html", "--out", "o.png"])).toMatchObject({
       ok: true,
-      intent: { visual: "atelier-editorial" },
+      intent: { visual: undefined },
     });
   });
 
@@ -51,7 +53,11 @@ describe("parseArgs · pdf/png 的 --visual", () => {
 });
 
 describe("pdfCommand · 主题透传", () => {
-  const inputOf = (dir: string, visual: string, render: RenderPdf): PdfCommandInput => ({
+  const inputOf = (
+    dir: string,
+    visual: string | undefined,
+    render: RenderPdf,
+  ): PdfCommandInput => ({
     path: join(dir, "doc.html"),
     pageSize: "a4",
     timeoutMs: 60_000,
@@ -92,6 +98,39 @@ describe("pdfCommand · 主题透传", () => {
       expect(code).toBe("unknown_style");
     });
   });
+
+  it("should reuse the document's embedded #hr-theme when --visual is not given", async () => {
+    const themed =
+      '<html><head><style id="hr-theme">:root{--hr-bg:#123456}.doc-only{color:#123456}</style></head>' +
+      "<body><article><h1>标题</h1><p>正文</p></article></body></html>";
+    await withDir(async (dir) => {
+      writeFileSync(join(dir, "doc.html"), themed);
+      let html = "";
+      const render: RenderPdf = (input) => {
+        html = input.html;
+        return Promise.resolve({ bytes: Buffer.from(pdfOf(1)) });
+      };
+      await pdfCommand(inputOf(dir, undefined, render));
+
+      expect(html).toContain(".doc-only{color:#123456}");
+      expect(html).toContain('content="document"');
+      expect(html).not.toContain("--hr-bg: #faf8f5");
+    });
+  });
+
+  it("should fall back to the default theme when the doc has no #hr-theme", async () => {
+    await withDir(async (dir) => {
+      let html = "";
+      const render: RenderPdf = (input) => {
+        html = input.html;
+        return Promise.resolve({ bytes: Buffer.from(pdfOf(1)) });
+      };
+      await pdfCommand(inputOf(dir, undefined, render));
+
+      expect(html).toContain("hr-visual-atelier-editorial");
+      expect(html).toContain("--hr-bg: #faf8f5");
+    });
+  });
 });
 
 describe("pngCommand · 主题透传", () => {
@@ -126,6 +165,44 @@ describe("pngCommand · 主题透传", () => {
       await pngCommand(input);
 
       expect(html).toContain("hr-visual-deck-noir");
+    });
+  });
+
+  it("should reuse the document's embedded #hr-theme when --visual is not given", async () => {
+    const themed =
+      '<html><head><style id="hr-theme">:root{--hr-bg:#654321}.png-only{color:#654321}</style></head>' +
+      "<body><article><h1>标题</h1><p>正文</p></article></body></html>";
+    await withDir(async (dir) => {
+      writeFileSync(join(dir, "doc.html"), themed);
+      let html = "";
+      const render: RenderPng = (input) => {
+        html = input.html;
+        return Promise.resolve({
+          bytes: pngOf(256, 10),
+          width: 256,
+          height: 10,
+          clipped: false,
+        });
+      };
+      await pngCommand({
+        path: join(dir, "doc.html"),
+        out: join(dir, "out.png"),
+        width: "256",
+        scale: "1",
+        maxHeight: "20000",
+        maxHeightExplicit: false,
+        outlineFlag: undefined,
+        timeoutMs: 60_000,
+        force: false,
+        workspace: dir,
+        json: false,
+        warn: () => undefined,
+        visual: undefined,
+        render,
+      });
+
+      expect(html).toContain(".png-only{color:#654321}");
+      expect(html).not.toContain("hr-visual-atelier-editorial");
     });
   });
 });
