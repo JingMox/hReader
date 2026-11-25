@@ -135,7 +135,7 @@ describe("token · 重定向与 cookie", () => {
     await withServer(async (ctx) => {
       const response = await httpCall(ctx.port, { path: `/?t=${ctx.token}` });
       expect(response.status).toBe(302);
-      expect(response.headers.location).toBe("/");
+      expect(response.headers["location"]).toBe("/");
       const cookie = String(response.headers["set-cookie"]);
       expect(cookie).toContain(`hr=${ctx.token}`);
       expect(cookie.toLowerCase()).toContain("httponly");
@@ -152,7 +152,7 @@ describe("token · 重定向与 cookie", () => {
     await withServer(async (ctx) => {
       const response = await httpCall(ctx.port, { path: `/?token=${ctx.token}` });
       expect(response.status).toBe(302);
-      expect(response.headers.location).toBe("/");
+      expect(response.headers["location"]).toBe("/");
     });
   });
 
@@ -160,7 +160,7 @@ describe("token · 重定向与 cookie", () => {
     await withServer(async (ctx) => {
       const response = await httpCall(ctx.port, { path: `/?doc=a&t=${ctx.token}` });
       expect(response.status).toBe(302);
-      expect(response.headers.location).toBe("/");
+      expect(response.headers["location"]).toBe("/");
     });
   });
 
@@ -168,7 +168,7 @@ describe("token · 重定向与 cookie", () => {
     await withServer(async (ctx) => {
       const response = await httpCall(ctx.port, { path: `/s/doc.html?t=${ctx.token}` });
       expect(response.status).toBe(302);
-      expect(response.headers.location).toBe("/s/doc.html");
+      expect(response.headers["location"]).toBe("/s/doc.html");
     });
   });
 
