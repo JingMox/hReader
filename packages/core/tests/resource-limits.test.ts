@@ -1,4 +1,4 @@
-// 第二轮对抗：资源耗尽实测。恶意文档作者唯一的目标是拖死 daemon 的 event loop——
+// 对抗面·资源耗尽实测。恶意文档作者唯一的目标是拖死 daemon 的 event loop——
 // 解析、tag-balance 正则（nested quantifier 面）、sanitize、serialize 每道都必须近线性。
 // 这里钉住的是**数量级**，不是精确值：断言上限给足余量，回归（正则退化）直接红。
 
@@ -11,9 +11,9 @@ import {
   sanitizedAttributesOf,
   serializeHtml,
   hasExternalResource,
-} from "../../src/index";
-import { tagBalanceDiagnostics } from "../../src/html/balance";
-import type { HtmlNode } from "../../src/index";
+} from "../src/index";
+import { tagBalanceDiagnostics } from "../src/html/balance";
+import type { HtmlNode } from "../src/index";
 
 /** 挂钟计时（断言用；本仓规范允许非确定性测试里做"上限"断言——上限给的是数量级）。 */
 const timed = (fn: () => void): number => {

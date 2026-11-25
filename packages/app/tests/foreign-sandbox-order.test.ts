@@ -1,4 +1,4 @@
-// 第二轮对抗：foreign iframe 的 sandbox 必须先于 src 落位。
+// 对抗面：foreign iframe 的 sandbox 必须先于 src 落位。
 // 静态 index.html 的 <iframe id="hr-foreign-frame"> 不自带 sandbox——第一次 src 导航若
 // 抢在 sandbox 设值前提交，外来文档就以**无沙箱**的同源页面加载一轮（读 cookie、同源 fetch）。
 // 同一任务里先 src 后 sandbox 在主流浏览器上通常仍被沙箱化（沙箱标志在导航提交时采样），

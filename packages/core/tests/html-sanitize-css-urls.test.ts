@@ -1,13 +1,13 @@
-// 第二轮对抗：print 预设 style 属性的外链 CSS 逃逸面。
-// 第一轮钉住了 `url(...)` 族（含 CSS 转义解码）；本轮打**不带 url( 的取图函数**——
+// 对抗面：print 预设 style 属性的外链 CSS 逃逸面。
+// 姊妹用例钉住了 `url(...)` 族（含 CSS 转义解码）；本文件打**不带 url( 的取图函数**——
 // `image-set("https://…")`、`-webkit-image-set()`、`image("…")`、`cross-fade("…","…")`、`src("…")`
 // 按 CSS Images 语法都接受裸字符串 URL，Chrome 对 image-set 的裸串写法历史支持，
 // 而 print 导出稿会进 Chrome 渲染（pdf/png）——漏放就是内网/本机文件 SSRF。
 
 import { describe, expect, it } from "vitest";
 
-import { parseHtml, sanitizedAttributesOf } from "../../src/index";
-import type { HtmlElementNode, HtmlNode } from "../../src/index";
+import { parseHtml, sanitizedAttributesOf } from "../src/index";
+import type { HtmlElementNode, HtmlNode } from "../src/index";
 
 const childrenOf = (node: HtmlNode): readonly HtmlNode[] =>
   node.kind === "element" || node.kind === "document" ? node.children : [];
@@ -35,7 +35,7 @@ const keptStyleOf = (html: string): string | undefined =>
     .flatMap((node) => sanitizedAttributesOf(node, "print"))
     .find(([name]) => name === "style")?.[1];
 
-describe("audit-r2: print style 里的裸串取图函数", () => {
+describe("print style 里的裸串取图函数", () => {
   it.each([
     'background:image-set("https://intranet.example/x.png" 1x)',
     'background:-webkit-image-set("https://intranet.example/x.png" 1x)',
@@ -70,7 +70,7 @@ describe("audit-r2: print style 里的裸串取图函数", () => {
   );
 });
 
-describe("audit-r2: 第一轮的 url() 防线钉住", () => {
+describe("url() 取图函数防线钉住", () => {
   it.each([
     "background:url(https://intranet.example/x.png)",
     "background: url( ' //intranet.example/x.png' )",

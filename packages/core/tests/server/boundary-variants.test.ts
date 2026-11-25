@@ -1,5 +1,5 @@
-// 第二轮对抗：HTTP 边界的变体面——第一轮已钉 ?t= 首值、method 大小写、重复 cookie、
-// allow-host、.hreader、../、%2F、dotfile。本轮专打**当时没钉住的等价形态**：
+// 对抗面：HTTP 边界的变体面——姊妹用例已钉 ?t= 首值、method 大小写、重复 cookie、
+// allow-host、.hreader、../、%2F、dotfile。本文件专打**当时没钉住的等价形态**：
 // loopback 的其它拼写（FQDN 尾点/缩写 IPv4/IPv6/0.0.0.0——全是 DNS rebinding 的常见皮）、
 // Origin 的更多形态、Set-Cookie 属性、CSRF 头变体、NUL/超长名、符号链接逃逸、
 // SSE 的 Origin 闸与断连存活。
@@ -16,7 +16,7 @@ import {
   openSse,
   rawExchange,
   withServer,
-} from "../server/harness";
+} from "./harness";
 
 const host = (port: number): string => `127.0.0.1:${String(port)}`;
 
