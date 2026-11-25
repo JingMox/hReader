@@ -135,9 +135,11 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   host.attr(FRAME, "title", COPY.foreignFrameTitle);
   // 外来页面拿不到引用来源：referrer 会泄露内网路径/会话参数给被嵌文档。
   host.attr(FRAME, "referrerpolicy", "no-referrer");
+  // sandbox 必须先于第一次 src：导航提交时采样的就是这一刻的沙箱标志，
+  // 先 src 后 sandbox 在 bfcache/元素复用路径上会把首轮变成无沙箱加载。
+  paint();
   host.attr(FRAME, "src", srcOf(undefined));
   host.attr(FRAME, "hidden", undefined);
-  paint();
   const offAction = host.on(ACTION, "click", runAction);
 
   return {

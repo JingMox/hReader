@@ -1388,6 +1388,76 @@ mod tests {
         assert!(!a.is_empty() && a != b, "桥令牌必须随机且不复用");
     }
 
+    /// 第二轮对抗：导航分类的等价形态——大小写归一、尾点/缩写/非标准 loopback、
+    /// 伪协议族。任何漏网都只有两种结局：漏进 Local（外来页借 loopback 加载）或
+    /// 漏进 Bridge（伪造原生动作）。
+    #[test]
+    fn navigation_edge_forms_cannot_smuggle_local_or_bridge() {
+        use tauri::Url;
+        let nav = |raw: &str| classify_navigation(&Url::parse(raw).expect("url"));
+        // 归一化后的等价形态仍是本来的类（scheme/host 大小写不挡路）。
+        assert_eq!(nav("HTTP://127.0.0.1:8123/x"), NavClass::Local);
+        assert_eq!(nav("http://LOCALHOST:8123/x"), NavClass::Local);
+        assert_eq!(nav("TaUrI://localhost/x"), NavClass::Local);
+        assert_eq!(nav("HTTP://HR-DESKTOP.LOCAL/bridge"), NavClass::Bridge);
+        // WHATWG IPv4 归一化：`127.1`/`2130706433`/`0x7f000001`/`127.0.0.1.`
+        // 解析出来就是 127.0.0.1——判 Local 语义正确（它们确实是回环流量）。
+        // 真正的认证边界在 daemon 的 Host 精确匹配：浏览器原样带 Host，
+        // `127.1:port` 会被 core 的 hostAllowed 拒掉，导航放行 ≠ 请求通过。
+        for raw in [
+            "http://127.0.0.1.:8123/x",
+            "http://127.1:8123/x",
+            "http://2130706433:8123/x",
+            "http://0x7f000001:8123/x",
+        ] {
+            assert_eq!(nav(raw), NavClass::Local, "{raw}");
+        }
+        // 尾点域名/0.0.0.0/userinfo/https 回环都不是 Local，也绝不该变成 Bridge：
+        // 一律 External——交给系统浏览器和"当普通网站打开"语义一致，绝不内嵌。
+        for raw in [
+            "http://localhost.:8123/x",
+            "http://0.0.0.0:8123/x",
+            "http://hr-desktop.local.:8123/bridge",
+            "https://127.0.0.1:8123/x",
+            "http://127.0.0.1:8123@evil.example/",
+        ] {
+            assert_eq!(nav(raw), NavClass::External, "{raw}");
+        }
+        // 其余 scheme 一律 Deny：内容页没有合法理由触发它们。
+        for raw in [
+            "ws://127.0.0.1:8123/",
+            "wss://127.0.0.1:8123/",
+            "blob:http://127.0.0.1:8123/00000000-0000-0000-0000-000000000000",
+            "view-source:http://127.0.0.1:8123/",
+            "mailto:a@b.c",
+            "tel:+123",
+            "about:srcdoc",
+            "ftp://127.0.0.1/x",
+        ] {
+            assert_eq!(nav(raw), NavClass::Deny, "{raw}");
+        }
+    }
+
+    #[test]
+    fn bridge_auth_first_t_wins_and_param_name_is_case_sensitive() {
+        use tauri::Url;
+        let url = |q: &str| Url::parse(&format!("http://hr-desktop.local/{q}")).expect("url");
+        // 首值生效：伪造者把真令牌塞在后面也救不了前面的假值（query_pairs 顺序读取）。
+        assert!(!bridge_authorized(
+            &url("bridge?t=forged&t=secret"),
+            "secret"
+        ));
+        assert!(bridge_authorized(
+            &url("bridge?t=secret&t=forged"),
+            "secret"
+        ));
+        // 参数名大小写敏感：`?T=` 不是 `?t=`。
+        assert!(!bridge_authorized(&url("bridge?T=secret"), "secret"));
+        // 百分号编码按解码后值比较：`a%2Bb` 解回 `a+b`；字面 `+` 是空格。
+        assert!(bridge_authorized(&url("bridge?t=a%2Bb"), "a+b"));
+        assert!(!bridge_authorized(&url("bridge?t=a+b"), "a+b"));
+    }
+
     #[test]
     fn reveal_never_leaves_the_workspace() {
         let ws = std::env::temp_dir().join(format!("hr-reveal-{}", std::process::id()));

@@ -147,6 +147,15 @@ const decodeCssEscapes = (value: string): string =>
 /** 引号内空白与大小写变体也归一拦：解码后的 `url( ' //…' )` 仍是同一个外链请求。 */
 const STYLE_EXTERNAL_URL = /url\(\s*['"]?\s*(?:[a-z][a-z0-9+.-]*:)?\/\//iu;
 
+/**
+ * 不带 `url(` 的裸串取图函数：`image-set("https://…" 1x)`（含 -webkit-/-moz- 前缀）、
+ * `image("…")`、`cross-fade("…","…")`、`src("…")` 按 CSS Images 语法都吃引号 URL。
+ * print 导出稿进 Chrome 渲染时这就是一次真实请求——内网 SSRF 与 file:// 泄漏的洞。
+ * 与上一条同口径：引号（含前置空白）+ 可选 scheme + `//` 才判，相对路径裸串放行。
+ */
+const STYLE_EXTERNAL_STRING =
+  /(?:image-set|cross-fade|image|src)\s*\([^)]*?['"]\s*(?:[a-z][a-z0-9+.-]*:)?\/\//iu;
+
 /** print 的历史口径：只剥 ≤0x20 的字符。比严格口径窄（NEL/C1 等不剥），但 print 行为是冻结契约。 */
 const normalizedPrintUrl = (value: string): string => {
   let normalized = "";
@@ -282,7 +291,11 @@ const isDroppedAttribute = ([name, value]: HtmlAttribute, rules: SanitizeRules):
     return true;
   }
   if (key === "style") {
-    return rules.style === "drop" || STYLE_EXTERNAL_URL.test(decodeCssEscapes(value));
+    if (rules.style === "drop") {
+      return true;
+    }
+    const decoded = decodeCssEscapes(value);
+    return STYLE_EXTERNAL_URL.test(decoded) || STYLE_EXTERNAL_STRING.test(decoded);
   }
   if (SCRIPT_URL_ATTRIBUTES.has(key) || LINK_URL_ATTRIBUTES.has(key)) {
     const normalized = rules.normalizeUrl(value);

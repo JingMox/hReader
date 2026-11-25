@@ -46,6 +46,8 @@ pub struct WorkbenchContext {
     /// `Some` 时当前没有打开成功的文档：前端在正文区渲染"这份文档打不开"。
     pub doc_error: Option<DocError>,
     /// 原生桥导航（`hr-desktop.local`）的会话令牌：页面 JS 必须回带它壳才认账。
+    /// **只经 `sync_payload_js` 投递**（`win.eval` 只跑主 frame）；`init_script`
+    /// 里该字段恒为空串——见那里的注释。
     pub bridge_token: String,
 }
 
@@ -64,8 +66,16 @@ pub fn sync_payload_js(ctx: &WorkbenchContext) -> String {
 }
 
 /// 生成注入到 Webview 窗口的完整初始化脚本。
+///
+/// **桥令牌绝不进 init 脚本**：`initialization_script` 在 WebView2（Windows）会注入
+/// 所有 frame——外来文档的沙箱 iframe 也在其列（wry `for_main_frame_only` 在 Windows
+/// 无效）。拿到令牌的外来页面就能伪造 `hr-desktop.local/bridge?t=…` 触发原生动作。
+/// 这里把令牌置空，真值只经 `sync_payload_js` 投递（`win.eval` 只跑主 frame）。
+/// macOS 上 WKUserScript 本就 for_main_frame_only，此举是跨平台一致的最小权限。
 pub fn init_script(ctx: &WorkbenchContext) -> String {
-    let payload = serialize_context(ctx);
+    let mut sanitized = ctx.clone();
+    sanitized.bridge_token = String::new();
+    let payload = serialize_context(&sanitized);
     let css_literal = serde_json::to_string(WORKBENCH_CSS)
         .expect("CSS 字符串序列化不应失败")
         .replace("</", "<\\/");
@@ -176,6 +186,33 @@ mod tests {
                 "脚本里出现未转义的 </script：{js}"
             );
         }
+    }
+
+    /// 桥令牌只走主 frame 的 eval 同步：`init_script` 在 Windows/WebView2 会注入外来
+    /// 文档 iframe，里面出现的任何令牌都能被外来脚本读去伪造桥导航。
+    #[test]
+    fn init_script_never_embeds_the_bridge_token() {
+        let ctx = WorkbenchContext {
+            workspace: "/tmp/ws".to_string(),
+            doc_id: "demo.html".to_string(),
+            files: vec!["demo.html".to_string()],
+            tree: vec![],
+            custom_themes: vec![],
+            is_macos: true,
+            bridge_token: "s3cr3t-bridge-token".to_string(),
+            doc_error: None,
+        };
+        let script = init_script(&ctx);
+        assert!(
+            !script.contains("s3cr3t-bridge-token"),
+            "init 脚本泄漏了桥令牌：外来 iframe 也能读到它"
+        );
+        assert!(
+            script.contains("\"bridgeToken\":\"\""),
+            "init 载荷里的桥令牌必须置空：{script}"
+        );
+        // 主 frame 的真值由 sync eval 投递（evaluate_script 不注入子 frame）。
+        assert!(sync_payload_js(&ctx).contains("s3cr3t-bridge-token"));
     }
 
     #[test]
