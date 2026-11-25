@@ -42,10 +42,11 @@ const rngOf = (seed: number): (() => number) => {
   };
 };
 
-const pick = <T>(rng: () => number, list: readonly T[]): T =>
-  list[Math.floor(rng() * list.length)] ?? (() => {
-    throw new Error("empty list");
-  })();
+const pick = <T>(rng: () => number, list: readonly T[]): T => {
+  const item = list[Math.floor(rng() * list.length)];
+  if (item === undefined) throw new Error("empty list");
+  return item;
+};
 
 const hrIdsOf = (bytes: Uint8Array): string[] =>
   [...new TextDecoder().decode(bytes).matchAll(/data-hr-id="([^"]+)"/gu)].map(
