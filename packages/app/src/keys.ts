@@ -77,7 +77,10 @@ const presentIntentOf = (event: KeyLike, state: ReaderState): ReaderIntent | und
 
 export const intentOf = (event: KeyLike, state: ReaderState): ReaderIntent | undefined => {
   if (modified(event) || isEditableTarget(event.target)) return undefined;
-  if (state.present.active) return presentIntentOf(event, state);
+  if (state.present.active) {
+    // 演示态把 Shift 也算修饰键：它没有 Shift+D 这类命令要放行，Shift+方向键翻页就是误触发。
+    return event.shiftKey === true ? undefined : presentIntentOf(event, state);
+  }
   if (event.key === "Escape") return { kind: "panelClosed" };
   if (event.key === "p" || event.key === "F5") return { kind: "presentEntered" };
   return isPrintableShortcut(event, state);
