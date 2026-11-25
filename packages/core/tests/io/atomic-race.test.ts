@@ -83,10 +83,7 @@ describe("writeTrust · 并发合表", () => {
       const workspace = await realDirOf(dir);
       // resolveTarget 要目标存在：先落一个外来文档。
       await writeFile(join(workspace, "doc.html"), "seed");
-      const target = await resolveTarget(
-        { workspace, file: "doc.html" },
-        nodePatchDeps.fs,
-      );
+      const target = await resolveTarget({ workspace, file: "doc.html" }, nodePatchDeps.fs);
       const bytesA = encodeUtf8("<div>foreign a</div>");
       const bytesB = encodeUtf8("<div>foreign b</div>");
 

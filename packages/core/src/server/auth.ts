@@ -45,9 +45,7 @@ export const originAllowed = (
     return loopbackHosts(port).some((host) => `http://${host}` === lowered);
   }
   // 自定义 host 可能躲在 TLS 终结代理后面：operator 点名信任的源，http/https 都收。
-  return allowHosts.some(
-    (host) => `http://${host}` === lowered || `https://${host}` === lowered,
-  );
+  return allowHosts.some((host) => `http://${host}` === lowered || `https://${host}` === lowered);
 };
 
 /** `Cookie` 头里第一个 `hr=` 值；同名的第二个不覆盖（服务端只发一个）。 */

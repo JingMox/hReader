@@ -204,11 +204,8 @@ export const docInfoReply = async (ctx: HandlerContext, docId: string): Promise<
  * undo/resolve 不挂这道闸：它们只恢复/改写服务端自产的快照与 hr-meta，不注入新内容，
  * 且 undo 是外部改坏文档后的唯一恢复路径。
  */
-const diffOf = (
-  beforeModel: DocumentModel,
-  after: Uint8Array,
-  label: string,
-): readonly string[] => diffNodes(beforeModel, modelOf(after, label));
+const diffOf = (beforeModel: DocumentModel, after: Uint8Array, label: string): readonly string[] =>
+  diffNodes(beforeModel, modelOf(after, label));
 
 /** 标注成 `ZodType<PatchAction>`：枚举里混进 `PatchAction` 之外的值会在编译期报错。 */
 const patchAction: z.ZodType<PatchAction, z.ZodTypeDef, unknown> = z.enum([

@@ -41,8 +41,7 @@ const cspOf = async (port: number, token: string, docId: string): Promise<string
   return String(response.headers["content-security-policy"] ?? "");
 };
 
-const trustFileOf = (workspace: string): string =>
-  join(workspace, ".hreader", "trust.json");
+const trustFileOf = (workspace: string): string => join(workspace, ".hreader", "trust.json");
 
 describe("trust · 并发 grant", () => {
   it("should keep both grants when two docs are granted in parallel", async () => {
@@ -91,7 +90,9 @@ describe("trust · 存储不可写", () => {
 
 describe("trust · 写入口", () => {
   const shaOf = (workspace: string, docId: string): string =>
-    createHash("sha256").update(readFileSync(join(workspace, docId))).digest("hex");
+    createHash("sha256")
+      .update(readFileSync(join(workspace, docId)))
+      .digest("hex");
 
   it("should refuse HTTP writes to foreign docs before touching the file (style/patch)", async () => {
     await withServer(async (ctx) => {
@@ -187,9 +188,7 @@ describe("trust · 子目录", () => {
   it("should grant trust for a subdirectory foreign doc", async () => {
     await withServer(async (ctx) => {
       expect(await grant(ctx.port, ctx.token, "sub/deep.html")).toBe(200);
-      expect(await cspOf(ctx.port, ctx.token, "sub/deep.html")).toContain(
-        "sandbox allow-scripts",
-      );
+      expect(await cspOf(ctx.port, ctx.token, "sub/deep.html")).toContain("sandbox allow-scripts");
     }, subForeignSeed);
   });
 });

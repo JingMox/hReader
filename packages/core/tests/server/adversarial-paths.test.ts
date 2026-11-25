@@ -95,18 +95,17 @@ describe("docId · 合法形态照过", () => {
 });
 
 describe("docId · `.hreader` 存储区", () => {
-  it.each([
-    ".hreader",
-    ".hreader%2Ftrap.html",
-    ".hreader%2Flocks%2Fheld.lock",
-  ])("should refuse docId %s with path_outside_workspace even though it exists", async (pathDocId) => {
-    await withServer(async (ctx) => {
-      const response = await modelOf(ctx.port, ctx.token, pathDocId);
+  it.each([".hreader", ".hreader%2Ftrap.html", ".hreader%2Flocks%2Fheld.lock"])(
+    "should refuse docId %s with path_outside_workspace even though it exists",
+    async (pathDocId) => {
+      await withServer(async (ctx) => {
+        const response = await modelOf(ctx.port, ctx.token, pathDocId);
 
-      expect(response.status).toBe(403);
-      expect(response.code).toBe("path_outside_workspace");
-    }, storeSeed);
-  });
+        expect(response.status).toBe(403);
+        expect(response.code).toBe("path_outside_workspace");
+      }, storeSeed);
+    },
+  );
 
   it("should never serve .HREADER/**: 403 where realpath folds case (APFS), 404 elsewhere", async () => {
     await withServer(async (ctx) => {

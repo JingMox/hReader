@@ -7,14 +7,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  DOC,
-  cookieOf,
-  defaultSeed,
-  httpCall,
-  openSse,
-  withServer,
-} from "./harness";
+import { DOC, cookieOf, defaultSeed, httpCall, openSse, withServer } from "./harness";
 import { withPost } from "./wire";
 
 const subSeed = (workspace: string): void => {
@@ -52,7 +45,11 @@ describe("watcher · 子目录文档只写未读", () => {
       await sse.waitFor(1);
       // 越过自写回声窗口（ECHO_MS=200），否则改动被吞掉——同 lock-and-runtime.test.ts 的先例。
       await sleep(250);
-      writeFileSync(join(ctx.workspace, "sub", "inner.html"), `${DOC}\r\n<!-- external -->`, "utf8");
+      writeFileSync(
+        join(ctx.workspace, "sub", "inner.html"),
+        `${DOC}\r\n<!-- external -->`,
+        "utf8",
+      );
       const frame = await sse.waitForEvent("doc.changed");
       sse.close();
 
