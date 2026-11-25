@@ -7,43 +7,33 @@
 import { describe, expect, it } from "vitest";
 
 import { parseHtml, sanitizedAttributesOf } from "../../src/index";
-import type { HtmlElementNode } from "../../src/index";
+import type { HtmlElementNode, HtmlNode } from "../../src/index";
 
-const styleAttrOf = (html: string): string | undefined => {
-  const root = parseHtml(html).root;
-  let found: string | undefined;
-  const walk = (nodes: readonly (typeof root.children)[number][]): void => {
-    for (const node of nodes) {
-      if (node.kind === "element") {
-        const element = node as HtmlElementNode;
-        const attr = element.attrs.find(([name]) => name.toLowerCase() === "style");
-        if (attr !== undefined) found = attr[1];
-        walk(element.children);
-      }
-    }
-  };
-  walk(root.children);
+const childrenOf = (node: HtmlNode): readonly HtmlNode[] =>
+  node.kind === "element" || node.kind === "document" ? node.children : [];
+
+const elementsOf = (html: string): HtmlElementNode[] => {
+  const found: HtmlElementNode[] = [];
+  const stack: HtmlNode[] = [parseHtml(html).root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === undefined) break;
+    if (node.kind === "element") found.push(node);
+    stack.push(...childrenOf(node));
+  }
   return found;
 };
 
+const styleAttrOf = (html: string): string | undefined =>
+  elementsOf(html)
+    .flatMap((node) => node.attrs)
+    .find(([name]) => name.toLowerCase() === "style")?.[1];
+
 /** print 预设剥完 style 还在不在：留了值 = 外链串混进了导出稿。 */
-const keptStyleOf = (html: string): string | undefined => {
-  const root = parseHtml(html).root;
-  let kept: string | undefined;
-  const walk = (nodes: readonly (typeof root.children)[number][]): void => {
-    for (const node of nodes) {
-      if (node.kind === "element") {
-        const element = node as HtmlElementNode;
-        for (const [name, value] of sanitizedAttributesOf(element, "print")) {
-          if (name === "style") kept = value;
-        }
-        walk(element.children);
-      }
-    }
-  };
-  walk(root.children);
-  return kept;
-};
+const keptStyleOf = (html: string): string | undefined =>
+  elementsOf(html)
+    .flatMap((node) => sanitizedAttributesOf(node, "print"))
+    .find(([name]) => name === "style")?.[1];
 
 describe("audit-r2: print style 里的裸串取图函数", () => {
   it.each([
