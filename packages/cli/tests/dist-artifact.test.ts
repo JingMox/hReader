@@ -48,7 +48,7 @@ beforeAll(() => {
 }, 120_000);
 
 describe("dist/cli.mjs · 交付面", () => {
-  it("should ship with a shebang, executable bit and bundled styles", async () => {
+  it("should ship with a shebang, executable bit and bundled styles", () => {
     expect(existsSync(DIST_CLI)).toBe(true);
     expect(readFileSync(DIST_CLI, "utf8").startsWith("#!/usr/bin/env node")).toBe(true);
     expect((statSync(DIST_CLI).mode & 0o111) !== 0).toBe(true);

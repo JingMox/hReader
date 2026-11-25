@@ -1,14 +1,7 @@
 // 这层管：真子进程层的对抗面——怪异文件名、import 的文件系统矩阵、退出码抽查。
 // 纯 argv 的词法在 `argv-edge.test.ts`；这里跑的是整条进程（含 io 与落盘）。
 
-import {
-  chmodSync,
-  existsSync,
-  readFileSync,
-  realpathSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -98,7 +91,7 @@ describe("hr import · 文件系统矩阵（真子进程）", () => {
   it("should refuse --force through a symlink that points outside the workspace", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
-      const outside = join(dir, "..", `escape-${Date.now()}.html`);
+      const outside = join(dir, "..", "escape.html");
       writeFileSync(join(dir, "src.html"), FOREIGN);
       symlinkSync(outside, join(dir, "o.hr.html"));
 
