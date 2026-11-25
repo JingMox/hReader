@@ -207,3 +207,17 @@ describe("主题 CSS", () => {
     expect(escaped).toContain("<\\/STYLE>");
   });
 });
+
+describe("嵌套深度上限（L-40）", () => {
+  const deepDoc = (depth: number): string =>
+    `<article data-hr-id="r">${"<div>".repeat(depth)}x${"</div>".repeat(depth)}</article>`;
+
+  it("嵌套超过上限 → invalid_document 而不是裸 RangeError", () => {
+    expect(codeOf(() => printHtmlOf(inputOf(deepDoc(2100))))).toBe("invalid_document");
+  });
+
+  it("上限之内的深文档照常产出", () => {
+    const html = printHtmlOf(inputOf(deepDoc(2000)));
+    expect(html).toContain("<article");
+  });
+});
