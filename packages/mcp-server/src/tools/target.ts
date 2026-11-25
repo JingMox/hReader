@@ -175,11 +175,10 @@ export const createNewFileOf = async (target: DocumentTarget, html: string): Pro
     await link(tmp, target.absolute);
   } catch (error: unknown) {
     // `file_exists` 是"目标已存在"的对外语义（与 CLI `--out` 同码），不该掉进 io_failure 的兜底。
-    /* v8 ignore else —— tmp 与目标同目录：除 EEXIST 外，能让 link 失败的原因会先让 writeFileAtomic 失败 */
-    if (isEexist(error)) {
-      throw new HrError("file_exists", `目标已存在：${target.input}`, { cause: error });
-    }
-    throw writeFailureOf(error, target);
+    // tmp 与目标同目录：除 EEXIST 外，能让 link 失败的原因会先让 writeFileAtomic 失败——防御性兜底。
+    /* v8 ignore next */
+    if (!isEexist(error)) throw writeFailureOf(error, target);
+    throw new HrError("file_exists", `目标已存在：${target.input}`, { cause: error });
   } finally {
     await rm(tmp, { force: true });
   }
