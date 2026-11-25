@@ -4,6 +4,7 @@
 
 import type { AppIo, RevisionResponse } from "./io.ts";
 import type { Host } from "./dom.ts";
+import { escapeAttr } from "./escape-attr.ts";
 import type { KeyLike } from "./keys.ts";
 import type { ReaderState } from "./state.ts";
 import type { Widget } from "./widgets/library.ts";
@@ -92,6 +93,15 @@ export const syncView = (view: {
     // `#hr-note-btn` 首帧在模板里带 `hidden`（无 JS 时的兜底）；摘除/复原的唯一责任点就在这里：
     // 有选区（`noteTarget` 已设）→ 摘掉，选区取消/提交后 → 带回来。不靠 CSS 覆盖 `[hidden]`。
     host.attr(`${ROOT} #hr-note-btn`, "hidden", next.noteTarget === undefined ? "" : undefined);
+    // `hr-note-target` 描边同一条事实源：选区没了就全量扫掉——先后划过几个块会留好几处
+    // 橙框，`cls` 只改第一个命中，必须按 `data-hr-id` 逐块点名。
+    if (next.noteTarget === undefined) {
+      for (const element of host.all(`${ROOT} .hr-note-target`)) {
+        const id = element.getAttribute("data-hr-id");
+        if (id !== null)
+          host.cls(`${ROOT} [data-hr-id="${escapeAttr(id)}"]`, "hr-note-target", false);
+      }
+    }
   };
 };
 
