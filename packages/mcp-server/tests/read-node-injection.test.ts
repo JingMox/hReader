@@ -61,11 +61,11 @@ describe("hr_read_node · 目标解析", () => {
   });
 
   it("should resolve a bare tag name like the CLI does (selector-first)", async () => {
-    // CLI `hr read doc section` 命中多个 → 歧义报错；MCP 旧模板会把 "section"
-    // 当 id 查（永远查无此 id → node_not_found）。两边必须同一个码。
+    // CLI `hr read doc section` 把输入当选择器解析（命中首棵 <section>）；MCP 旧模板把
+    // "section" 当 id 查（永远查无此 id → node_not_found）。两边必须同一行为。
     const result = await call("section");
 
-    expect(result.isError).toBe(true);
-    expect(result.code).not.toBe("node_not_found");
+    expect(result.isError).toBe(false);
+    expect(result.text).toContain("第一段");
   });
 });
