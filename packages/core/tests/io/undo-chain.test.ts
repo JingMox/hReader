@@ -21,8 +21,8 @@ import {
   writeBytesAt,
   writeTextAt,
   withWorkspace,
-} from "../io/harness";
-import { ARTICLE_DOC, DOC_FILE } from "../io/fixtures";
+} from "./harness";
+import { ARTICLE_DOC, DOC_FILE } from "./fixtures";
 
 const deps = nodePatchDeps;
 

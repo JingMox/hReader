@@ -3,8 +3,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { classifyDocument, loadDocument, parseHtml } from "../../src/index";
-import type { Classification } from "../../src/index";
+import { classifyDocument, loadDocument, parseHtml } from "../src/index";
+import type { Classification } from "../src/index";
 
 const cls = (html: string): Classification => classifyDocument(parseHtml(html));
 
