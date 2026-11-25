@@ -29,8 +29,11 @@ export type WatchFn = (
   onEvent: (event: string, name: string | undefined) => void,
 ) => WatchHandle;
 
-/** chokidar 归一化后的文件事件；目录事件（addDir/unlinkDir）不需要往上抛。 */
-const FILE_EVENTS: ReadonlySet<string> = new Set(["add", "change", "unlink"]);
+/**
+ * 文件事件白名单；目录事件（addDir/unlinkDir）不算"文件变了"。过滤放在 attach，注入源同样被归一化。
+ * "rename" 要算进去：注入的 `fs.watch` 替身就用 rename 报"文件被换掉了"。
+ */
+const FILE_EVENTS: ReadonlySet<string> = new Set(["add", "change", "unlink", "rename"]);
 
 /**
  * 默认事件源。chokidar 把平台差异（编辑器 rename 式原子保存、unlink→add 抖动）归一成
@@ -40,7 +43,7 @@ const FILE_EVENTS: ReadonlySet<string> = new Set(["add", "change", "unlink"]);
 const chokidarWatch: WatchFn = (dir, onEvent) => {
   const watcher = watch(dir, { depth: 0, ignoreInitial: true });
   watcher.on("all", (event, path) => {
-    if (FILE_EVENTS.has(event)) onEvent(event, basename(path));
+    onEvent(event, basename(path));
   });
   watcher.on("error", () => undefined);
   return { close: () => void watcher.close() };
@@ -87,7 +90,8 @@ export const createWatcher = (input: WatcherInput, watchFn: WatchFn = chokidarWa
   const watchers = new Map<string, WatchHandle>();
   const scheduler = schedulerOf(input);
   const attach = (dir: string, file: string | undefined): WatchHandle =>
-    watchFn(dir, (_event, name) => {
+    watchFn(dir, (event, name) => {
+      if (!FILE_EVENTS.has(event)) return;
       if (name === undefined) return;
       if (file !== undefined && name !== file) return;
       scheduler.schedule(join(dir, name));
