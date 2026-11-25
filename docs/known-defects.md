@@ -121,13 +121,13 @@ F2 要做的：要么按"article 数量最多者 + 相邻"选主，要么把文�
 - 2026-11-19 · R2-F17 · `duplicate_id`（`1203 → 1204`）。
 - 2026-11-25 · R2 交叉复审 · 订阅重连补 daemon.json 重读（daemon 重启恢复），文件 1204 → 1216 行；已无机械上限，行数增长仍受 L-31 拆分触发条件约束。
 
-## L-40 · 打印管线的递归遍历在深嵌套文档上抛裸 `RangeError`（R2 复审登记，P3，不修）
+## L-40 · 打印管线的递归遍历在深嵌套文档上抛裸 `RangeError`（R2 复审登记，P3，**已修**）
 
 **现象**：`packages/renderer-html/src/print-html.ts` 的 `findElement`/`textOf`/`rewrittenChildrenOf`/`reservedIdsOf` 都是**递归**遍历；`hr export`/`hr pdf`/`hr png` 的输入是用户自己的 HTML（没有深度上限），一份 ~90k 层嵌套 `<div>`（约 1 MiB，远在 4 MiB 产物上限之内）就会让 `hr export` 以 `RangeError: Maximum call stack size exceeded` 退出——不是 `HrError`，走不到 run.ts 的错误码映射。实测（同形态递归、纯 JS 对象）：10 万层即溢。
 
 **为什么不修**：①core 的热路径遍历（`serializeHtml`）已是显式栈迭代，说明"深文档"这个形状在设计视野内，但输入侧 `hr import`/`normalize` 会先做骨架平衡与重写，深嵌套文档到不了打印层就先在别处抛 `HrError`——能流到 `print-html` 的深文档只有"本就规整但极深"这一种形态，真实文档里没有。②改成迭代遍历要动五个 walker，收益是换一种崩溃形态（`RangeError` 裸栈 → `HrError("invalid_document")`），不救任何真实用户。
 
-**若将来需要**：在 `printHtmlReportOf` 入口给 `parsed.root` 过一次显式栈的深度测量（一次迭代遍历即可），超过阈值（如 2048 层）抛 `invalid_document`——比在五个 walker 里各自改迭代便宜，且把崩溃提前成可读的错误码。
+**已修（2026-12 · 本轮）**：按本节原方案落地——`printHtmlReportOf` 在 `parseHtml` 之后先过一次显式栈深度测量（`depthOf`），超过 2048 层抛 `HrError("invalid_document")`，走 run.ts 的错误码映射；`numbering.visit` 的递归深度是文档深度的子集，同一道闸兜住。`print-html-document.test.ts` 的「嵌套深度上限（L-40）」一组用例钉住超限报错与限内照常产出。
 
 ## 已定：不是缺陷（2026-11-19 结案）
 

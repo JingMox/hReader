@@ -69,6 +69,33 @@ const DOC_ID_ATTRIBUTE = "data-hr-id";
 /** 序号 span 的类名；`print-css.ts` 用同名类排版，两处必须同一个拼写。 */
 const SECNUM_CLASS = "secnum";
 
+/**
+ * 本文件的 walker（`findElement`/`textOf`/`rewrittenChildrenOf`/`reservedIdsOf`，
+ * 还有 `numbering.ts` 的 `visit`）全是递归——输入是用户 HTML，没有天然深度上限，
+ * ~9 万层嵌套就让递归以裸 `RangeError` 退栈（L-40）。在入口量一次深度：
+ * 显式栈 DFS 自己不烧栈；超限抛结构化的 `invalid_document`，进 run.ts 的错误码映射。
+ * outline 的深度是文档深度的子集（每个 outline 节点都对应一个文档元素），同一道闸兜底。
+ */
+const DEPTH_LIMIT = 2048;
+
+/** 显式栈深度测量：只走 element/document 的孩子，文本/注释节点不产生层级。 */
+const depthOf = (root: HtmlNode): number => {
+  let max = 0;
+  const stack: { readonly node: HtmlNode; readonly depth: number }[] = [
+    { node: root, depth: 1 },
+  ];
+  for (let frame = stack.pop(); frame !== undefined; frame = stack.pop()) {
+    if (frame.depth > max) max = frame.depth;
+    const node = frame.node;
+    if (node.kind !== "element" && node.kind !== "document") continue;
+    for (let index = node.children.length - 1; index >= 0; index -= 1) {
+      const child = node.children[index];
+      if (child !== undefined) stack.push({ node: child, depth: frame.depth + 1 });
+    }
+  }
+  return max;
+};
+
 const textOf = (node: HtmlNode): string => {
   if (node.kind === "text") {
     return node.value;
@@ -258,6 +285,13 @@ export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
   // 不注入 id：导出产物里只有源文档本来就有的 `data-hr-id`，
   // 否则用户从打印稿拄下来的 id 拿去 `patch` 只会得到 `node_not_found`。
   const parsed = parseHtml(input.documentHtml);
+  const depth = depthOf(parsed.root);
+  if (depth > DEPTH_LIMIT) {
+    throw new HrError(
+      "invalid_document",
+      `文档嵌套 ${String(depth)} 层，超过打印稿的深度上限 ${String(DEPTH_LIMIT)}`,
+    );
+  }
   const article = findElement(parsed.root, "article");
   if (article === undefined) {
     throw new HrError("no_article", "源文档里没有 <article>，无法导出打印稿");
