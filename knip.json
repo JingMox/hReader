@@ -30,7 +30,12 @@
       ]
     },
     ".": {
-      "entry": ["skills/hreader/scripts/hr.mjs", "scripts/**/*.ts", "scripts/**/*.mjs"]
+      "entry": [
+        "skills/hreader/scripts/hr.mjs",
+        "scripts/**/*.ts",
+        "scripts/**/*.mjs",
+        "tests/integration/**/*.ts"
+      ]
     },
     "packages/app": {
       "entry": ["src/main.ts", "scripts/*.mjs"],

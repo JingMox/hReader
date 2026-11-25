@@ -28,6 +28,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:coverage
+      # 跨包集成/用户旅程（真 dist 产物 + 真 Chrome；ubuntu runner 自带 Chrome，desktop 冒烟会自动 SKIP）。
+      - run: pnpm test:integration
       - run: pnpm depcruise
       - run: pnpm knip
 
