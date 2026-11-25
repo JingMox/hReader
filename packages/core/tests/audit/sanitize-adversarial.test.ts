@@ -62,16 +62,14 @@ const browserParsedElements = (html: string): HtmlElementNode[] => {
       found.push({
         kind: "element",
         tag: node.tagName,
-        attrs: node.attrs.map((attribute) => [
-          attribute.name,
-          attribute.value,
-        ]) as HtmlElementNode["attrs"],
+        attrs: node.attrs.map((attribute) => [attribute.name, attribute.value]),
         children: [],
       });
     }
+    // Template 的真身内容在 `.content`（parse5 的 `childNodes` 为空）；其余 ParentNode 直接取 childNodes。
     const children =
-      "childNodes" in node ? node.childNodes : "content" in node ? node.content.childNodes : [];
-    for (const child of children ?? []) walk(child);
+      "childNodes" in node ? ("content" in node ? node.content.childNodes : node.childNodes) : [];
+    for (const child of children) walk(child);
   };
   walk(document);
   return found;
@@ -83,9 +81,6 @@ const liveEventAttributes = (html: string): readonly string[] =>
       .filter(([name]) => name.toLowerCase().startsWith("on"))
       .map(([name, value]) => `${element.tag} ${name}=${value}`),
   );
-
-const liveElements = (html: string, tag: string): number =>
-  browserParsedElements(html).filter((element) => element.tag === tag).length;
 
 describe("sanitize 对抗 · 已知疑点结论：<xmp> 文本透传", () => {
   const DOC = "<article><xmp><script>alert(1)</script></xmp><p>正文</p></article>";
