@@ -54,6 +54,17 @@ describe("hr_create_doc · 落盘口径", () => {
     expect(await readdir(join(workspace, "sub"))).toEqual(["doc.html"]);
   });
 
+  it("should reject an overlong filename upstream as invalid_input", async () => {
+    // 文件名超 NAME_MAX：路径校验在落盘前就拦下——pin 住这个早退契约。
+    const result = await call("hr_create_doc", {
+      filePath: `${"x".repeat(300)}.html`,
+      title: "标题",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.code).toBe("invalid_input");
+  });
+
   it("should create parent directories and land the document atomically", async () => {
     const result = await call("hr_create_doc", {
       filePath: "a/b/doc.html",
