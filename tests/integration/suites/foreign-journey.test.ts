@@ -132,19 +132,30 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
     })()`);
     const themes = await api.getJson("/api/theme");
     const ids = themes["themes"];
-    assert(Array.isArray(ids) && ids.length > 0, "/api/theme 列表为空");
     assert(
-      typeof themeCtl === "object" &&
-        themeCtl !== null &&
-        Reflect.get(themeCtl, "options") === ids.length &&
-        Reflect.get(themeCtl, "disabled") === false &&
-        ids.includes(Reflect.get(themeCtl, "value")),
+      Array.isArray(ids) &&
+        ids.length > 0 &&
+        ids.every((id): id is string => typeof id === "string"),
+      "/api/theme 列表为空",
+    );
+    assert(
+      typeof themeCtl === "object" && themeCtl !== null,
+      `framed 模式主题选择器缺席：${JSON.stringify(themeCtl)}`,
+    );
+    assert(
+      Reflect.get(themeCtl, "options") === ids.length &&
+        Reflect.get(themeCtl, "disabled") === false,
       `framed 模式主题选择器不可用：${JSON.stringify(themeCtl)}`,
+    );
+    const current: unknown = Reflect.get(themeCtl, "value");
+    assert(
+      typeof current === "string" && ids.includes(current),
+      `选择器当前值不在主题清单里：${JSON.stringify(themeCtl)}`,
     );
 
     // 写盘路径：经选择器触发 /api/style——<style id="hr-theme"> 写进外来文档，
     // sha 变、sha 键信任失效。挑一个与当前值不同的主题，保证 change 真的发起写。
-    const target = ids.find((id) => id !== Reflect.get(themeCtl, "value"));
+    const target = ids.find((id) => id !== current);
     assert(target !== undefined, "/api/theme 清单没有可切换的备选主题");
     const switched = await page.eval(`(() => {
       const sel = document.querySelector('#hr-theme-select');
