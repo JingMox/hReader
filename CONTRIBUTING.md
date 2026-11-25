@@ -90,3 +90,18 @@ CI 的 `checks` job 逐步调用上面这些 package scripts，`pnpm verify` 与
 - 断言具体值与错误 `code`，不只断言"抛了错"。
 - 不 mock 被测单元本体；fs/网络/时间等外部依赖通过注入的替身控制。
 - 临时目录用 `mkdtemp` 并在 `finally` 里清理。
+
+## 变异测试
+
+测试强度用 StrykerJS（`@stryker-mutator/vitest-runner`）量化，配置在 `stryker.config.mjs`。
+
+```bash
+pnpm test:mutation                          # 跑 config 里的全量范围（很久）
+pnpm test:mutation --mutate "packages/core/src/io/paths.ts"   # 只跑一个/几个文件（逗号分隔 glob）
+```
+
+- 结果在 `.reports-tmp/mutation/`（HTML + JSON，已 gitignore）；增量缓存在 `.reports-tmp/stryker-incremental.json`，改过的文件会自动重测，删掉它可强制全量。
+- 读报告：`killed`/`timeout` 是测试逮住的变异体；`survived` 是测试漏掉的——要么补行为级测试，要么确认是等价变异后用 `// Stryker disable next-line <Mutator>: <理由>` 标记并写明理由。
+- `thresholds.break` 是防退化棘轮：低于它命令退出非零。新补的测试杀死变异体后，分数只能升不能降。
+- CI 的 `mutation.yml` 每周定期跑 + 支持 `workflow_dispatch` 手动触发（可传 `mutate` 缩小范围），不阻塞 PR。
+- 注意：Stryker 用 inPlace 模式跑，运行中会临时覆写被变异文件（结束后恢复）；跑的时候不要编辑源码。

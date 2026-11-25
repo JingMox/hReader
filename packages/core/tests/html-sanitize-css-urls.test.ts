@@ -83,4 +83,21 @@ describe("url() 取图函数防线钉住", () => {
     // 确认输入真的带 style（别把"剥光"误判成"没写过"）。
     expect(styleAttrOf(html)).toBeDefined();
   });
+
+  it("should strip a style that splits url( across a CSS line continuation", () => {
+    // `\` + 换行按 CSS 语法是行接续（解码后删掉）：`u\<LF>rl(` 与 `url(` 是同一个请求。
+    const style = "background:u\\\nrl(http://intranet.example/x.png)";
+    const html = `<p style="${style}">x</p>`;
+
+    expect(styleAttrOf(html)).toBeDefined();
+    expect(keptStyleOf(html)).toBeUndefined();
+  });
+
+  it("should keep a style whose decoded escape is not an ASCII url char", () => {
+    // `\d800` 是代理区码点，解码成 U+FFFD（非 ASCII）：`//` 不在参数首位就不算外链，属性保留。
+    const style = "background:url(\\d800//intranet.example/x.png)";
+    const html = `<p style="${style}">x</p>`;
+
+    expect(keptStyleOf(html)).toBe(style);
+  });
 });

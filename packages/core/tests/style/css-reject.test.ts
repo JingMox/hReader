@@ -48,12 +48,28 @@ describe("assertThemeSafe · 远程与危险 url()", () => {
     ["blob:", ".a{background:url(blob:https://x/y)}"],
     ["file:", ".a{background:url(file:///etc/passwd)}"],
     ["未闭合的 url(", ".a{background:url(https://evil.example/x"],
+    ["未闭合的 http url(", ".a{background:url(http://evil.example/x"],
+    ["未闭合的协议相对 url(", ".a{background:url(//evil.example/x"],
+    ["未闭合带引号与空白的 url(", ".a{background:url( 'http://evil.example/x"],
+    ["url 与 ( 之间带空格的非 http scheme", ".a{background:url (ftp://evil.example/x)}"],
+    ["带引号的非 http scheme", '.a{background:url("ftp://evil.example/x")}'],
+    ["外链 scheme 尾巴带锚点", ".a{background:url(ftp://evil.example/x#)}"],
   ])("should reject %s with invalid_theme", (_label, css) => {
     expect(errorFor(css).code).toBe("invalid_theme");
   });
 
   it("should keep the message actionable (mentions url())", () => {
     expect(errorFor(".a{background:url(ftp://files.example/x)}").message).toContain("url()");
+  });
+
+  it("should name the offense for a protocol-relative url", () => {
+    expect(errorFor(".a{background:url(http://evil.example/x)}").message).toContain("外部资源");
+  });
+
+  it("should echo the offending argument trimmed in the message", () => {
+    expect(errorFor('.a{background:url("ftp://files.example/x")}').message).toContain(
+      "ftp://files.example/x",
+    );
   });
 });
 
@@ -66,6 +82,9 @@ describe("assertThemeSafe · 转义先反转义再判", () => {
     ["转义后的协议相对地址", ".a{background:\\75 rl(//evil.example/x.png)}"],
     ["转义后的 @import（无空格）", "\\40 import 'y.css';"],
     ["大小写混合 + 转义", ".a{background:URL(\\68 ttp://evil.example/x.png)}"],
+    ["单字符转义的 javascript:", ".a{background:url(javascript\\:alert(1))}"],
+    ["单字符转义的 @import", "@im\\port 'x.css';"],
+    ["单字符转义的 url(", ".a{background:u\\rl(http://evil.example/x.png)}"],
   ])("should reject %s with invalid_theme", (_label, css) => {
     expect(errorFor(css).code).toBe("invalid_theme");
   });

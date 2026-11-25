@@ -43,6 +43,7 @@ const isLocalUrl = (argument: string): boolean => {
 };
 
 const urlArgumentsOf = (css: string): readonly string[] => {
+  // Stryker disable next-line ArrayDeclaration: 预填元素走同一条 isLocalUrl 判定，无害相对串只会多一次放行检查——等价。
   const found: string[] = [];
   for (const match of css.matchAll(URL_ARGUMENT)) {
     const argument = match[1];

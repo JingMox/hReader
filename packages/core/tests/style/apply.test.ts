@@ -49,7 +49,9 @@ describe("replaceTheme · 注入（原文档没有主题块）", () => {
   });
 
   it("should reject an empty string (no head at all) with invalid_html", () => {
-    expect(errorOf(() => replaceTheme("", CSS)).code).toBe("invalid_html");
+    const error = errorOf(() => replaceTheme("", CSS));
+    expect(error.code).toBe("invalid_html");
+    expect(error.message).toContain("head");
   });
 });
 
@@ -205,5 +207,25 @@ describe("replaceTheme · 单锚点收敛", () => {
     const one = DOC.replace("</head>", `<style id="hr-theme">a{}</style></head>`);
 
     expect(replaceTheme(one, CSS).removed).toBe(0);
+  });
+});
+
+describe("replaceTheme · 锚点身份与 prologue", () => {
+  it("should not treat a non-style element carrying id=hr-theme as an anchor", () => {
+    const doc = '<html><head></head><body><div id="hr-theme">x</div></body></html>';
+    const result = replaceTheme(doc, CSS);
+
+    expect(result.html).toContain('<div id="hr-theme">');
+    expect(result.html).toContain(`<style id="hr-theme">${CSS}</style>`);
+  });
+
+  it("should keep a comment before the doctype ahead of the injected head", () => {
+    const result = replaceTheme("<!-- note -->\n<!doctype html>\n<p>x</p>", CSS);
+    const doctypeAt = result.html.indexOf("<!doctype");
+    const headAt = result.html.indexOf("<head>");
+
+    expect(result.html.startsWith("<!-- note -->")).toBe(true);
+    expect(doctypeAt).toBeGreaterThan(0);
+    expect(headAt).toBeGreaterThan(doctypeAt);
   });
 });

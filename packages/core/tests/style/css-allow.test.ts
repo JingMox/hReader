@@ -47,6 +47,15 @@ describe("assertThemeSafe · 放行", () => {
     expect(codeFor(css)).toBe("no_throw");
   });
 
+  it("should accept a relative path that merely contains a scheme-like substring", () => {
+    expect(codeFor(".a{background:url(foo/data:.png)}")).toBe("no_throw");
+    expect(codeFor(".a{background:url(dir/https:notes.png)}")).toBe("no_throw");
+  });
+
+  it("should accept an unclosed comment that swallows @import to EOF", () => {
+    expect(codeFor("a{color:red}/* @import 'x.css';")).toBe("no_throw");
+  });
+
   it("should accept the real builtin theme (仓库交付物)", async () => {
     const { readFile } = await import("node:fs/promises");
     const css = await readFile(

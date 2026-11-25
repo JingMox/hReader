@@ -33,6 +33,7 @@ describe("originAllowed · 跨站请求来源", () => {
     [undefined, true],
     ["http://127.0.0.1:7420", true],
     ["HTTP://LOCALHOST:7420", true],
+    [" http://127.0.0.1:7420 ", true],
     ["http://127.0.0.1:7421", false],
     ["https://127.0.0.1:7420", false],
     ["http://localhost:7420.evil.com", false],
@@ -41,6 +42,23 @@ describe("originAllowed · 跨站请求来源", () => {
     ["null", false],
   ])("should treat Origin %j as allowed=%s", (origin, allowed) => {
     expect(originAllowed(origin, PORT)).toBe(allowed);
+  });
+});
+
+describe("originAllowed · 自定义 allowHosts", () => {
+  it("should treat an empty allow list as absent (loopback rules apply)", () => {
+    expect(originAllowed("http://127.0.0.1:7420", PORT, [])).toBe(true);
+    expect(originAllowed("https://127.0.0.1:7420", PORT, [])).toBe(false);
+  });
+
+  it("should accept both http and https for an explicitly allowed host", () => {
+    expect(originAllowed("http://a.example", PORT, ["a.example"])).toBe(true);
+    expect(originAllowed("https://a.example", PORT, ["a.example"])).toBe(true);
+  });
+
+  it("should accept an origin matching any allowed host (not require all)", () => {
+    expect(originAllowed("http://a.example", PORT, ["a.example", "b.example"])).toBe(true);
+    expect(originAllowed("http://c.example", PORT, ["a.example", "b.example"])).toBe(false);
   });
 });
 

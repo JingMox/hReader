@@ -45,6 +45,12 @@ describe("hasExecutableContent · 属性级", () => {
       true,
     );
   });
+
+  it("should not treat a content attribute on non-meta elements as executable", () => {
+    // meta refresh 的判定锚在 <meta> 上：content 属性出现在普通元素里只是普通属性。
+    expect(hasExec('<p content="0; url=javascript:go()">x</p>')).toBe(false);
+    expect(hasExec('<div content="javascript:go()">x</div>')).toBe(false);
+  });
 });
 
 describe("hasExecutableContent · 干净文档", () => {
