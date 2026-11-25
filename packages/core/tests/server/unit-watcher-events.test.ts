@@ -87,6 +87,80 @@ describe("createWatcher · 目录事件与重复订阅", () => {
   });
 });
 
+describe("createWatcher · 挂载盲窗 reconcile", () => {
+  /** 带 `ready` 上报的事件源句柄：chokidar 'ready' 的抽象，注入源按同样契约给。 */
+  interface ReadyHandle {
+    readonly close: () => void;
+    readonly ready: (handler: () => void) => void;
+  }
+
+  /** 复刻 chokidar "就绪前的事件看不见"的挂载盲窗：事件在 ready 之前一律不派发。 */
+  const readySource = (): {
+    readonly readies: (() => void)[];
+    readonly watch: Parameters<typeof createWatcher>[1];
+  } => {
+    const readies: (() => void)[] = [];
+    return {
+      readies,
+      watch: (_dir, _onEvent): ReadyHandle => ({
+        close: () => undefined,
+        ready: (handler) => {
+          readies.push(handler);
+        },
+      }),
+    };
+  };
+
+  it("should re-read the watched file on source ready, catching writes the attach gap hid", () => {
+    const changes: string[] = [];
+    const { readies, watch } = readySource();
+    const watcher = createWatcher(
+      { now: Date.now, onFileChange: (path) => changes.push(path) },
+      watch,
+    );
+    try {
+      watcher.add("/tmp/dir", "a.html");
+      // 盲窗里落下的外部写 chokidar 看不见：事件根本不来，只能靠就绪时的重读兜底。
+      // patch→add 的顺序是先 noteSelfWrite 后 add：回声窗口不得吞掉 reconcile
+      // （自写的那份由下游 revision 去重，不走回声窗口）。
+      watcher.noteSelfWrite(join("/tmp/dir", "a.html"));
+      for (const ready of readies) ready();
+      expect(changes).toEqual([join("/tmp/dir", "a.html")]);
+    } finally {
+      watcher.close();
+    }
+  });
+
+  it("should not reconcile a whole-directory watch (no single file to re-read)", () => {
+    const changes: string[] = [];
+    const { readies, watch } = readySource();
+    const watcher = createWatcher(
+      { now: Date.now, onFileChange: (path) => changes.push(path) },
+      watch,
+    );
+    try {
+      watcher.add("/tmp/dir", undefined);
+      for (const ready of readies) ready();
+      expect(changes).toEqual([]);
+    } finally {
+      watcher.close();
+    }
+  });
+
+  it("should not reconcile after close, even if ready lands late", () => {
+    const changes: string[] = [];
+    const { readies, watch } = readySource();
+    const watcher = createWatcher(
+      { now: Date.now, onFileChange: (path) => changes.push(path) },
+      watch,
+    );
+    watcher.add("/tmp/dir", "a.html");
+    watcher.close();
+    for (const ready of readies) ready();
+    expect(changes).toEqual([]);
+  });
+});
+
 describe("createWatcher · 边界输入", () => {
   it("should survive an unwatchable directory without crashing", () => {
     // 这条留真 chokidar：注入源复刻不了"watch() 当场抛或异步 error"两种失败形态。
