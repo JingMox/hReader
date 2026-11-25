@@ -200,7 +200,6 @@ const patchBody = (): string =>
   });
 
 describe("csrf · 写面", () => {
-
   it.each(["0", "yes", "2", "true"])(
     "should 403 x-hr-csrf: %s even with a valid cookie",
     async (value) => {
@@ -392,22 +391,33 @@ describe("foreign · 写入口的 derive gate", () => {
   };
 
   it.each([
-    { method: "POST", path: "/api/patch", body: { docId: "doc.html", action: "append", targetId: "x", fragment: "<b>x</b>" } },
-    { method: "POST", path: "/api/doc/doc.html/annotations", body: { selector: { nodeId: "x" }, text: "n" } },
-  ])("should refuse $path on a foreign doc (derive gate before lock+write)", async ({ method, path, body }) => {
-    await withServer(async (ctx) => {
-      const response = await httpCall(ctx.port, {
-        method,
-        path,
-        headers: { cookie: cookieOf(ctx.token), "x-hr-csrf": "1" },
-        body: JSON.stringify(body),
-      });
-      // derive gate 的具体码按入口分（patch→invalid_document/no_article 422、annotation→needs_normalize 409），
-      // 共同不变量：永不 2xx、永不写盘。
-      expect(response.status).toBeGreaterThanOrEqual(400);
-      expect(response.status).toBeLessThan(500);
-    }, foreignSeed);
-  });
+    {
+      method: "POST",
+      path: "/api/patch",
+      body: { docId: "doc.html", action: "append", targetId: "x", fragment: "<b>x</b>" },
+    },
+    {
+      method: "POST",
+      path: "/api/doc/doc.html/annotations",
+      body: { selector: { nodeId: "x" }, text: "n" },
+    },
+  ])(
+    "should refuse $path on a foreign doc (derive gate before lock+write)",
+    async ({ method, path, body }) => {
+      await withServer(async (ctx) => {
+        const response = await httpCall(ctx.port, {
+          method,
+          path,
+          headers: { cookie: cookieOf(ctx.token), "x-hr-csrf": "1" },
+          body: JSON.stringify(body),
+        });
+        // derive gate 的具体码按入口分（patch→invalid_document/no_article 422、annotation→needs_normalize 409），
+        // 共同不变量：永不 2xx、永不写盘。
+        expect(response.status).toBeGreaterThanOrEqual(400);
+        expect(response.status).toBeLessThan(500);
+      }, foreignSeed);
+    },
+  );
 
   it("should still allow theme writes on a foreign doc (contract: style is allowed)", async () => {
     await withServer(async (ctx) => {

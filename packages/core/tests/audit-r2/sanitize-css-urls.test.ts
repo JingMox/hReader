@@ -71,14 +71,13 @@ describe("audit-r2: print style 里的裸串取图函数", () => {
     expect(keptStyleOf(html)).toBeUndefined();
   });
 
-  it.each([
-    "background:image-set('x.png' 1x, 'y.png' 2x)",
-    "background:url(x.png)",
-    "color:red",
-  ])("相对路径与纯属性不误伤：%s", (style) => {
-    const html = `<p style="${style.replaceAll('"', "&quot;")}">x</p>`;
-    expect(keptStyleOf(html)).toBe(style);
-  });
+  it.each(["background:image-set('x.png' 1x, 'y.png' 2x)", "background:url(x.png)", "color:red"])(
+    "相对路径与纯属性不误伤：%s",
+    (style) => {
+      const html = `<p style="${style.replaceAll('"', "&quot;")}">x</p>`;
+      expect(keptStyleOf(html)).toBe(style);
+    },
+  );
 });
 
 describe("audit-r2: 第一轮的 url() 防线钉住", () => {

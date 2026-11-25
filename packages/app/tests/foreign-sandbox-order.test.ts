@@ -26,9 +26,7 @@ describe("foreign · sandbox/src 落位顺序", () => {
     const fake = createFakeHost();
     mountForeign(depsOf(fake.host));
 
-    const calls = fake.calls.filter(
-      (call) => call.op === "attr" && call.args[0] === FRAME,
-    );
+    const calls = fake.calls.filter((call) => call.op === "attr" && call.args[0] === FRAME);
     const sandboxAt = calls.findIndex((call) => call.args[1] === "sandbox");
     const srcAt = calls.findIndex((call) => call.args[1] === "src");
 

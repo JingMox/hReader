@@ -1443,8 +1443,14 @@ mod tests {
         use tauri::Url;
         let url = |q: &str| Url::parse(&format!("http://hr-desktop.local/{q}")).expect("url");
         // 首值生效：伪造者把真令牌塞在后面也救不了前面的假值（query_pairs 顺序读取）。
-        assert!(!bridge_authorized(&url("bridge?t=forged&t=secret"), "secret"));
-        assert!(bridge_authorized(&url("bridge?t=secret&t=forged"), "secret"));
+        assert!(!bridge_authorized(
+            &url("bridge?t=forged&t=secret"),
+            "secret"
+        ));
+        assert!(bridge_authorized(
+            &url("bridge?t=secret&t=forged"),
+            "secret"
+        ));
         // 参数名大小写敏感：`?T=` 不是 `?t=`。
         assert!(!bridge_authorized(&url("bridge?T=secret"), "secret"));
         // 百分号编码按解码后值比较：`a%2Bb` 解回 `a+b`；字面 `+` 是空格。
