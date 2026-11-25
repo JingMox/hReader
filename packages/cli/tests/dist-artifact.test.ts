@@ -3,7 +3,7 @@
 // 测的是 `package.json` 的 `bin` 指向的产物，不是 src；mcp-server 侧的对应探针在 stdio.test.ts。
 
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,6 +47,16 @@ beforeAll(() => {
   execFileSync("node", ["scripts/build.mjs"], { cwd: PACKAGE_ROOT, stdio: "pipe" });
 }, 120_000);
 
+describe("dist/cli.mjs · 交付面", () => {
+  it("should ship with a shebang, executable bit and bundled styles", async () => {
+    expect(existsSync(DIST_CLI)).toBe(true);
+    expect(readFileSync(DIST_CLI, "utf8").startsWith("#!/usr/bin/env node")).toBe(true);
+    expect((statSync(DIST_CLI).mode & 0o111) !== 0).toBe(true);
+    expect(existsSync(join(PACKAGE_ROOT, "dist", "styles"))).toBe(true);
+    expect(existsSync(join(PACKAGE_ROOT, "styles"))).toBe(true);
+  });
+});
+
 describe("dist/cli.mjs · 写盘路径", () => {
   it("should patch then undo against the built artifact", async () => {
     expect(existsSync(DIST_CLI)).toBe(true);
@@ -64,6 +74,35 @@ describe("dist/cli.mjs · 写盘路径", () => {
       expectNoAnsi(undo);
       expect(undo.code).toBe(0);
       expect(readFileSync(path, "utf8")).toBe(DOC);
+    });
+  });
+
+  it("should import a foreign document through the built artifact", async () => {
+    await withTempDir(async (dir) => {
+      writeFileSync(
+        join(dir, "src.html"),
+        '<!doctype html><html><body><main><section><h1>外来</h1></section></main></body></html>',
+      );
+
+      const imported = await runDist(["import", "src.html"], dir);
+      expectNoAnsi(imported);
+      expect(imported.code).toBe(0);
+      const managed = join(dir, "src.hr.html");
+      expect(existsSync(managed)).toBe(true);
+      expect(readFileSync(managed, "utf8")).toContain('data-hr-id="');
+    });
+  });
+
+  it("should style a managed document through the built artifact", async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, "d.html");
+      writeFileSync(path, DOC);
+
+      const styled = await runDist(["style", "d.html", "--visual", "atelier-editorial"], dir);
+      expectNoAnsi(styled);
+      expect(styled.code).toBe(0);
+      // 主题按 `<style id="hr-theme">` 注入；这一行同时证明 dist/styles 随产物分发。
+      expect(readFileSync(path, "utf8")).toContain('<style id="hr-theme"');
     });
   });
 });
