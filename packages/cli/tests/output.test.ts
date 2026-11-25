@@ -500,15 +500,16 @@ describe("人读回执 · 不受信字段过 term", () => {
 
 // join(",") 的存活条件是所有测试夹具数组长度 ≤1——单元素数组里分隔符不可见。
 // 这里给每个对外 JSON 至少两个元素的夹具，分隔符变异（`""`/`"Stryker"`）会把输出打成非法 JSON 或错位字段。
-const diag = (code: string): NonNullable<PatchResult["warnings"]>[number] =>
-  ({
-    code,
+const diag = (code: string): NonNullable<PatchResult["warnings"]>[number] => {
+  const entry: NonNullable<PatchResult["warnings"]>[number] = {
+    code: code as never,
     severity: "warning",
     message: `m-${code}`,
-  }) as NonNullable<PatchResult["warnings"]>[number];
+  };
+  return entry;
+};
 
 describe("output · 对外 JSON 多元素分隔与字段名", () => {
-
   it("should comma-separate multiple nodes, children, annotations and diagnostics in dataOutline", () => {
     const outline: Outline = {
       nodes: [
@@ -585,14 +586,12 @@ describe("displayedPathOf · cwd 内相对、界外绝对", () => {
     expect(displayedPathOf(path, cwd)).toBe(expected);
   });
 
-  it.each([
-    "/ws/site",
-    "/ws/other/x.html",
-    "/else/y.html",
-    "/ws",
-  ])("should fall back to the absolute path for %s", (path) => {
-    expect(displayedPathOf(path, cwd)).toBe(path);
-  });
+  it.each(["/ws/site", "/ws/other/x.html", "/else/y.html", "/ws"])(
+    "should fall back to the absolute path for %s",
+    (path) => {
+      expect(displayedPathOf(path, cwd)).toBe(path);
+    },
+  );
 });
 
 // humanRead 只在 diagnostics 里存在 code === "truncated_output" 时追加截断行：
@@ -603,10 +602,7 @@ describe("humanRead · 截断提示的精确匹配", () => {
       html: "<p>x</p>",
       annotations: [],
       truncated: true,
-      diagnostics: [
-        diag("other_diag"),
-        diag("truncated_output"),
-      ],
+      diagnostics: [diag("other_diag"), diag("truncated_output")],
     };
     expect(humanRead(withTrunc)).toBe("<p>x</p>\nm-truncated_output\n");
     const withoutTrunc: ReadNodeResult = { ...withTrunc, diagnostics: [diag("other_diag")] };
@@ -645,10 +641,16 @@ describe("dataExport · out 的 null 与路径分支", () => {
   const report = { html: "<p>x</p>", bytes: 8, droppedImages: 0 } as unknown as PrintHtmlResult;
   it("should encode out as null or quoted path", () => {
     expect(JSON.parse(dataExport(report, null))).toEqual({
-      html: "<p>x</p>", bytes: 8, droppedImages: 0, out: null,
+      html: "<p>x</p>",
+      bytes: 8,
+      droppedImages: 0,
+      out: null,
     });
     expect(JSON.parse(dataExport(report, "o.html"))).toEqual({
-      html: "<p>x</p>", bytes: 8, droppedImages: 0, out: "o.html",
+      html: "<p>x</p>",
+      bytes: 8,
+      droppedImages: 0,
+      out: "o.html",
     });
   });
 });
@@ -704,7 +706,9 @@ describe("humanImport · trunk 三分支与丢弃明细", () => {
   });
 
   it("should render trunkTag, main and body fallbacks", () => {
-    expect(humanImport({ ...base, trunk: "largest", trunkTag: "article" }, "o.html", 5)).toContain("主干：<article>");
+    expect(humanImport({ ...base, trunk: "largest", trunkTag: "article" }, "o.html", 5)).toContain(
+      "主干：<article>",
+    );
     expect(humanImport(base, "o.html", 5)).toContain("主干：<main>");
     expect(humanImport({ ...base, trunk: "body" }, "o.html", 5)).toContain("主干：<body>");
   });

@@ -113,7 +113,7 @@ describe("importForeign · 丢弃原因文案按类归档", () => {
     { probe: '<form action="/x"></form>', reason: "交互控件" },
     { probe: "<button>go</button>", reason: "交互控件" },
     { probe: '<input type="text">', reason: "交互控件" },
-    { probe: '<select><option>1</option></select>', reason: "交互控件" },
+    { probe: "<select><option>1</option></select>", reason: "交互控件" },
     { probe: "<textarea>x</textarea>", reason: "交互控件" },
     { probe: "<template><b>x</b></template>", reason: "隐藏或原始文本壳" },
     { probe: "<noscript>x</noscript>", reason: "隐藏或原始文本壳" },
@@ -140,7 +140,7 @@ describe("importForeign · 丢弃原因文案按类归档", () => {
     { probe: '<p onclick="go()">x</p>', reason: "事件处理属性" },
     { probe: '<p style="color:red">x</p>', reason: "内联样式（长相归主题）" },
     { probe: '<p data-hr-tmp="1">x</p>', reason: "hReader 内部命名空间" },
-    { probe: '<p hidden>x</p>', reason: "交互、隐藏或伪协议属性" },
+    { probe: "<p hidden>x</p>", reason: "交互、隐藏或伪协议属性" },
   ])("should report stripped attr of $probe as $reason", ({ probe, reason }) => {
     const result = importForeign(`<body><main><p>正文内容在这里。</p>${probe}</main></body>`);
     const reasons = result.report.discarded.map((entry) => entry.reason);

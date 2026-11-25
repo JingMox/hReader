@@ -1089,9 +1089,7 @@ describe("busy · locked 到 409 的唯一翻译点", () => {
   it("should translate an HrError locked into busy", async () => {
     const cause = new HrError("locked", "文件被占用");
 
-    const failure = await busy(async () => {
-      throw cause;
-    }).then(
+    const failure = await busy(() => Promise.reject(cause)).then(
       () => undefined,
       (error: unknown) => error,
     );
@@ -1104,9 +1102,7 @@ describe("busy · locked 到 409 的唯一翻译点", () => {
   });
 
   it("should pass through an HrError that is not locked", async () => {
-    const failure = await busy(async () => {
-      throw new HrError("invalid_input", "x");
-    }).then(
+    const failure = await busy(() => Promise.reject(new HrError("invalid_input", "x"))).then(
       () => undefined,
       (error: unknown) => error,
     );
@@ -1117,9 +1113,7 @@ describe("busy · locked 到 409 的唯一翻译点", () => {
   it("should pass through non-HrError failures unchanged", async () => {
     const boom = new Error("boom");
 
-    const failure = await busy(async () => {
-      throw boom;
-    }).then(
+    const failure = await busy(() => Promise.reject(boom)).then(
       () => undefined,
       (error: unknown) => error,
     );
