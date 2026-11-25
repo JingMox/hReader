@@ -65,8 +65,9 @@ describe("hr_create_doc", () => {
     await writeFile(join(workspace, "taken.html"), "<article></article>", "utf8");
     const result = await createOf({ filePath: "taken.html", title: "撞名" });
 
+    // 与 CLI `hr new` 同码：目标已存在是 `file_exists`，不再掉进 io_failure 兜底。
     expect(isErrorResultOf(result)).toBe(true);
-    expect(codeOf(result)).toBe("io_failure");
+    expect(codeOf(result)).toBe("file_exists");
   });
 
   it("should create nested directories that are inside the workspace", async () => {

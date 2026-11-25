@@ -35,7 +35,7 @@ describe("已知限制 · 特殊文件", () => {
     });
     await session.close();
 
-    expect(codeOf(result)).toBe("io_failure");
+    expect(codeOf(result)).toBe("file_exists");
     expect(textOf(result)).not.toContain("EEXIST");
   }, 10_000);
 });
