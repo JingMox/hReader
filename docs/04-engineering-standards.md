@@ -72,10 +72,13 @@ type ParseResult =
 | 类型 | `pnpm typecheck` | `tsc --noEmit`，strict 全开（见 tsconfig.base.json） |
 | 构建 | `pnpm build` | 各包 scripts/build.mjs（esbuild 单文件产物） |
 | 测试 | `pnpm test:coverage` | Vitest + v8 覆盖率 |
+| 主题 | `pnpm theme:check` | `scripts/check-theme-contrast.mjs`：WCAG 2.1 对比度实测（正文/次要文字 ≥ 4.5:1）、`@media print`、`prefers-reduced-motion`、外壳选择器泄漏 |
 | 依赖边界 | `pnpm depcruise` | 见第五节 |
 | 死代码 | `pnpm knip` | 未使用导出/依赖/文件即失败 |
 
 桌面壳另有一道独立门禁 `pnpm desktop:check`（rustfmt + clippy `-D warnings` + cargo test）。
+
+`pnpm test:e2e`（真 Chrome 的打印稿分页 + 外来文档沙箱对抗）不在 `verify` 里——本机没装 Chrome 时两个脚本打印 SKIPPED 退 0；CI 的 `checks` job 在 `test:coverage` 后真跑（ubuntu-latest 自带 Chrome，显式给 `CHROME_BIN`）。
 
 关键 lint 约定：
 
