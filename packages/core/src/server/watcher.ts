@@ -19,9 +19,11 @@ interface WatcherInput {
   readonly onFileChange: (path: string) => void;
 }
 
-/** 句柄只要求能关：chokidar 的 `close()` 返回 Promise，注入的 `fs.watch` 替身返回 void，都满足。 */
+/** 句柄只要求能关：chokidar 的 `close()` 返回 Promise，注入的 `fs.watch` 替身返回 void，都满足。
+ *  `ready` 是可选上报：事件源就绪=挂载盲窗结束（chokidar 'ready' 在首轮扫描后触发）。 */
 interface WatchHandle {
   readonly close: () => void;
+  readonly ready?: (handler: () => void) => void;
 }
 
 export type WatchFn = (
@@ -46,7 +48,12 @@ const chokidarWatch: WatchFn = (dir, onEvent) => {
     onEvent(event, basename(path));
   });
   watcher.on("error", () => undefined);
-  return { close: () => void watcher.close() };
+  return {
+    close: () => void watcher.close(),
+    ready: (handler) => {
+      watcher.once("ready", handler);
+    },
+  };
 };
 
 interface Scheduler {
@@ -100,7 +107,18 @@ export const createWatcher = (input: WatcherInput, watchFn: WatchFn = chokidarWa
     add: (dir, file) => {
       const key = `${dir}\0${file ?? "*"}`;
       if (watchers.has(key)) return;
-      watchers.set(key, attach(dir, file));
+      const handle = attach(dir, file);
+      watchers.set(key, handle);
+      // 挂载盲窗：watch() 到事件源就绪之间落下的写，chokidar 看不见（首轮扫描把它当存量）。
+      // 就绪时对被盯文件重读一次：外部写靠下游 revision 比对放行，自写同字节被去重——
+      // 所以 reconcile 直发 `onFileChange`，不走自写回声窗口（patch→add 顺序必在窗内）。
+      // 整目录监听没有可重读的单文件，盲窗只能靠下一事件收敛。
+      if (file !== undefined) {
+        handle.ready?.(() => {
+          if (!watchers.has(key)) return;
+          input.onFileChange(join(dir, file));
+        });
+      }
     },
     noteSelfWrite: scheduler.note,
     close: () => {
