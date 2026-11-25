@@ -1,7 +1,7 @@
 // 这层管：锁的 CAS 防线与 runtime 的守门分支——锁的两处 CAS、无活动文档的库变更、默认文档回落、首次发布。
 
 import type { FileSystem } from "../../src/io/ports";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -110,6 +110,50 @@ describe("lock · 取得后被接管", () => {
   });
 });
 
+describe("runtime · workspace 经符号链接", () => {
+  it("should report doc.changed — not library.changed — for the active doc", async () => {
+    // 目录监听的事件路径必须按解析后的 workspace 拼：把 workspace 换成一个软链，
+    // 事件落到的活跃文档不得被错报成 library.changed（MCP/CLI 的写会因此丢刷新）。
+    const realWs = tmp("hr-link-real-");
+    writeFileSync(join(realWs, "doc.html"), DOC, "utf8");
+    const linkRoot = realpathSync(mkdtempSync(join(tmpdir(), "hr-link-root-")));
+    dirs.push(linkRoot);
+    const linkWs = join(linkRoot, "ws-link");
+    symlinkSync(realWs, linkWs);
+    const { ring, hub } = ringOf();
+    const fires: ((event: string, name: string | undefined) => void)[] = [];
+    const runtime = createRuntime(
+      { workspace: linkWs, docId: "doc.html", bodyMs: 200 },
+      {
+        patch: nodePatchDeps,
+        style: nodeStyleDeps(linkWs),
+        watch: (_dir, onEvent) => {
+          fires.push(onEvent);
+          return watcherLike();
+        },
+      },
+      hub,
+    );
+    try {
+      // 第一个 attach 是整目录监听（fires[0]）；目录监听挂在 realpath 之后，等它就绪再动作。
+      await waitFor(() => fires.length > 0);
+      await runtime.remember("doc.html");
+      writeFileSync(join(realWs, "doc.html"), DOC.replace("一", "二"), "utf8");
+      fires[0]?.("change", "doc.html");
+      await waitFor(() => ring.since(0).events.length > 0);
+      const events = ring.since(0).events;
+      const types = events.map((event) => event.type);
+      expect(types).toContain("doc.changed");
+      expect(types).not.toContain("library.changed");
+      // docId 走 target.relative：软链 workspace 也不得漏成 ../private/... 前缀。
+      expect(JSON.stringify(events[0]?.payload)).toContain('"docId":"doc.html"');
+    } finally {
+      runtime.close();
+      hub.close();
+    }
+  });
+});
+
 describe("runtime · 没有活动文档时的库变更", () => {
   it("should publish library.changed and never doc.changed before any document is opened", async () => {
     const workspace = tmp("hr-nodoc-ws-");
@@ -130,6 +174,8 @@ describe("runtime · 没有活动文档时的库变更", () => {
     );
 
     try {
+      // 目录监听挂在 realpath 解析之后：等 attach（fire 被赋值）再发事件。
+      await waitFor(() => fire !== undefined);
       fire?.("change", "loose.html"); // 不调用 remember：active 仍是 undefined。
       await waitFor(() => ring.since(0).events.length > 0);
       const events: readonly SseEvent[] = ring.since(0).events;

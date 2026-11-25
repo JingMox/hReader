@@ -8,6 +8,11 @@ import { watch } from "chokidar";
 
 export const DEBOUNCE_MS = 100;
 
+/** 盲窗对账心跳：挂载→ready 之间事件源看不见任何写，对被盯文件按固定间隔 reconcile
+ *  一次（sha 去重在下游）；真事件到手或 ready 即停。ready 在 CPU 打满时能拖几十秒，
+ *  只等 reconcile-at-ready 等于把盲窗拉长到整个挂载期。 */
+const RECONCILE_MS = 250;
+
 export interface Watcher {
   /** `file` 为 `undefined` 时监听整个目录（书库目录），否则只关心该文件名。 */
   readonly add: (dir: string, file: string | undefined) => void;
@@ -15,7 +20,8 @@ export interface Watcher {
 }
 
 interface WatcherInput {
-  readonly onFileChange: (path: string) => void;
+  /** `probe` = 盲窗对账心跳（不是真事件）：下游只对活跃文档做内容比对，未活跃路径不得据此发布。 */
+  readonly onFileChange: (path: string, probe?: boolean) => void;
 }
 
 /** 句柄只要求能关：chokidar 的 `close()` 返回 Promise，注入的 `fs.watch` 替身返回 void，都满足。
@@ -43,14 +49,20 @@ const FILE_EVENTS: ReadonlySet<string> = new Set(["add", "change", "unlink", "re
  */
 const chokidarWatch: WatchFn = (dir, onEvent) => {
   const watcher = watch(dir, { depth: 0, ignoreInitial: true });
+  let seenReady = false;
   watcher.on("all", (event, path) => {
     onEvent(event, basename(path));
+  });
+  watcher.on("ready", () => {
+    seenReady = true;
   });
   watcher.on("error", () => undefined);
   return {
     close: () => void watcher.close(),
+    // 'ready' 只发一次：监听注册晚于它就绪的话 `once` 永远等不到——记过就直接调。
     ready: (handler) => {
-      watcher.once("ready", handler);
+      if (seenReady) handler();
+      else watcher.once("ready", handler);
     },
   };
 };
@@ -83,35 +95,59 @@ const schedulerOf = (input: WatcherInput): Scheduler => {
 };
 
 export const createWatcher = (input: WatcherInput, watchFn: WatchFn = chokidarWatch): Watcher => {
-  const watchers = new Map<string, WatchHandle>();
+  interface Entry {
+    readonly handle: WatchHandle;
+    readonly stop: () => void;
+  }
+  const watchers = new Map<string, Entry>();
   const scheduler = schedulerOf(input);
-  const attach = (dir: string, file: string | undefined): WatchHandle =>
-    watchFn(dir, (event, name) => {
-      if (!FILE_EVENTS.has(event)) return;
-      if (name === undefined) return;
-      if (file !== undefined && name !== file) return;
-      scheduler.schedule(join(dir, name));
-    });
   return {
     add: (dir, file) => {
       const key = `${dir}\0${file ?? "*"}`;
       if (watchers.has(key)) return;
-      const handle = attach(dir, file);
-      watchers.set(key, handle);
-      // 挂载盲窗：watch() 到事件源就绪之间落下的写，chokidar 看不见（首轮扫描把它当存量）。
-      // 就绪时对被盯文件重读一次：外部写靠下游 revision 比对放行，自写同字节被去重——
-      // reconcile 直发 `onFileChange`，一次性的对账不该被去抖排队/合并。
-      // 整目录监听没有可重读的单文件，盲窗只能靠下一事件收敛。
-      if (file !== undefined) {
-        handle.ready?.(() => {
+      let poll: ReturnType<typeof setInterval> | undefined;
+      const stopPoll = (): void => {
+        if (poll !== undefined) {
+          clearInterval(poll);
+          poll = undefined;
+        }
+      };
+      const handle = watchFn(dir, (event, name) => {
+        if (!FILE_EVENTS.has(event)) return;
+        if (name === undefined) return;
+        if (file !== undefined && name !== file) return;
+        // 被盯文件的真事件到手 = 盲窗已结束，对账心跳停掉（去抖照常排队）。
+        stopPoll();
+        scheduler.schedule(join(dir, name));
+      });
+      watchers.set(key, { handle, stop: stopPoll });
+      // 挂载盲窗：watch() 到事件源就绪之间落下的写，事件源看不见（首轮扫描把它当存量）。
+      // 对被盯文件按固定心跳 reconcile（sha 去重下游做，同字节不发事件）：收敛期从
+      // "等 ready" 缩短到一个心跳间隔；真事件或 ready 任一先到即停。整目录监听没有
+      // 可重读的单文件，盲窗只能靠下一事件收敛。
+      const target = file === undefined ? undefined : join(dir, file);
+      if (target !== undefined && handle.ready !== undefined) {
+        poll = setInterval(() => {
+          if (!watchers.has(key)) {
+            stopPoll();
+            return;
+          }
+          input.onFileChange(target, true);
+        }, RECONCILE_MS);
+        poll.unref();
+        handle.ready(() => {
+          stopPoll();
           if (!watchers.has(key)) return;
-          input.onFileChange(join(dir, file));
+          input.onFileChange(target, true);
         });
       }
     },
     close: () => {
       scheduler.clear();
-      for (const handle of watchers.values()) handle.close();
+      for (const entry of watchers.values()) {
+        entry.stop();
+        entry.handle.close();
+      }
       watchers.clear();
     },
   };
