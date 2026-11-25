@@ -1223,6 +1223,21 @@ mod tests {
     }
 
     #[test]
+    fn new_doc_names_never_create_hidden_files() {
+        let ws = Path::new("/tmp/ws");
+        for raw in ["..", ".", ".hidden", "..\\..\\x"] {
+            let name = safe_new_filename(raw, ws);
+            assert!(
+                !name.starts_with('.'),
+                "{raw:?} 生成了隐藏文件名 {name:?}——文件树按点开头跳过，用户永远看不到这份文件"
+            );
+        }
+        assert_eq!(safe_new_filename(".hidden", ws), "hidden.html");
+        assert_eq!(safe_new_filename("note", ws), "note.html");
+        assert_eq!(safe_new_filename("note.html", ws), "note.html");
+    }
+
+    #[test]
     fn doc_error_keeps_the_workspace_and_clears_only_the_document() {
         let root = std::env::temp_dir().join(format!("hr-win-docerr-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);

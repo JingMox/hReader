@@ -203,4 +203,21 @@ mod tests {
             Err(OptionsError::BadHold("soon".to_string()))
         );
     }
+
+    #[test]
+    fn hold_is_capped_below_instant_overflow() {
+        // `--hold` 进入 `Instant::now() + Duration::from_secs(n)`：u64::MAX 直接溢出 panic。
+        assert_eq!(
+            parse_in(&["--hold", &u64::MAX.to_string()]),
+            Err(OptionsError::BadHold(u64::MAX.to_string()))
+        );
+        assert_eq!(
+            parse_in(&["--hold", "86401"]),
+            Err(OptionsError::BadHold("86401".to_string()))
+        );
+        assert_eq!(
+            parse_in(&["--hold", "86400"]).map(|o| o.hold),
+            Ok(Some(86400))
+        );
+    }
 }

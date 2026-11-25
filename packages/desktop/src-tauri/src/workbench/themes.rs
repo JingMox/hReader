@@ -274,4 +274,53 @@ mod tests {
         assert!(!forest.css.to_ascii_lowercase().contains("</style"));
         let _ = fs::remove_dir_all(&root);
     }
+
+    /// `</style` 的所有 HTML 合法收尾变体都必须被剥掉：大小写、`/`、空白、`>`，
+    /// 以及注释/CDATA/字符串等包壳——HTML 解析器只认 `</style` 这个前缀，逐处清除后
+    /// 无论外面套什么壳都无法提前终止 style 元素。
+    #[test]
+    fn sanitize_strips_every_close_style_variant() {
+        let variants = [
+            "</style>",
+            "</STYLE>",
+            "</Style\n>",
+            "</style\r\n>",
+            "</style/>",
+            "</style foo>",
+            "/*</style>*/",
+            "<![CDATA[</style>]]>",
+            "\"</style>\"",
+            "a</style>b</STYLE>c",
+        ];
+        for variant in variants {
+            let out = sanitize_custom_css(&format!("x{{color:red}}{variant}y{{color:blue}}"));
+            assert!(
+                !out.to_ascii_lowercase().contains("</style"),
+                "{variant:?} 绕过成功：{out}"
+            );
+        }
+    }
+
+    /// `< /style`（`<` 与 `/` 之间有空格）不是 HTML 的合法闭合标签，保留无害。
+    #[test]
+    fn spaced_close_tag_is_not_an_end_tag() {
+        let out = sanitize_custom_css("a::before{content:\"< /style>\"}");
+        assert!(out.contains("< /style"));
+    }
+
+    /// 主题 JSON 也是有界输入：超限文件直接跳过，不为不可能合法的输入付出无界内存。
+    #[test]
+    fn oversized_theme_file_is_skipped() {
+        let root = temp_ws("themes-big");
+        let themes_dir = root.join("vault").join(".hreader/themes");
+        fs::create_dir_all(&themes_dir).expect("create themes dir");
+        let huge = format!(
+            "{{\"id\":\"big\",\"name\":\"Big\",\"css\":\"{}\"}}",
+            "x".repeat(2 * 1024 * 1024)
+        );
+        fs::write(themes_dir.join("big.json"), huge).expect("write oversized theme");
+        let themes = load_custom_themes(None, &root.join("vault"));
+        assert!(themes.is_empty(), "超限主题文件必须跳过");
+        let _ = fs::remove_dir_all(&root);
+    }
 }

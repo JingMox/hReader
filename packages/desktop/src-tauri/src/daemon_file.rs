@@ -198,4 +198,34 @@ mod tests {
         let error = read_daemon(&fixture("not-an-object.json")).expect_err("非对象必须报错");
         assert!(error.to_string().contains("顶层不是对象"));
     }
+
+    /// daemon.json 是有界信封（几十个字段以内、几百字节），读到超出上限的文件直接判坏，
+    /// 不许为一份不可能合法的输入付出无界内存。
+    #[test]
+    fn oversized_daemon_file_is_rejected_not_slurped() {
+        let dir = std::env::temp_dir().join(format!("hr-daemon-big-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("daemon.json");
+        let huge = format!(
+            "{{\"port\":8123,\"pid\":42,\"token\":\"t\",\"workspace\":\"/ws\",\"pad\":\"{}\"}}",
+            "x".repeat(128 * 1024)
+        );
+        fs::write(&path, huge).expect("write oversized");
+        let error = read_daemon(&path).expect_err("超限文件必须判坏");
+        assert!(error.to_string().contains("过大"), "{error}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 非 UTF-8 内容判坏而不是 panic。
+    #[test]
+    fn non_utf8_daemon_file_is_bad() {
+        let dir = std::env::temp_dir().join(format!("hr-daemon-utf8-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("daemon.json");
+        fs::write(&path, [0xff, 0xfe, 0x00]).expect("write non-utf8");
+        assert!(read_daemon(&path).is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

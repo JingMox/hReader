@@ -137,6 +137,37 @@ mod tests {
         assert!(sync_payload_js(&ctx).contains("window.__hrDesktopSync"));
     }
 
+    /// 注入脚本被原样塞进 HTML 的 script 槽位：payload 里任何 `</` 序列（主题名、
+    /// docError 文案、文件路径都可能带）都必须写成 `<\/`，否则 `</script>` 直接截断
+    /// 初始化脚本，攻击者控制的主题 JSON 就能在 webview 里注入任意代码。
+    #[test]
+    fn payloads_never_emit_a_literal_close_tag_sequence() {
+        let ctx = WorkbenchContext {
+            workspace: "/tmp/ws".to_string(),
+            doc_id: String::new(),
+            files: vec!["a.html".to_string()],
+            tree: vec![],
+            custom_themes: vec![CustomTheme {
+                id: "evil".to_string(),
+                name: "</SCRIPT><img src=x onerror=alert(1)>".to_string(),
+                base: "light".to_string(),
+                vars: vec![("--x".to_string(), "</script>".to_string())],
+                css: "a{}</script><script>alert(2)</script>".to_string(),
+            }],
+            is_macos: true,
+            doc_error: Some(DocError {
+                doc_id: "bad.html".to_string(),
+                message: "</script><script>alert(3)</script>".to_string(),
+            }),
+        };
+        for js in [init_script(&ctx), sync_payload_js(&ctx)] {
+            assert!(
+                !js.to_ascii_lowercase().contains("</script"),
+                "脚本里出现未转义的 </script：{js}"
+            );
+        }
+    }
+
     #[test]
     fn doc_error_reaches_the_frontend_as_camel_case_payload() {
         let ctx = WorkbenchContext {
