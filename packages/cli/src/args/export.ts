@@ -99,8 +99,9 @@ export const pdfIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
       timeoutMs: timeoutSec * 1000,
       outline: !raw.switches.has("--no-outline"),
       outlineConflict: raw.switches.has("--outline") && raw.switches.has("--no-outline"),
-      // 与 `hr export` 同口径：缺省主题这里定，合法值校验在 core（`unknown_style`）。
-      visual: visual ?? DEFAULT_STYLE_ID,
+      // `--visual` 缺省走"文档已嵌入主题 → 默认主题"的回落链，不在用法层焊死；
+      // 显式值的合法值校验在 core（`unknown_style`），与 `hr export` 同口径。
+      visual,
       out: absoluteOf(out, cwd),
       force: raw.switches.has("--force"),
       ...commonOf(raw, cwd),
@@ -140,7 +141,8 @@ export const pngIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
       // `--outline`/`--no-outline` 在 png 上是"已知旗标放错子命令"：放行到意图里，由命令层报 `invalid_input`。
       outlineFlag: OUTLINE_FLAGS.find((flag) => raw.switches.has(flag)),
       timeoutMs: timeoutSec * 1000,
-      visual: raw.values.get("--visual") ?? DEFAULT_STYLE_ID,
+      // 缺省同样把主题选择权交给命令层（文档嵌入主题 → 默认主题）。
+      visual: raw.values.get("--visual"),
       force: raw.switches.has("--force"),
       ...commonOf(raw, cwd),
     },

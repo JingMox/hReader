@@ -161,3 +161,13 @@ export const replaceTheme = (html: string, css: string): ReplaceThemeResult => {
   const patched = spliceAll(html, splices);
   return { html: patched, changed: patched !== html, removed: removedOf(anchors, chosen) };
 };
+
+/**
+ * 文档已应用主题的逆操作：取首个 `<style id="hr-theme">` 的字节区间作为 CSS。
+ * 没有锚点（或锚点是零宽合成节点）返回 `undefined`；空白块返回原样文本，由调用方判空。
+ */
+export const embeddedThemeCssOf = (html: string): string | undefined => {
+  const parsed = parseHtml(html, { locations: true });
+  const chosen = themesOf(parsed.root).find((anchor) => hasBytes(anchor.span));
+  return chosen === undefined ? undefined : html.slice(chosen.span.innerStart, chosen.span.innerEnd);
+};

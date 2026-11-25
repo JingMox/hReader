@@ -29,6 +29,7 @@ export {
   compileTone,
   DEFAULT_STYLE_ID,
   discoverStyles,
+  embeddedThemeCssOf,
   extractStyle,
   extractStyleWithLlm,
   findBuiltinStyle,

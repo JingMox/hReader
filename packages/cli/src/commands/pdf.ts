@@ -35,8 +35,8 @@ export interface PdfCommandInput {
   readonly outline: boolean;
   /** `--outline` 与 `--no-outline` 同传：语义错误，开工前报 `invalid_input`。 */
   readonly outlineConflict: boolean;
-  /** 打印稿主题：与 `hr export` 同口径，意图层已落默认，合法值由 core 判。 */
-  readonly visual: string;
+  /** 打印稿主题：`undefined` = 用文档已嵌入的 `#hr-theme`（没有才回落默认）；显式值合法值由 core 判。 */
+  readonly visual: string | undefined;
   /** 绝对路径（`run.ts` 已真实化）。 */
   readonly out: string;
   readonly force: boolean;

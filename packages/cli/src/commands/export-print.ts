@@ -4,7 +4,10 @@
 import { basename, dirname, extname, resolve } from "node:path";
 
 import {
+  assertThemeSafe,
   buildOutline,
+  DEFAULT_STYLE_ID,
+  embeddedThemeCssOf,
   HrError,
   isInside,
   loadThemeCss,
@@ -14,6 +17,7 @@ import {
   serializeHtml,
   writeAtomic,
   type PatchDeps,
+  type StyleDeps,
 } from "@hreader/core";
 import { printHtmlReportOf, type PaperSize, type PrintHtmlResult } from "@hreader/renderer-html";
 
@@ -82,27 +86,54 @@ export const assertTargetFreeOf = async (
 
 export interface PrintSourceInput {
   readonly path: string;
-  readonly visual: string;
+  /** `undefined` = 用文档已嵌入的 `#hr-theme`；文档没有主题时回落默认主题。 */
+  readonly visual: string | undefined;
   /** 纸张必填：`hr export`/`hr png` 固定 a4，`hr pdf` 传 `--page-size`。 */
   readonly paper: PaperSize;
   readonly workspace: string;
   readonly warn: (message: string) => void;
 }
 
+interface ResolvedTheme {
+  readonly visualId: string;
+  readonly bodyClass: string;
+  readonly themeCss: string;
+}
+
+/**
+ * 主题的回落链：显式 `--visual` 直接按 id 加载；缺省先看文档自己的 `#hr-theme`
+ * （`applyStyle` 写进去的就是它，再印一次得用同一份），文档没有或留白才用默认主题。
+ * 三条路径出闸前都过 `assertThemeSafe`：文档可能是外来的，`#hr-theme` 字节不受信任。
+ */
+const resolveTheme = async (html: string, input: PrintSourceInput): Promise<ResolvedTheme> => {
+  const deps: StyleDeps = nodeStyleDeps(input.workspace);
+  const fromId = async (id: string): Promise<ResolvedTheme> => ({
+    visualId: id,
+    bodyClass: `hr-visual-${id}`,
+    themeCss: await loadThemeCss(id, deps),
+  });
+  if (input.visual !== undefined) return fromId(input.visual);
+  const embedded = embeddedThemeCssOf(html);
+  if (embedded === undefined || embedded.trim() === "") return fromId(DEFAULT_STYLE_ID);
+  assertThemeSafe(embedded);
+  return { visualId: "document", bodyClass: "hr-visual-document", themeCss: embedded };
+};
+
 /** 打印稿的单一来源：`hr export` 落 HTML、`hr pdf` 把同一份 HTML 交给 Chrome。 */
 export const printProductOf = async (input: PrintSourceInput): Promise<PrintHtmlResult> => {
   // 不注入 id（BUG-02）：源里没有 `data-hr-id`，产物就不带——否则用户从打印稿里拄下的 id
   // 在源文件里不存在，拿去 `patch` 只会得到 `node_not_found`。
-  const parsed = parseHtml(await readTextFile(input.path));
-  // 主题走 core：`loadThemeCss` 内部已过 `assertThemeSafe`，这一层不重复实现闸门。
+  const html = await readTextFile(input.path);
+  const parsed = parseHtml(html);
+  const theme = await resolveTheme(html, input);
   const report = printHtmlReportOf({
     docId: basename(input.path, extname(input.path)),
-    visualId: input.visual,
+    visualId: theme.visualId,
     paper: input.paper,
-    bodyClass: `hr-visual-${input.visual}`,
+    bodyClass: theme.bodyClass,
     documentHtml: serializeHtml(parsed),
     outline: buildOutline(parsed).nodes,
-    themeCss: await loadThemeCss(input.visual, nodeStyleDeps(input.workspace)),
+    themeCss: theme.themeCss,
   });
   // 4 MiB 上限只在渲染层剥一次（`print-page.ts` 的 `MAX_PRODUCT_BYTES`，判据 `>`）：
   // 同一道闸在两层各写一遍会得到一条永远跑不到的支路，而 `HrError("invalid_input")`
