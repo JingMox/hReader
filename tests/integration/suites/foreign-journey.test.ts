@@ -122,26 +122,37 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
   });
 
   test("写盘（/api/style）→ sha 变、trust 失效、脚本被掐、不白屏", async () => {
-    // 钉住 framed 模式的实际行为：外来文档的主题选择器没有接 themes 清单（页内 0-token
-    // 切换是托管文档的路径）——控件存在但没有选项，切主题对外来文档无入口。
+    // framed 模式的主题选择器接了 themes 清单，切换即写盘——和托管文档共用
+    // /api/style 路径，与桌面端行为一致。钉住：选项非空、可交互、当前值在清单里。
     const themeCtl = await page.eval(`(() => {
       const sel = document.querySelector('#hr-theme-select');
-      return sel ? { options: sel.options.length, disabled: sel.disabled } : 'absent';
+      return sel
+        ? { options: sel.options.length, disabled: sel.disabled, value: sel.value }
+        : 'absent';
     })()`);
-    assert(
-      themeCtl === "absent" ||
-        (typeof themeCtl === "object" &&
-          themeCtl !== null &&
-          Reflect.get(themeCtl, "options") === 0),
-      `framed 模式主题选择器竟然可用：${JSON.stringify(themeCtl)}`,
-    );
-
-    // 写盘路径：/api/style 把 <style id="hr-theme"> 写进外来文档——sha 变、sha 键信任失效。
     const themes = await api.getJson("/api/theme");
     const ids = themes["themes"];
     assert(Array.isArray(ids) && ids.length > 0, "/api/theme 列表为空");
-    const style = await api.post("/api/style", { docId: DOC, visualId: ids[0] });
-    assertEq(style.status, 200, "外来文档 /api/style 状态");
+    assert(
+      typeof themeCtl === "object" &&
+        themeCtl !== null &&
+        Reflect.get(themeCtl, "options") === ids.length &&
+        Reflect.get(themeCtl, "disabled") === false &&
+        ids.includes(Reflect.get(themeCtl, "value")),
+      `framed 模式主题选择器不可用：${JSON.stringify(themeCtl)}`,
+    );
+
+    // 写盘路径：经选择器触发 /api/style——<style id="hr-theme"> 写进外来文档，
+    // sha 变、sha 键信任失效。挑一个与当前值不同的主题，保证 change 真的发起写。
+    const target = ids.find((id) => id !== Reflect.get(themeCtl, "value"));
+    assert(target !== undefined, "/api/theme 清单没有可切换的备选主题");
+    const switched = await page.eval(`(() => {
+      const sel = document.querySelector('#hr-theme-select');
+      sel.value = ${JSON.stringify(target)};
+      sel.dispatchEvent(new Event('change'));
+      return sel.value;
+    })()`);
+    assertEq(switched, target, "选择器切换主题返回值");
     const off = await page.wait(
       `(async () => { const res = await fetch('/api/doc/${encodeURIComponent(DOC)}/info'); if (!res.ok) return false; const j = await res.json(); return j.trust === 'off'; })()`,
       15_000,
