@@ -571,20 +571,23 @@ export const importForeign = (html: string, options: ImportOptions = {}): Import
     title = titleFromTag(parsed.root);
     titleSource = "title";
   }
-  let firstH1: HtmlElementNode | undefined;
+  const firstH1 = blocks.find(
+    (block): block is HtmlElementNode => block.kind === "element" && block.tag === "h1",
+  );
   if (title === undefined) {
     titleSource = "h1";
-    firstH1 = blocks.find(
-      (block): block is HtmlElementNode => block.kind === "element" && block.tag === "h1",
-    );
     title = firstH1 === undefined ? undefined : normalizeWhitespace(textContentOf(firstH1));
   }
   if (title === undefined || title === "") {
     title = "未命名";
     titleSource = "fallback";
   }
-  // 标题取自首个 h1 时把它从块流里吃掉：文档标题与"第一节标题"是同一段文字，不重复出现。
-  const flow = firstH1 === undefined ? blocks : blocks.filter((block) => block !== firstH1);
+  // 首个 h1 与选定标题同文就把它从块流里吃掉（无论标题谁供的）：文档 h1 与首节 h2 是同一串文字，
+  // 重复出现不是信息。
+  const flow =
+    firstH1 !== undefined && normalizeWhitespace(textContentOf(firstH1)) === title
+      ? blocks.filter((block) => block !== firstH1)
+      : blocks;
   const drafts = sectionsOf(flow);
   const kind = options.kind ?? DEFAULT_DOC_KIND;
 

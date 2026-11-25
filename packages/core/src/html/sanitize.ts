@@ -299,6 +299,14 @@ const EXECUTABLE_TAGS: ReadonlySet<string> = new Set([
   "foreignobject",
 ]);
 
+/** 探测面比剥离面宽：`action`/`formaction` 只在探测侧算"能执行"——整删它们的宿主元素在
+ *  两个预设里都整删，剥离名单不必跟进；漏报只是探测漏报。 */
+const EXECUTABLE_URL_ATTRIBUTES: ReadonlySet<string> = new Set([
+  ...SCRIPT_URL_ATTRIBUTES,
+  "action",
+  "formaction",
+]);
+
 const hasExecutableAttribute = (node: HtmlElementNode): boolean => {
   // `srcdoc` 把整份 HTML 载荷收进属性值：元素级探测摸不到里面，只能按属性本身算。
   if (attributeOf(node, "srcdoc") !== undefined) return true;
@@ -308,7 +316,7 @@ const hasExecutableAttribute = (node: HtmlElementNode): boolean => {
   return node.attrs.some(([name, value]) => {
     const key = name.toLowerCase();
     if (isEventAttribute(key)) return true;
-    if (SCRIPT_URL_ATTRIBUTES.has(key)) {
+    if (EXECUTABLE_URL_ATTRIBUTES.has(key)) {
       const normalized = normalizedUrl(value);
       if (hasAnyPrefix(normalized, SCRIPT_SCHEMES)) return true;
     }
