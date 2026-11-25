@@ -3,12 +3,15 @@
 import { describe, expect, it } from "vitest";
 import { EXIT_FAILURE, EXIT_IO, EXIT_OK, EXIT_USAGE, exitCodeOf } from "../src/exit-codes";
 import {
+  dataImport,
   dataLint,
   dataOutline,
   dataPatch,
   dataRead,
   dataStyle,
   dataTone,
+  humanCheck,
+  humanImport,
   humanLint,
   humanOutline,
   humanPatch,
@@ -17,12 +20,14 @@ import {
   humanTone,
   jsonError,
   jsonOk,
+  term,
 } from "../src/output";
 import { COMMAND_NAMES, isCommandName, usageText } from "../src/usage";
 import type { CommandName } from "../src/usage";
 import { atOf, fieldOf, keysOf, listOf, parseJsonLine } from "./harness";
 import type {
   ApplyStyleResult,
+  ImportReport,
   LintReport,
   Outline,
   PatchResult,
@@ -375,5 +380,114 @@ describe("dataPatch · warnings 键只在非空时出现", () => {
   it("should not print the key at all when the list is empty", () => {
     expect(keysOf(decode(dataPatch(CLEAN)))).not.toContain("warnings");
     expect(dataPatch(CLEAN)).not.toContain("warnings");
+  });
+});
+
+// 人读回执要剥终端控制字符：标题、文件名、诊断正文来自不受信的文档与磁盘，
+// 原样进终端可以染色、挪光标、OSC 8 挂假链接、bidi 反转显示——剥的是字符不是文案。
+describe("term · 人读输出的终端安全化", () => {
+  it("should strip CSI colour and cursor sequences", () => {
+    expect(term("\x1b[31m红\x1b[0m标题\x1b[2J")).toBe("红标题");
+    expect(term("\x1b[2;5H光标")).toBe("光标");
+  });
+
+  it("should strip OSC 8 hyperlinks but keep the label text", () => {
+    expect(term("\x1b]8;;https://evil.example\x07点击\x1b]8;;\x07")).toBe("点击");
+    expect(term("\x1b]8;;https://evil.example\x1b\\label\x1b]8;;\x1b\\")).toBe("label");
+  });
+
+  it("should strip bidi overrides and isolates from filenames", () => {
+    expect(term("\u202egnidorpmi\u202c.html")).toBe("gnidorpmi.html");
+    expect(term("a\u2066evil\u2069b")).toBe("aevilb");
+  });
+
+  it("should strip stray ESC, DEL and C1 controls but keep \\n and \\t", () => {
+    expect(term("a\x1bb\x7fc\x9b31md")).toBe("abc31md");
+    expect(term("列1\t列2\n行2")).toBe("列1\t列2\n行2");
+  });
+
+  it("should leave plain Chinese and emoji titles byte-identical", () => {
+    expect(term("中文标题 📖 第二章")).toBe("中文标题 📖 第二章");
+  });
+});
+
+describe("人读回执 · 不受信字段过 term", () => {
+  it("should sanitize titles inside humanImport", () => {
+    const report: ImportReport = {
+      kind: "report",
+      title: "\x1b[31m邪恶\x1b[0m\u202a标题",
+      titleSource: "title",
+      trunk: "main",
+      trunkTag: "main",
+      sections: 1,
+      removedElements: 0,
+      strippedAttributes: 0,
+      discarded: [],
+    };
+    const text = humanImport(report, "out.html", 100);
+
+    expect(text).toContain("邪恶标题");
+    expect(text).not.toContain("\x1b");
+    expect(text).not.toContain("\u202a");
+  });
+
+  it("should sanitize RTL-overridden filenames inside humanCheck and humanLint", () => {
+    const evil = "doc-\u202ehtm.html";
+    const check = humanCheck([], evil);
+    const lint = humanLint({
+      hits: [{ path: evil, word: "\x1b[7m词", excerpt: "x\x1b[Ky", offset: 0 }],
+      truncated: false,
+    });
+
+    expect(check).toContain("doc-htm.html");
+    expect(check).not.toContain("\u202e");
+    expect(lint).not.toContain("\x1b");
+    expect(lint).not.toContain("\u202e");
+  });
+
+  it("should sanitize outline node text and the empty-outline display path", () => {
+    const outline: Outline = {
+      nodes: [
+        { id: "hr-1", tag: "h2", level: 2, text: "\x1b[1m粗\x1b[0m", wordCount: 1, children: [] },
+      ],
+      pendingAnnotations: [],
+      wordCount: 1,
+      diagnostics: [],
+    };
+
+    const text = humanOutline(outline);
+    expect(text).toContain("粗");
+    expect(text).not.toContain("\x1b");
+  });
+
+  it("should leave the read-document artifact untouched but sanitize its truncation note", () => {
+    const html = "<p>\x1b[31m文档正文</p>";
+    const result: ReadNodeResult = {
+      html,
+      annotations: [],
+      truncated: true,
+      diagnostics: [{ code: "truncated_output", severity: "warning", message: "截断\x1b[2J说明" }],
+    };
+    const text = humanRead(result);
+
+    expect(text).toContain(html);
+    expect(text).toContain("截断说明");
+  });
+
+  it("should keep control characters escaped-but-verbatim inside --json output", () => {
+    const report: ImportReport = {
+      kind: "report",
+      title: "\x1b[31mT\u202a",
+      titleSource: "title",
+      trunk: "main",
+      trunkTag: "main",
+      sections: 1,
+      removedElements: 0,
+      strippedAttributes: 0,
+      discarded: [],
+    };
+    // --json 是机器契约：剥字符就改了数据，JSON.stringify 的转义已经足够安全。
+    const parsed = JSON.parse(dataImport("out.html", 100, report)) as { readonly title: string };
+    expect(parsed.title).toBe("\x1b[31mT\u202a");
   });
 });
