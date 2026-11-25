@@ -7,6 +7,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { nodePatchDeps } from "../../src/io/node-fs";
+import { ECHO_MS } from "../../src/server/watcher";
 import { DOC, cookieOf, defaultSeed, httpCall, openSse, withServer } from "./harness";
 import { withPost } from "./wire";
 
@@ -21,40 +23,41 @@ const binSeed = (workspace: string): void => {
   writeFileSync(join(workspace, "bin.html"), Buffer.from([0xff, 0xfe, 0x41]));
 };
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
 describe("watcher · 子目录文档只写未读", () => {
   it("should publish doc.changed when a write-only subdirectory doc is edited externally", async () => {
-    await withServer(async (ctx) => {
-      const patch = await httpCall(ctx.port, {
-        method: "POST",
-        path: "/api/patch",
-        headers: withPost(ctx.token),
-        body: JSON.stringify({
-          docId: "sub/inner.html",
-          action: "append",
-          targetId: "hr-d",
-          fragment: "<b>x</b>",
-        }),
-      });
-      expect(patch.status).toBe(200);
-      const sse = openSse(ctx.port, "/api/events", { Cookie: cookieOf(ctx.token) });
-      await sse.waitFor(1);
-      // 越过自写回声窗口（ECHO_MS=200），否则改动被吞掉——同 lock-and-runtime.test.ts 的先例。
-      await sleep(250);
-      writeFileSync(
-        join(ctx.workspace, "sub", "inner.html"),
-        `${DOC}\r\n<!-- external -->`,
-        "utf8",
-      );
-      const frame = await sse.waitForEvent("doc.changed");
-      sse.close();
+    // 注入 patch 时钟：watcher 的回声窗口用它计时，拨钟跨过 ECHO_MS 比真 sleep 稳。
+    let now = Date.now();
+    await withServer(
+      async (ctx) => {
+        const patch = await httpCall(ctx.port, {
+          method: "POST",
+          path: "/api/patch",
+          headers: withPost(ctx.token),
+          body: JSON.stringify({
+            docId: "sub/inner.html",
+            action: "append",
+            targetId: "hr-d",
+            fragment: "<b>x</b>",
+          }),
+        });
+        expect(patch.status).toBe(200);
+        const sse = openSse(ctx.port, "/api/events", { Cookie: cookieOf(ctx.token) });
+        await sse.waitFor(1);
+        // 越过自写回声窗口（ECHO_MS=200），否则改动被吞掉——同 lock-and-runtime.test.ts 的先例。
+        now += ECHO_MS + 50;
+        writeFileSync(
+          join(ctx.workspace, "sub", "inner.html"),
+          `${DOC}\r\n<!-- external -->`,
+          "utf8",
+        );
+        const frame = await sse.waitForEvent("doc.changed");
+        sse.close();
 
-      expect(frame.data).toContain('"docId":"sub/inner.html"');
-    }, subSeed);
+        expect(frame.data).toContain('"docId":"sub/inner.html"');
+      },
+      subSeed,
+      { patch: { ...nodePatchDeps, clock: { now: () => new Date(now) } } },
+    );
   });
 });
 

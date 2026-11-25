@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 import { nodePatchDeps } from "../../src/io/node-fs";
 import { nodeStyleDeps } from "../../src/style";
-import { startServer, type RunningServer } from "../../src/server/server";
+import { startServer, type RunningServer, type ServerDeps } from "../../src/server/server";
 import type { ServerOptions } from "../../src/server/contracts";
 
 export const DOC = [
@@ -52,6 +52,7 @@ const contextOf = (server: RunningServer, workspace: string, home: string): Test
 export const withServer = async (
   run: (ctx: TestServer) => Promise<void>,
   tuning?: ServerOptions["timeouts"] | ((workspace: string) => void),
+  deps?: Partial<ServerDeps>,
 ): Promise<void> => {
   const seed = typeof tuning === "function" ? tuning : defaultSeed;
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "hr-srv-ws-")));
@@ -68,6 +69,7 @@ export const withServer = async (
     patch: nodePatchDeps,
     style: nodeStyleDeps(workspace),
     now: Date.now,
+    ...deps,
   });
   const ctx = contextOf(server, workspace, home);
   try {

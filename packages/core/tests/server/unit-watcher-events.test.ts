@@ -1,94 +1,100 @@
 // 这层管：`watcher.ts` 的事件归一化与边界——目录事件过滤、重复 add 去重、不可监听目录、注入源的空事件名。
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createWatcher } from "../../src/server/watcher";
+import { createWatcher, DEBOUNCE_MS } from "../../src/server/watcher";
 
-const DEBOUNCE_MS = 120;
-const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+type OnEvent = (event: string, name: string | undefined) => void;
 
-const waitFor = async (pred: () => boolean, timeoutMs: number): Promise<boolean> => {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (pred()) return true;
-    await wait(10);
-  }
-  return pred();
+/** 注入的事件源：attach 的回调收进 fires，用例手动派发；去抖走 vi 假时钟，与时序无关。 */
+const fakeSource = (): {
+  readonly fires: OnEvent[];
+  readonly watch: Parameters<typeof createWatcher>[1];
+} => {
+  const fires: OnEvent[] = [];
+  return {
+    fires,
+    watch: (_dir, onEvent) => {
+      fires.push(onEvent);
+      return { close: () => undefined };
+    },
+  };
 };
 
-const withWatcher = async (
-  run: (ctx: {
-    dir: string;
-    watcher: ReturnType<typeof createWatcher>;
-    changes: string[];
-  }) => Promise<void>,
-): Promise<void> => {
-  const dir = mkdtempSync(join(tmpdir(), "hr-watch-"));
-  const changes: string[] = [];
-  const watcher = createWatcher({ now: Date.now, onFileChange: (path) => changes.push(path) });
+const withFakeTimers = (run: () => void): void => {
+  vi.useFakeTimers();
   try {
-    await run({ dir, watcher, changes });
+    run();
   } finally {
-    watcher.close();
-    rmSync(dir, { recursive: true, force: true });
+    vi.useRealTimers();
   }
 };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("createWatcher · 目录事件与重复订阅", () => {
-  it("should ignore directory events and only report file changes", async () => {
-    await withWatcher(async ({ dir, watcher, changes }) => {
-      watcher.add(dir, undefined);
-      await wait(50);
-      // chokidar 对新建子目录报 addDir：目录事件不算"文件变了"。
-      const sub = join(dir, "sub.d");
-      mkdirSync(sub);
-      await wait(DEBOUNCE_MS * 4);
+  it("should ignore directory events and only report file changes", () => {
+    withFakeTimers(() => {
+      const { fires, watch } = fakeSource();
+      const changes: string[] = [];
+      const watcher = createWatcher(
+        { now: Date.now, onFileChange: (path) => changes.push(path) },
+        watch,
+      );
+      try {
+        watcher.add("/tmp/dir", undefined);
+        // chokidar 对新建子目录报 addDir：目录事件不算"文件变了"。
+        fires[0]?.("addDir", "sub.d");
+        vi.advanceTimersByTime(DEBOUNCE_MS * 4);
+        expect(changes).toEqual([]);
 
-      expect(changes.every((path) => path !== sub)).toBe(true);
-      writeFileSync(join(dir, "a.html"), "x");
-      expect(await waitFor(() => changes.includes(join(dir, "a.html")), 2000)).toBe(true);
-      expect(changes.every((path) => path !== sub)).toBe(true);
+        fires[0]?.("change", "a.html");
+        vi.advanceTimersByTime(DEBOUNCE_MS * 2);
+        expect(changes).toEqual([join("/tmp/dir", "a.html")]);
+      } finally {
+        watcher.close();
+      }
     });
   });
 
-  it("should dedupe repeated add() calls for the same dir+file", async () => {
-    // 不碰真实 fs.watch：注入源记下 attach 次数与回调，dedupe 的判据是
-    // "同一 dir+file 只挂一个句柄 + 事件只报一次"，与时序无关、coverage 负载下不抖。
-    const changes: string[] = [];
-    const fires: ((event: string, name: string | undefined) => void)[] = [];
-    const watcher = createWatcher(
-      { now: Date.now, onFileChange: (path) => changes.push(path) },
-      (_dir, onEvent) => {
-        fires.push(onEvent);
-        return { close: () => undefined };
-      },
-    );
-    try {
-      watcher.add("/tmp", "a.html");
-      watcher.add("/tmp", "a.html");
-      expect(fires).toHaveLength(1);
-      fires[0]?.("rename", "a.html");
-      await wait(DEBOUNCE_MS * 2);
+  it("should dedupe repeated add() calls for the same dir+file", () => {
+    withFakeTimers(() => {
+      // "同一 dir+file 只挂一个句柄 + 事件只报一次"，与时序无关、coverage 负载下不抖。
+      const changes: string[] = [];
+      const { fires, watch } = fakeSource();
+      const watcher = createWatcher(
+        { now: Date.now, onFileChange: (path) => changes.push(path) },
+        watch,
+      );
+      try {
+        watcher.add("/tmp", "a.html");
+        watcher.add("/tmp", "a.html");
+        expect(fires).toHaveLength(1);
+        fires[0]?.("rename", "a.html");
+        vi.advanceTimersByTime(DEBOUNCE_MS * 2);
 
-      expect(changes).toEqual([join("/tmp", "a.html")]);
-    } finally {
-      watcher.close();
-    }
+        expect(changes).toEqual([join("/tmp", "a.html")]);
+      } finally {
+        watcher.close();
+      }
+    });
   });
 });
 
 describe("createWatcher · 边界输入", () => {
-  it("should survive an unwatchable directory without crashing", async () => {
+  it("should survive an unwatchable directory without crashing", () => {
+    // 这条留真 chokidar：注入源复刻不了"watch() 当场抛或异步 error"两种失败形态。
     const dir = mkdtempSync(join(tmpdir(), "hr-watch-"));
     const changes: string[] = [];
     const watcher = createWatcher({ now: Date.now, onFileChange: (path) => changes.push(path) });
     try {
       watcher.add(join(dir, "gone"), undefined);
-      await wait(DEBOUNCE_MS * 2);
       watcher.close();
 
       expect(changes).toEqual([]);
@@ -98,25 +104,24 @@ describe("createWatcher · 边界输入", () => {
     }
   });
 
-  it("should tolerate an injected source reporting an undefined name", async () => {
-    const changes: string[] = [];
-    let fire: ((event: string, name: string | undefined) => void) | undefined;
-    const watcher = createWatcher(
-      { now: Date.now, onFileChange: (path) => changes.push(path) },
-      (_dir, onEvent) => {
-        fire = onEvent;
-        return { close: () => undefined };
-      },
-    );
-    try {
-      watcher.add("/tmp", undefined);
-      fire?.("rename", undefined);
-      fire?.("rename", "a.html");
-      await wait(DEBOUNCE_MS * 2);
+  it("should tolerate an injected source reporting an undefined name", () => {
+    withFakeTimers(() => {
+      const changes: string[] = [];
+      const { fires, watch } = fakeSource();
+      const watcher = createWatcher(
+        { now: Date.now, onFileChange: (path) => changes.push(path) },
+        watch,
+      );
+      try {
+        watcher.add("/tmp", undefined);
+        fires[0]?.("rename", undefined);
+        fires[0]?.("rename", "a.html");
+        vi.advanceTimersByTime(DEBOUNCE_MS * 2);
 
-      expect(changes).toEqual([join("/tmp", "a.html")]);
-    } finally {
-      watcher.close();
-    }
+        expect(changes).toEqual([join("/tmp", "a.html")]);
+      } finally {
+        watcher.close();
+      }
+    });
   });
 });

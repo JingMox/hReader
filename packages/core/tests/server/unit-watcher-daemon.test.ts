@@ -1,6 +1,6 @@
 // 这层管：`watcher.ts`（去抖 / 回声窗口 / 去重）与 `daemon.ts`（daemon.json 的解析、原子写、只删自己的）。
 //
-// watcher 用真盘真事件：假 FSWatcher 需要类型断言，而仓库禁用断言；真事件也更接近生产。
+// watcher 用注入源 + 假时钟：事件手动派发、去抖用 advanceTimersByTime 驱动，与真盘时序无关。
 
 import {
   chmodSync,
@@ -10,12 +10,11 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { nodePatchDeps } from "../../src/io/node-fs";
 import {
@@ -29,60 +28,75 @@ import {
 } from "../../src/server/daemon";
 import { createWatcher, DEBOUNCE_MS, ECHO_MS, type Watcher } from "../../src/server/watcher";
 
-const wait = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+type OnEvent = (event: string, name: string | undefined) => void;
 
-const waitFor = async (predicate: () => boolean, timeoutMs: number): Promise<boolean> => {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    if (predicate()) return true;
-    await wait(10);
-  }
-  return predicate();
-};
+const DIR = "/tmp/hr-watch-fake";
 
 interface WatchCase {
-  readonly dir: string;
   readonly watcher: Watcher;
   readonly changes: string[];
   readonly setClock: (value: number) => void;
+  readonly fire: OnEvent;
 }
 
-const withWatcher = async (run: (testCase: WatchCase) => Promise<void>): Promise<void> => {
-  const dir = mkdtempSync(join(tmpdir(), "hr-watch-"));
+/** 注入事件源 + 假时钟：fire 手动派发 chokidar 归一化语义的事件，去抖定时器用 vi 推进。 */
+const withWatcher = (run: (testCase: WatchCase) => void): void => {
+  vi.useFakeTimers();
   const changes: string[] = [];
   let clock = 0;
-  const watcher = createWatcher({ now: () => clock, onFileChange: (path) => changes.push(path) });
+  let closed = false;
+  let onEvent: OnEvent = () => undefined;
+  const watcher = createWatcher(
+    { now: () => clock, onFileChange: (path) => changes.push(path) },
+    (_dir, emit) => {
+      onEvent = emit;
+      return {
+        close: () => {
+          closed = true;
+        },
+      };
+    },
+  );
   try {
-    await run({ dir, watcher, changes, setClock: (value) => (clock = value) });
+    run({
+      watcher,
+      changes,
+      setClock: (value) => {
+        clock = value;
+      },
+      fire: (event, name) => {
+        if (!closed) onEvent(event, name);
+      },
+    });
   } finally {
     watcher.close();
-    rmSync(dir, { recursive: true, force: true });
+    vi.useRealTimers();
   }
 };
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("createWatcher · 去抖与过滤", () => {
-  it("should collapse a burst of writes into one change", async () => {
-    await withWatcher(async ({ dir, watcher, changes }) => {
-      watcher.add(dir, "a.html");
-      for (const text of ["1", "2", "3"]) {
-        writeFileSync(join(dir, "a.html"), text);
-        await wait(10);
+  it("should collapse a burst of writes into one change", () => {
+    withWatcher(({ watcher, changes, fire }) => {
+      watcher.add(DIR, "a.html");
+      for (let burst = 0; burst < 3; burst += 1) {
+        fire("change", "a.html");
+        vi.advanceTimersByTime(DEBOUNCE_MS / 2);
       }
-      expect(await waitFor(() => changes.length > 0, 2000)).toBe(true);
-      await wait(DEBOUNCE_MS * 3);
-      expect(changes).toEqual([join(dir, "a.html")]);
+      vi.advanceTimersByTime(DEBOUNCE_MS * 3);
+
+      expect(changes).toEqual([join(DIR, "a.html")]);
     });
   });
 
-  it("should ignore writes to a different file when a filename is given", async () => {
-    await withWatcher(async ({ dir, watcher, changes }) => {
-      watcher.add(dir, "a.html");
-      await wait(50);
-      writeFileSync(join(dir, "b.html"), "x");
-      await wait(DEBOUNCE_MS * 4);
+  it("should ignore writes to a different file when a filename is given", () => {
+    withWatcher(({ watcher, changes, fire }) => {
+      watcher.add(DIR, "a.html");
+      fire("change", "b.html");
+      vi.advanceTimersByTime(DEBOUNCE_MS * 4);
 
       expect(changes).toEqual([]);
     });
@@ -90,49 +104,47 @@ describe("createWatcher · 去抖与过滤", () => {
 });
 
 describe("createWatcher · 去抖与过滤（续）", () => {
-  it("should watch the whole directory when no filename is given", async () => {
-    await withWatcher(async ({ dir, watcher, changes }) => {
-      watcher.add(dir, undefined);
-      await wait(50); // fs.watch 注册完成前写入会丢事件（真盘竞态，非实现问题）
-      writeFileSync(join(dir, "a.html"), "x");
-      expect(await waitFor(() => changes.includes(join(dir, "a.html")), 2000)).toBe(true);
-      writeFileSync(join(dir, "b.html"), "y");
-      expect(await waitFor(() => changes.includes(join(dir, "b.html")), 2000)).toBe(true);
+  it("should watch the whole directory when no filename is given", () => {
+    withWatcher(({ watcher, changes, fire }) => {
+      watcher.add(DIR, undefined);
+      fire("change", "a.html");
+      vi.advanceTimersByTime(DEBOUNCE_MS * 2);
+      fire("change", "b.html");
+      vi.advanceTimersByTime(DEBOUNCE_MS * 2);
 
-      // 真盘上目录监听会顺带报一次“目录自身”的事件（名字 = 目录名），处理器必须容忍它。
-      expect(changes.filter((path) => path.endsWith(".html")).sort()).toEqual([
-        join(dir, "a.html"),
-        join(dir, "b.html"),
-      ]);
+      // 目录事件（addDir）不算"文件变了"；归一化在 attach 层做，注入源同样被过滤。
+      fire("addDir", "sub.d");
+      vi.advanceTimersByTime(DEBOUNCE_MS * 2);
+
+      expect(changes).toEqual([join(DIR, "a.html"), join(DIR, "b.html")]);
     });
   });
 });
 
 describe("createWatcher · 自身写入回声", () => {
-  it("should swallow the echo inside the window, then deliver after it", async () => {
-    await withWatcher(async ({ dir, watcher, changes, setClock }) => {
-      const target = join(dir, "a.html");
-      watcher.add(dir, "a.html");
+  it("should swallow the echo inside the window, then deliver after it", () => {
+    withWatcher(({ watcher, changes, fire, setClock }) => {
+      const target = join(DIR, "a.html");
+      watcher.add(DIR, "a.html");
       watcher.noteSelfWrite(target);
-      writeFileSync(target, "1");
+      fire("change", "a.html");
       setClock(ECHO_MS - 1);
-      expect(await waitFor(() => changes.length === 0, 400)).toBe(true);
-      await wait(DEBOUNCE_MS * 2);
+      vi.advanceTimersByTime(DEBOUNCE_MS * 2);
       expect(changes).toEqual([]);
 
       setClock(ECHO_MS * 10);
-      writeFileSync(target, "2");
-      expect(await waitFor(() => changes.length === 1, 2000)).toBe(true);
+      fire("change", "a.html");
+      vi.advanceTimersByTime(DEBOUNCE_MS * 2);
       expect(changes).toEqual([target]);
     });
   });
 
-  it("should stop reporting after close", async () => {
-    await withWatcher(async ({ dir, watcher, changes }) => {
-      watcher.add(dir, "a.html");
+  it("should stop reporting after close", () => {
+    withWatcher(({ watcher, changes, fire }) => {
+      watcher.add(DIR, "a.html");
       watcher.close();
-      writeFileSync(join(dir, "a.html"), "x");
-      await wait(DEBOUNCE_MS * 4);
+      fire("change", "a.html");
+      vi.advanceTimersByTime(DEBOUNCE_MS * 4);
 
       expect(changes).toEqual([]);
     });
