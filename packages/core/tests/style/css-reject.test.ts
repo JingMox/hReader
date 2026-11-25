@@ -129,3 +129,15 @@ describe("assertThemeSafe · 注释断词与续行逃逸", () => {
     expect(errorFor('@import url("x.css");').message).toContain("@import");
   });
 });
+
+describe("assertThemeSafe · 报错文案", () => {
+  it("should name the pseudo-scheme in the reason when rejecting javascript:", () => {
+    expect(errorFor(".a{background:url(javascript:alert(1))}").message).toContain("javascript:");
+  });
+
+  it("should echo the trimmed argument verbatim in the url() reason", () => {
+    expect(errorFor(".a{background:url( ftp://files.example/x.png )}").message).toContain(
+      "收到：ftp://files.example/x.png",
+    );
+  });
+});

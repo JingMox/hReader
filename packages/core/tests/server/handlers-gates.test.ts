@@ -12,6 +12,7 @@ import { withPost } from "./wire";
 const FOREIGN = '<!doctype html><html><body><div class="app">plain</div></body></html>';
 const FOREIGN_MULTI =
   '<article data-hr-kind="report"><p>a</p></article><article data-hr-kind="slides"><p>b</p></article>';
+const NORMALIZABLE = "<article><p>没有 id</p></article>";
 
 const seedWith =
   (html: string) =>
@@ -58,6 +59,8 @@ describe("handlers · 响应头契约", () => {
       expect(csp).toContain("sandbox");
       expect(csp).not.toContain("allow-same-origin");
       expect(response.headers["x-content-type-options"]).toBe("nosniff");
+      expect(response.headers["referrer-policy"]).toBe("no-referrer");
+      expect(response.headers["cache-control"]).toBe("no-store");
     }, seedWith(FOREIGN));
   });
 });
@@ -135,6 +138,19 @@ describe("handlers · 换主题与信任档回执", () => {
       expect(body["changedNodes"]).toBeInstanceOf(Array);
       expect(response.body).not.toContain("Stryker");
     });
+  });
+
+  it("should refuse to style a normalizable doc before it is managed", async () => {
+    await withServer(async (ctx) => {
+      const before = readFileSync(ctx.file, "utf8");
+      const response = await post(ctx.port, ctx.token, "/api/style", {
+        docId: "doc.html",
+        visualId: "atelier-editorial",
+      });
+      expect(response.status).toBe(409);
+      // 先派生再放行：被 409 的写不能已经落盘。
+      expect(readFileSync(ctx.file, "utf8")).toBe(before);
+    }, seedWith(NORMALIZABLE));
   });
 
   it("should answer needs_normalize with the trust message on a managed doc", async () => {

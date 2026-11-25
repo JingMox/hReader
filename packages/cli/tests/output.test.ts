@@ -31,6 +31,7 @@ import type { CommandName } from "../src/usage";
 import { atOf, fieldOf, keysOf, listOf, parseJsonLine } from "./harness";
 import type {
   ApplyStyleResult,
+  ExtractStyleLlmResult,
   ExtractStyleResult,
   ImportReport,
   LintReport,
@@ -499,12 +500,14 @@ describe("人读回执 · 不受信字段过 term", () => {
 
 // join(",") 的存活条件是所有测试夹具数组长度 ≤1——单元素数组里分隔符不可见。
 // 这里给每个对外 JSON 至少两个元素的夹具，分隔符变异（`""`/`"Stryker"`）会把输出打成非法 JSON 或错位字段。
-describe("output · 对外 JSON 多元素分隔与字段名", () => {
-  const diag = (code: string): { code: string; severity: string; message: string } => ({
+const diag = (code: string): NonNullable<PatchResult["warnings"]>[number] =>
+  ({
     code,
     severity: "warning",
     message: `m-${code}`,
-  });
+  }) as NonNullable<PatchResult["warnings"]>[number];
+
+describe("output · 对外 JSON 多元素分隔与字段名", () => {
 
   it("should comma-separate multiple nodes, children, annotations and diagnostics in dataOutline", () => {
     const outline: Outline = {
@@ -601,14 +604,12 @@ describe("humanRead · 截断提示的精确匹配", () => {
       annotations: [],
       truncated: true,
       diagnostics: [
-        { code: "other_diag", severity: "info", message: "无关" },
-        { code: "truncated_output", severity: "warning", message: "已截断" },
+        diag("other_diag"),
+        diag("truncated_output"),
       ],
     };
-    expect(humanRead(withTrunc)).toBe("<p>x</p>\n已截断\n");
-    const withoutTrunc: ReadNodeResult = { ...withTrunc, diagnostics: [
-      { code: "other_diag", severity: "info", message: "无关" },
-    ] };
+    expect(humanRead(withTrunc)).toBe("<p>x</p>\nm-truncated_output\n");
+    const withoutTrunc: ReadNodeResult = { ...withTrunc, diagnostics: [diag("other_diag")] };
     expect(humanRead(withoutTrunc)).toBe("<p>x</p>\n");
   });
 });
@@ -628,8 +629,8 @@ describe("humanPatch · 多 id 对与多 warning 的分隔", () => {
       historyPath: null,
       undoable: true,
       warnings: [
-        { code: "w1", severity: "warning", message: "第一" },
-        { code: "w2", severity: "warning", message: "第二" },
+        { ...diag("w1"), message: "第一" },
+        { ...diag("w2"), message: "第二" },
       ],
     };
     expect(humanPatch(result)).toBe(
@@ -673,7 +674,7 @@ describe("dataStyleExtract · 完整 JSON 形状", () => {
       dataStyleExtract(result, "a.yaml", [
         { field: "f1", reason: "r1" },
         { field: "f2", reason: "r2" },
-      ]),
+      ] as unknown as ExtractStyleLlmResult["dropped"]),
     ) as { dropped: { field: string }[] };
     expect(parsed.dropped.map((item) => item.field)).toEqual(["f1", "f2"]);
   });

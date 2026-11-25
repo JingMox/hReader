@@ -38,8 +38,10 @@ const decodeCharEscapes = (css: string): string =>
 const stripComments = (css: string): string => css.replaceAll(/\/\*[\s\S]*?(?:\*\/|$)/gu, " ");
 
 const isLocalUrl = (argument: string): boolean => {
+  // Stryker disable next-line MethodExpression: 全局正则下 replace 与 replaceAll 同结果。
   const value = argument.replaceAll(/["']/gu, "").trim();
   if (value.startsWith("#") || value.startsWith("data:")) return true;
+  // Stryker disable next-line MethodExpression: `//` 开头的参数在进入此判空前已被 EXTERNAL_URL 拦截，该支不可达。
   return !value.startsWith("//") && !SCHEME.test(value);
 };
 

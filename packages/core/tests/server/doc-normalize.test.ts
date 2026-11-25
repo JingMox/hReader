@@ -48,6 +48,7 @@ describe("doc normalize · normalizable", () => {
       expect(body).toMatchObject({ cls: "managed" });
       expect(body["revision"]).toMatch(/^[0-9a-f]{16}$/u);
       expect(frame.data).toContain('"docId":"doc.html"');
+      expect(frame.data).toContain('"changedNodes":[]');
       const html = readFileSync(ctx.file, "utf8");
       expect(html).toContain('data-hr-id="');
       const info = jsonBodyOf(

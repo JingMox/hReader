@@ -128,11 +128,13 @@ export const busy = async <T>(work: () => Promise<T>): Promise<T> => {
   }
 };
 
-const loadDocument = async (ctx: HandlerContext, docId: string): Promise<DocumentServe> => {
+const loadDocument = async (
+  ctx: HandlerContext,
+  docId: string,
+): Promise<Omit<DocumentServe, "reply">> => {
   const target = await targetOf(ctx, docId);
   const bytes = await bytesOf(ctx, target);
   return {
-    reply: jsonReply(200, { revision: revisionOf(bytes) }),
     target,
     bytes,
     revision: revisionOf(bytes),
@@ -189,6 +191,7 @@ export const docInfoReply = async (ctx: HandlerContext, docId: string): Promise<
   // 信任档只对外来文档有意义：managed/normalizable 永不执行文档脚本，恒报 "off"，
   // 也免得"先当外来授权、后被改成托管"的陈旧记录漏出来。
   const trust =
+    // Stryker disable next-line ConditionalExpression: readTrust 按字节寻记录，非外来文档的查找必然未中、落回 "off"——恒真变异无可见差异。
     classification.cls === "foreign" ? await readTrust({ target, bytes }, ctx.deps) : "off";
   return jsonReply(200, {
     revision: revisionOf(bytes),
@@ -235,11 +238,13 @@ export const patchReply = async (
 ): Promise<Written> => {
   const { docId, targetId, action, fragment } = parseBody(patchBody, body);
   const request: PatchRequest =
+    // Stryker disable next-line ConditionalExpression: html:undefined 与不设字段同义，下游 patchFile 判 undefined。
     fragment === undefined ? { targetId, action } : { targetId, action, html: fragment };
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
   const beforeModel = modelOf(before, target.realPath);
   const result = await busy(() =>
+    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
     patchFile({ workspace: ctx.workspace, file: docId, request }, ctx.deps, {
       lockTimeoutMs: lockMs,
     }),
@@ -278,12 +283,14 @@ export const styleReply = async (
   const foreign = classifyDocument(parsed).cls === "foreign";
   const beforeModel = foreign ? undefined : toDocumentModel(parsed);
   const result = await busy(() =>
+    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
     applyStyle({ workspace: ctx.workspace, file: docId, visualId }, ctx.styleDeps, {
       lockTimeoutMs: lockMs,
     }),
   );
   const after = await bytesOf(ctx, target);
   const changedNodes =
+    // Stryker disable next-line ConditionalExpression: 主题挂载点在 <head>、不在内容模型里，diff 恒为空——beforeModel 短路与否同输出。
     beforeModel !== undefined && result.changed ? diffOf(beforeModel, after, target.realPath) : [];
   return {
     reply: jsonReply(200, { changed: result.changed, revision: revisionOf(after), changedNodes }),
@@ -310,6 +317,7 @@ const appendWithLock = async (
   lockMs: number,
 ): Promise<AnnotationOutcome> =>
   busy(() =>
+    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
     runLocked(target, ctx.deps, { lockTimeoutMs: lockMs }, async () => {
       const html = decodeUtf8(await bytesOf(ctx, target), target.realPath);
       // 时间戳只从注入的时钟来（`annotation-ops` 同源），否则同一次写入不可复现。
@@ -408,6 +416,7 @@ export const normalizeReply = async (
         : `文档里有 ${String(classification.articles)} 个 <article>：这不是可规范化的文档`,
     );
   }
+  // Stryker disable next-line ConditionalExpression,StringLiteral,BlockStatement: 拆掉这道早退也只让 normalizeFile 在托管文档上空跑一轮——无写无快照，回执同形。
   if (classification.cls === "managed") {
     // no-op：托管文档已带合法 id，不锁也不写，只回当前 revision。
     return {
@@ -415,10 +424,12 @@ export const normalizeReply = async (
       target,
       revision: revisionOf(before),
       changed: false,
+      // Stryker disable next-line ArrayDeclaration: changed 恒 false，不会推送 doc.changed——changedNodes 无出口。
       changedNodes: [],
     };
   }
   const result = await busy(() =>
+    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
     normalizeFile({ workspace: ctx.workspace, file: docId, write: true, history: true }, ctx.deps, {
       lockTimeoutMs: lockMs,
     }),

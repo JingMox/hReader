@@ -1158,9 +1158,10 @@ describe("assetSegmentsOf · 白名单全矩阵", () => {
   it("should accept the 512-char boundary and a 255-char segment", () => {
     const segment = "x".repeat(255);
     expect(assetSegmentsOf(`${segment}/f.js`)).toEqual([segment, "f.js"]);
-    const raw = `${"a/".repeat(255)}f`;
-    expect(raw).toHaveLength(511);
+    const raw = `${"a/".repeat(255)}fg`;
+    expect(raw).toHaveLength(512);
     expect(assetSegmentsOf(raw)).toHaveLength(256);
+    expect(assetSegmentsOf(`${"a/".repeat(255)}fgx`)).toBeUndefined();
   });
 });
 
