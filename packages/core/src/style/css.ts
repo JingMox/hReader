@@ -14,6 +14,7 @@ const FORBIDDEN: readonly { readonly pattern: RegExp; readonly reason: string }[
 ];
 
 /** 参数不能闭合的 `url(` 收不到参数，单独兜底一次协议探测。 */
+// Stryker disable next-line Regex: `\S*` 变体漏掉 `url (` 仍会被 urlArgumentsOf + isLocalUrl 二道拦截，判定同值。
 const EXTERNAL_URL = /url\s*\(\s*["']*\s*(?:https?:)?\/\//iu;
 
 const URL_ARGUMENT = /url\s*\(\s*([^)]*?)\s*\)/giu;
@@ -32,6 +33,7 @@ const decodeHexEscapes = (css: string): string =>
 
 /** 单字符转义（`\.` / `\\`）：反斜杠只为转义而存在，解码结果就是后面那个字符。 */
 const decodeCharEscapes = (css: string): string =>
+  // Stryker disable next-line Regex: `\S\S` 变体只在转义空白时不解码——而解码空白本就产空白，判定同值。
   css.replaceAll(/\\[\s\S]/gu, (match) => match.slice(1));
 
 /** 注释先摘掉：被注释掉的 `@import` 不是威胁，而 `/*x*\/@import` 摘完仍连着 `@import`。 */
@@ -61,6 +63,7 @@ const assertUrlsLocal = (css: string): void => {
   if (EXTERNAL_URL.test(css)) throw invalidTheme("url() 指向了外部资源，主题必须离线自足");
   for (const argument of urlArgumentsOf(css)) {
     if (!isLocalUrl(argument)) {
+      // Stryker disable next-line MethodExpression: URL_ARGUMENT 的 `\s*` 已在捕获组外吃掉首尾空白，trim 幂等。
       throw invalidTheme(`url() 只允许相对路径、data: 或 #锚点，收到：${argument.trim()}`);
     }
   }

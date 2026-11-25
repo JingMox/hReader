@@ -66,7 +66,8 @@ const config = {
   // CLI 用例内部有 10s 硬超时，15s 给足预算又不让挂死变异体拖太久。
   timeoutMS: 15000,
   timeoutFactor: 1.5,
-  thresholds: { high: 90, low: 75, break: 0 },
+  // break 85：低于全量变异分立刻红灯。安全关键模块（sanitize/css/paths/auth/handlers 写门/term）实测 ≥96。
+  thresholds: { high: 90, low: 75, break: 85 },
 };
 
 export default config;
