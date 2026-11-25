@@ -3,15 +3,43 @@
 /** @type {import("@stryker-mutator/api/core").PartialStrykerOptions} */
 const config = {
   // 变异范围：安全关键与数据完整性关键的模块。app 的三个文件是补充范围。
+  // 任务点名的安全/数据完整性关键模块（目录级 glob 会放大到 1.1 万个变异体，不可行）。
   mutate: [
-    "packages/core/src/html/**/*.ts",
-    "packages/core/src/model/**/*.ts",
-    "packages/core/src/ops/**/*.ts",
-    "packages/core/src/style/**/*.ts",
-    "packages/core/src/io/**/*.ts",
-    "packages/core/src/server/**/*.ts",
+    // html：sanitize（含 CSS 转义解码、hasExecutableContent）、serialize
+    "packages/core/src/html/sanitize.ts",
+    "packages/core/src/html/serialize.ts",
+    // model：classify、load
+    "packages/core/src/model/classify.ts",
+    "packages/core/src/model/load.ts",
+    // ops：patch-node、undo/history、import、normalize
+    "packages/core/src/ops/patch-node/**/*.ts",
+    "packages/core/src/ops/import.ts",
+    "packages/core/src/ops/normalize-file.ts",
+    "packages/core/src/ops/revert-op.ts",
+    "packages/core/src/io/undo.ts",
+    "packages/core/src/io/history.ts",
+    // style：apply、css 安全检查、replaceTheme 相关
+    "packages/core/src/style/apply.ts",
+    "packages/core/src/style/apply-file.ts",
+    "packages/core/src/style/css.ts",
+    "packages/core/src/style/theme.ts",
+    // io：paths、trust、lock、atomic write、digest
+    "packages/core/src/io/paths.ts",
+    "packages/core/src/io/trust.ts",
+    "packages/core/src/io/lock.ts",
+    "packages/core/src/io/atomic.ts",
+    "packages/core/src/io/digest.ts",
+    // server：auth、routes、handlers 写门、http-io body 解析、CSP 生成
+    "packages/core/src/server/auth.ts",
+    "packages/core/src/server/routes.ts",
+    "packages/core/src/server/handlers.ts",
+    "packages/core/src/server/http-io.ts",
+    "packages/core/src/server/body.ts",
+    "packages/core/src/server/static.ts",
+    // cli：term() 与参数解析
     "packages/cli/src/output.ts",
     "packages/cli/src/args/**/*.ts",
+    // app 小组件
     "packages/app/src/widgets/present.ts",
     "packages/app/src/widgets/foreign.ts",
     "packages/app/src/escape-attr.ts",
@@ -31,7 +59,7 @@ const config = {
   htmlReporter: { fileName: ".reports-tmp/mutation/index.html" },
   jsonReporter: { fileName: ".reports-tmp/mutation/mutation.json" },
   // 本机 16GB 且并行跑其他负载：最多 2 个变异测试进程。
-  concurrency: 2,
+  concurrency: 3,
   // CLI 用例内部有 10s 硬超时，15s 给足预算又不让挂死变异体拖太久。
   timeoutMS: 15000,
   timeoutFactor: 1.5,
