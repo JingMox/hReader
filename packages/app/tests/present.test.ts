@@ -376,7 +376,9 @@ describe("present · hash 续页与全屏退出", () => {
     const { shell } = shellOf({ hash: "p=2" });
     const intents: ReaderIntent[] = [];
     const widget = mountOf(fake, shell, intents);
+    // 续页要等页表：记账帧 pages 还没回来时不发意图，页表到位的那一帧才发。
     widget.update(stateOf());
+    widget.update(stateOf({ pages: ["a", "b", "c"] }));
     expect(intents).toEqual([{ kind: "presentEntered", page: 1 }]);
     widget.update(presenting({ present: { active: true, page: 1 } }));
     widget.update(presenting({ present: { active: false, page: 1 } }));

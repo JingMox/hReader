@@ -108,6 +108,8 @@ export const mountPresent = (deps: PresentDeps): PresentWidget => {
   let buttonShown: boolean | undefined;
   /** 每页已放出的步进条数（页码 → 条数）；回到旧页恢复它的进度。 */
   const stepsByPage = new Map<number, number>();
+  /** 演示态碰过的全部步进元素（不止当前页）：退出时按这份清单清属性，不留跨页残迹。 */
+  const touchedSteps = new Set<ElementLike>();
 
   shell.onFullscreenChange?.(() => {
     if (!inFullscreen || shell.isFullscreen?.() === true) return;
@@ -125,6 +127,7 @@ export const mountPresent = (deps: PresentDeps): PresentWidget => {
     const id = next.pages[page];
     currentSteps = id === undefined ? [] : host.all(`${slideSelector(parent, id)} [data-hr-step]`);
     applySteps(currentSteps, stepsByPage.get(page) ?? 0);
+    currentSteps.forEach((step) => touchedSteps.add(step));
     lastPages = next.pages;
     lastPage = page;
     writeHash(page);
@@ -134,9 +137,10 @@ export const mountPresent = (deps: PresentDeps): PresentWidget => {
     lastPages.forEach((id) => {
       host.attr(slideSelector(parent, id), "data-hr-slide-state", undefined);
     });
-    currentSteps.forEach((step) => {
+    touchedSteps.forEach((step) => {
       step.removeAttribute("data-hr-step-state");
     });
+    touchedSteps.clear();
     currentSteps = [];
     stepsByPage.clear();
     host.attr(parent, "data-hr-present", undefined);
@@ -165,9 +169,14 @@ export const mountPresent = (deps: PresentDeps): PresentWidget => {
       if (active) {
         exitDom();
       } else if (!resumed) {
-        resumed = true;
         const page = pageOfHash(readHash());
-        if (page !== undefined) {
+        if (page === undefined) {
+          // hash 里没有合法页码：续页机会用掉，此后不再试。
+          resumed = true;
+        } else if (next.pages.length > 0) {
+          // 页表到位才发意图：记账帧（pages 还没回来）先到是常态，
+          // 那时发 `presentEntered` 只会被 reduce 拒掉，续页机会还被白白烧掉。
+          resumed = true;
           onIntent({ kind: "presentEntered", page });
           return;
         }

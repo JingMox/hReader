@@ -141,6 +141,13 @@ type DocIntent = IntentOf<"blocksLoaded"> | IntentOf<"documentChanged"> | Intent
 type NavIntent = IntentOf<"move"> | IntentOf<"scrollTo"> | IntentOf<"toggleFocus">;
 type PanelIntent = IntentOf<"openSidenote"> | IntentOf<"panelClosed"> | IntentOf<"searchOpened">;
 
+/** 页表收缩时把演示态收回合法区间：没有页就退出演示（空屏演示比"按了没反应"更糟）。 */
+const presentOfPages = (present: PresentMode, pages: readonly string[]): PresentMode => {
+  if (pages.length === 0) return present.active ? { ...present, active: false } : present;
+  if (present.page < pages.length) return present;
+  return { ...present, page: pages.length - 1 };
+};
+
 const reduceBlocks = (state: ReaderState, intent: IntentOf<"blocksLoaded">): ReaderState => {
   const pages = intent.pages ?? state.pages;
   const same =
@@ -148,7 +155,8 @@ const reduceBlocks = (state: ReaderState, intent: IntentOf<"blocksLoaded">): Rea
     state.outline === intent.outline &&
     sameList(state.pages, pages);
   const html = intent.html ?? state.documentHtml;
-  if (same && html === state.documentHtml) return state;
+  const present = presentOfPages(state.present, pages);
+  if (same && html === state.documentHtml && present === state.present) return state;
   return {
     ...state,
     revision: intent.revision ?? state.revision,
@@ -156,6 +164,7 @@ const reduceBlocks = (state: ReaderState, intent: IntentOf<"blocksLoaded">): Rea
     outline: intent.outline,
     pages,
     documentHtml: html,
+    present,
     activeId: state.activeId ?? intent.blocks[0],
   };
 };

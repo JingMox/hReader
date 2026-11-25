@@ -30,7 +30,9 @@ interface ShellLog {
   inFs: boolean;
 }
 
-const shellOf = (init: { readonly hash?: string } = {}): {
+const shellOf = (
+  init: { readonly hash?: string } = {},
+): {
   readonly shell: PresentShell;
   readonly log: ShellLog;
 } => {
