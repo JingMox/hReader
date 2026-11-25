@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 
 import { nodePatchDeps, patchFile } from "../../src/io";
+import { HrError } from "../../src/hr-error";
+import { resolveTarget } from "../../src/io/paths";
 import { ARTICLE_DOC, DOC_FILE } from "./fixtures";
 import {
   codeOfAsync,
@@ -138,5 +140,102 @@ describe("路径逃逸 · 不是普通文件", () => {
 
   it("should reject a relative workspace outright", async () => {
     expect(await attempt("relative/ws", "a.html")).toBe("invalid_input");
+  });
+});
+
+describe("错误报文 · 可读性", () => {
+  const errorOf = async (run: () => Promise<unknown>): Promise<HrError> => {
+    try {
+      await run();
+    } catch (error: unknown) {
+      if (error instanceof HrError) return error;
+      throw error;
+    }
+    throw new Error("期望 HrError 但没有抛");
+  };
+
+  it("should name the workspace in a non-absolute-workspace rejection", async () => {
+    const error = await errorOf(() =>
+      resolveTarget({ workspace: "relative/ws", file: "a.html" }, deps.fs),
+    );
+
+    expect(error.code).toBe("invalid_input");
+    expect(error.message).toContain("relative/ws");
+  });
+
+  it("should keep the file-facing rejections readable", async () => {
+    await withWorkspace(async (dir) => {
+      const empty = await errorOf(() => resolveTarget({ workspace: dir, file: "" }, deps.fs));
+      expect(empty.code).toBe("not_a_file");
+      expect(empty.message).toContain("file");
+
+      const nul = await errorOf(() =>
+        resolveTarget({ workspace: dir, file: "a\0b.html" }, deps.fs),
+      );
+      expect(nul.code).toBe("invalid_request");
+      expect(nul.message).toContain("NUL");
+
+      const abs = await errorOf(() =>
+        resolveTarget({ workspace: dir, file: join(dir, "x.html") }, deps.fs),
+      );
+      expect(abs.code).toBe("path_outside_workspace");
+      expect(abs.message).toContain("绝对路径");
+    });
+  });
+
+  it("should carry the resolved path and workspace in a lexical escape rejection", async () => {
+    await withWorkspace(async (dir) => {
+      const error = await errorOf(() =>
+        resolveTarget({ workspace: dir, file: "../out.html" }, deps.fs),
+      );
+
+      expect(error.code).toBe("path_outside_workspace");
+      expect(error.message).toContain("workspace");
+      expect(error.message).toContain("逃出");
+    });
+  });
+
+  it("should name .hreader when the store directory is targeted", async () => {
+    await withWorkspace(async (dir) => {
+      await mkdirAt(join(dir, ".hreader"));
+      await writeTextAt(join(dir, ".hreader", "x.html"), ARTICLE_DOC);
+
+      const error = await errorOf(() =>
+        resolveTarget({ workspace: dir, file: ".hreader/x.html" }, deps.fs),
+      );
+
+      expect(error.code).toBe("path_outside_workspace");
+      expect(error.message).toContain(".hreader");
+    });
+  });
+
+  it("should name the workspace boundary for a symlink escape", async () => {
+    await withOutsideDir(async (outside) => {
+      const secret = join(outside, "secret.html");
+      await writeTextAt(secret, ARTICLE_DOC);
+      await withWorkspace(async (dir) => {
+        await symlinkAt(secret, join(dir, "link.html"));
+
+        const error = await errorOf(() =>
+          resolveTarget({ workspace: dir, file: "link.html" }, deps.fs),
+        );
+
+        expect(error.code).toBe("path_outside_workspace");
+        expect(error.message).toContain("workspace");
+      });
+    });
+  });
+
+  it("should name the input when a directory is passed as file", async () => {
+    await withWorkspace(async (dir) => {
+      await mkdirAt(join(dir, "folder.html"));
+
+      const error = await errorOf(() =>
+        resolveTarget({ workspace: dir, file: "folder.html" }, deps.fs),
+      );
+
+      expect(error.code).toBe("not_a_file");
+      expect(error.message).toContain("folder.html");
+    });
   });
 });

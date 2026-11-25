@@ -243,3 +243,82 @@ describe("acquireLock · 接管 CAS 不符（读完之后锁被换掉）", () =>
     expect([...fake.state.files.keys()].some((path) => path.includes(".steal-"))).toBe(false);
   });
 });
+
+describe("acquireLock · 坏锁体按'不可解析'口径处理", () => {
+  // 坏载荷只有一条陈旧窗口（STALE_UNPARSABLE 5s）：窗口内是"活着的锁"，
+  // 守卫放错方向会把坏锁当活锁（永远抢不走）或当新锁等满 120s。
+  it.each([
+    ["pid 负数", payloadOf(NOW, { pid: -5 })],
+    ["pid 非整数", payloadOf(NOW, { pid: 1.5 })],
+    ["pid 是字符串", payloadOf(NOW, { pid: "7" })],
+    ["nonce 空串", payloadOf(NOW, { nonce: "" })],
+    ["nonce 非字符串", payloadOf(NOW, { nonce: 1 })],
+    ["at 非数字", payloadOf(NOW, { at: "x" })],
+    ["JSON 标量", "5"],
+    ["JSON null", "null"],
+  ])("should treat a young malformed lock (%s) as held, not stealable", async (_label, content) => {
+    const local = fixedClock(NOW);
+    const sleep = recordingSleep(local);
+    const fake = seeded(content);
+    fake.state.mtimes.set(LOCK_PATH, NOW - 1_000);
+
+    const code = await codeOfAsync(() =>
+      acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, depsOf(fake.port, local.clock, sleep.sleep)),
+    );
+
+    expect(code).toBe("locked");
+  });
+
+  it("should take over a malformed lock once past the unparsable window", async () => {
+    const sleep = recordingSleep(clock);
+    const fake = seeded('{"pid":"x","nonce":1,"at":"y"}');
+    fake.state.mtimes.set(LOCK_PATH, NOW - 5_001);
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, depsAt(fake, sleep.sleep));
+
+    expect(fake.textAt(LOCK_PATH)).not.toBe('{"pid":"x","nonce":1,"at":"y"}');
+    await handle.release();
+  });
+
+  it("should keep a malformed lock still inside the unparsable window", async () => {
+    const local = fixedClock(NOW);
+    const sleep = recordingSleep(local);
+    const fake = seeded('{"pid":"x","nonce":1,"at":"y"}');
+    fake.state.mtimes.set(LOCK_PATH, NOW - 5_000);
+
+    const code = await codeOfAsync(() =>
+      acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, depsOf(fake.port, local.clock, sleep.sleep)),
+    );
+
+    expect(code).toBe("locked");
+  });
+
+  it("should take over a young lock whose owner pid is already dead", async () => {
+    // pid 死透了就没有窗口期可谈：立刻接管，不等 120s 活锁窗口。
+    const sleep = recordingSleep(clock);
+    const fake = seeded(payloadOf(NOW, { pid: 2_147_400_000 }));
+    fake.state.mtimes.set(LOCK_PATH, NOW - 1_000);
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, depsAt(fake, sleep.sleep));
+
+    expect(fake.state.files.has(LOCK_PATH)).toBe(true);
+    await handle.release();
+  });
+});
+
+describe("acquireLock · 超时与报文", () => {
+  it("should name the wait budget and the path in the timeout message", async () => {
+    const fake = seeded(payloadOf(NOW));
+    fake.state.mtimes.set(LOCK_PATH, NOW);
+    const error = await acquireLock(
+      { path: LOCK_PATH, timeoutMs: 3 },
+      depsAt(fake, recordingSleep(clock).sleep),
+    ).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+
+    expect(error).toBeInstanceOf(HrError);
+    expect(Reflect.get(Object(error), "code")).toBe("locked");
+    expect(Reflect.get(Object(error), "message")).toContain("3ms");
+    expect(Reflect.get(Object(error), "message")).toContain(LOCK_PATH);
+  });
+});

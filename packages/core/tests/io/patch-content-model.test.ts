@@ -246,3 +246,149 @@ describe("assertFragmentFits · 非元素片段", () => {
     }).not.toThrow();
   });
 });
+
+// PHRASING_TAGS 全成员：任一成员从表里划掉，对应标签塞进 <p> 就会被误拒。
+const PHRASING_TAGS = [
+  "a",
+  "abbr",
+  "audio",
+  "b",
+  "bdi",
+  "bdo",
+  "br",
+  "button",
+  "canvas",
+  "cite",
+  "code",
+  "data",
+  "datalist",
+  "del",
+  "dfn",
+  "em",
+  "i",
+  "img",
+  "input",
+  "ins",
+  "kbd",
+  "label",
+  "map",
+  "mark",
+  "math",
+  "meter",
+  "object",
+  "output",
+  "picture",
+  "progress",
+  "q",
+  "ruby",
+  "s",
+  "samp",
+  "select",
+  "slot",
+  "small",
+  "span",
+  "strong",
+  "sub",
+  "sup",
+  "svg",
+  "template",
+  "textarea",
+  "time",
+  "u",
+  "var",
+  "video",
+  "wbr",
+] as const;
+
+const INLINE_ONLY_CONTAINERS = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "legend"] as const;
+
+describe("assertFragmentFits · 只装行内内容的容器（⑤）", () => {
+  it.each(INLINE_ONLY_CONTAINERS)(
+    "should reject a block-level div inside <%s> as phrasing-only",
+    (container) => {
+      const error = fitsErrorOf(container, "div");
+
+      expect(error.code).toBe("content_model_conflict");
+      expect(error.message).toContain("行内内容");
+    },
+  );
+
+  it.each(PHRASING_TAGS)("should accept phrasing <%s> inside a paragraph", (child) => {
+    expect(() => {
+      assertFragmentFits(elementOf("p"), elementOf(child));
+    }).not.toThrow();
+  });
+
+  it.each([
+    { container: "p", word: "段落（只装行内内容）" },
+    { container: "pre", word: "预排版块（只装行内内容）" },
+    { container: "h3", word: "标题（只装行内内容）" },
+    { container: "h6", word: "标题（只装行内内容）" },
+  ])("should name <$container> as $word in the rejection message", ({ container, word }) => {
+    expect(fitsErrorOf(container, "div").message).toContain(word);
+  });
+});
+
+describe("assertFragmentFits · 表格结构标签的完整成员", () => {
+  it.each(["caption", "col", "colgroup", "thead", "tbody", "tfoot", "tr", "td", "th"])(
+    "should reject table structure <%s> inside a non-table container",
+    (child) => {
+      const error = fitsErrorOf("section", child);
+
+      expect(error.code).toBe("content_model_conflict");
+      expect(error.message).toContain("表格结构元素");
+    },
+  );
+
+  it.each([
+    { container: "table", child: "caption" },
+    { container: "table", child: "colgroup" },
+  ])("should accept a <$child> inside <$container>", ({ container, child }) => {
+    expect(() => {
+      assertFragmentFits(elementOf(container), elementOf(child));
+    }).not.toThrow();
+  });
+});
+
+describe("assertFragmentFits · 结构容器成员覆盖", () => {
+  it.each(["dt", "dd", "div"])("should accept a %s inside a dl", (child) => {
+    expect(() => {
+      assertFragmentFits(elementOf("dl"), elementOf(child));
+    }).not.toThrow();
+  });
+
+  it.each(["thead", "tbody", "tfoot", "tr"])(
+    "should reject a div inside <%s> and explain the allowed children",
+    (container) => {
+      const error = fitsErrorOf(container, "div");
+
+      expect(error.code).toBe("content_model_conflict");
+      expect(error.message).toContain("只装");
+      expect(error.message).toContain("append");
+    },
+  );
+});
+
+describe("assertFragmentFits · 改树组合的完整成员", () => {
+  it.each([
+    { container: "table", child: "th" },
+    { container: "dd", child: "dd" },
+    { container: "dt", child: "dt" },
+    { container: "label", child: "label" },
+  ])(
+    "should reject <$child> inside <$container> because parsing would change the tree",
+    ({ container, child }) => {
+      const error = fitsErrorOf(container, child);
+
+      expect(error.code).toBe("content_model_conflict");
+      expect(error.message).toContain("会改结构");
+      // 报文的后半截也要钉住：点明"解析回来的树"不一致 + 给出 append 的下一步。
+      expect(error.message).toContain("解析回来的树");
+      expect(error.message).toContain("append");
+    },
+  );
+
+  it("should explain that a raw-text container returns children as plain text", () => {
+    expect(fitsErrorOf("script", "b").message).toContain("只是一段文本");
+  });
+});

@@ -12,6 +12,7 @@ import { HrError } from "../../src/hr-error";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import type { PatchDeps } from "../../src/io/ports";
 import { appendAnnotation, type AnnotationInput } from "../../src/server/annotation";
+import { busy } from "../../src/server/handlers";
 import { defaultHostsOf, hostAllowed } from "../../src/server/auth";
 import type { SseEvent } from "../../src/server/contracts";
 import {
@@ -29,7 +30,14 @@ import {
   createHub,
   createServerHub,
 } from "../../src/server/hub";
-import { HttpFault, contentTypeOf, errorReply } from "../../src/server/http-io";
+import {
+  HttpFault,
+  assetSegmentsOf,
+  contentTypeOf,
+  errorReply,
+  jsonOf,
+  methodNotAllowed,
+} from "../../src/server/http-io";
 import {
   READY_FRAME,
   createEventRing,
@@ -1072,5 +1080,135 @@ describe("门面 · 可单测部件仍可用", () => {
     expect(statusOf("locked")).toBe(409);
     expect(statusOf("too_many_clients")).toBe(429);
     expect(statusOf("path_outside_workspace")).toBe(403);
+  });
+});
+
+describe("busy · locked 到 409 的唯一翻译点", () => {
+  it("should translate an HrError locked into busy", async () => {
+    const cause = new HrError("locked", "文件被占用");
+
+    const failure = await busy(() => Promise.reject(cause)).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(HrError);
+    expect(Reflect.get(Object(failure), "code")).toBe("busy");
+    expect(Reflect.get(Object(failure), "message")).toContain("写请求");
+    // 原始 locked 挂在 cause 上，定位问题时链条不能断。
+    expect(Reflect.get(Object(failure), "cause")).toBe(cause);
+  });
+
+  it("should pass through an HrError that is not locked", async () => {
+    const failure = await busy(() => Promise.reject(new HrError("invalid_input", "x"))).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(Reflect.get(Object(failure), "code")).toBe("invalid_input");
+  });
+
+  it("should pass through non-HrError failures unchanged", async () => {
+    const boom = new Error("boom");
+
+    const failure = await busy(() => Promise.reject(boom)).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBe(boom);
+  });
+
+  it("should return the work result when nothing throws", async () => {
+    await expect(busy(async () => Promise.resolve("ok"))).resolves.toBe("ok");
+  });
+});
+
+// `assetSegmentsOf` 是 `/assets/*` 的最后防线：每个守卫变异都直接对应一种穿越向量，逐条钉死。
+describe("assetSegmentsOf · 白名单全矩阵", () => {
+  it("should accept a plain nested path and split on '/'", () => {
+    expect(assetSegmentsOf("nested/x.css")).toEqual(["nested", "x.css"]);
+    expect(assetSegmentsOf("a/b/c.js")).toEqual(["a", "b", "c.js"]);
+  });
+
+  it.each([
+    "",
+    "/abs.js",
+    "a//b.js",
+    "a/./b.js",
+    "a/../b.js",
+    "../b.js",
+    "a\\b.js",
+    "a\0b.js",
+    `seg/${"x".repeat(256)}/f.js`,
+    `${"a/".repeat(300)}f.js`,
+    "a/",
+  ])("should reject %s", (raw) => {
+    expect(assetSegmentsOf(raw)).toBeUndefined();
+  });
+
+  it("should accept the 512-char boundary and a 255-char segment", () => {
+    const segment = "x".repeat(255);
+    expect(assetSegmentsOf(`${segment}/f.js`)).toEqual([segment, "f.js"]);
+    const raw = `${"a/".repeat(255)}fg`;
+    expect(raw).toHaveLength(512);
+    expect(assetSegmentsOf(raw)).toHaveLength(256);
+    expect(assetSegmentsOf(`${"a/".repeat(255)}fgx`)).toBeUndefined();
+  });
+});
+
+describe("http-io · 错误回执与类型表的其余字面量", () => {
+  it("should tag the error name for instanceof-independent consumers", () => {
+    expect(new HttpFault(400, "m").name).toBe("HttpFault");
+    expect(new HttpFault(400, "m").status).toBe(400);
+  });
+
+  it("should mask a long quoted source fragment in the public message", () => {
+    const reply = errorReply(new HttpFault(400, `读 '${"s".repeat(45)}' 失败`));
+    expect(messageOf(reply.body)).toBe("读 [内容已隐藏] 失败");
+  });
+
+  it("should keep a 200-char message byte-identical and truncate 201", () => {
+    const exact = errorReply(new HttpFault(400, "x".repeat(200)));
+    expect(messageOf(exact.body)).toBe("x".repeat(200));
+  });
+
+  it("should answer the frozen io_failure message and the generic 500 fallback", () => {
+    const fixed = errorReply(new HrError("io_failure", "内部细节 /tmp/x"));
+    expect(JSON.parse(fixed.body as string)).toEqual({
+      code: "io_failure",
+      message: "服务端暂时不可用",
+    });
+    const boom = errorReply(new TypeError("oops"));
+    expect(boom.status).toBe(500);
+    expect(JSON.parse(boom.body as string)).toEqual({
+      code: "io_failure",
+      message: "服务端内部错误",
+    });
+  });
+
+  it.each([
+    [".html", "text/html; charset=utf-8"],
+    [".js", "text/javascript; charset=utf-8"],
+    [".mjs", "text/javascript; charset=utf-8"],
+    [".css", "text/css; charset=utf-8"],
+    [".json", "application/json; charset=utf-8"],
+    [".map", "application/json; charset=utf-8"],
+    [".svg", "image/svg+xml"],
+    [".bin", "application/octet-stream"],
+    [".JS", "text/javascript; charset=utf-8"],
+  ])("should map %s to %s", (ext, mime) => {
+    expect(contentTypeOf(`f${ext}`)).toBe(mime);
+  });
+
+  it("should join the allow list with ', ' in methodNotAllowed and echo it in the message", () => {
+    const reply = methodNotAllowed(["GET", "POST"]);
+    expect(reply.status).toBe(405);
+    expect(reply.headers["allow"]).toBe("GET, POST");
+    expect(JSON.parse(reply.body as string)).toEqual({
+      code: "invalid_request",
+      message: "只接受 GET, POST",
+    });
+    expect(JSON.parse(jsonOf(200, { a: 1 }).body as string)).toEqual({ a: 1 });
   });
 });

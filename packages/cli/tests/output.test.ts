@@ -1,15 +1,19 @@
 // 这层管：`output.ts` / `usage.ts` / `exit-codes.ts` 的纯函数与冻结表；不跑子进程。
 
 import { describe, expect, it } from "vitest";
+import type { PrintHtmlResult } from "@hreader/renderer-html";
 import { EXIT_FAILURE, EXIT_IO, EXIT_OK, EXIT_USAGE, exitCodeOf } from "../src/exit-codes";
 import {
+  dataExport,
   dataImport,
   dataLint,
   dataOutline,
   dataPatch,
   dataRead,
   dataStyle,
+  dataStyleExtract,
   dataTone,
+  displayedPathOf,
   humanCheck,
   humanImport,
   humanLint,
@@ -27,6 +31,8 @@ import type { CommandName } from "../src/usage";
 import { atOf, fieldOf, keysOf, listOf, parseJsonLine } from "./harness";
 import type {
   ApplyStyleResult,
+  ExtractStyleLlmResult,
+  ExtractStyleResult,
   ImportReport,
   LintReport,
   Outline,
@@ -489,5 +495,233 @@ describe("人读回执 · 不受信字段过 term", () => {
     // --json 是机器契约：剥字符就改了数据，JSON.stringify 的转义已经足够安全。
     const parsed = JSON.parse(dataImport("out.html", 100, report)) as { readonly title: string };
     expect(parsed.title).toBe("\x1b[31mT\u202a");
+  });
+});
+
+// join(",") 的存活条件是所有测试夹具数组长度 ≤1——单元素数组里分隔符不可见。
+// 这里给每个对外 JSON 至少两个元素的夹具，分隔符变异（`""`/`"Stryker"`）会把输出打成非法 JSON 或错位字段。
+const diag = (code: string): NonNullable<PatchResult["warnings"]>[number] => {
+  const entry: NonNullable<PatchResult["warnings"]>[number] = {
+    code: code as never,
+    severity: "warning",
+    message: `m-${code}`,
+  };
+  return entry;
+};
+
+describe("output · 对外 JSON 多元素分隔与字段名", () => {
+  it("should comma-separate multiple nodes, children, annotations and diagnostics in dataOutline", () => {
+    const outline: Outline = {
+      nodes: [
+        {
+          id: "hr-1",
+          tag: "h1",
+          level: 1,
+          text: "t1",
+          wordCount: 1,
+          children: [
+            { id: "hr-2", tag: "p", level: 2, text: "c1", wordCount: 1, children: [] },
+            { id: "hr-3", tag: "p", level: 2, text: "c2", wordCount: 1, children: [] },
+          ],
+        },
+        { id: "hr-4", tag: "h2", level: 1, text: "t2", wordCount: 1, children: [] },
+      ],
+      pendingAnnotations: [
+        { id: "an-1", targetId: "hr-1", comment: "x" },
+        { id: "an-2", targetId: "hr-4", comment: "y" },
+      ],
+      wordCount: 4,
+      diagnostics: [diag("d1"), diag("d2")],
+    };
+    expect(JSON.parse(dataOutline(outline))).toEqual(outline);
+  });
+
+  it("should comma-separate multiple diagnostics in dataRead", () => {
+    const result: ReadNodeResult = {
+      html: "<p>x</p>",
+      annotations: [],
+      truncated: true,
+      diagnostics: [diag("truncated_output"), diag("d2")],
+    };
+    const parsed = JSON.parse(dataRead(result, ["hr-1", "hr-2"])) as {
+      ids: string[];
+      diagnostics: { code: string }[];
+    };
+    expect(parsed.ids).toEqual(["hr-1", "hr-2"]);
+    expect(parsed.diagnostics.map((item) => item.code)).toEqual(["truncated_output", "d2"]);
+  });
+
+  it("should comma-separate multiple warnings in dataPatch", () => {
+    const result: PatchResult = {
+      ...WARNED,
+      warnings: [diag("w1"), diag("w2")],
+    };
+    const parsed = decode(dataPatch(result)) as { warnings: { code: string }[] };
+    expect(parsed.warnings.map((item) => item.code)).toEqual(["w1", "w2"]);
+  });
+
+  it("should comma-separate multiple hits in dataLint", () => {
+    const report: LintReport = {
+      hits: [
+        { path: "hr-1", word: "a", excerpt: "…a…", offset: 1 },
+        { path: "hr-2", word: "b", excerpt: "…b…", offset: 2 },
+      ],
+      truncated: false,
+    };
+    const parsed = JSON.parse(dataLint(report)) as { hits: { path: string }[] };
+    expect(parsed.hits.map((item) => item.path)).toEqual(["hr-1", "hr-2"]);
+  });
+});
+
+// 相对路径只在 cwd 内显示：越界（cwd 本身、父级、兄弟目录）一律回退绝对路径——
+// 界外显示相对串会让用户读错位置；界内退回绝对路径则把每行回执拉长。
+describe("displayedPathOf · cwd 内相对、界外绝对", () => {
+  const cwd = "/ws/site";
+
+  it.each([
+    ["/ws/site/a/b.html", "a/b.html"],
+    ["/ws/site/a.html", "a.html"],
+    ["/ws/site/..dot/f.html", "..dot/f.html"],
+  ])("should show cwd-internal path %s as %s", (path, expected) => {
+    expect(displayedPathOf(path, cwd)).toBe(expected);
+  });
+
+  it.each(["/ws/site", "/ws/other/x.html", "/else/y.html", "/ws"])(
+    "should fall back to the absolute path for %s",
+    (path) => {
+      expect(displayedPathOf(path, cwd)).toBe(path);
+    },
+  );
+});
+
+// humanRead 只在 diagnostics 里存在 code === "truncated_output" 时追加截断行：
+// 比较条件变异成恒真/恒假/改码都会把人读输出与数据层弄脱节。
+describe("humanRead · 截断提示的精确匹配", () => {
+  it("should append the truncation line only for the truncated_output code", () => {
+    const withTrunc: ReadNodeResult = {
+      html: "<p>x</p>",
+      annotations: [],
+      truncated: true,
+      diagnostics: [diag("other_diag"), diag("truncated_output")],
+    };
+    expect(humanRead(withTrunc)).toBe("<p>x</p>\nm-truncated_output\n");
+    const withoutTrunc: ReadNodeResult = { ...withTrunc, diagnostics: [diag("other_diag")] };
+    expect(humanRead(withoutTrunc)).toBe("<p>x</p>\n");
+  });
+});
+
+// humanPatch 的 id 变更对用 ", " 连接、warnings 用 "\n" 连接；两个以上才能看见分隔符。
+describe("humanPatch · 多 id 对与多 warning 的分隔", () => {
+  it("should join two replaced pairs with ', ' and two warnings with newlines", () => {
+    const result: PatchResult = {
+      path: "b.html",
+      bytes: 10,
+      newIds: [],
+      replacedIds: [
+        { from: "hr-1", to: "p-1" },
+        { from: "hr-2", to: "p-2" },
+      ],
+      changed: true,
+      historyPath: null,
+      undoable: true,
+      warnings: [
+        { ...diag("w1"), message: "第一" },
+        { ...diag("w2"), message: "第二" },
+      ],
+    };
+    expect(humanPatch(result)).toBe(
+      "patched b.html (10 bytes, id 变更: hr-1 → p-1, hr-2 → p-2)\n" +
+        "warning: w1 — 第一\nwarning: w2 — 第二\n",
+    );
+  });
+});
+
+// dataExport 的 out 字段：null = 只走 stdout 写 null；有路径 = quote。两个分支都要在。
+describe("dataExport · out 的 null 与路径分支", () => {
+  const report = { html: "<p>x</p>", bytes: 8, droppedImages: 0 } as unknown as PrintHtmlResult;
+  it("should encode out as null or quoted path", () => {
+    expect(JSON.parse(dataExport(report, null))).toEqual({
+      html: "<p>x</p>",
+      bytes: 8,
+      droppedImages: 0,
+      out: null,
+    });
+    expect(JSON.parse(dataExport(report, "o.html"))).toEqual({
+      html: "<p>x</p>",
+      bytes: 8,
+      droppedImages: 0,
+      out: "o.html",
+    });
+  });
+});
+
+// dataStyleExtract 的整对象断言（既有用例只 toContain，分隔符/字段名变异打不穿）+ dropped 多元素 + statsJson 字段名。
+describe("dataStyleExtract · 完整 JSON 形状", () => {
+  const result = {
+    spec: { id: "s", name: "n", description: "", inheritsVisual: "v", language: {} },
+    yaml: "a: b\n",
+    stats: { paragraphs: 2, sentences: 3, averageSentenceChars: 1.5, maxParagraphSentences: 2 },
+  } as unknown as ExtractStyleResult;
+
+  it("should serialize path, stats fields and yaml exactly", () => {
+    expect(JSON.parse(dataStyleExtract(result, null))).toEqual({
+      path: null,
+      stats: { paragraphs: 2, sentences: 3, averageSentenceChars: 1.5, maxParagraphSentences: 2 },
+      yaml: "a: b\n",
+    });
+  });
+
+  it("should comma-separate multiple dropped items", () => {
+    const parsed = JSON.parse(
+      dataStyleExtract(result, "a.yaml", [
+        { field: "f1", reason: "r1" },
+        { field: "f2", reason: "r2" },
+      ] as unknown as ExtractStyleLlmResult["dropped"]),
+    ) as { dropped: { field: string }[] };
+    expect(parsed.dropped.map((item) => item.field)).toEqual(["f1", "f2"]);
+  });
+});
+
+// humanImport 的 trunk 三分支（trunkTag → <tag>；main → <main>；兜底 <body>）与丢弃明细段、标题出处标签表。
+describe("humanImport · trunk 三分支与丢弃明细", () => {
+  const base: ImportReport = {
+    kind: "report",
+    title: "T",
+    titleSource: "h1",
+    trunk: "main",
+    trunkTag: undefined,
+    sections: 1,
+    removedElements: 2,
+    strippedAttributes: 3,
+    discarded: [],
+  };
+
+  it.each([
+    ["option", "--title"],
+    ["title", "<title>"],
+    ["h1", "首个 <h1>"],
+    ["fallback", "兜底文案"],
+  ] as const)("should label titleSource %s as %s", (source, label) => {
+    expect(humanImport({ ...base, titleSource: source }, "o.html", 5)).toContain(`（${label}）`);
+  });
+
+  it("should render trunkTag, main and body fallbacks", () => {
+    expect(humanImport({ ...base, trunk: "largest", trunkTag: "article" }, "o.html", 5)).toContain(
+      "主干：<article>",
+    );
+    expect(humanImport(base, "o.html", 5)).toContain("主干：<main>");
+    expect(humanImport({ ...base, trunk: "body" }, "o.html", 5)).toContain("主干：<body>");
+  });
+
+  it("should list each discarded row and omit the section when empty", () => {
+    const dropped: ImportReport["discarded"] = [
+      { what: "<script>", reason: "脚本", count: 2 },
+      { what: "<form>", reason: "控件", count: 1 },
+    ];
+    const text = humanImport({ ...base, discarded: dropped }, "o.html", 5);
+    expect(text).toContain("丢弃明细：");
+    expect(text).toContain("<script> ×2（脚本）");
+    expect(text).toContain("<form> ×1（控件）");
+    expect(humanImport(base, "o.html", 5)).not.toContain("丢弃明细");
   });
 });
