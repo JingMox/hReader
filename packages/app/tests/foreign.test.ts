@@ -369,14 +369,14 @@ describe("foreign · destroy", () => {
 
   it("should swallow a theme write that lands after destroy", async () => {
     const fake = createFakeHost();
-    let release: (value: unknown) => void = () => undefined;
+    let release: () => void = () => undefined;
     const handle = mountForeign(
       depsOf(fake, {
         theme: {
           themes: ["atelier-editorial", "deck-noir"],
           current: "atelier-editorial",
           apply: () =>
-            new Promise<unknown>((resolve) => {
+            new Promise<void>((resolve) => {
               release = resolve;
             }),
         },
@@ -386,7 +386,7 @@ describe("foreign · destroy", () => {
     fake.fire(`${ROOT} #hr-theme-select`, "change", { value: "deck-noir" });
     handle.destroy();
 
-    release({});
+    release();
     await flush();
 
     // 换主题写到一半就切走：落地后不许再 reload iframe。
