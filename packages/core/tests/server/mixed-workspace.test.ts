@@ -11,7 +11,7 @@ import { nodePatchDeps } from "../../src/io/node-fs";
 import { startServer } from "../../src/server/server";
 import type { WatchFn } from "../../src/server/watcher";
 import { nodeStyleDeps } from "../../src/style";
-import { cookieOf, DOC, httpCall } from "./harness";
+import { cookieOf, DOC, httpCall, jsonBodyOf } from "./harness";
 
 const FOREIGN =
   '<!doctype html><html><body><div class="app"><script>1</script>外来</div></body></html>';
@@ -87,13 +87,13 @@ describe("startServer · 混合工作区", () => {
         headers: { cookie: cookieOf(token) },
       });
       expect(corrupt.status).toBe(500);
-      expect(JSON.parse(corrupt.body).code).toBe("invalid_utf8");
+      expect(jsonBodyOf(corrupt)).toMatchObject({ code: "invalid_utf8" });
       const binary = await httpCall(port, {
         path: "/s/binary.html",
         headers: { cookie: cookieOf(token) },
       });
       expect(binary.status).toBe(500);
-      expect(JSON.parse(binary.body).code).toBe("invalid_utf8");
+      expect(jsonBodyOf(binary)).toMatchObject({ code: "invalid_utf8" });
 
       const after = await httpCall(port, { path: "/healthz" });
       expect(after.status).toBe(200);
@@ -118,7 +118,7 @@ describe("startServer · watcher 生命周期", () => {
     };
 
     // 启动即监听 workspace（书库档）；fixture 的 finally 走真 close()。
-    await withMixedServer(async () => {}, watch);
+    await withMixedServer(() => Promise.resolve(), watch);
 
     expect(handles.length).toBeGreaterThan(0);
     for (const handle of handles) expect(handle.closed).toBe(true);

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import { startServer } from "../../src/server/server";
 import { nodeStyleDeps } from "../../src/style";
-import { DOC, cookieOf, defaultSeed, httpCall, withServer } from "./harness";
+import { cookieOf, defaultSeed, httpCall, withServer } from "./harness";
 import { withPost } from "./wire";
 
 const FOREIGN = [

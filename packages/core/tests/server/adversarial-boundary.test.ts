@@ -15,7 +15,7 @@ import { startServer } from "../../src/server/server";
 import { assetReply } from "../../src/server/static";
 import { nodeStyleDeps } from "../../src/style";
 import { depsOf, fakeFs, fixedClock, recordingSleep } from "../io/harness";
-import { cookieOf, defaultSeed, httpCall, rawExchange, withServer } from "./harness";
+import { cookieOf, defaultSeed, rawExchange, withServer } from "./harness";
 import { rawRequest } from "./wire";
 
 describe("method · 大小写", () => {
@@ -58,7 +58,10 @@ const freePortOf = async (): Promise<number> => {
   const address = probe.address();
   const port = typeof address === "object" && address !== null ? address.port : 0;
   await new Promise<void>((resolve, reject) => {
-    probe.close((error) => (error === undefined ? resolve() : reject(error)));
+    probe.close((error) => {
+      if (error === undefined) resolve();
+      else reject(error);
+    });
   });
   return port;
 };

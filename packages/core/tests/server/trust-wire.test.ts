@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { cookieOf, defaultSeed, httpCall, withServer } from "./harness";
+import { cookieOf, defaultSeed, httpCall, jsonBodyOf, withServer } from "./harness";
 import { withPost } from "./wire";
 
 const FOREIGN =
@@ -119,9 +119,9 @@ describe("trust · 写入口", () => {
       // 外来文档没有任何内容写入口：derive 缺 <article> → 422，拒绝发生在 writeAtomic 之前——
       // "报失败却已改盘"的半成品会当场废掉 sha 键信任档。
       expect(style.status).toBe(422);
-      expect(JSON.parse(style.body).code).toBe("invalid_document");
+      expect(jsonBodyOf(style)).toMatchObject({ code: "invalid_document" });
       expect(patch.status).toBe(422);
-      expect(JSON.parse(patch.body).code).toBe("invalid_document");
+      expect(jsonBodyOf(patch)).toMatchObject({ code: "invalid_document" });
       expect(shaOf(ctx.workspace, "a.html")).toBe(shaBefore);
       expect(await cspOf(ctx.port, ctx.token, "a.html")).toContain("sandbox allow-scripts");
     }, twoForeignSeed);
@@ -156,9 +156,9 @@ describe("trust · 写入口", () => {
 
       // hr-id 骗得过定位，骗不过派生：缺 <article> → 422。连批注（hr-meta）也不许写进外来文档。
       expect(patch.status).toBe(422);
-      expect(JSON.parse(patch.body).code).toBe("invalid_document");
+      expect(jsonBodyOf(patch)).toMatchObject({ code: "invalid_document" });
       expect(add.status).toBe(422);
-      expect(JSON.parse(add.body).code).toBe("invalid_document");
+      expect(jsonBodyOf(add)).toMatchObject({ code: "invalid_document" });
       expect(shaOf(ctx.workspace, "c.html")).toBe(shaBefore);
       expect(await cspOf(ctx.port, ctx.token, "c.html")).toContain("sandbox allow-scripts");
     }, twoForeignSeed);
@@ -177,7 +177,7 @@ describe("trust · 写入口", () => {
 
       // 片段批注会把 hr-meta 塞进外来文档再 422（写完才 derive）：gate 之后拒绝在前、字节不变。
       expect(response.status).toBe(422);
-      expect(JSON.parse(response.body).code).toBe("invalid_document");
+      expect(jsonBodyOf(response)).toMatchObject({ code: "invalid_document" });
       expect(shaOf(ctx.workspace, "a.html")).toBe(shaBefore);
       expect(await cspOf(ctx.port, ctx.token, "a.html")).toContain("sandbox allow-scripts");
     }, twoForeignSeed);

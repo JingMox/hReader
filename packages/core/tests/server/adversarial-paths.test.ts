@@ -38,9 +38,7 @@ const modelOf = async (
   });
   const parsed: unknown = response.body === "" ? {} : JSON.parse(response.body);
   const code =
-    typeof parsed === "object" && parsed !== null && "code" in parsed
-      ? String((parsed as { code: unknown }).code)
-      : "";
+    typeof parsed === "object" && parsed !== null && "code" in parsed ? String(parsed.code) : "";
   return { status: response.status, code };
 };
 
