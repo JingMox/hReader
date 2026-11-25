@@ -94,16 +94,10 @@ describe("trust · 写入口", () => {
       .update(readFileSync(join(workspace, docId)))
       .digest("hex");
 
-  it("should refuse HTTP writes to foreign docs before touching the file (style/patch)", async () => {
+  it("should refuse patch to foreign docs before touching the file, while style remains allowed", async () => {
     await withServer(async (ctx) => {
       expect(await grant(ctx.port, ctx.token, "a.html")).toBe(200);
       const shaBefore = shaOf(ctx.workspace, "a.html");
-      const style = await httpCall(ctx.port, {
-        method: "POST",
-        path: "/api/style",
-        headers: withPost(ctx.token),
-        body: JSON.stringify({ docId: "a.html", visualId: "atelier-editorial" }),
-      });
       const patch = await httpCall(ctx.port, {
         method: "POST",
         path: "/api/patch",
@@ -116,14 +110,25 @@ describe("trust · 写入口", () => {
         }),
       });
 
-      // 外来文档没有任何内容写入口：derive 缺 <article> → 422，拒绝发生在 writeAtomic 之前——
+      // 外来文档仍没有内容写入口：derive 缺 <article> → 422，拒绝发生在 writeAtomic 之前——
       // "报失败却已改盘"的半成品会当场废掉 sha 键信任档。
-      expect(style.status).toBe(422);
-      expect(jsonBodyOf(style)).toMatchObject({ code: "invalid_document" });
       expect(patch.status).toBe(422);
       expect(jsonBodyOf(patch)).toMatchObject({ code: "invalid_document" });
       expect(shaOf(ctx.workspace, "a.html")).toBe(shaBefore);
       expect(await cspOf(ctx.port, ctx.token, "a.html")).toContain("sandbox allow-scripts");
+
+      // 换主题是确认的例外：只写 `<style id="hr-theme">` 区间并回 200。
+      // 它确实改了字节，因此 sha 键授权同步失效，CSP 回落到不含 allow-scripts。
+      const style = await httpCall(ctx.port, {
+        method: "POST",
+        path: "/api/style",
+        headers: withPost(ctx.token),
+        body: JSON.stringify({ docId: "a.html", visualId: "atelier-editorial" }),
+      });
+      expect(style.status).toBe(200);
+      expect(jsonBodyOf(style)).toMatchObject({ changed: true, changedNodes: [] });
+      expect(shaOf(ctx.workspace, "a.html")).not.toBe(shaBefore);
+      expect(await cspOf(ctx.port, ctx.token, "a.html")).not.toContain("allow-scripts");
     }, twoForeignSeed);
   });
 

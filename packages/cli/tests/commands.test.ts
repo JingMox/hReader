@@ -250,6 +250,24 @@ describe("styleCommand · visual", () => {
     expect(human).toContain("s5.html");
     expect(human).toMatch(/^styled .+s5\.html \(\d+ bytes\)\n$/u);
   });
+
+  it("should apply a theme to a foreign doc with the same hr-theme-only write", async () => {
+    fileOf(
+      "foreign.html",
+      '<!doctype html><html><body><div class="app">外来内容</div></body></html>',
+    );
+    const result = await styleCommand({
+      path: "foreign.html",
+      mode: { kind: "visual", id: DEFAULT_STYLE_ID },
+      workspace: dir,
+      json: true,
+    });
+    const html = readFileSync(join(dir, "foreign.html"), "utf8");
+
+    expect(result).toContain('"changed":true');
+    expect(html).toContain('<style id="hr-theme">');
+    expect(html).toContain('<div class="app">外来内容</div>');
+  });
 });
 
 describe("styleCommand · visual 的 id 校验", () => {
