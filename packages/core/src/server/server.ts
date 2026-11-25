@@ -82,7 +82,7 @@ const gateOf = (env: ServeEnv, req: IncomingMessage): Reply | undefined => {
   const port = env.port();
   const hostOk =
     hostAllowed(headerOf(req, "host"), port, env.allowHosts) &&
-    originAllowed(headerOf(req, "origin"), port);
+    originAllowed(headerOf(req, "origin"), port, env.allowHosts);
   return hostOk ? undefined : jsonOf(403, { code: "forbidden_origin" });
 };
 

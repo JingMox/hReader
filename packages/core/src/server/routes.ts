@@ -125,12 +125,12 @@ const paramsOf = (
 export const matchRoute = (method: string, pathname: string): RouteLookup => {
   const segments = segmentsOf(pathname);
   if (segments === undefined) return { kind: "none" };
-  const upper = method.toUpperCase();
+  // RFC 9110 §9.1：method token 区分大小写——`get` 不是 `GET`，不许静默大写放行。
   const allowed: HttpMethod[] = [];
   for (const candidate of ROUTES) {
     const params = paramsOf(candidate, segments);
     if (params === undefined) continue;
-    if (candidate.method === upper) return { kind: "route", route: candidate, params };
+    if (candidate.method === method) return { kind: "route", route: candidate, params };
     allowed.push(candidate.method);
   }
   return allowed.length === 0

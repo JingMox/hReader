@@ -26,7 +26,7 @@ describe("method · 大小写", () => {
     expect(lookup.kind).toBe("method");
   });
 
-  it("should 405 a lowercase get on the wire", async () => {
+  it("should not serve a lowercase get on the wire", async () => {
     await withServer(async (ctx) => {
       const raw = await rawExchange(
         ctx.port,
@@ -34,8 +34,10 @@ describe("method · 大小写", () => {
         "HTTP/1.1",
       );
 
-      expect(raw).toContain("405");
-      expect(raw.toLowerCase()).toContain("allow: get");
+      // llhttp 在解析层就拒了小写方法（400 Parse Error，不进路由）；
+      // 若哪天进了路由，matchRoute 的精确匹配再兜成 405——反正不许 200。
+      expect(raw).not.toContain(" 200 ");
+      expect(raw).toMatch(/HTTP\/1\.1 (400|405)/u);
     });
   });
 });

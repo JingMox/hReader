@@ -83,7 +83,8 @@ describe("parseBody · 报错文案", () => {
 describe("matchRoute · 精确分段匹配", () => {
   it("should match the GET routes of the frozen table", () => {
     expect(matchRoute("GET", "/").kind).toBe("route");
-    expect(matchRoute("get", "/healthz").kind).toBe("route");
+    // RFC 9110 §9.1：method token 区分大小写——小写 `get` 不是 `GET`（llhttp 线上先拒，路由层再兜底 405）。
+    expect(matchRoute("get", "/healthz").kind).toBe("method");
     expect(matchRoute("GET", "/s/doc.html")).toMatchObject({
       kind: "route",
       params: { docId: "doc.html" },

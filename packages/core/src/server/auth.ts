@@ -31,11 +31,23 @@ export const hostAllowed = (
 
 export const defaultHostsOf = (port: number): readonly string[] => loopbackHosts(port);
 
-/** 没有 `Origin` 的请求（`curl`、同源导航）放行；有就必须是本站回环源。 */
-export const originAllowed = (origin: string | undefined, port: number): boolean => {
+/** 没有 `Origin` 的请求（`curl`、同源导航）放行；有就必须是允许集合里的源。
+ *  `allowHosts` 与 Host 校验同源：`--allow-host` 放行了 Host 却把同源 Origin 拦在 403 是不一致的。 */
+export const originAllowed = (
+  origin: string | undefined,
+  port: number,
+  allowHosts?: readonly string[],
+): boolean => {
   if (origin === undefined) return true;
   const lowered = origin.trim().toLowerCase();
-  return [`http://127.0.0.1:${String(port)}`, `http://localhost:${String(port)}`].includes(lowered);
+  if (allowHosts === undefined || allowHosts.length === 0) {
+    // 回环只有 http 一种合法形态：https://127.0.0.1 的 Origin 不可能来自本服务。
+    return loopbackHosts(port).some((host) => `http://${host}` === lowered);
+  }
+  // 自定义 host 可能躲在 TLS 终结代理后面：operator 点名信任的源，http/https 都收。
+  return allowHosts.some(
+    (host) => `http://${host}` === lowered || `https://${host}` === lowered,
+  );
 };
 
 /** `Cookie` 头里第一个 `hr=` 值；同名的第二个不覆盖（服务端只发一个）。 */
