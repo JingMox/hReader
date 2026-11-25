@@ -261,6 +261,46 @@ describe("main · 一键规范化（POST /normalize）", () => {
   });
 });
 
+
+describe("main · 外来主题（POST /api/style）", () => {
+  const SELECT = `${ROOT} #hr-theme-select`;
+
+  it("should POST /api/style through the real deps wiring and reload the iframe", async () => {
+    install("doc.html", "http://x/", (url) =>
+      url === "/api/style" ? jsonOf({ changed: true, revision: "r2" }) : foreignDoc()(url),
+    );
+    installForeignDom();
+    await load();
+
+    // 主题清单来自 /api/theme 桩（atelier-editorial 为默认）：选项与选中态要画出来。
+    const select = el(SELECT);
+    expect(select?.attrs.get("value")).toBe("atelier-editorial");
+
+    stubs.doc.fire(SELECT, "change", { value: "manuscript" });
+    await flush();
+
+    expect(requestBodies("/api/style")).toEqual([
+      { docId: "doc.html", visualId: "manuscript" },
+    ]);
+    expect(el(FRAME)?.attrs.get("src")).toBe("/s/doc.html?r=n1");
+  });
+
+  it("should roll the select back when the style write is rejected", async () => {
+    install("doc.html", "http://x/", (url) =>
+      url === "/api/style" ? jsonOf({ bogus: true }) : foreignDoc()(url),
+    );
+    installForeignDom();
+    await load();
+
+    stubs.doc.fire(SELECT, "change", { value: "manuscript" });
+    await flush();
+
+    expect(el(SELECT)?.attrs.get("value")).toBe("atelier-editorial");
+    expect(el(ERROR)?.textContent).toBe("/api/style → 响应形状不符");
+    expect(el(FRAME)?.attrs.get("src")).toBe("/s/doc.html");
+  });
+});
+
 describe("main · info 形状守卫", () => {
   it("should reject info payloads without a known cls", async () => {
     const { isDocInfo } = await import("../src/main.ts");

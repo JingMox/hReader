@@ -354,4 +354,68 @@ describe("foreign · destroy", () => {
     // 销毁后的事件（close 前挤进来的 doc.changed）不许回写 src。
     expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
   });
+
+  it("should ignore a resync that lands after destroy", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(depsOf(fake));
+
+    handle.destroy();
+    handle.syncInfo({ cls: "foreign", trust: "local", scripts: true });
+
+    // 销毁后到的 info 重拉（同步竞态里慢一拍的服务端应答）不许复活横幅或换沙箱档。
+    expect(attrsOf(fake, BANNER, "hidden").at(-1)).toBe("");
+    expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
+  });
+
+  it("should swallow a theme write that lands after destroy", async () => {
+    const fake = createFakeHost();
+    let release: (value: unknown) => void = () => undefined;
+    const handle = mountForeign(
+      depsOf(fake, {
+        theme: {
+          themes: ["atelier-editorial", "deck-noir"],
+          current: "atelier-editorial",
+          apply: () =>
+            new Promise((resolve) => {
+              release = resolve;
+            }),
+        },
+      }),
+    );
+
+    fake.fire(`${ROOT} #hr-theme-select`, "change", { value: "deck-noir" });
+    handle.destroy();
+
+    release({});
+    await flush();
+
+    // 换主题写到一半就切走：落地后不许再 reload iframe。
+    expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
+  });
+
+  it("should swallow a theme rejection that lands after destroy", async () => {
+    const fake = createFakeHost();
+    let reject: (cause: unknown) => void = () => undefined;
+    const handle = mountForeign(
+      depsOf(fake, {
+        theme: {
+          themes: ["atelier-editorial", "deck-noir"],
+          current: "atelier-editorial",
+          apply: () =>
+            new Promise((_resolve, rej) => {
+              reject = rej;
+            }),
+        },
+      }),
+    );
+
+    fake.fire(`${ROOT} #hr-theme-select`, "change", { value: "deck-noir" });
+    handle.destroy();
+
+    reject(new Error("迟到写失败"));
+    await flush();
+
+    // 迟到的失败不许回滚 select、不许把错误刷到 managed 壳的错误槽。
+    expect(lastText(fake, ERROR)).toBe("");
+  });
 });

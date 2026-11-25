@@ -455,3 +455,54 @@ describe("bootDocument · 外来主题", () => {
     expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html"]);
   });
 });
+
+describe("bootDocument · 外来主题（补充分支）", () => {
+  it("should restore the select value and skip the write on no-op changes", async () => {
+    const posted: string[] = [];
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, {
+      postStyle: (id) => {
+        posted.push(id);
+        return Promise.resolve({ changed: true, revision: "r2" });
+      },
+    });
+    await bootDocument(deps);
+
+    // 空值与"还是当前档"都不该写盘：回执把显示值拨回 selected。
+    h.fake.fire(SELECT, "change", { value: "" });
+    h.fake.fire(SELECT, "change", { value: "atelier-editorial" });
+    await flush();
+
+    expect(posted).toEqual([]);
+    expect(attrsOf(h, SELECT, "value").at(-1)).toBe("atelier-editorial");
+    expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html"]);
+  });
+
+  it("should treat a missing trust field as off and missing scripts as false on resync", async () => {
+    let current: DocInfo = { revision: "r1", cls: "foreign", trust: "local", scripts: true };
+    const h = harnessOf(true);
+    const { deps, handlers } = classifiedOf(h, () => current);
+    await bootDocument(deps);
+    expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
+
+    // 服务端 info 没带 trust/scripts 字段时按最保守档处理。
+    current = { revision: "r2", cls: "foreign" };
+    handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
+    await flush();
+
+    expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("");
+  });
+
+  it("should stop the resync pump once destroyed", async () => {
+    const h = harnessOf(true);
+    const { deps, handlers } = classifiedOf(h, () => foreignInfo);
+    const booted = await bootDocument(deps);
+    booted.destroy();
+
+    // 销毁后到达的 doc.changed：泵跑但早退，不再 syncInfo/重载/报错。
+    handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
+    await flush();
+
+    expect(attrsOf(h, FRAME, "src").at(-1)).toBe("about:blank");
+  });
+});

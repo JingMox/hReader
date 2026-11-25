@@ -103,7 +103,7 @@ export interface ClassifiedBootDeps extends Omit<
   /** `GET /api/theme`：外来壳的主题下拉也要清单（managed 从 `fetchPage` 一起拿）。 */
   readonly fetchThemes: () => Promise<{
     readonly themes: readonly string[];
-    readonly default?: string;
+    readonly default: string;
   }>;
   /** `POST /api/style {docId, visualId}`：外来文档的主题写进文件里的 `<style id="hr-theme">`。 */
   readonly postStyle: (visualId: string) => Promise<unknown>;
@@ -399,7 +399,7 @@ const bootForeign = (
   deps: ClassifiedBootDeps,
   cls: ForeignInput["cls"],
   info: DocInfo,
-  themes: { readonly themes: readonly string[]; readonly default?: string },
+  themes: { readonly themes: readonly string[]; readonly default: string },
 ): Booted => {
   const { host, store } = deps;
   const pump = createPump();
@@ -425,7 +425,7 @@ const bootForeign = (
         ? undefined
         : {
             themes: themes.themes,
-            current: themes.default ?? themes.themes[0] ?? "",
+            current: themes.default,
             apply: async (id) => {
               await deps.postStyle(id);
             },
