@@ -3,6 +3,8 @@ packages:
 
 # 各包共享的依赖统一收敛到这里：包里只写 `catalog:`，版本只在这一处升级。
 catalog:
+  "@stryker-mutator/core": 10.1.1
+  "@stryker-mutator/vitest-runner": 10.1.1
   "@types/node": 26.6.6
   "@vitest/coverage-v8": 3.2.4
   esbuild: 0.28.2

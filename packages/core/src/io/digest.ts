@@ -2,6 +2,7 @@
 
 import { createHash, randomBytes } from "node:crypto";
 
+// Stryker disable next-line StringLiteral: "utf8" 换成 "" 是等价变异——update 的编码参数为 falsy 时回落 utf8，digest 不变。
 export const sha1Hex = (text: string): string =>
   createHash("sha1").update(text, "utf8").digest("hex");
 
