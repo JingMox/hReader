@@ -48,6 +48,7 @@ const inputOf = (dir: string, overrides: Overrides = {}): PdfCommandInput => ({
   path: join(dir, "doc.html"),
   pageSize: "a4",
   timeoutMs: 60_000,
+  visual: "atelier-editorial",
   outline: true,
   outlineConflict: false,
   out: join(dir, "out.pdf"),

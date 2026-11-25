@@ -3,7 +3,7 @@
 
 import { dirname } from "node:path";
 
-import { DEFAULT_STYLE_ID, HrError, nodePatchDeps } from "@hreader/core";
+import { HrError, nodePatchDeps } from "@hreader/core";
 
 import type { LongImage } from "../chrome/types";
 import { assertPixelRequestOf } from "../chrome/pixels";
@@ -37,6 +37,8 @@ export interface PngCommandInput {
   /** 命中的大纲旗标（`--outline`/`--no-outline`）：PNG 没有大纲，给了就是 `invalid_input`。 */
   readonly outlineFlag: string | undefined;
   readonly timeoutMs: number;
+  /** 打印稿主题：与 `hr export` 同口径，意图层已落默认，合法值由 core 判。 */
+  readonly visual: string;
   /** 绝对路径（`run.ts` 已真实化）。 */
   readonly out: string;
   readonly force: boolean;
@@ -105,7 +107,7 @@ export const pngCommand = async (input: PngCommandInput): Promise<string> => {
   await assertTargetFreeOf(input.out, input.force, nodePatchDeps);
   const product = await printProductOf({
     path: input.path,
-    visual: DEFAULT_STYLE_ID,
+    visual: input.visual,
     // 长图按 A4 版心排，不跟 `--page-size`：PNG 没有纸，只有视口宽。
     paper: "a4",
     workspace: input.workspace,

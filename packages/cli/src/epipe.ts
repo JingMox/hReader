@@ -12,11 +12,8 @@ interface ErrorStream {
  */
 export const epipeGuard = (stream: ErrorStream): void => {
   stream.on("error", (error: NodeJS.ErrnoException) => {
-    if (error.code === "EPIPE") {
-      process.exit(process.exitCode ?? 0);
-      // `process.exit` 从不返回；`return` 只为了让测试桩（mock exit）不会跌进下面的 throw。
-      return;
-    }
-    throw error;
+    // 非 EPIPE 照原样抛，不替运行时发明第三种死法。
+    if (error.code !== "EPIPE") throw error;
+    process.exit(process.exitCode ?? 0);
   });
 };

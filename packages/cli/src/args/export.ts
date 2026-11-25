@@ -15,6 +15,7 @@ const PDF_FLAGS = [
   "--outline",
   "--page-size",
   "--timeout",
+  "--visual",
   "--workspace",
 ];
 
@@ -27,6 +28,7 @@ const PNG_FLAGS = [
   "--outline",
   "--scale",
   "--timeout",
+  "--visual",
   "--width",
   "--workspace",
 ];
@@ -72,12 +74,15 @@ const timeoutOf = (raw: Raw): number | "invalid" =>
 export const pdfIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
   const [file = "", ...extra] = rest;
   const out = raw.values.get("--out");
+  const visual = raw.values.get("--visual");
   const message =
     extra.length > 0
       ? `pdf 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
       : file === ""
         ? "pdf 缺少 <file>"
-        : unusedFlag(raw, PDF_FLAGS);
+        : visual === ""
+          ? "--visual 不能为空"
+          : unusedFlag(raw, PDF_FLAGS);
   if (message !== undefined) return failure(message, "pdf");
   if (out === undefined || out === "") return failure("pdf 缺少 --out <path>", "pdf");
   const timeoutSec = timeoutOf(raw);
@@ -94,6 +99,8 @@ export const pdfIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
       timeoutMs: timeoutSec * 1000,
       outline: !raw.switches.has("--no-outline"),
       outlineConflict: raw.switches.has("--outline") && raw.switches.has("--no-outline"),
+      // 与 `hr export` 同口径：缺省主题这里定，合法值校验在 core（`unknown_style`）。
+      visual: visual ?? DEFAULT_STYLE_ID,
       out: absoluteOf(out, cwd),
       force: raw.switches.has("--force"),
       ...commonOf(raw, cwd),
@@ -105,6 +112,7 @@ const pngProblemOf = (raw: Raw, rest: readonly string[]): string | undefined => 
   const [file = "", ...extra] = rest;
   if (extra.length > 0) return `png 只接受 1 个位置参数，多出 ${String(extra.length)} 个`;
   if (file === "") return "png 缺少 <file>";
+  if (raw.values.get("--visual") === "") return "--visual 不能为空";
   return unusedFlag(raw, PNG_FLAGS);
 };
 
@@ -132,6 +140,7 @@ export const pngIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
       // `--outline`/`--no-outline` 在 png 上是"已知旗标放错子命令"：放行到意图里，由命令层报 `invalid_input`。
       outlineFlag: OUTLINE_FLAGS.find((flag) => raw.switches.has(flag)),
       timeoutMs: timeoutSec * 1000,
+      visual: raw.values.get("--visual") ?? DEFAULT_STYLE_ID,
       force: raw.switches.has("--force"),
       ...commonOf(raw, cwd),
     },
