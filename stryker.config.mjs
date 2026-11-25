@@ -51,8 +51,11 @@ const config = {
   vitest: { configFile: "vitest.config.ts", pool: "forks" },
   // perTest：只为每个变异体跑覆盖到它的测试，否则全量套件跑一遍不可行。
   coverageAnalysis: "perTest",
-  // vitest 的变异在内存里做，不需要全仓拷贝的 sandbox；拷贝还会丢 fixture 的 exec 位。
-  inPlace: true,
+  // 默认 sandbox 拷贝整个工作树；node_modules 走符号链接（symlinkNodeModules 默认 true，pnpm 布局下必须）。
+  symlinkNodeModules: true,
+  // sandbox 拷贝丢文件可执行位、且 pnpm 会把符号链接的 node_modules 判作外来而自动 install；
+  // buildCommand 在每个 sandbox 里、初始测试运行前执行一次，细节见 scripts/stryker-prep.mjs。
+  buildCommand: "node scripts/stryker-prep.mjs",
   incremental: true,
   incrementalFile: ".reports-tmp/stryker-incremental.json",
   reporters: ["clear-text", "progress", "html", "json"],
