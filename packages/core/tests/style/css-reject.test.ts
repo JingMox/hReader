@@ -54,6 +54,11 @@ describe("assertThemeSafe · 远程与危险 url()", () => {
     ["url 与 ( 之间带空格的非 http scheme", ".a{background:url (ftp://evil.example/x)}"],
     ["带引号的非 http scheme", '.a{background:url("ftp://evil.example/x")}'],
     ["外链 scheme 尾巴带锚点", ".a{background:url(ftp://evil.example/x#)}"],
+    ["未闭合带单引号的 http url(", ".a{background:url('http://evil.example/x"],
+    ["引号内含空白的 http url(", ".a{background:url(\" http://evil.example/x\")}"],
+    ["url 与 ( 之间带空格的伪协议", ".a{background:url (javascript:alert(1))}"],
+    ["大写伪协议 scheme", ".a{background:url(JAVASCRIPT:alert(1))}"],
+    ["url( 与参数间多个空白的伪协议", ".a{background:url(  javascript:alert(1)  )}"],
   ])("should reject %s with invalid_theme", (_label, css) => {
     expect(errorFor(css).code).toBe("invalid_theme");
   });
