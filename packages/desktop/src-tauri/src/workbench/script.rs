@@ -215,6 +215,31 @@ mod tests {
         assert!(sync_payload_js(&ctx).contains("s3cr3t-bridge-token"));
     }
 
+    /// 前端按 `ctx.bridgeToken`（camelCase）读令牌——`rename_all` 一旦断掉，
+    /// 字段变成 `bridge_token`，页面拿到的就是 undefined，全部原生动作失灵。
+    #[test]
+    fn sync_payload_carries_the_token_under_the_js_field_name() {
+        let ctx = WorkbenchContext {
+            workspace: "/tmp/ws".to_string(),
+            doc_id: "demo.html".to_string(),
+            files: vec![],
+            tree: vec![],
+            custom_themes: vec![],
+            is_macos: true,
+            bridge_token: "tok-3".to_string(),
+            doc_error: None,
+        };
+        let js = sync_payload_js(&ctx);
+        assert!(
+            js.contains("\"bridgeToken\":\"tok-3\""),
+            "sync 载荷里的令牌字段名必须是 bridgeToken：{js}"
+        );
+        assert!(
+            !js.contains("bridge_token"),
+            "snake_case 字段名会饿死页面端：{js}"
+        );
+    }
+
     #[test]
     fn doc_error_reaches_the_frontend_as_camel_case_payload() {
         let ctx = WorkbenchContext {

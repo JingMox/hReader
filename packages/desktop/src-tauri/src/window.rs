@@ -1438,6 +1438,40 @@ mod tests {
         }
     }
 
+    /// 令牌只经 sync eval 进主 frame 之后，每个原生动作路径都必须仍然
+    /// 归 Bridge 类、带对令牌才放行——否则 webview JS 的新取令牌方式会把功能饿死。
+    #[test]
+    fn every_native_action_path_stays_bridge_and_token_gated() {
+        use tauri::Url;
+        const PATHS: &[&str] = &[
+            "/drag",
+            "/toggle-maximize",
+            "/reauth",
+            "/open",
+            "/new",
+            "/welcome",
+            "/pick-file",
+            "/pick-folder",
+            "/reveal",
+            "/open-themes-dir",
+            "/reload-themes",
+            "/export-pdf",
+            "/export-png",
+            "/export-html",
+        ];
+        for path in PATHS {
+            let authed =
+                Url::parse(&format!("http://hr-desktop.local{path}?doc=x&t=secret")).expect("url");
+            assert_eq!(classify_navigation(&authed), NavClass::Bridge, "{path}");
+            assert!(
+                bridge_authorized(&authed, "secret"),
+                "{path} 带对令牌必须放行"
+            );
+            let bare = Url::parse(&format!("http://hr-desktop.local{path}")).expect("url");
+            assert!(!bridge_authorized(&bare, "secret"), "{path} 无令牌必须拒");
+        }
+    }
+
     #[test]
     fn bridge_auth_first_t_wins_and_param_name_is_case_sensitive() {
         use tauri::Url;
