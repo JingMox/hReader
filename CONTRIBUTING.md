@@ -39,7 +39,7 @@ packages/desktop        Tauri v2 桌面壳（Rust + webview）
 ## 常用命令
 
 ```bash
-pnpm verify          # 全量门禁：format / lint / lint:sh / typecheck / build / 覆盖率 / depcruise / knip
+pnpm verify          # 全量门禁：format / lint / lint:sh / typecheck / build / 覆盖率 / theme:check / depcruise / knip
 pnpm test            # 跑全部单元测试
 pnpm test:coverage   # 测试 + 覆盖率阈值
 pnpm -F @hreader/core test   # 只跑一个包

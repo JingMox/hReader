@@ -28,6 +28,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:coverage
+      # ubuntu-latest 自带 Chrome：两个 e2e 自检脚本（打印稿分页、外来文档沙箱）在 CI 真跑。
+      - run: pnpm test:e2e
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+      - run: pnpm theme:check
       - run: pnpm depcruise
       - run: pnpm knip
 

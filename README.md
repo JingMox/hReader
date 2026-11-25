@@ -205,8 +205,8 @@ hr undo report.html [--json]
 
 # Export & Render
 hr export report.html --visual atelier-editorial --out print.html [--force]
-hr pdf report.html --out report.pdf [--page-size a4|letter|a5] [--force]
-hr png report.html --out report.png [--width 256..4096] [--scale 1..3]
+hr pdf report.html --out report.pdf [--page-size a4|letter|a5] [--visual <id>] [--force]
+hr png report.html --out report.png [--width 256..4096] [--scale 1..3] [--visual <id>]
 
 # Launch local reader server with live SSE reload
 hr serve report.html [--workspace <dir>] [--port <n>]

@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { classifyDocument, importForeign, parseHtml } from "../../src/index";
+import { classifyDocument, importForeign, parseHtml } from "../src/index";
 
 describe("importForeign · 剥离计数精确口径", () => {
   it("should count each dropped element once at its outermost node and each stripped attribute once", () => {

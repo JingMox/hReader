@@ -352,6 +352,7 @@ hr png notes/perf.html --out notes/huge.png --max-height 50000 --scale 1
 | 旗标 | 适用 | 行为 |
 | :--- | :--- | :--- |
 | `--out <path>` | 两者 | **必填**；必须在 `--workspace` 内（越界 `path_outside_workspace`/exit 3）；已存在需 `--force`（缺省 `file_exists`） |
+| `--visual <id>` | 两者 | 视觉主题；**缺省沿用文档内嵌 `#hr-theme`，文档没有才回落内置默认**。显式值的合法值校验在 core（`unknown_style`），与 `hr export` 同一支 |
 | `--page-size a4\|letter\|a5` | `pdf` | 默认 `a4`；非法值 `invalid_input`/exit 1。**同时改纸张与 `@page`**（只换纸不改版心会让 a5 被硬切，见下） |
 | `--width 256..4096` | `png` | CSS 像素宽，默认 `1200` |
 | `--scale 1..3` | `png` | 设备像素倍率，默认 `2`；产物宽高 = CSS 尺寸 × n |

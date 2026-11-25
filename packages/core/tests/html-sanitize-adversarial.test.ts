@@ -16,11 +16,11 @@ import {
   patchFile,
   sanitizedAttributesOf,
   serializeHtml,
-} from "../../src/index";
-import type { HtmlElementNode, HtmlNode } from "../../src/index";
-import type { SanitizePreset } from "../../src/index";
-import { ARTICLE_DOC, DOC_FILE } from "../io/fixtures";
-import { readTextAt, withWorkspace, writeBytesAt } from "../io/harness";
+} from "../src/index";
+import type { HtmlElementNode, HtmlNode } from "../src/index";
+import type { SanitizePreset } from "../src/index";
+import { ARTICLE_DOC, DOC_FILE } from "./io/fixtures";
+import { readTextAt, withWorkspace, writeBytesAt } from "./io/harness";
 
 /**
  * 打印稿管线的等价裁切（print-html.ts 的判定组合）：整删命中 → 外链资源命中 → 剥属性。
