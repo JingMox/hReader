@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "pdf-lib": "1.17.1",
-    "puppeteer-core": "25.18.1"
+    "puppeteer-core": "catalog:"
   },
   "engines": {
     "node": ">=22"

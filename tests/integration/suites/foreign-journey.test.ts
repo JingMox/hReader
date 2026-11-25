@@ -6,16 +6,9 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 
-import {
-  assert,
-  assertEq,
-  assertIncludes,
-  runSuite,
-  setUp,
-  skipSuite,
-  tearDown,
-  test,
-} from "../harness/check.ts";
+import { afterAll, beforeAll, describe, test } from "vitest";
+
+import { assert, assertEq, assertIncludes } from "../harness/check.ts";
 import { dataOf, docPath, hr } from "../harness/cli.ts";
 import { launchBrowser, type Browser, type Page } from "../harness/chrome.ts";
 import { chromeSkipReason, sandbox, sha256File, type TestHome } from "../harness/env.ts";
@@ -37,9 +30,7 @@ const FOREIGN_HTML = `<!DOCTYPE html>
 </script>
 </body></html>`;
 
-if (skip !== undefined) {
-  skipSuite("foreign-journey", skip);
-} else {
+describe.skipIf(skip !== undefined)("foreign-journey", () => {
   const DOC = "deck.html";
   let home: TestHome;
   let daemon: Daemon;
@@ -67,7 +58,7 @@ if (skip !== undefined) {
     return after > before;
   };
 
-  setUp(async () => {
+  beforeAll(async () => {
     home = sandbox("foreign");
     await writeFile(docPath(home.ws, DOC), FOREIGN_HTML, "utf8");
     originalSha = sha256File(await readFile(docPath(home.ws, DOC)));
@@ -85,7 +76,7 @@ if (skip !== undefined) {
     })()`);
   });
 
-  tearDown(async () => {
+  afterAll(async () => {
     await browser.close();
     await daemon.stop();
     killAllTracked();
@@ -208,6 +199,4 @@ if (skip !== undefined) {
     const cls = dataOf(managed, "check import 产物")["cls"];
     assertIncludes(String(cls), "managed", "import 产物分类");
   });
-
-  void runSuite("foreign-journey");
-}
+});

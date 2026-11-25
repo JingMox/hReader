@@ -1,5 +1,5 @@
-// 这层管：最小的测试编排（注册 → 顺序执行 → 汇总）与断言；没有框架依赖，
-// 每个套件文件既能被 run.ts 当子进程跑，也能 `node tests/integration/suites/x.ts` 单跑。
+// 这层管：断言与错误形状。编排交给 Vitest（describe/test/beforeAll/afterAll），
+// 这里只留断言助手——失败信息要能直接读出人话；外加 parseJson 的统一报错面。
 
 export class CheckError extends Error {}
 
@@ -33,80 +33,4 @@ export const parseJson = (text: string, label: string): unknown => {
       `${label}：不是合法 JSON：${JSON.stringify(text.slice(0, 300))}（${error instanceof Error ? error.message : String(error)}）`,
     );
   }
-};
-
-// 同步收尾（killAllTracked/cleanup）不该被迫挂个空 await。
-type TestFn = () => Promise<void> | void;
-
-interface Case {
-  readonly name: string;
-  readonly fn: TestFn;
-}
-
-const queue: Case[] = [];
-/** `beforeAll`/`afterAll`：每个套件文件各跑一遍（套件=进程）。 */
-let beforeAll: TestFn | undefined;
-let afterAll: TestFn | undefined;
-
-export const test = (name: string, fn: TestFn): void => {
-  queue.push({ name, fn });
-};
-
-export const setUp = (fn: TestFn): void => {
-  beforeAll = fn;
-};
-export const tearDown = (fn: TestFn): void => {
-  afterAll = fn;
-};
-
-const write = (line: string): void => {
-  process.stdout.write(`${line}\n`);
-};
-
-/** 单进程跑完本套件：失败不中断后续用例（交叉复审要看全貌），退出码按汇总给。 */
-export const runSuite = async (suite: string): Promise<void> => {
-  const failures: string[] = [];
-  if (beforeAll !== undefined) {
-    try {
-      await beforeAll();
-    } catch (error: unknown) {
-      write(`[SETUP-FAIL] ${suite}: ${error instanceof Error ? error.message : String(error)}`);
-      process.exitCode = 1;
-      return;
-    }
-  }
-  for (const item of queue) {
-    const at = Date.now();
-    try {
-      await item.fn();
-      write(`[PASS] ${suite} :: ${item.name} (${String(Date.now() - at)}ms)`);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      failures.push(item.name);
-      write(`[FAIL] ${suite} :: ${item.name} — ${message.split("\n")[0] ?? ""}`);
-    }
-  }
-  if (afterAll !== undefined) {
-    try {
-      await afterAll();
-    } catch (error: unknown) {
-      failures.push("(teardown)");
-      write(
-        `[FAIL] ${suite} :: (teardown) — ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-  if (failures.length > 0) {
-    write(
-      `FAILED ${suite}: ${String(failures.length)}/${String(queue.length)} — ${failures.join(" | ")}`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-  write(`OK ${suite}: ${String(queue.length)} 用例全过`);
-};
-
-/** Chrome 缺席时按仓内 e2e 的约定：印一行 SKIPPED 并以 0 退出（需要真跑的 CI 显式给 CHROME_BIN）。 */
-export const skipSuite = (suite: string, reason: string): void => {
-  write(`SKIPPED ${suite}: ${reason}`);
 };

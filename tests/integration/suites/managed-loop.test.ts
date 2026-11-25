@@ -6,16 +6,9 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-  assert,
-  assertEq,
-  assertIncludes,
-  runSuite,
-  setUp,
-  tearDown,
-  test,
-  skipSuite,
-} from "../harness/check.ts";
+import { afterAll, beforeAll, describe, test } from "vitest";
+
+import { assert, assertEq, assertIncludes } from "../harness/check.ts";
 import { docPath, errorOf, hr, newDoc, type JsonObject } from "../harness/cli.ts";
 import { launchBrowser, type Browser, type Page } from "../harness/chrome.ts";
 import { chromeSkipReason, sandbox, sha256File, until, type TestHome } from "../harness/env.ts";
@@ -25,9 +18,7 @@ import { killAllTracked, portClosed } from "../harness/proc.ts";
 import { startServe, daemonFileExists, type Daemon } from "../harness/serve.ts";
 
 const skip = chromeSkipReason();
-if (skip !== undefined) {
-  skipSuite("managed-loop", skip);
-} else {
+describe.skipIf(skip !== undefined)("managed-loop", () => {
   const DOC = "doc.hr.html";
   let home: TestHome;
   let daemon: Daemon;
@@ -53,7 +44,7 @@ if (skip !== undefined) {
     return id;
   };
 
-  setUp(async () => {
+  beforeAll(async () => {
     home = sandbox("managed");
     await newDoc(home.ws, DOC);
     initialSha = sha256File(await readFile(docPath(home.ws, DOC)));
@@ -64,7 +55,7 @@ if (skip !== undefined) {
     page = await browser.open(daemon.url);
   });
 
-  tearDown(async () => {
+  afterAll(async () => {
     await browser.close();
     await mcp.close();
     await daemon.stop();
@@ -295,6 +286,4 @@ if (skip !== undefined) {
     );
     assert(dead, "SIGINT 后 healthz 仍通");
   });
-
-  void runSuite("managed-loop");
-}
+});

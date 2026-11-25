@@ -3,14 +3,16 @@
 
 import { writeFile } from "node:fs/promises";
 
-import { assert, assertEq, runSuite, setUp, tearDown, test } from "../harness/check.ts";
+import { afterAll, beforeAll, test } from "vitest";
+
+import { assert, assertEq } from "../harness/check.ts";
 import { docPath, hr } from "../harness/cli.ts";
 import { CLI_BIN, sandbox, type TestHome } from "../harness/env.ts";
 import { killAllTracked, run, runSh } from "../harness/proc.ts";
 
 let home: TestHome;
 
-setUp(async () => {
+beforeAll(async () => {
   home = sandbox("pipes");
   await writeFile(
     docPath(home.ws, "d.hr.html"),
@@ -19,7 +21,7 @@ setUp(async () => {
   );
 });
 
-tearDown(() => {
+afterAll(() => {
   killAllTracked();
   home.cleanup();
 });
@@ -68,5 +70,3 @@ test("set -e 脚本：成功命令走完，失败命令按码停", async () => {
   assert(bad.code !== 0, "set -e 下失败命令竟返回 0");
   assert(!bad.stdout.includes("should-not-reach"), "set -e 没在失败命令处停");
 });
-
-void runSuite("cli-pipes");

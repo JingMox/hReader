@@ -5,16 +5,9 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-  assert,
-  assertEq,
-  parseJson,
-  runSuite,
-  setUp,
-  skipSuite,
-  tearDown,
-  test,
-} from "../harness/check.ts";
+import { afterAll, beforeAll, describe, test } from "vitest";
+
+import { assert, assertEq, parseJson } from "../harness/check.ts";
 import { docPath } from "../harness/cli.ts";
 import { CLI_BIN, DESKTOP_DEBUG_BIN, sandbox, type TestHome } from "../harness/env.ts";
 import { killAllTracked, pidAlive, run } from "../harness/proc.ts";
@@ -23,9 +16,7 @@ const skip = existsSync(DESKTOP_DEBUG_BIN)
   ? undefined
   : `未构建桌面 debug 二进制：${DESKTOP_DEBUG_BIN}`;
 
-if (skip !== undefined) {
-  skipSuite("desktop-smoke", skip);
-} else {
+describe.skipIf(skip !== undefined)("desktop-smoke", () => {
   let home: TestHome;
 
   const daemonPids = (): number[] => {
@@ -61,7 +52,7 @@ if (skip !== undefined) {
       { cwd: home.ws, timeoutMs: 90_000 },
     );
 
-  setUp(async () => {
+  beforeAll(async () => {
     home = sandbox("desktop");
     await writeFile(
       docPath(home.ws, "d.hr.html"),
@@ -70,7 +61,7 @@ if (skip !== undefined) {
     );
   });
 
-  tearDown(() => {
+  afterAll(() => {
     killAllTracked();
     for (const pid of daemonPids()) {
       assert(!pidAlive(pid), `孤儿 hr serve 进程残留：pid=${String(pid)}`);
@@ -99,6 +90,4 @@ if (skip !== undefined) {
       assert(!pidAlive(pid), `smoke 退出后 daemon 进程仍活：pid=${String(pid)}`);
     }
   });
-
-  void runSuite("desktop-smoke");
-}
+});

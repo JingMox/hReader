@@ -1,21 +1,17 @@
-// 这层管：真 Chrome 的 CDP 驱动（--headless=new + --remote-debugging-port=0 + 内置 WebSocket）。
-// 不引 puppeteer：CDP 直连，断言全部落在页面真实状态上；页面内轮询谓词（awaitPromise）代替 sleep。
+// 这层管：真 Chrome 的驱动。底层是 puppeteer-core（cli 渲染层同款依赖，catalog 统版）：
+// launch/newPage/CdpSession 是主流面，断言仍全落在页面真实状态上。
+// 对外保留原手写 CDP 的 Page 最小接口（eval/wait/key/click/navigate/reload），套件代码不变。
 
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  launch,
+  TimeoutError,
+  type Browser as PuppeteerBrowser,
+  type CDPSession,
+  type Page as PuppeteerPage,
+} from "puppeteer-core";
 
-import { assert, parseJson } from "./check.ts";
+import { assert } from "./check.ts";
 import { chromePath } from "./env.ts";
-import { live, type LiveProc } from "./proc.ts";
-
-type CdpParams = Readonly<Record<string, unknown>>;
-
-interface PendingCall {
-  readonly resolve: (value: unknown) => void;
-  readonly reject: (error: Error) => void;
-  readonly timer: NodeJS.Timeout;
-}
 
 export interface Browser {
   readonly open: (url: string) => Promise<Page>;
@@ -24,7 +20,7 @@ export interface Browser {
 
 export interface Page {
   readonly sessionId: string;
-  /** 同步 JS 求值；抛错即失败返回 Error。 */
+  /** 页面内求值（返回值是 Promise 会自动 await）；抛错即失败。 */
   readonly eval: (expression: string) => Promise<unknown>;
   /** 页面内轮询谓词直到 truthy / 超时；返回最终值（调用方 assert）。 */
   readonly wait: (expression: string, timeoutMs?: number) => Promise<unknown>;
@@ -34,133 +30,27 @@ export interface Page {
   readonly reload: () => Promise<void>;
 }
 
-interface WsLike {
-  send(data: string): void;
-  close(): void;
-  addEventListener(
-    type: "message" | "open" | "error" | "close",
-    listener: (event: unknown) => void,
-  ): void;
-}
-
-/** Node 22+ 内置 WebSocket 的最小面（lib.dom 没编进来，走 globalThis 兜底）。 */
-const WsCtor = (globalThis as { readonly WebSocket?: unknown }).WebSocket as new (
-  url: string,
-) => WsLike;
-
-const connectWs = (url: string): Promise<WsLike> =>
-  new Promise((resolve, reject) => {
-    const ws = new WsCtor(url);
-    const timer = setTimeout(() => {
-      reject(new Error("CDP WebSocket 连接超时"));
-    }, 10_000);
-    ws.addEventListener("open", () => {
-      clearTimeout(timer);
-      resolve(ws);
-    });
-    ws.addEventListener("error", () => {
-      clearTimeout(timer);
-      reject(new Error("CDP WebSocket 连接失败"));
-    });
-  });
-
-const CHROME_FLAGS = (profile: string): string[] => [
-  "--headless=new",
+// 老 hand-rolled 驱动同款旗标（headless 本身走 launch({ headless: true }），
+// user-data-dir 交给 puppeteer 自管临时 profile，close() 时一并清掉。
+const CHROME_ARGS: readonly string[] = [
   "--disable-gpu",
   "--no-sandbox",
   "--no-first-run",
   "--disable-extensions",
-  "--remote-debugging-port=0",
   "--remote-allow-origins=*",
-  `--user-data-dir=${profile}`,
 ];
 
-/** stderr 里的一行 `DevTools listening on ws://…`：Chrome 唯一报端口的地方。 */
-const waitWsLine = async (proc: LiveProc): Promise<string> => {
-  // Chrome 把 ws 地址打 stderr；nextLine 只吃 stdout，所以这里改从 err() 文本轮询。
-  const deadline = Date.now() + 15_000;
-  for (;;) {
-    const found = /DevTools listening on (ws:\/\/\S+)/u.exec(proc.out.err());
-    if (found?.[1] !== undefined) return found[1];
-    if (Date.now() > deadline) {
-      throw new Error(`Chrome 没报 DevTools 地址（stderr：${proc.out.err().slice(0, 300)}）`);
-    }
-    if (!proc.alive()) throw new Error("Chrome 启动即退");
-    await new Promise((resolve) => setTimeout(resolve, 40));
-  }
-};
-
-export const launchBrowser = async (): Promise<Browser> => {
-  const bin = chromePath();
-  assert(bin !== undefined, "找不到 Chrome");
-  const profile = mkdtempSync(join(tmpdir(), "hr-it-chrome-"));
-  const proc = live(bin, CHROME_FLAGS(profile));
-  const wsUrl = await waitWsLine(proc);
-  const ws = await connectWs(wsUrl);
-
-  let seq = 0;
-  const pending = new Map<number, PendingCall>();
-  ws.addEventListener("message", (event: unknown) => {
-    const data = (event as { data?: unknown }).data;
-    if (typeof data !== "string") return;
-    const parsed = parseJson(data, "CDP 帧");
-    if (typeof parsed !== "object" || parsed === null) return;
-    const id: unknown = Reflect.get(parsed, "id");
-    if (typeof id !== "number") return;
-    const call = pending.get(id);
-    if (call === undefined) return;
-    pending.delete(id);
-    clearTimeout(call.timer);
-    const error: unknown = Reflect.get(parsed, "error");
-    if (typeof error === "object" && error !== null) {
-      call.reject(new Error(`CDP ${JSON.stringify(error)}`));
-      return;
-    }
-    call.resolve(Reflect.get(parsed, "result"));
-  });
-  ws.addEventListener("close", () => {
-    for (const call of pending.values()) {
-      clearTimeout(call.timer);
-      call.reject(new Error("CDP 连接已断"));
-    }
-    pending.clear();
-  });
-
-  const send = (
-    method: string,
-    params: CdpParams = {},
-    sessionId?: string,
-    timeoutMs = 30_000,
-  ): Promise<unknown> => {
-    seq += 1;
-    const id = seq;
-    return new Promise((resolve, reject) => {
-      pending.set(id, {
-        resolve,
-        reject,
-        timer: setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`CDP 调用超时：${method}`));
-        }, timeoutMs),
-      });
-      const frame: Record<string, unknown> = { id, method, params };
-      if (sessionId !== undefined) frame["sessionId"] = sessionId;
-      ws.send(JSON.stringify(frame));
-    });
-  };
-
-  const evaluate = async (
-    sessionId: string,
-    expression: string,
-    awaitPromise = false,
-    timeoutMs = 30_000,
-  ): Promise<unknown> => {
-    const result = (await send(
-      "Runtime.evaluate",
-      { expression, returnByValue: true, awaitPromise, userGesture: true },
-      sessionId,
-      timeoutMs,
-    )) as Readonly<Record<string, unknown>>;
+const wrapPage = (inner: PuppeteerPage, session: CDPSession): Page => {
+  // 直走 CDPSession 而非 page.evaluate：需要 `userGesture: true` 让求值带上
+  // transient user activation——演示模式入口内部会 requestFullscreen()，没激活态
+  // 的 el.click() 会当场被拒（page.evaluate 没有暴露这个开关）。
+  const evaluate = async (expression: string, awaitPromise = true): Promise<unknown> => {
+    const result = (await session.send("Runtime.evaluate", {
+      expression,
+      returnByValue: true,
+      awaitPromise,
+      userGesture: true,
+    })) as Readonly<Record<string, unknown>>;
     const exception = result["exceptionDetails"];
     if (typeof exception === "object" && exception !== null) {
       const detail: unknown = Reflect.get(exception, "exception");
@@ -177,81 +67,83 @@ export const launchBrowser = async (): Promise<Browser> => {
     return undefined;
   };
 
-  const openPage = async (url: string): Promise<Page> => {
-    const created = (await send("Target.createTarget", { url: "about:blank" })) as Readonly<
-      Record<string, unknown>
-    >;
-    const targetId = created["targetId"];
-    assert(typeof targetId === "string", "Target.createTarget 没回 targetId");
-    const attached = (await send("Target.attachToTarget", {
-      targetId,
-      flatten: true,
-    })) as Readonly<Record<string, unknown>>;
-    const sessionId = attached["sessionId"];
-    assert(typeof sessionId === "string", "attach 没回 sessionId");
-    await send("Page.enable", {}, sessionId);
-    await send("Runtime.enable", {}, sessionId);
-
-    const page: Page = {
-      sessionId,
-      eval: (expression) => evaluate(sessionId, expression, false),
-      // 客户端轮询而不是单个长驻 evaluate：页面导航/重连会销毁执行上下文，
-      // 长驻那个 evaluate 永远不resolve（CDP 30s 超时才轮到）——短调用 + 失败即重试更扛导航。
-      wait: async (expression, timeoutMs = 20_000) => {
-        const deadline = Date.now() + timeoutMs;
-        for (;;) {
-          let value: unknown = false;
-          try {
-            value = await evaluate(
-              sessionId,
-              `(() => { try { return (${expression}); } catch (error) { return false; } })()`,
-              true,
-              10_000,
-            );
-          } catch {
-            value = false;
-          }
-          if (value) return value;
-          if (Date.now() > deadline) return false;
-          await new Promise((resolve) => setTimeout(resolve, 60));
-        }
-      },
-      key: async (key, code, windowsKeyCode) => {
-        const base: CdpParams = {
-          key,
-          code,
-          windowsVirtualKeyCode: windowsKeyCode,
-          nativeVirtualKeyCode: windowsKeyCode,
-        };
-        await send("Input.dispatchKeyEvent", { type: "keyDown", ...base }, sessionId);
-        await send("Input.dispatchKeyEvent", { type: "keyUp", ...base }, sessionId);
-      },
-      click: async (selector) => {
-        await evaluate(
-          sessionId,
-          `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`,
-          false,
-        );
-      },
-      navigate: async (next) => {
-        await send("Page.navigate", { url: next }, sessionId);
-      },
-      reload: async () => {
-        await send("Page.reload", { ignoreCache: true }, sessionId);
-      },
-    };
-    await page.navigate(url);
-    return page;
-  };
-
   return {
-    open: openPage,
+    sessionId: session.id(),
+    eval: (expression) => evaluate(expression),
+    // waitForFunction 把谓词搬进页面轮询（polling 间隔 60ms），谓词返回 Promise 也会被 await；
+    // 导航销毁执行上下文会让整次等待 reject——和旧实现一样，捕获后在 deadline 内重开一轮。
+    wait: async (expression, timeoutMs = 20_000) => {
+      const deadline = Date.now() + timeoutMs;
+      const wrapped = `(() => { try { return (${expression}); } catch (error) { return false; } })()`;
+      for (;;) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return false;
+        try {
+          const handle = await inner.waitForFunction(wrapped, {
+            polling: 60,
+            timeout: remaining,
+          });
+          const value: unknown = await handle.jsonValue();
+          await handle.dispose();
+          return value;
+        } catch (error: unknown) {
+          if (error instanceof TimeoutError) return false;
+          // 执行上下文销毁/连接瞬断：睡一拍重试，直到 deadline。
+          await new Promise((resolve) => setTimeout(resolve, 120));
+        }
+      }
+    },
+    key: async (key, code, windowsKeyCode) => {
+      const base = {
+        key,
+        code,
+        windowsVirtualKeyCode: windowsKeyCode,
+        nativeVirtualKeyCode: windowsKeyCode,
+      };
+      await session.send("Input.dispatchKeyEvent", { type: "keyDown", ...base });
+      await session.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+    },
+    click: async (selector) => {
+      await evaluate(
+        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`,
+        false,
+      );
+    },
+    // goto 等 domcontentloaded：旧 Page.navigate 火后即忘，调用方随后都要 wait 状态；
+    // 等到可解析 DOM 再回来，语义只增不减。
+    navigate: async (next) => {
+      await inner.goto(next, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    },
+    reload: async () => {
+      await inner.reload({ ignoreCache: true, waitUntil: "domcontentloaded", timeout: 30_000 });
+    },
+  };
+};
+
+export const launchBrowser = async (): Promise<Browser> => {
+  const bin = chromePath();
+  assert(bin !== undefined, "找不到 Chrome");
+  const browser: PuppeteerBrowser = await launch({
+    executablePath: bin,
+    headless: true,
+    args: [...CHROME_ARGS],
+    timeout: 30_000,
+  });
+  return {
+    open: async (url) => {
+      const inner = await browser.newPage();
+      const session = await inner.createCDPSession();
+      const page = wrapPage(inner, session);
+      await page.navigate(url);
+      return page;
+    },
     close: async () => {
-      ws.close();
-      proc.kill("SIGKILL");
-      // 等进程真死再删 profile：SIGKILL 后立刻 rmSync 会撞 ENOTEMPTY（Chrome 还在写）。
-      await Promise.race([proc.exited, new Promise((resolve) => setTimeout(resolve, 5_000))]);
-      rmSync(profile, { recursive: true, force: true });
+      const proc = browser.process();
+      await browser.close().catch(() => undefined);
+      // close 卡死/失败时兜底：Chrome 绝不能留给下一个套件。
+      if (proc !== null && proc.exitCode === null && proc.signalCode === null) {
+        proc.kill("SIGKILL");
+      }
     },
   };
 };

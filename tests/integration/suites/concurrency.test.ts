@@ -4,7 +4,9 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { assert, assertEq, parseJson, runSuite, setUp, tearDown, test } from "../harness/check.ts";
+import { afterAll, beforeAll, test } from "vitest";
+
+import { assert, assertEq, parseJson } from "../harness/check.ts";
 import { docPath, hr, jsonOf, newDoc } from "../harness/cli.ts";
 import { sandbox, type TestHome } from "../harness/env.ts";
 import { connect, docApi, type Api } from "../harness/http.ts";
@@ -30,7 +32,7 @@ const infoRevision = async (): Promise<string> => {
   return rev;
 };
 
-setUp(async () => {
+beforeAll(async () => {
   home = sandbox("race");
   await newDoc(home.ws, DOC);
   daemon = await startServe({ file: DOC, workspace: home.ws, home: home.home });
@@ -51,7 +53,7 @@ setUp(async () => {
   nodeB = b ?? "";
 });
 
-tearDown(async () => {
+afterAll(async () => {
   await mcp.close();
   await daemon.stop();
   killAllTracked();
@@ -178,5 +180,3 @@ test("并发 undo + patch：锁串行化，最终文件完整、history 目录�
   const bytes = await readFile(docPath(home.ws, DOC), "utf8");
   assert(bytes.includes("<html") && bytes.includes("</html>"), "最终文件不是完整 HTML（半写）");
 });
-
-void runSuite("concurrency");

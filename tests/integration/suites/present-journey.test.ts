@@ -1,7 +1,9 @@
 // 旅程 3（演示模式）：`hr new --kind slides` 原生 slides 文档 → 键盘翻页 + 逐步显示 →
 // 演示中 MCP 改当前页 / 删当前页 → #p=N 刷新回原页 → 退出后状态全部清理。
 
-import { assert, runSuite, setUp, skipSuite, tearDown, test } from "../harness/check.ts";
+import { afterAll, beforeAll, describe, test } from "vitest";
+
+import { assert } from "../harness/check.ts";
 import { newDoc } from "../harness/cli.ts";
 import { launchBrowser, press, type Browser, type Page } from "../harness/chrome.ts";
 import { chromeSkipReason, sandbox, type TestHome } from "../harness/env.ts";
@@ -11,9 +13,7 @@ import { startServe, type Daemon } from "../harness/serve.ts";
 
 const skip = chromeSkipReason();
 
-if (skip !== undefined) {
-  skipSuite("present-journey", skip);
-} else {
+describe.skipIf(skip !== undefined)("present-journey", () => {
   const DOC = "slides.hr.html";
   let home: TestHome;
   let daemon: Daemon;
@@ -37,7 +37,7 @@ if (skip !== undefined) {
       .filter((id): id is string => typeof id === "string");
   };
 
-  setUp(async () => {
+  beforeAll(async () => {
     home = sandbox("present");
     await newDoc(home.ws, DOC, ["--kind", "slides"]);
     daemon = await startServe({ file: DOC, workspace: home.ws, home: home.home });
@@ -47,7 +47,7 @@ if (skip !== undefined) {
     page = await browser.open(daemon.url);
   });
 
-  tearDown(async () => {
+  afterAll(async () => {
     await browser.close();
     await mcp.close();
     await daemon.stop();
@@ -149,6 +149,4 @@ if (skip !== undefined) {
     );
     assert(clean === true, `退出演示后残留状态（hash=${String(await evalJs("location.hash"))}）`);
   });
-
-  void runSuite("present-journey");
-}
+});

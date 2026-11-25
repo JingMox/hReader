@@ -34,7 +34,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "node scripts/print-e2e.ts && node scripts/foreign-sandbox-e2e.ts",
     "theme:check": "node scripts/check-theme-contrast.mjs",
-    "test:integration": "node tests/integration/run.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json --pretty false",
     "verify": "pnpm format:check && pnpm lint && pnpm lint:sh && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm theme:check && pnpm depcruise && pnpm knip"
   },
@@ -49,6 +49,7 @@
     "globals": "^16.5.0",
     "knip": "^5.81.0",
     "prettier": "^3.10.1",
+    "puppeteer-core": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "8.72.2",
     "vitest": "catalog:"

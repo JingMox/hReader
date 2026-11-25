@@ -4,7 +4,9 @@
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { assert, assertEq, runSuite, setUp, tearDown, test } from "../harness/check.ts";
+import { afterAll, beforeAll, test } from "vitest";
+
+import { assert, assertEq } from "../harness/check.ts";
 import { dataOf, docPath, hr, jsonOf, newDoc } from "../harness/cli.ts";
 import { sandbox, type TestHome } from "../harness/env.ts";
 import { connect, type Api } from "../harness/http.ts";
@@ -42,7 +44,7 @@ const checkCls = async (file: string): Promise<{ code: number | null; cls: strin
   return { code: res.code, cls };
 };
 
-setUp(async () => {
+beforeAll(async () => {
   home = sandbox("mixed");
   const ws = home.ws;
   // 托管文档用 `hr new` 造：手写 data-hr-id 不算 managed（骨架还有归一化标记）。
@@ -68,7 +70,7 @@ setUp(async () => {
   api = await connect(daemon.port, daemon.token);
 });
 
-tearDown(async () => {
+afterAll(async () => {
   await daemon.stop();
   killAllTracked();
   home.cleanup();
@@ -139,5 +141,3 @@ test("符号链接文档：可读或明确拒绝，不返回 5xx", async () => {
   const res = await api.get(`/api/doc/${encodeURIComponent("subdir/linked.hr.html")}/info`);
   assert(res.status < 500, `符号链接文档 info ${String(res.status)}`);
 });
-
-void runSuite("mixed-workspace");
