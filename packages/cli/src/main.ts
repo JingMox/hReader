@@ -3,6 +3,7 @@
 
 import { registerHooks } from "node:module";
 
+import { epipeGuard } from "./epipe.ts";
 import { resolveFallback } from "./resolve-hook.ts";
 
 registerHooks({ resolve: resolveFallback });
@@ -31,6 +32,10 @@ const stop = new Promise<void>((resolve) => {
     resolve();
   });
 });
+
+// 挂 EPIPE 守卫必须在 `run` 之前：第一次写 stdout 就可能撞下游早关。
+epipeGuard(process.stdout);
+epipeGuard(process.stderr);
 
 const code = await run(process.argv.slice(2), {
   cwd: process.cwd(),
