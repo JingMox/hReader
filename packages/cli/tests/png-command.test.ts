@@ -45,6 +45,7 @@ const defaultsOf = (dir: string): PngCommandInput => ({
   maxHeightExplicit: false,
   outlineFlag: undefined,
   timeoutMs: 60_000,
+  visual: "atelier-editorial",
   out: join(dir, "out.png"),
   force: false,
   workspace: dir,

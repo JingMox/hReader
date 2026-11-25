@@ -2,7 +2,7 @@
 
 import { dirname } from "node:path";
 
-import { DEFAULT_STYLE_ID, HrError, nodePatchDeps } from "@hreader/core";
+import { HrError, nodePatchDeps } from "@hreader/core";
 
 import { isPdfPageSize, type PdfPageSize } from "../chrome/types";
 import { dataPdf, humanPdf, jsonOk, type PdfReport } from "../output";
@@ -35,6 +35,8 @@ export interface PdfCommandInput {
   readonly outline: boolean;
   /** `--outline` 与 `--no-outline` 同传：语义错误，开工前报 `invalid_input`。 */
   readonly outlineConflict: boolean;
+  /** 打印稿主题：与 `hr export` 同口径，意图层已落默认，合法值由 core 判。 */
+  readonly visual: string;
   /** 绝对路径（`run.ts` 已真实化）。 */
   readonly out: string;
   readonly force: boolean;
@@ -75,7 +77,7 @@ const assertPdfOutOf = async (input: PdfCommandInput): Promise<void> => {
 const productPdfOf = async (input: PdfCommandInput, pageSize: PdfPageSize): Promise<Uint8Array> => {
   const product = await printProductOf({
     path: input.path,
-    visual: DEFAULT_STYLE_ID,
+    visual: input.visual,
     paper: pageSize,
     workspace: input.workspace,
     warn: input.warn,

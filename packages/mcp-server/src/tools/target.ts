@@ -1,9 +1,10 @@
 // 这层管：`filePath` → core 能吃的 `{workspace, file}`，以及本包唯一那道边界判定（读与建共用同一个口径）。
 
-import { readFile, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { link, mkdir, realpath, rm, readFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import { HrError, isInside, isInsideOrSelf } from "@hreader/core";
+import { HrError, isInside, isInsideOrSelf, nodePatchDeps } from "@hreader/core";
 
 import { foldedOf } from "../errors";
 
@@ -147,3 +148,38 @@ export const writeFailureOf = (error: unknown, target: DocumentTarget): HrError 
   error instanceof HrError
     ? error
     : failureOfFsCall(error, target, "写入失败（目录不可建或文件已存在）");
+
+const encoder = new TextEncoder();
+
+const isEexist = (error: unknown): boolean => codeOf(error) === "EEXIST";
+
+const TMP_PREFIX = ".hr-create-";
+
+/**
+ * 原子"新建"：`writeFile(wx)` 的存在闸是原子的，但写本身不是——进程死在半路会留半份
+ * "新文档"。tmp + `link(2)` 把"不存在才建"交给内核判（EEXIST 永不覆盖、不撕文件），
+ * tmp 内容由 `writeFileAtomic` 先落定（fsync + 权限沿用），任何一步失败 tmp 都被收走。
+ * mkdir 的 EEXIST（中间段是文件）与 link 的 EEXIST（目标已存在）是两回事，分开折。
+ */
+export const createNewFileOf = async (target: DocumentTarget, html: string): Promise<void> => {
+  const dir = dirname(target.absolute);
+  const tmp = join(dir, `${TMP_PREFIX}${randomUUID()}`);
+  try {
+    await mkdir(dir, { recursive: true });
+    await nodePatchDeps.fs.writeFileAtomic(tmp, encoder.encode(html));
+  } catch (error: unknown) {
+    await rm(tmp, { force: true });
+    throw writeFailureOf(error, target);
+  }
+  try {
+    await link(tmp, target.absolute);
+  } catch (error: unknown) {
+    // `file_exists` 是"目标已存在"的对外语义（与 CLI `--out` 同码），不该掉进 io_failure 的兜底。
+    // tmp 与目标同目录：除 EEXIST 外，能让 link 失败的原因会先让 writeFileAtomic 失败——防御性兜底。
+    /* v8 ignore next */
+    if (!isEexist(error)) throw writeFailureOf(error, target);
+    throw new HrError("file_exists", `目标已存在：${target.input}`, { cause: error });
+  } finally {
+    await rm(tmp, { force: true });
+  }
+};

@@ -38,6 +38,7 @@ const inputOf = (dir: string, overrides: Overrides = {}): PdfCommandInput => ({
   timeoutMs: 60_000,
   outline: true,
   outlineConflict: false,
+  visual: "atelier-editorial",
   out: join(dir, "out.pdf"),
   force: false,
   workspace: dir,

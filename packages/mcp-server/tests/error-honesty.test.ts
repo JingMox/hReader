@@ -77,7 +77,7 @@ const CASES: readonly Case[] = [
     name: "建一份已存在的文档",
     tool: "hr_create_doc",
     args: { filePath: "doc.html", title: "撞名" },
-    codes: ["io_failure"],
+    codes: ["file_exists"],
   },
   {
     name: "要求一份不存在的风格",

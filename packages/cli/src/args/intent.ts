@@ -89,6 +89,7 @@ export type Intent =
       readonly outline: boolean;
       /** 两个大纲旗标同传：用法层只分得清"给没给"，互斥是语义错误（命令层报 `invalid_input`）。 */
       readonly outlineConflict: boolean;
+      readonly visual: string;
       /** `--out` 必填（写文件是这条命令的唯一产物）。 */
       readonly out: string;
       readonly force: boolean;
@@ -106,6 +107,7 @@ export type Intent =
       /** 命中的大纲旗标原文（`--outline`/`--no-outline`）：PNG 没有大纲，命令层据此报 `invalid_input`。 */
       readonly outlineFlag: string | undefined;
       readonly timeoutMs: number;
+      readonly visual: string;
       readonly out: string;
       readonly force: boolean;
     } & Common)
