@@ -514,13 +514,125 @@ mod tests {
 
     #[test]
     fn cli_command_wraps_js_scripts_with_node() {
-        let mjs = cli_command(Path::new("/tmp/cli.mjs"));
-        assert_eq!(mjs.get_program(), "node");
-        let mjs_args: Vec<_> = mjs.get_args().collect();
-        assert_eq!(mjs_args, [std::ffi::OsStr::new("/tmp/cli.mjs")]);
+        for ext in ["mjs", "js", "cjs", "MJS", "JS", "CJS"] {
+            let mjs = cli_command(Path::new(&format!("/tmp/cli.{ext}")));
+            assert_eq!(mjs.get_program(), "node", "{ext} 必须经 node 启动");
+        }
 
         let native = cli_command(Path::new("/usr/local/bin/hr"));
         assert_eq!(native.get_program(), "/usr/local/bin/hr");
         assert_eq!(native.get_args().count(), 0);
+    }
+
+    /// 假 `hr`：一个只走 stdout 的 shell 脚本。下列用例只在 unix 上成立。
+    #[cfg(unix)]
+    mod fake_cli {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+
+        struct Fixture {
+            root: PathBuf,
+            cli: PathBuf,
+            ws: PathBuf,
+            home: PathBuf,
+        }
+
+        impl Fixture {
+            fn new(tag: &str, script: &str) -> Self {
+                let root =
+                    std::env::temp_dir().join(format!("hr-spawn-{tag}-{}", std::process::id()));
+                let _ = std::fs::remove_dir_all(&root);
+                let ws = root.join("ws");
+                let home = root.join("home");
+                std::fs::create_dir_all(&ws).expect("ws");
+                std::fs::create_dir_all(&home).expect("home");
+                let cli = root.join("fake-hr");
+                std::fs::write(&cli, format!("#!/bin/sh\n{script}")).expect("fake cli");
+                std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755))
+                    .expect("chmod");
+                Self {
+                    root,
+                    cli,
+                    ws,
+                    home,
+                }
+            }
+
+            fn spawn(&self, envelope_ms: u64, ready_ms: u64) -> Result<Daemon, SuperviseError> {
+                Daemon::spawn_inner(
+                    &self.cli,
+                    "doc.html",
+                    &self.ws,
+                    &self.home,
+                    Some(1),
+                    None,
+                    Duration::from_millis(envelope_ms),
+                    Duration::from_millis(ready_ms),
+                )
+            }
+        }
+
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.root);
+            }
+        }
+
+        #[test]
+        fn a_daemon_that_never_prints_is_reaped_after_the_envelope_timeout() {
+            // `sleep 60` 一个字节都不写：信封读取必须带超时，否则壳永远卡在启动。
+            let fixture = Fixture::new("hang", "sleep 60\n");
+            let error = fixture
+                .spawn(400, 100)
+                .expect_err("不写信封的 daemon 必须超时报错");
+            assert!(
+                matches!(error, SuperviseError::EnvelopeTimeout),
+                "{error:?}"
+            );
+        }
+
+        #[test]
+        fn a_daemon_that_exits_silently_is_no_envelope() {
+            let fixture = Fixture::new("silent", "exit 3\n");
+            let error = fixture
+                .spawn(2000, 100)
+                .expect_err("静默退出必须报错");
+            assert!(matches!(error, SuperviseError::NoEnvelope), "{error:?}");
+        }
+
+        #[test]
+        fn an_endless_first_line_is_bounded_not_slurped() {
+            // 不打换行的无限输出：旧 `read_line` 会无限缓冲。有界读取必须尽快判定。
+            let fixture = Fixture::new(
+                "flood",
+                "while :; do printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; done\n",
+            );
+            let error = fixture
+                .spawn(8000, 100)
+                .expect_err("无换行的洪流必须判坏");
+            assert!(
+                matches!(
+                    error,
+                    SuperviseError::BadEnvelope | SuperviseError::NoEnvelope
+                ),
+                "{error:?}"
+            );
+        }
+
+        #[test]
+        fn a_daemon_that_never_serves_is_reported_not_ready() {
+            // 信封给了端口但端口一直没人听：wait_ready 必须在自己的超时内收口。
+            let fixture = Fixture::new(
+                "noready",
+                "printf '%s\\n' '{\"ok\":true,\"data\":{\"port\":1,\"token\":\"t\",\"workspace\":\"/ws\"}}'\nsleep 60\n",
+            );
+            let error = fixture
+                .spawn(2000, 300)
+                .expect_err("不就绪必须报错");
+            assert!(
+                matches!(error, SuperviseError::NotReady(1)),
+                "{error:?}"
+            );
+        }
     }
 }

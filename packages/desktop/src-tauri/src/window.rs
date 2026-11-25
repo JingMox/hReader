@@ -1223,6 +1223,53 @@ mod tests {
     }
 
     #[test]
+    fn navigation_targets_are_classified_by_scheme_and_host() {
+        use tauri::Url;
+        let nav = |raw: &str| classify_navigation(&Url::parse(raw).expect("url"));
+        assert_eq!(nav("http://127.0.0.1:8123/index.html"), NavClass::Local);
+        assert_eq!(nav("http://localhost:8123/s/a.html"), NavClass::Local);
+        assert_eq!(nav("http://[::1]:8123/x"), NavClass::Local);
+        assert_eq!(nav("tauri://localhost/index.html"), NavClass::Local);
+        assert_eq!(nav("http://tauri.localhost/index.html"), NavClass::Local);
+        assert_eq!(nav("http://hr-desktop.local/bridge"), NavClass::Bridge);
+        assert_eq!(nav("https://hr-desktop.local/x"), NavClass::Deny);
+        assert_eq!(nav("http://example.com/"), NavClass::External);
+        assert_eq!(nav("https://attacker.example/pwn"), NavClass::External);
+        assert_eq!(nav("file:///etc/passwd"), NavClass::Deny);
+        assert_eq!(nav("javascript:alert(1)"), NavClass::Deny);
+        assert_eq!(nav("data:text/html,<h1>x</h1>"), NavClass::Deny);
+        assert_eq!(nav("about:blank"), NavClass::Deny);
+    }
+
+    #[test]
+    fn bridge_urls_require_the_session_token() {
+        use tauri::Url;
+        let url = |q: &str| Url::parse(&format!("http://hr-desktop.local/{q}")).expect("url");
+        assert!(bridge_authorized(&url("bridge?t=secret&x=1"), "secret"));
+        assert!(!bridge_authorized(&url("bridge?t=other"), "secret"));
+        assert!(!bridge_authorized(&url("bridge"), "secret"));
+        assert!(!bridge_authorized(&url("bridge?t="), "secret"));
+        // 令牌本身不能是空串，否则 `?t=` 也能对上。
+        assert!(!bridge_authorized(&url("bridge?t="), ""));
+        let a = mint_bridge_token();
+        let b = mint_bridge_token();
+        assert!(!a.is_empty() && a != b, "桥令牌必须随机且不复用");
+    }
+
+    #[test]
+    fn reveal_never_leaves_the_workspace() {
+        let ws = Path::new("/tmp/ws");
+        // 绝对路径与 .. 逃逸一律回落到工作区根。
+        assert_eq!(resolve_reveal_target(ws, "/etc/passwd"), ws);
+        assert_eq!(resolve_reveal_target(ws, "../outside.html"), ws);
+        assert_eq!(resolve_reveal_target(ws, "..\\..\\win"), ws);
+        // 空串（DocError / 空态）与工作区内合法相对路径照常解析。
+        assert_eq!(resolve_reveal_target(ws, ""), ws);
+        assert_eq!(resolve_reveal_target(ws, "sub/doc.html"), ws.join("sub/doc.html"));
+        assert_eq!(resolve_reveal_target(ws, "doc.html"), ws.join("doc.html"));
+    }
+
+    #[test]
     fn new_doc_names_never_create_hidden_files() {
         let ws = Path::new("/tmp/ws");
         for raw in ["..", ".", ".hidden", "..\\..\\x"] {
