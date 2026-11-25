@@ -50,6 +50,7 @@ const PUBLIC = [
   "compileTone",
   "diffText",
   "discoverStyles",
+  "embeddedThemeCssOf",
   "extractStyle",
   "extractStyleWithLlm",
   "findBuiltinStyle",
