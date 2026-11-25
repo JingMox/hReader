@@ -213,6 +213,18 @@ describe("sanitize 对抗 · style 属性的外链 url() 口径", () => {
 
     expect(out).toContain('style="color:#333"');
   });
+
+  it("should treat non-hex escapes, line continuations and invalid code points per CSS Syntax", () => {
+    // 解码器的其余三条支路：`\!` 是单字符转义、`\<LF>` 是行接续（删掉）、
+    // `\0`/`\110000`/`\d800` 越界或代理项一律归一 U+FFFD——都不是 url()，样式原样保留。
+    const out = sanitizedToHtml(
+      "<article><p style=\"content:'\\!\\\n\\0 \\110000 \\d800 x'\">x</p></article>",
+      "print",
+    );
+
+    expect(out).toContain("style=");
+    expect(out).not.toContain("evil.example");
+  });
 });
 
 describe("sanitize 对抗 · 整删名单的完整覆盖", () => {
