@@ -635,7 +635,8 @@ export interface Subscription {
 
 interface CycleContext {
   readonly deps: HreaderDeps;
-  readonly info: DaemonInfo;
+  /** daemon 重启会换 port/token：断线窗口里被 `loopOf` 刷新，故非 readonly。 */
+  info: DaemonInfo;
   readonly handlers: SubscribeHandlers;
   readonly signal: AbortSignal;
   /** 已报过的告警类别（`bad`/`down`），见 `reportOnceOf`。 */
@@ -735,6 +736,17 @@ const loopOf = async (context: CycleContext): Promise<void> => {
     if (abortedOf(context.signal)) return;
     if (reportOnceOf(context, "down")) context.handlers.onDown();
     await context.deps.delay(RECONNECT_MS, context.signal);
+    // daemon 重启会重写 daemon.json（新 port/token）：捏着旧 info 重连只会一直 ECONNREFUSED/401。
+    // 只在断线窗口读盘——流活着时 runCycleOf 阻塞在读上，到不了这里。
+    const fresh = await readDaemonOf(context.deps);
+    if (
+      fresh !== undefined &&
+      (fresh.port !== context.info.port || fresh.token !== context.info.token)
+    ) {
+      context.info = fresh;
+      // 新 daemon 的事件环是另一条：旧游标不是"靠后"是"无效"，清掉从头收。
+      context.lastEventId = undefined;
+    }
   }
 };
 
