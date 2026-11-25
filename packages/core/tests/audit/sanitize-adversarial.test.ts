@@ -5,16 +5,22 @@ import { parse as parse5 } from "parse5";
 import type { DefaultTreeAdapterTypes } from "parse5";
 import { describe, expect, it } from "vitest";
 
+import { join } from "node:path";
+
 import {
   hasExecutableContent,
   hasExternalResource,
   isDroppedNode,
+  nodePatchDeps,
   parseHtml,
+  patchFile,
   sanitizedAttributesOf,
   serializeHtml,
 } from "../../src/index";
 import type { HtmlElementNode, HtmlNode } from "../../src/index";
 import type { SanitizePreset } from "../../src/index";
+import { ARTICLE_DOC, DOC_FILE } from "../io/fixtures";
+import { readTextAt, withWorkspace, writeBytesAt } from "../io/harness";
 
 /**
  * 打印稿管线的等价裁切（print-html.ts 的判定组合）：整删命中 → 外链资源命中 → 剥属性。
@@ -103,10 +109,38 @@ describe("sanitize 对抗 · 已知疑点结论：<xmp> 文本透传", () => {
   });
 });
 
-describe("sanitize 对抗 · <noscript> 的 raw-text 歧义（print 侧为已确认的冻结契约缺口，见汇报）", () => {
-  // print 预设逐字节冻结：`<noscript>` 内容被解析成标记后序列化回 HTML，其中属性值/注释里
-  // 的 `</noscript>` 会在脚本开启的浏览器里截断 raw text 造出活元素（mXSS）——修复要动
-  // PRINT_DROPPED_TAGS 或序列化口径，字节必变 → 只记"import 侧已无此面"，缺口写进汇报需决策。
+describe("sanitize 对抗 · <noscript> 的 raw-text 歧义", () => {
+  // `<noscript>` 内容被解析成标记后序列化回 HTML，其中属性值/注释里的 `</noscript>`
+  // 会在脚本开启的浏览器里截断 raw text 造出活元素（mXSS）。整删整个子树是唯一收口：
+  // 只剥属性仍会留下 `</noscript>` 边界字符被当文本/标记重新切开。
+  const ATTR_ESCAPE = '<noscript><p title="</noscript><img src=x onerror=alert(1)>"></noscript>';
+
+  it("should drop noscript and its whole subtree under print, leaving no live element", async () => {
+    await withWorkspace(async (dir) => {
+      await writeBytesAt(join(dir, DOC_FILE), new TextEncoder().encode(ARTICLE_DOC));
+      // 注入链与汇报一致：`hr_patch_node` 的 append 允许 `<noscript>`（它不在片段禁用名单里），
+      // 属性值里的 `</noscript>` 也只是普通字符——真正的防线在打印裁切侧。
+      const result = await patchFile(
+        {
+          workspace: dir,
+          file: DOC_FILE,
+          request: { targetId: "box", action: "append", html: ATTR_ESCAPE },
+        },
+        nodePatchDeps,
+      );
+      expect(result.changed).toBe(true);
+      expect(await readTextAt(join(dir, DOC_FILE))).toContain("noscript");
+
+      const out = sanitizedToHtml(await readTextAt(join(dir, DOC_FILE)), "print");
+      const reparsed = browserParsedElements(out);
+
+      expect(reparsed.filter((element) => element.tag === "noscript")).toEqual([]);
+      expect(reparsed.filter((element) => element.tag === "img")).toEqual([]);
+      expect(liveEventAttributes(out)).toEqual([]);
+      expect(hasExecutableContent(parseHtml(out).root)).toBe(false);
+    });
+  });
+
   it("should eliminate noscript raw-text ambiguity under import", () => {
     const hostile = '<noscript><p title="</noscript><img src=x onerror=alert(1)>">';
     const out = sanitizedToHtml(`<article>${hostile}</article>`, "import");
@@ -156,17 +190,27 @@ describe("sanitize 对抗 · 伪协议编码", () => {
 });
 
 describe("sanitize 对抗 · style 属性的外链 url() 口径", () => {
-  // `STYLE_EXTERNAL_URL` 只认字面 `url(` + 裸 `//`：`url(\68 ttp://…)`（CSS 转义）与
-  // `url( ' http://…' )`（引号内空白）都绕过——print 冻结契约 → 记入汇报"需决策"，不在此钉用例。
-  it("should still drop the literal external url() shapes under print", () => {
-    for (const hostile of [
-      '<p style="background:url(http://evil.example/x.png)">x</p>',
-      '<p style="background:url(//evil.example/x.png)">x</p>',
-      "<p style=\"background:url('https://evil.example/x.png')\">x</p>",
-    ]) {
-      const out = sanitizedToHtml(`<article>${hostile}</article>`, "print");
-      expect(out).not.toContain("evil.example");
-    }
+  // 判定前先按 CSS 规范解码转义、容忍引号内空白与大小写变体：浏览器拿到 `url(\68 ttp://…)`
+  // 或 `url( ' http://…' )` 会真发外链请求，只看字面 `url(//` 等于漏判。
+  it.each([
+    '<p style="background:url(http://evil.example/x.png)">x</p>',
+    '<p style="background:url(//evil.example/x.png)">x</p>',
+    "<p style=\"background:url('https://evil.example/x.png')\">x</p>",
+    '<p style="background:url(\\68 ttp://evil.example/x.png)">x</p>',
+    '<p style="background:u\\72 l(\\000068ttp://evil.example/x.png)">x</p>',
+    '<p style="background:URL(HTTP://evil.example/x.png)">x</p>',
+    "<p style=\"background:url( ' http://evil.example/x.png' )\">x</p>",
+    '<p style="background:url(\\2f\\2f evil.example/x.png)">x</p>',
+  ])("should drop the external url() shape under print: %s", (hostile) => {
+    const out = sanitizedToHtml(`<article>${hostile}</article>`, "print");
+
+    expect(out).not.toContain("evil.example");
+  });
+
+  it("should keep a benign inline style when no url() is present", () => {
+    const out = sanitizedToHtml('<article><p style="color:#333">x</p></article>', "print");
+
+    expect(out).toContain('style="color:#333"');
   });
 });
 
