@@ -1357,8 +1357,14 @@ mod tests {
         // wry 的 on_navigation 对子帧同样触发（wkwebview/navigation.rs 的
         // navigation_policy 不查 targetFrame.isMainFrame），loopback 落 Local 才不误伤。
         assert_eq!(nav("http://127.0.0.1:8123/s/report.html"), NavClass::Local);
-        assert_eq!(nav("http://127.0.0.1:8123/s/report.html?t=abc123"), NavClass::Local);
-        assert_eq!(nav("http://localhost:8123/s/report.html?r=n3"), NavClass::Local);
+        assert_eq!(
+            nav("http://127.0.0.1:8123/s/report.html?t=abc123"),
+            NavClass::Local
+        );
+        assert_eq!(
+            nav("http://localhost:8123/s/report.html?r=n3"),
+            NavClass::Local
+        );
         // `/api/*` 与 SSE 本是子资源请求不进导航闸；真走到这里（误开顶层）也按 Local 放行。
         assert_eq!(nav("http://127.0.0.1:8123/api/doc/x/info"), NavClass::Local);
         assert_eq!(nav("http://127.0.0.1:8123/api/events"), NavClass::Local);
