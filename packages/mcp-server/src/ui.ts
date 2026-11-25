@@ -119,7 +119,7 @@ const sanitizedNodes = (nodes: readonly HtmlNode[]): HtmlNode[] =>
 /** 文档整树净化后再包 `<article>`：剥掉的是可执行/外链/样式面，正文结构原样留下。 */
 const safeDocumentHtmlOf = (text: string): string =>
   sanitizedNodes([parseHtml(text).root])
-    .map((node) => serializeHtml({ root: node }))
+    .map((node) => serializeHtml({ root: node, diagnostics: [] }))
     .join("");
 
 /** 无 daemon 不是错误（宿主 UI 不该因为后台没开就拿不到资源）；**文档读不出来才是**——
