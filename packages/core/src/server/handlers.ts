@@ -198,8 +198,17 @@ export const docInfoReply = async (ctx: HandlerContext, docId: string): Promise<
   });
 };
 
-const changedOf = (before: Uint8Array, after: Uint8Array, label: string): readonly string[] =>
-  diffNodes(modelOf(before, label), modelOf(after, label));
+/**
+ * 一切内容写先派生再放行：`modelOf(before)` 在写调用之前执行——外来/不可派生文档
+ * 到不了 `writeAtomic`，不留"报失败却已改盘"的半成品（sha 键信任档会当场失效）。
+ * undo/resolve 不挂这道闸：它们只恢复/改写服务端自产的快照与 hr-meta，不注入新内容，
+ * 且 undo 是外部改坏文档后的唯一恢复路径。
+ */
+const diffOf = (
+  beforeModel: DocumentModel,
+  after: Uint8Array,
+  label: string,
+): readonly string[] => diffNodes(beforeModel, modelOf(after, label));
 
 /** 标注成 `ZodType<PatchAction>`：枚举里混进 `PatchAction` 之外的值会在编译期报错。 */
 const patchAction: z.ZodType<PatchAction, z.ZodTypeDef, unknown> = z.enum([
@@ -228,13 +237,14 @@ export const patchReply = async (
     fragment === undefined ? { targetId, action } : { targetId, action, html: fragment };
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
+  const beforeModel = modelOf(before, target.realPath);
   const result = await busy(() =>
     patchFile({ workspace: ctx.workspace, file: docId, request }, ctx.deps, {
       lockTimeoutMs: lockMs,
     }),
   );
   const after = await bytesOf(ctx, target);
-  const changedNodes = changedOf(before, after, target.realPath);
+  const changedNodes = diffOf(beforeModel, after, target.realPath);
   return {
     reply: jsonReply(200, {
       changed: result.changed,
@@ -260,13 +270,14 @@ export const styleReply = async (
   const { docId, visualId } = parseBody(styleBody, body);
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
+  const beforeModel = modelOf(before, target.realPath);
   const result = await busy(() =>
     applyStyle({ workspace: ctx.workspace, file: docId, visualId }, ctx.styleDeps, {
       lockTimeoutMs: lockMs,
     }),
   );
   const after = await bytesOf(ctx, target);
-  const changedNodes = result.changed ? changedOf(before, after, target.realPath) : [];
+  const changedNodes = result.changed ? diffOf(beforeModel, after, target.realPath) : [];
   return {
     reply: jsonReply(200, { changed: result.changed, revision: revisionOf(after), changedNodes }),
     target,
@@ -315,6 +326,7 @@ export const annotationReply = async (
   const { docId, start, end, text, note } = parseBody(annotationBody, body);
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
+  const beforeModel = modelOf(before, target.realPath);
   const written = await appendWithLock(
     ctx,
     target,
@@ -331,7 +343,7 @@ export const annotationReply = async (
     target,
     revision: revisionOf(after),
     changed: written.changed,
-    changedNodes: changedOf(before, after, target.realPath),
+    changedNodes: diffOf(beforeModel, after, target.realPath),
   };
 };
 
