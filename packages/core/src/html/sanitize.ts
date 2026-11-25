@@ -52,6 +52,8 @@ const PRINT_DROPPED_TAGS: ReadonlySet<string> = new Set([
   "input",
   "select",
   "textarea",
+  // `<noscript>` 的 raw-text 解析歧义（属性值里的 `</noscript>` 会截出活元素）：只能整子树删。
+  "noscript",
   // SVG 资源元素整删（`<use href="#sym">` 也不留，否则等于把外部资源面留给主题去赌）
   "image",
   "use",
@@ -63,7 +65,7 @@ const PRINT_DROPPED_TAGS: ReadonlySet<string> = new Set([
  * - SMIL 动画元素（`animate`/`set` 等）：能改写父节点属性——`attributeName="onload"` 写事件处理器、
  *   `values="…;javascript:…"` 写危险 URL，属性级过滤挡不住取值列表，只能整元素删；
  * - `foreignObject`：SVG 里的 HTML 二次入口，外来文档没有保留它的正当理由；
- * - 隐藏/惰性内容壳与老式嵌入、raw-text 元素：`template`/`noscript` 的内容不进渲染面；
+ * - 隐藏/惰性内容壳与老式嵌入、raw-text 元素：`template` 的内容不进渲染面；
  *   `xmp`/`noembed`/`noframes`/`plaintext` 的子树是文本不是元素，序列化原样照出——
  *   `<xmp><script>…</script></xmp>` 的脚本字符串会原样穿过过滤，只能整删。
  */
@@ -77,7 +79,6 @@ const IMPORT_DROPPED_TAGS: ReadonlySet<string> = new Set([
   "mpath",
   "foreignobject",
   "template",
-  "noscript",
   "applet",
   "frame",
   "frameset",
@@ -121,7 +122,30 @@ const hasExternalSrcset = (value: string): boolean => {
   return false;
 };
 
-const STYLE_EXTERNAL_URL = /url\(\s*['"]?(?:[a-z][a-z0-9+.-]*:)?\/\//iu;
+/**
+ * 按 CSS Syntax 解转义后再判：`url(\68 ttp://…)` 与 `url(http://…)` 对浏览器是同一个请求，
+ * `u\72 l(` 也是 `url(`。`\` + 1-6 位十六进制（可吞一个空白）→ 码点；`\` + 换行是行接续（删掉）；
+ * `\` + 其他单字符 → 字符本身。码点为 0、超界或代理项时按规范回落 U+FFFD。
+ */
+const CSS_ESCAPE = /\\(?:[0-9a-f]{1,6}\s?|\r\n|[\n\r\f]|.)/giu;
+
+const decodeCssEscapes = (value: string): string =>
+  value.replace(CSS_ESCAPE, (escape) => {
+    const body = escape.slice(1);
+    const digits = /^[0-9a-f]{1,6}$/iu.test(body)
+      ? body
+      : /^[0-9a-f]{1,6}\s$/iu.test(body)
+        ? body.slice(0, -1)
+        : undefined;
+    if (digits === undefined) return /^[\n\r\f]/u.test(body) ? "" : body;
+    const point = Number.parseInt(digits, 16);
+    return point === 0 || point > 0x10ffff || (point >= 0xd800 && point <= 0xdfff)
+      ? "�"
+      : String.fromCodePoint(point);
+  });
+
+/** 引号内空白与大小写变体也归一拦：解码后的 `url( ' //…' )` 仍是同一个外链请求。 */
+const STYLE_EXTERNAL_URL = /url\(\s*['"]?\s*(?:[a-z][a-z0-9+.-]*:)?\/\//iu;
 
 /** print 的历史口径：只剥 ≤0x20 的字符。比严格口径窄（NEL/C1 等不剥），但 print 行为是冻结契约。 */
 const normalizedPrintUrl = (value: string): string => {
@@ -258,7 +282,7 @@ const isDroppedAttribute = ([name, value]: HtmlAttribute, rules: SanitizeRules):
     return true;
   }
   if (key === "style") {
-    return rules.style === "drop" || STYLE_EXTERNAL_URL.test(value);
+    return rules.style === "drop" || STYLE_EXTERNAL_URL.test(decodeCssEscapes(value));
   }
   if (SCRIPT_URL_ATTRIBUTES.has(key) || LINK_URL_ATTRIBUTES.has(key)) {
     const normalized = rules.normalizeUrl(value);
