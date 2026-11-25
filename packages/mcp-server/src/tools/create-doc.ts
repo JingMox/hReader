@@ -1,8 +1,5 @@
 // 这层管：`hr_create_doc`（最小合法文档或按形态起稿 + 校验 + 落盘）；写作视图靠它拿到一个可读的落点。
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-
 import {
   DOC_KINDS,
   HrError,
@@ -20,9 +17,8 @@ import { docIdOf, UI_URI_PREFIX } from "../ui";
 import {
   FILE_PATH_HINT,
   assertInsideWorkspace,
+  createNewFileOf,
   documentTargetOf,
-  writeFailureOf,
-  type DocumentTarget,
 } from "./target";
 
 export const createDocShape = {
@@ -73,16 +69,6 @@ const skeletonOf = (title: string): string => `<!doctype html>
 const minimalDocOf = (title: string): string =>
   serializeHtml(injectNodeIds(parseHtml(skeletonOf(title))).parsed);
 
-const writeNewOf = async (target: DocumentTarget, html: string): Promise<void> => {
-  try {
-    await mkdir(dirname(target.absolute), { recursive: true });
-    await writeFile(target.absolute, html, { encoding: "utf8", flag: "wx" });
-  } catch (error: unknown) {
-    // errno → 码的映射收在 `target.ts` 一处：读与写用同一张表（`ENAMETOOLONG` 是 `invalid_input`）。
-    throw writeFailureOf(error, target);
-  }
-};
-
 const writeNewDocOf = async (
   args: CreateDocArgs,
   htmlOf: (title: string) => string,
@@ -99,7 +85,7 @@ const writeNewDocOf = async (
   }
   // 先判定再建：`filePath` 来自模型输出，而模型可被文档里的注入操纵——越界必须先拒，不能先建目录。
   await assertInsideWorkspace(target);
-  await writeNewOf(target, html);
+  await createNewFileOf(target, html);
   return okResult(
     args.kind === undefined
       ? { path: target.file, title: args.title }

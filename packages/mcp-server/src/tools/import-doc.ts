@@ -1,7 +1,6 @@
 // 这层管：`hr_import_doc`（外来 HTML → importForeign → 落盘托管文档）；转换与校验全部在 core。
 // 与 `hr_create_doc` 共用同一道边界判定与 errno 翻译：`outPath` 先判再写，目标已存在即拒（`wx`）。
 
-import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 
 import { DOC_KINDS, HrError, importForeign } from "@hreader/core";
@@ -13,9 +12,9 @@ import { docIdOf, UI_URI_PREFIX } from "../ui";
 import {
   FILE_PATH_HINT,
   assertInsideWorkspace,
+  createNewFileOf,
   documentTargetOf,
   readInsideWorkspace,
-  writeFailureOf,
   type DocumentTarget,
 } from "./target";
 
@@ -53,25 +52,6 @@ const outTargetOf = (args: ImportDocArgs, source: DocumentTarget, cwd: string): 
   return documentTargetOf(derived, cwd);
 };
 
-const isEexist = (error: unknown): boolean => Reflect.get(Object(error), "code") === "EEXIST";
-
-const writeImportOf = async (target: DocumentTarget, html: string): Promise<void> => {
-  // mkdir 也能抛 EEXIST（中间段已是个文件）：那不是"目标已存在"，两段要分开折。
-  try {
-    await mkdir(dirname(target.absolute), { recursive: true });
-  } catch (error: unknown) {
-    throw writeFailureOf(error, target);
-  }
-  try {
-    await writeFile(target.absolute, html, { encoding: "utf8", flag: "wx" });
-  } catch (error: unknown) {
-    // `file_exists` 是"目标已存在"的对外语义（与 CLI `--out` 同码），不该掉进 io_failure 的兜底。
-    throw isEexist(error)
-      ? new HrError("file_exists", `目标已存在：${target.input}`, { cause: error })
-      : writeFailureOf(error, target);
-  }
-};
-
 const writeImportedDocOf = async (args: ImportDocArgs): Promise<CallToolResult> => {
   const cwd = process.cwd();
   const source = documentTargetOf(args.filePath, cwd);
@@ -86,7 +66,7 @@ const writeImportedDocOf = async (args: ImportDocArgs): Promise<CallToolResult> 
   });
   // 先判定再建：`outPath` 来自模型输出，而模型可被文档里的注入操纵——越界必须先拒，不能先建目录。
   await assertInsideWorkspace(target);
-  await writeImportOf(target, product.html);
+  await createNewFileOf(target, product.html);
   return okResult(
     { path: target.file, report: product.report },
     { ui: { resourceUri: `${UI_URI_PREFIX}${docIdOf(target.file)}` } },
