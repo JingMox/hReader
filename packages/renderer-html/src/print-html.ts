@@ -81,9 +81,7 @@ const DEPTH_LIMIT = 2048;
 /** 显式栈深度测量：只走 element/document 的孩子，文本/注释节点不产生层级。 */
 const depthOf = (root: HtmlNode): number => {
   let max = 0;
-  const stack: { readonly node: HtmlNode; readonly depth: number }[] = [
-    { node: root, depth: 1 },
-  ];
+  const stack: { readonly node: HtmlNode; readonly depth: number }[] = [{ node: root, depth: 1 }];
   for (let frame = stack.pop(); frame !== undefined; frame = stack.pop()) {
     if (frame.depth > max) max = frame.depth;
     const node = frame.node;
