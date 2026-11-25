@@ -3,8 +3,9 @@
 import { writeAtomic } from "../io/atomic";
 import { decodeUtf8, encodeUtf8, readBytes } from "../io/bytes";
 import type { PatchOptions } from "../io/contracts";
+import { pruneSnapshots, writeSnapshot } from "../io/history";
 import { runLocked } from "../io/lock";
-import { resolveTarget, type ResolvedTarget } from "../io/paths";
+import { historyDirOf, resolveTarget, type ResolvedTarget } from "../io/paths";
 import { replaceTheme } from "./apply";
 import type { ApplyStyleInput, ApplyStyleResult, StyleDeps } from "./contracts";
 import { resolveStyle } from "./load";
@@ -20,8 +21,12 @@ const applyToFile = async (
   if (!outcome.changed) {
     return { path: target.realPath, bytes: original.length, changed: false };
   }
+  // 与 patch 同一条链：写前快照、写后裁剪，样式应用也能被 undo 退回。
+  const historyDir = historyDirOf(target);
+  await writeSnapshot({ dir: historyDir, workspace: target.workspace, data: original }, deps);
   const bytes = encodeUtf8(outcome.html);
   await writeAtomic({ path: target.realPath, workspace: target.workspace, data: bytes }, deps);
+  await pruneSnapshots(deps, historyDir);
   return { path: target.realPath, bytes: bytes.length, changed: true };
 };
 
