@@ -113,7 +113,8 @@ describe("sanitize 对抗 · <noscript> 的 raw-text 歧义", () => {
   // `<noscript>` 内容被解析成标记后序列化回 HTML，其中属性值/注释里的 `</noscript>`
   // 会在脚本开启的浏览器里截断 raw text 造出活元素（mXSS）。整删整个子树是唯一收口：
   // 只剥属性仍会留下 `</noscript>` 边界字符被当文本/标记重新切开。
-  const ATTR_ESCAPE = '<noscript><p title="</noscript><img src=x onerror=alert(1)>"></noscript>';
+  const ATTR_ESCAPE =
+    '<div><noscript><p title="</noscript><img src=x onerror=alert(1)>"></noscript></div>';
 
   it("should drop noscript and its whole subtree under print, leaving no live element", async () => {
     await withWorkspace(async (dir) => {
