@@ -50,7 +50,7 @@ const wrapPage = (inner: PuppeteerPage, session: CDPSession): Page => {
       returnByValue: true,
       awaitPromise,
       userGesture: true,
-    })) as Readonly<Record<string, unknown>>;
+    })) as unknown as Readonly<Record<string, unknown>>;
     const exception = result["exceptionDetails"];
     if (typeof exception === "object" && exception !== null) {
       const detail: unknown = Reflect.get(exception, "exception");
