@@ -1350,6 +1350,24 @@ mod tests {
     }
 
     #[test]
+    fn reader_urls_stay_local_so_foreign_doc_frames_are_untouched() {
+        use tauri::Url;
+        let nav = |raw: &str| classify_navigation(&Url::parse(raw).expect("url"));
+        // `/s/<docId>` 沙箱 iframe（含 `?t=` 文档令牌与 `?r=` 重载标记）必须放行：
+        // wry 的 on_navigation 对子帧同样触发（wkwebview/navigation.rs 的
+        // navigation_policy 不查 targetFrame.isMainFrame），loopback 落 Local 才不误伤。
+        assert_eq!(nav("http://127.0.0.1:8123/s/report.html"), NavClass::Local);
+        assert_eq!(nav("http://127.0.0.1:8123/s/report.html?t=abc123"), NavClass::Local);
+        assert_eq!(nav("http://localhost:8123/s/report.html?r=n3"), NavClass::Local);
+        // `/api/*` 与 SSE 本是子资源请求不进导航闸；真走到这里（误开顶层）也按 Local 放行。
+        assert_eq!(nav("http://127.0.0.1:8123/api/doc/x/info"), NavClass::Local);
+        assert_eq!(nav("http://127.0.0.1:8123/api/events"), NavClass::Local);
+        // 外来文档里的外链进 External——交给系统浏览器、webview 内导航取消，
+        // 这对外来文档同样成立：外链绝不借 loopback 的壳加载。
+        assert_eq!(nav("https://phish.example/?next=/s/x"), NavClass::External);
+    }
+
+    #[test]
     fn bridge_urls_require_the_session_token() {
         use tauri::Url;
         let url = |q: &str| Url::parse(&format!("http://hr-desktop.local/{q}")).expect("url");
