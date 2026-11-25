@@ -29,6 +29,15 @@ const sleepOf = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/** 有界条件等待：渲染/信号升级都落在可观察的假对象上，等状态不猜毫秒。 */
+const until = async (ready: () => boolean, what: string): Promise<void> => {
+  const deadline = Date.now() + 3_000;
+  while (!ready() && Date.now() < deadline) {
+    await sleepOf(1);
+  }
+  if (!ready()) throw new Error(`等「${what}」超时`);
+};
+
 const renderWithOf = (setup: SessionSetup, timeoutMs = 1000): Promise<Uint8Array> =>
   renderPdfOf(inputOf(setup.deps, { html: "<p>hi</p>", timeoutMs })).then((result) => result.bytes);
 
@@ -166,7 +175,7 @@ describe("renderPdfOf · 超时", () => {
     const error = await failureOf(pending);
     expect(error.code).toBe("render_timeout");
     expect(error.message).toContain("渲染超时（0s）");
-    await sleepOf(40);
+    await until(() => setup.fake.signals.length === 2, "SIGKILL 升级");
     expect(setup.fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
     expect(setup.dirs.every((dir) => existsSync(dir))).toBe(false);
   });
@@ -186,7 +195,7 @@ describe("renderPdfOf · 成功路径", () => {
     const dir = setup.dirs[0] ?? "";
     expect(setup.spawnedArgs[0] ?? []).toContain(`--user-data-dir=${join(dir, "profile")}`);
     expect(existsSync(dir)).toBe(false);
-    await sleepOf(20);
+    await until(() => setup.fake.signals.length === 2, "SIGKILL 升级");
     expect(setup.fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
 });
@@ -200,12 +209,14 @@ describe("renderPdfOf · 中断", () => {
     });
     const pending = renderPdfOf(inputOf(setup.deps, { html: "<p>x</p>", stop: stopping }));
     setup.fake.stderr(DEVTOOLS_LINE);
-    await sleepOf(10);
+    // 等渲染真的走到 page.pdf（hang 档记录调用后永不返回）再 stop——
+    // 否则 stop 可能抢在 spawn/connect 之前，中断的根本不是"渲染中"这条路径。
+    await until(() => setup.page.pdfCalls.length > 0, "渲染开始");
     stop();
     const error = await failureOf(pending);
     expect(error.code).toBe("chrome_failed");
     expect(error.message).toContain("渲染被中断");
-    await sleepOf(20);
+    await until(() => setup.fake.signals.length === 2, "SIGKILL 升级");
     expect(setup.fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
     expect(existsSync(setup.dirs[0] ?? "")).toBe(false);
   });
@@ -227,7 +238,7 @@ describe("renderPngOf · 长图路径", () => {
     const image = await pending;
     expect([image.width, image.height, image.clipped]).toEqual([1600, 1800, false]);
     expect(existsSync(setup.dirs[0] ?? "")).toBe(false);
-    await sleepOf(20);
+    await until(() => setup.fake.signals.length === 2, "SIGKILL 升级");
     expect(setup.fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
 
@@ -270,7 +281,7 @@ describe("renderPdfOf · 晚绑定 browser", () => {
     const error = await failureOf(pending);
     expect(error.code).toBe("render_timeout");
     release();
-    await sleepOf(20);
+    await until(() => browser.disconnected.count === 1, "迟到的 browser 被 disconnect");
     expect(browser.disconnected.count).toBe(1);
   });
 });

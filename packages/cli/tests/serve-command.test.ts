@@ -11,8 +11,8 @@ import { run } from "../src/run";
 import {
   serveDirs as dirs,
   serveInputOf as inputOf,
-  settle,
   stopHandle,
+  waitGone,
   type ServeDirs,
 } from "./serve-helpers";
 import { parseArgs } from "../src/args";
@@ -56,7 +56,7 @@ describe("serveCommand · 结束后", () => {
     try {
       await serveCommand(inputOf(dir, true, stopped));
       stop();
-      await settle();
+      await waitGone(join(dir.home, ".hreader", "daemon.json"));
 
       expect(existsSync(join(dir.home, ".hreader", "daemon.json"))).toBe(false);
     } finally {

@@ -15,6 +15,7 @@ import {
   load,
   noticeOf,
   stubs,
+  until,
 } from "./support/main-stubs.ts";
 
 afterEach(() => {
@@ -41,7 +42,10 @@ describe("main · 文档定位与首屏", () => {
     const source = stubs.sources[0];
     source?.onopen?.();
     source?.fire("doc.changed", JSON.stringify({ changedNodes: ["hr-a"] }), "7");
-    await flush(5);
+    await until(
+      () => stubs.fetched.filter((url) => url.endsWith("/model")).length === 2,
+      "doc.changed 触发的 /model 重取",
+    );
     expect(stubs.fetched.filter((url) => url.endsWith("/model"))).toHaveLength(2);
   });
 

@@ -90,7 +90,9 @@ const framesOf = (text: string): Frame[] => {
   return frames;
 };
 
-/** 真长连接：读到 `until` 出现或到点 abort（用真连接的自然流，不轮询）。 */
+/** 真长连接：读到 `until` 出现或到点 abort（用真连接的自然流，不轮询）。
+ *  收尾用 `releaseLock` 而不是 `cancel`：cancel 会把整条流掐死，ready 帧先行消费后
+ *  后续 `text()` 就读不到字节了；释放锁让同一个 body 能被顺序续读。 */
 const readStream = async (
   body: ReadableStream<Uint8Array>,
   until: string,
@@ -114,7 +116,7 @@ const readStream = async (
     // abort 把流打断：已收到的字节仍然有效。
   } finally {
     clearTimeout(timer);
-    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
   return text;
 };
@@ -136,7 +138,8 @@ const patchOnce = async (server: RunningServer, html: string): Promise<Response>
     }),
   });
 
-/** 打开真 SSE 连接；`text` 读到目标帧或 3 s 到点。 */
+/** 打开真 SSE 连接并等到 `ready` 帧（hub 在登记进客户端表之后才写它）——
+ *  收到 ready 才返回，之后的 patch 一定会落进这条流；`text` 读到目标帧或 5s 到点。 */
 const openEvents = async (
   server: RunningServer,
 ): Promise<{ text: (until: string) => Promise<string>; stop: () => void }> => {
@@ -148,11 +151,14 @@ const openEvents = async (
   expect(response.status).toBe(200);
   const body = response.body;
   if (body === null) throw new Error("没有响应体");
+  const text = async (until: string): Promise<string> =>
+    await readStream(body, until, 5000, () => {
+      controller.abort();
+    });
+  const opened = await text('"type":"ready"');
+  expect(opened).toContain('"type":"ready"');
   return {
-    text: async (until) =>
-      await readStream(body, until, 5000, () => {
-        controller.abort();
-      }),
+    text,
     stop: () => {
       controller.abort();
     },
@@ -167,7 +173,6 @@ const captureFrames = async (server: RunningServer, html: string): Promise<Frame
   expect(model.status).toBe(200);
   const events = await openEvents(server);
   const reading = events.text('"type":"doc.changed"');
-  await new Promise((resolve) => setTimeout(resolve, 100));
   const patched = await patchOnce(server, html);
   expect(patched.status).toBe(200);
   const frames = framesOf(await reading);
@@ -225,7 +230,6 @@ describe("SSE 契约 · 服务器帧 → 客户端解析器", () => {
     if (server === undefined) throw new Error("fixture 未就绪");
     const events = await openEvents(server);
     const reading = events.text('"type":"library.changed"');
-    await new Promise((resolve) => setTimeout(resolve, 100));
     writeFileSync(
       join(fixture?.workspace ?? "", "other.html"),
       DOC.replace("一", "外部改"),

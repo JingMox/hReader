@@ -128,7 +128,7 @@ describe("chromeDepsOf · killGroup 与孙进程", () => {
         },
       });
       await waitForOf(() => existsSync(marker));
-      await sleepOf(200);
+      // marker 是孙进程 appendFileSync 建出来的：文件在 = 至少已写过一字节，ticking>0 已定。
       const ticking = readFileSync(marker, "utf8").length;
       const exited = waitForExitOf(child);
       child.killGroup("SIGTERM");
@@ -136,6 +136,8 @@ describe("chromeDepsOf · killGroup 与孙进程", () => {
       // 主进程已退出：剩下的字节数就是孙进程是否还活着的那一票。
       const frozen = readFileSync(marker, "utf8").length;
       expect(ticking).toBeGreaterThan(0);
+      // 负向窗口：证"孙进程不再写"必须留出静默期。40ms 一跳，300ms ≈ 7 个周期的余量；
+      // 文件没有其它可观察的"写者已死"信号，这段窗是计数静止本身。
       await sleepOf(300);
       expect(readFileSync(marker, "utf8").length).toBe(frozen);
     } finally {

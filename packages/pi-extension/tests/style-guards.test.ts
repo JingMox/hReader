@@ -57,6 +57,16 @@ const sleepOf = (ms: number): Promise<void> =>
     setTimeout(done, ms);
   });
 
+/** 等到发往 `urlPart` 的请求数到 `min`（fetch 一发出就记进 calls，不等响应）——
+ *  用它把"第二条命令在第一条还在路上时发出"变成可观察条件，不靠 sleep 猜调度。 */
+const untilCalls = async (harness: Harness, urlPart: string, min: number): Promise<void> => {
+  const deadline = Date.now() + 3_000;
+  while (harness.calls.filter((call) => call.url.includes(urlPart)).length < min) {
+    if (Date.now() > deadline) throw new Error(`等 ${urlPart} 第 ${String(min)} 次请求超时`);
+    await sleepOf(1);
+  }
+};
+
 describe("/hr-style 的归属（风格是文档属性）", () => {
   it("换到另一个文档后，状态行不再报上一个文档的风格", async () => {
     const harness = harnessOf({
@@ -97,10 +107,14 @@ describe("被取代的命令不得动 daemon（POST 侧）", () => {
       "/api/events": [EVENTS],
     });
     await harness.run("hreader", "docs/x.html");
-    // Act：先发 feynman-tech（卡在 GET），5ms 后发 atelier-editorial。
+    // Act：先发 feynman-tech（卡在 GET /api/theme 的 150ms 脚本延迟上），
+    // 等这条 GET 真的发出去了再发 atelier-editorial——"第一条在途"是可观察条件。
+    const themeCalls = harness.calls.filter((call) => call.url.includes("/api/theme")).length;
     await Promise.all([
       harness.run("hr-style", "feynman-tech"),
-      sleepOf(5).then(() => harness.run("hr-style", "atelier-editorial")),
+      untilCalls(harness, "/api/theme", themeCalls + 1).then(() =>
+        harness.run("hr-style", "atelier-editorial"),
+      ),
     ]);
     // Assert：只有后发那条落在 daemon 上；被打断的那条不得发 POST（否则盘上风格与状态行分叉）。
     expect(postsOf(harness, "/api/style").map((request) => request.body)).toEqual([
@@ -123,10 +137,14 @@ describe("/hr-style 的并发（后发起的命令赢）", () => {
       "/api/events": [EVENTS],
     });
     await harness.run("hreader", "docs/x.html");
+    // 第二条在第一条的 POST /api/style 还没 settle 时发出：
+    // POST 一进 calls 就证明第一条已推进到写盘阶段（其响应还压着 150ms）。
+    const styleCalls = harness.calls.filter((call) => call.url.includes("/api/style")).length;
     await Promise.all([
       harness.run("hr-style", "feynman-tech"),
-      // 第二条在第一条还没 settle 时发出。
-      sleepOf(5).then(() => harness.run("hr-style", "atelier-editorial")),
+      untilCalls(harness, "/api/style", styleCalls + 1).then(() =>
+        harness.run("hr-style", "atelier-editorial"),
+      ),
     ]);
     await harness.run("hreader", "");
     // Assert：两次都真发了 POST（不是"第二次吞掉第一次"）。

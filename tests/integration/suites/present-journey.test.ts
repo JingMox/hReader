@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, test } from "vitest";
 
 import { assert } from "../harness/check.ts";
 import { newDoc } from "../harness/cli.ts";
-import { launchBrowser, press, type Browser, type Page } from "../harness/chrome.ts";
+import { launchBrowser, press, type Browser, type KEYS, type Page } from "../harness/chrome.ts";
 import { chromeSkipReason, sandbox, type TestHome } from "../harness/env.ts";
 import { startMcp, toolJson, type McpClient } from "../harness/mcp.ts";
 import { killAllTracked } from "../harness/proc.ts";
@@ -24,6 +24,39 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
   let slideIds: string[] = [];
 
   const evalJs = (expr: string): Promise<unknown> => page.eval(expr);
+
+  /** 演示态快照：页码 hash、已放出步进数、是否已到末页且无步进可放（此时翻页键是合法 no-op）。 */
+  const PRESENT_SNAPSHOT = `(() => {
+    const slides = [...document.querySelectorAll('[data-hr-slide-state]')];
+    const idx = slides.findIndex((el) => el.getAttribute('data-hr-slide-state') === 'current');
+    return {
+      hash: location.hash,
+      shownSteps: document.querySelectorAll('[data-hr-step-state="current"],[data-hr-step-state="past"]').length,
+      atLast: idx !== -1 && idx === slides.length - 1,
+      futureSteps: document.querySelectorAll('[data-hr-step-state="future"]').length,
+    };
+  })()`;
+
+  /** 一按的真实效果：页码变了，或步进又多放出一条——断言锚 DOM 状态，不锚按键间隔。 */
+  const pressEffectOf = (prev: unknown): string => `(() => {
+    const prev = ${JSON.stringify(prev)};
+    return location.hash !== prev.hash ||
+      document.querySelectorAll('[data-hr-step-state="current"],[data-hr-step-state="past"]').length > prev.shownSteps;
+  })()`;
+
+  /** 按一次并等它落 DOM：末页无步进时翻页是 no-op，其余情况必须看到效果才算送达。 */
+  const pressAndSettle = async (key: keyof typeof KEYS): Promise<void> => {
+    const prev = await evalJs(PRESENT_SNAPSHOT);
+    await press(page, key);
+    const noop =
+      typeof prev === "object" &&
+      prev !== null &&
+      Reflect.get(prev, "atLast") === true &&
+      Reflect.get(prev, "futureSteps") === 0;
+    if (noop) return;
+    const landed = await page.wait(pressEffectOf(prev), 8_000);
+    assert(landed === true, `${key} 按键没有落出任何 DOM 变化`);
+  };
 
   const slideNodeIds = async (): Promise<string[]> => {
     const outline = toolJson(await mcp.call("hr_outline", { filePath: DOC }), "hr_outline");
@@ -79,11 +112,11 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
       ),
     );
     assert(stepped === true, "ArrowRight 后步进/页码都没动");
-    // 步进放完后继续按，直到翻到第 2 页（页数有界，限次防爆）。
+    // 步进放完后继续按：每一按等效果落 DOM 再按下一按（按键间不靠固定毫秒，
+    // 负载下"上一按还没处理又补一按"会把页翻过头）。
     for (let i = 0; i < 12; i += 1) {
       if (String(await evalJs(`location.hash`)) === "#p=2") break;
-      await press(page, "ArrowRight");
-      await new Promise((resolve) => setTimeout(resolve, 120));
+      await pressAndSettle("ArrowRight");
     }
     const hash = String(await evalJs(`location.hash`));
     assert(hash === "#p=2", `步进放完后没翻到第 2 页（hash=${hash}）`);
@@ -108,7 +141,9 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
   });
 
   test("#p=N 刷新后回到原页", async () => {
-    await press(page, "ArrowRight");
+    // 等这一按的效果落 DOM 再抓 before：否则 reload 会抢在按键处理前，
+    // 晚到的翻页把 hash 改掉，刷新后永远等不回旧值。
+    await pressAndSettle("ArrowRight");
     const before = String(await evalJs(`location.hash`));
     if (!/^#p=\d+$/u.test(before)) {
       // 演示态的 hash 可能被清成别的锚点；只要还在演示态就继续测刷新恢复。
