@@ -40,17 +40,12 @@ const rigged = (
 const seeded = (content: string): FakeFs => fakeFs({ "/ws/a.html": "x", [LOCK_PATH]: content });
 
 const lockedWith = async (fake: FakeFs, timeoutMs: number, deps?: PatchDeps): Promise<string> =>
-  codeOfAsync(() =>
-    acquireLock({ path: LOCK_PATH, timeoutMs }, deps ?? rigged(fake).deps),
-  );
+  codeOfAsync(() => acquireLock({ path: LOCK_PATH, timeoutMs }, deps ?? rigged(fake).deps));
 
 describe("acquireLock · 创建与释锁", () => {
   it("should write an owner payload and delete the lock on release", async () => {
     const fake = fakeFs({ "/ws/a.html": "x" });
-    const handle = await acquireLock(
-      { path: LOCK_PATH, timeoutMs: 0 },
-      rigged(fake).deps,
-    );
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps);
     const payload: unknown = JSON.parse(fake.textAt(LOCK_PATH));
 
     expect(Reflect.get(Object(payload), "pid")).toBe(process.pid);
@@ -62,10 +57,7 @@ describe("acquireLock · 创建与释锁", () => {
 
   it("should keep a lock that was taken over while we held it", async () => {
     const fake = fakeFs({ "/ws/a.html": "x" });
-    const handle = await acquireLock(
-      { path: LOCK_PATH, timeoutMs: 0 },
-      rigged(fake).deps,
-    );
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps);
     fake.state.files.set(LOCK_PATH, encodeUtf8(payloadOf(NOW)));
     await handle.release();
 
@@ -74,10 +66,7 @@ describe("acquireLock · 创建与释锁", () => {
 
   it("should swallow release read errors so the real error survives", async () => {
     const fake = fakeFs({ "/ws/a.html": "x" });
-    const handle = await acquireLock(
-      { path: LOCK_PATH, timeoutMs: 0 },
-      rigged(fake).deps,
-    );
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps);
     fake.fail("readFile", systemError("EACCES"));
     await expect(handle.release()).resolves.toBeUndefined();
 
@@ -98,10 +87,9 @@ describe("acquireLock · 重试超时", () => {
 
   it("should name the lock path in the locked error", async () => {
     const fake = seeded(payloadOf(NOW));
-    const failure = await acquireLock(
-      { path: LOCK_PATH, timeoutMs: 0 },
-      rigged(fake).deps,
-    ).catch((error: unknown) => error);
+    const failure = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps).catch(
+      (error: unknown) => error,
+    );
 
     expect(failure).toBeInstanceOf(HrError);
     expect(String(Reflect.get(Object(failure), "message"))).toContain(LOCK_PATH);
@@ -307,10 +295,7 @@ describe("acquireLock · 超时与报文", () => {
   it("should name the wait budget and the path in the timeout message", async () => {
     const fake = seeded(payloadOf(NOW));
     fake.state.mtimes.set(LOCK_PATH, NOW);
-    const error = await acquireLock(
-      { path: LOCK_PATH, timeoutMs: 3 },
-      rigged(fake).deps,
-    ).then(
+    const error = await acquireLock({ path: LOCK_PATH, timeoutMs: 3 }, rigged(fake).deps).then(
       () => undefined,
       (failure: unknown) => failure,
     );

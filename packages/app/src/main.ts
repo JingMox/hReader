@@ -427,5 +427,8 @@ export const main = async (options: MainOptions = {}): Promise<void> => {
 
 // 入口：模块被加载就地开跑（测试的 stub 在 import 前装好，行为与上一版一致）。
 void main().catch((error: unknown) => {
+  // main 的失败本身就可能起于"没有 document"（node/测试环境动态 import）——那时连
+  // 上报的可视面都不存在，再造 host 只会从 catch 里再抛一个未处理拒绝。
+  if (typeof document === "undefined") return;
   reportFailure(defaultHost(), error);
 });

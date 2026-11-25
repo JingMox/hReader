@@ -34,6 +34,12 @@ writeFileSync(
   '<article data-hr-id="hr-i"><h2 data-hr-id="hr-j">图</h2><p data-hr-id="hr-k">正文</p><img src="https://cdn.example/a.png" alt="外链"></article>',
 );
 
+// 模块级 fixture：import 各用例都吃这份源——靠"前一个用例顺手写的文件"会让乱序跑空。
+writeFileSync(
+  join(dir, "foreign.html"),
+  "<body><main><h1>外来</h1><script>boot()</script><p>正文</p></main></body>",
+);
+
 interface Capture {
   readonly io: CliIo;
   readonly out: string[];
@@ -118,10 +124,6 @@ describe("run · export 接线", () => {
 
 describe("run · import 接线", () => {
   it("should convert a foreign html and write <name>.hr.html by default", async () => {
-    writeFileSync(
-      join(dir, "foreign.html"),
-      "<body><main><h1>外来</h1><script>boot()</script><p>正文</p></main></body>",
-    );
     const { io, out } = capture();
     const code = await run(["import", "foreign.html"], io);
 
