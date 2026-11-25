@@ -42,6 +42,17 @@ describe("boot · 首屏与 widget 更新", () => {
     expect(blocksOf(h.store.get())).toEqual(["hr-a"]);
   });
 
+  it("should coalesce back-to-back doc.changed events into a single reload", async () => {
+    // 泵上的任务是微任务：两条同步事件之间不会有任务起跑——后一条落在"已排队"段，
+    // 被合并掉。不合并的话补丁连发会积成全量重取串，高负载下拖过等待上限。
+    const h = harnessOf(true);
+    boot(h.deps);
+    h.emit({ id: 1, type: "doc.changed", payload: {} });
+    h.emit({ id: 2, type: "doc.changed", payload: {} });
+    await flush();
+    expect(h.fetched.document).toBe(1);
+  });
+
   it("should refresh with an empty block list when the model omits children", async () => {
     const h = harnessOf(true);
     boot({ ...h.deps, fetchModel: () => Promise.resolve({ revision: "r9", model: {} }) });

@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createWatcher, DEBOUNCE_MS } from "../../src/server/watcher";
+import { createWatcher, DEBOUNCE_MS, RECONCILE_MS } from "../../src/server/watcher";
 
 type OnEvent = (event: string, name: string | undefined) => void;
 
@@ -91,19 +91,79 @@ describe("createWatcher · 挂载盲窗 reconcile", () => {
   /** 复刻 chokidar "就绪前的事件看不见"的挂载盲窗：事件在 ready 之前一律不派发。 */
   const readySource = (): {
     readonly readies: (() => void)[];
+    readonly fires: OnEvent[];
     readonly watch: Parameters<typeof createWatcher>[1];
   } => {
     const readies: (() => void)[] = [];
+    const fires: OnEvent[] = [];
     return {
       readies,
-      watch: (): ReadyHandle => ({
-        close: () => undefined,
-        ready: (handler) => {
-          readies.push(handler);
-        },
-      }),
+      fires,
+      watch: (_dir, onEvent): ReadyHandle => {
+        fires.push(onEvent);
+        return {
+          close: () => undefined,
+          ready: (handler) => {
+            readies.push(handler);
+          },
+        };
+      },
     };
   };
+
+  it("should probe the watched file on a heartbeat until a real event arrives", () => {
+    withFakeTimers(() => {
+      const seen: { readonly path: string; readonly probe: boolean | undefined }[] = [];
+      const { fires, watch } = readySource();
+      const watcher = createWatcher(
+        {
+          onFileChange: (path, probe) => {
+            seen.push({ path, probe });
+          },
+        },
+        watch,
+      );
+      try {
+        watcher.add("/tmp/dir", "a.html");
+        // 盲窗里事件源看不见写：心跳按节拍把被盯文件送下去做内容比对（带探针标记）。
+        vi.advanceTimersByTime(RECONCILE_MS * 2 + 50);
+        expect(seen.length).toBeGreaterThanOrEqual(2);
+        expect(
+          seen.every((entry) => entry.probe === true && entry.path === join("/tmp/dir", "a.html")),
+        ).toBe(true);
+        // 真事件到手 = 盲窗已结束：心跳停，之后只剩去抖出来的真投递。
+        fires[0]?.("change", "a.html");
+        vi.advanceTimersByTime(DEBOUNCE_MS * 2);
+        expect(seen.at(-1)).toEqual({ path: join("/tmp/dir", "a.html"), probe: undefined });
+        const count = seen.length;
+        vi.advanceTimersByTime(RECONCILE_MS * 4);
+        expect(seen).toHaveLength(count);
+      } finally {
+        watcher.close();
+      }
+    });
+  });
+
+  it("should stop the heartbeat at ready after one final reconcile", () => {
+    withFakeTimers(() => {
+      const changes: string[] = [];
+      const { readies, watch } = readySource();
+      const watcher = createWatcher({ onFileChange: (path) => changes.push(path) }, watch);
+      try {
+        watcher.add("/tmp/dir", "a.html");
+        vi.advanceTimersByTime(RECONCILE_MS + 50);
+        const beforeReady = changes.length;
+        expect(beforeReady).toBeGreaterThanOrEqual(1);
+        for (const ready of readies) ready();
+        // ready 落定补最后一跳，然后心跳永久停：再走多少拍都不再投递。
+        expect(changes).toHaveLength(beforeReady + 1);
+        vi.advanceTimersByTime(RECONCILE_MS * 4);
+        expect(changes).toHaveLength(beforeReady + 1);
+      } finally {
+        watcher.close();
+      }
+    });
+  });
 
   it("should re-read the watched file on source ready, catching writes the attach gap hid", () => {
     const changes: string[] = [];

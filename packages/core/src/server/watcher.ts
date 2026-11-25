@@ -11,7 +11,7 @@ export const DEBOUNCE_MS = 100;
 /** 盲窗对账心跳：挂载→ready 之间事件源看不见任何写，对被盯文件按固定间隔 reconcile
  *  一次（sha 去重在下游）；真事件到手或 ready 即停。ready 在 CPU 打满时能拖几十秒，
  *  只等 reconcile-at-ready 等于把盲窗拉长到整个挂载期。 */
-const RECONCILE_MS = 250;
+export const RECONCILE_MS = 250;
 
 export interface Watcher {
   /** `file` 为 `undefined` 时监听整个目录（书库目录），否则只关心该文件名。 */
@@ -49,20 +49,14 @@ const FILE_EVENTS: ReadonlySet<string> = new Set(["add", "change", "unlink", "re
  */
 const chokidarWatch: WatchFn = (dir, onEvent) => {
   const watcher = watch(dir, { depth: 0, ignoreInitial: true });
-  let seenReady = false;
   watcher.on("all", (event, path) => {
     onEvent(event, basename(path));
-  });
-  watcher.on("ready", () => {
-    seenReady = true;
   });
   watcher.on("error", () => undefined);
   return {
     close: () => void watcher.close(),
-    // 'ready' 只发一次：监听注册晚于它就绪的话 `once` 永远等不到——记过就直接调。
     ready: (handler) => {
-      if (seenReady) handler();
-      else watcher.once("ready", handler);
+      watcher.once("ready", handler);
     },
   };
 };
@@ -128,10 +122,6 @@ export const createWatcher = (input: WatcherInput, watchFn: WatchFn = chokidarWa
       const target = file === undefined ? undefined : join(dir, file);
       if (target !== undefined && handle.ready !== undefined) {
         poll = setInterval(() => {
-          if (!watchers.has(key)) {
-            stopPoll();
-            return;
-          }
           input.onFileChange(target, true);
         }, RECONCILE_MS);
         poll.unref();

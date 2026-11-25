@@ -12,6 +12,7 @@ import { resolveTarget } from "../../src/io/paths";
 import type { SseEvent } from "../../src/server/contracts";
 import { createEventRing } from "../../src/server/event-ring";
 import { createHub } from "../../src/server/hub";
+import { revisionOf } from "../../src/server/revision";
 import type { Runtime } from "../../src/server/runtime";
 import { createRuntime } from "../../src/server/runtime";
 import { nodeStyleDeps } from "../../src/style";
@@ -135,11 +136,13 @@ describe("runtime · workspace 经符号链接", () => {
       hub,
     );
     try {
-      // 第一个 attach 是整目录监听（fires[0]）；目录监听挂在 realpath 之后，等它就绪再动作。
-      await waitFor(() => fires.length > 0);
+      // 整目录监听与启动即挂的文件级监听共两路：都就绪（与挂载次序无关）再发事件。
+      // 没修错路由时目录监听的事件路径拼的是软链路径，active.realPath 对不上 →
+      // library.changed 与 doc.changed 并存；修好后两路都归 doc.changed（sha 去重剩一条）。
+      await waitFor(() => fires.length >= 2);
       await runtime.remember("doc.html");
       writeFileSync(join(realWs, "doc.html"), DOC.replace("一", "二"), "utf8");
-      fires[0]?.("change", "doc.html");
+      for (const fire of fires) fire("change", "doc.html");
       await waitFor(() => ring.since(0).events.length > 0);
       const events = ring.since(0).events;
       const types = events.map((event) => event.type);
@@ -147,6 +150,109 @@ describe("runtime · workspace 经符号链接", () => {
       expect(types).not.toContain("library.changed");
       // docId 走 target.relative：软链 workspace 也不得漏成 ../private/... 前缀。
       expect(JSON.stringify(events[0]?.payload)).toContain('"docId":"doc.html"');
+    } finally {
+      runtime.close();
+      hub.close();
+    }
+  });
+});
+
+describe("runtime · 活跃文档加载失败", () => {
+  it("should publish doc.error when changed bytes read fine but fail to load", async () => {
+    // readFile 成功 ≠ 加载成功：字节换成非法 UTF-8，load 必拒 → doc.error。
+    const workspace = tmp("hr-loaderr-ws-");
+    writeFileSync(join(workspace, "doc.html"), DOC, "utf8");
+    const { ring, hub } = ringOf();
+    let fire: ((event: string, name: string | undefined) => void) | undefined;
+    const runtime = createRuntime(
+      { workspace, docId: "doc.html", bodyMs: 200 },
+      {
+        patch: nodePatchDeps,
+        style: nodeStyleDeps(workspace),
+        watch: (_dir, onEvent) => {
+          fire = onEvent;
+          return watcherLike();
+        },
+      },
+      hub,
+    );
+    try {
+      await waitFor(() => fire !== undefined);
+      await runtime.remember("doc.html");
+      writeFileSync(join(workspace, "doc.html"), Buffer.from([0x61, 0xff, 0xfe, 0x62]));
+      fire?.("change", "doc.html");
+      await waitFor(() => ring.since(0).events.length > 0);
+      const types = ring.since(0).events.map((event) => event.type);
+      expect(types).toContain("doc.error");
+      expect(types).not.toContain("doc.changed");
+    } finally {
+      runtime.close();
+      hub.close();
+    }
+  });
+});
+
+describe("runtime · 在途事件与并写竞争", () => {
+  it("should dedupe at publish time when state.revision already moved to the same sha", async () => {
+    // fs 事件的 sha 闸过了 ≠ 发布时还该发：闸门与发布之间 state.revision 被 noteWrite
+    // 推到同一 sha 的话，publishChanged 末道去重必须短路（两条 in-flight 事件同字节同理）。
+    const workspace = tmp("hr-inflight-ws-");
+    writeFileSync(join(workspace, "doc.html"), DOC, "utf8");
+    const { ring, hub } = ringOf();
+    let fire: ((event: string, name: string | undefined) => void) | undefined;
+    // 闸门：arm 后第 2 次 readFile（load 内部那次）挂住，给 noteWrite 留出插队窗口。
+    let held: (() => void) | undefined;
+    let armed = false;
+    let reads = 0;
+    const patch = {
+      ...nodePatchDeps,
+      fs: {
+        ...nodePatchDeps.fs,
+        readFile: async (path: string) => {
+          const bytes = await nodePatchDeps.fs.readFile(path);
+          if (armed) {
+            reads += 1;
+            if (reads === 2)
+              await new Promise<void>((resolve) => {
+                held = resolve;
+              });
+          }
+          return bytes;
+        },
+      },
+    };
+    const runtime = createRuntime(
+      { workspace, docId: "doc.html", bodyMs: 200 },
+      {
+        patch,
+        style: nodeStyleDeps(workspace),
+        watch: (_dir, onEvent) => {
+          fire = onEvent;
+          return watcherLike();
+        },
+      },
+      hub,
+    );
+    try {
+      await waitFor(() => fire !== undefined);
+      const target = await runtime.remember("doc.html");
+      const after = DOC.replace("一", "二");
+      writeFileSync(join(workspace, "doc.html"), after, "utf8");
+      armed = true;
+      fire?.("change", "doc.html");
+      await waitFor(() => held !== undefined);
+      runtime.noteWrite({
+        reply: { status: 200, headers: {}, body: "" },
+        target,
+        revision: revisionOf(new TextEncoder().encode(after)),
+        changed: true,
+        changedNodes: [],
+      });
+      held?.();
+      await waitFor(() => ring.since(0).events.length > 0);
+      const types = ring.since(0).events.map((event) => event.type);
+      // 只有 noteWrite 那一条：fs 在途事件在 publish 处被同-sha 去重，不补发第二条。
+      expect(types.filter((type) => type === "doc.changed")).toHaveLength(1);
     } finally {
       runtime.close();
       hub.close();
