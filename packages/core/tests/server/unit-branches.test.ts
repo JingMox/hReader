@@ -12,6 +12,7 @@ import { HrError } from "../../src/hr-error";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import type { PatchDeps } from "../../src/io/ports";
 import { appendAnnotation, type AnnotationInput } from "../../src/server/annotation";
+import { busy } from "../../src/server/handlers";
 import { defaultHostsOf, hostAllowed } from "../../src/server/auth";
 import type { SseEvent } from "../../src/server/contracts";
 import {
@@ -1074,5 +1075,52 @@ describe("门面 · 可单测部件仍可用", () => {
     expect(statusOf("locked")).toBe(409);
     expect(statusOf("too_many_clients")).toBe(429);
     expect(statusOf("path_outside_workspace")).toBe(403);
+  });
+});
+
+describe("busy · locked 到 409 的唯一翻译点", () => {
+  it("should translate an HrError locked into busy", async () => {
+    const cause = new HrError("locked", "文件被占用");
+
+    const failure = await busy(async () => {
+      throw cause;
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(HrError);
+    expect(Reflect.get(Object(failure), "code")).toBe("busy");
+    expect(Reflect.get(Object(failure), "message")).toContain("写请求");
+    // 原始 locked 挂在 cause 上，定位问题时链条不能断。
+    expect(Reflect.get(Object(failure), "cause")).toBe(cause);
+  });
+
+  it("should pass through an HrError that is not locked", async () => {
+    const failure = await busy(async () => {
+      throw new HrError("invalid_input", "x");
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(Reflect.get(Object(failure), "code")).toBe("invalid_input");
+  });
+
+  it("should pass through non-HrError failures unchanged", async () => {
+    const boom = new Error("boom");
+
+    const failure = await busy(async () => {
+      throw boom;
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBe(boom);
+  });
+
+  it("should return the work result when nothing throws", async () => {
+    await expect(busy(async () => Promise.resolve("ok"))).resolves.toBe("ok");
   });
 });
