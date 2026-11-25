@@ -261,7 +261,6 @@ describe("main · 一键规范化（POST /normalize）", () => {
   });
 });
 
-
 describe("main · 外来主题（POST /api/style）", () => {
   const SELECT = `${ROOT} #hr-theme-select`;
 
@@ -279,9 +278,7 @@ describe("main · 外来主题（POST /api/style）", () => {
     stubs.doc.fire(SELECT, "change", { value: "manuscript" });
     await flush();
 
-    expect(requestBodies("/api/style")).toEqual([
-      { docId: "doc.html", visualId: "manuscript" },
-    ]);
+    expect(requestBodies("/api/style")).toEqual([{ docId: "doc.html", visualId: "manuscript" }]);
     expect(el(FRAME)?.attrs.get("src")).toBe("/s/doc.html?r=n1");
   });
 
