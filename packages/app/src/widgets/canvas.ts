@@ -3,6 +3,7 @@
 
 import type { Host } from "../dom.ts";
 import type { ReaderIntent, ReaderState } from "../state.ts";
+import { escapeAttr } from "../escape-attr.ts";
 import { COPY } from "./copy.ts";
 import type { Widget } from "./library.ts";
 
@@ -74,7 +75,11 @@ export const mountCanvas = (deps: CanvasDeps): Widget => {
     }
     host.cls(`${parent} #hr-doc`, "canvas--focus", next.focus);
     for (const id of next.blocks) {
-      host.cls(`${parent} [data-hr-id="${id}"]`, "doc__block--on", next.activeId === id);
+      host.cls(
+        `${parent} [data-hr-id="${escapeAttr(id)}"]`,
+        "doc__block--on",
+        next.activeId === id,
+      );
     }
   };
 

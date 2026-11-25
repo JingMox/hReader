@@ -53,6 +53,8 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   let loads = 0;
   /** 写请求在途时动作位不再接受点击：normalize/trust 串行化，重进路径因此最多跑一次。 */
   let pending = false;
+  /** destroy 后落地的写请求续跑一律丢弃：横幅已归还，复活它会污染下一个文档的壳。 */
+  let dead = false;
 
   const srcOf = (tag: string | undefined): string => {
     const base = `/s/${encodeURIComponent(deps.docId)}`;
@@ -90,6 +92,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   };
 
   const refresh = (revision?: string): void => {
+    if (dead) return;
     // 事件带 revision 就用它做 cache-bust；没带才动用本地计数（计数只为兜底，不掺进正常路径）。
     const tag = revision ?? `n${String((loads += 1))}`;
     host.attr(FRAME, "src", srcOf(tag));
@@ -105,6 +108,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     if (deps.info.cls === "normalizable") {
       void deps.normalize().then(settle, (cause: unknown) => {
         settle();
+        if (dead) return;
         reportError(cause);
       });
       return;
@@ -113,12 +117,14 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     void deps.setTrust(next).then(
       (applied) => {
         settle();
+        if (dead) return;
         trust = applied;
         paint();
         refresh();
       },
       (cause: unknown) => {
         settle();
+        if (dead) return;
         reportError(cause);
       },
     );
@@ -137,6 +143,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   return {
     refresh,
     destroy: () => {
+      dead = true;
       offAction();
       host.attr(parent, "data-hr-doc", undefined);
       host.attr(BANNER, "hidden", "");

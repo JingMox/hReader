@@ -2,6 +2,8 @@
 // **不引用 DOM lib**（本仓库 tsconfig 的 `lib` 只有 ES2023）：这里只声明"用到的那几个成员"的结构类型，
 // `main.ts` 传入真实 `document`；widgets 因此只依赖 `Host`/`NodeSpec`，不碰实现。
 
+import { escapeAttr } from "./escape-attr.ts";
+
 export interface NodeSpec {
   readonly tag: string;
   readonly attrs?: Readonly<Record<string, string>>;
@@ -198,7 +200,7 @@ const syncAllBlocks = (root: DocumentLike, markup: string): void => {
   const freshEntries = [...parsedBlocksOf(root, markup, true).entries()].reverse();
   let anchor: ElementLike | null = null;
   for (const [id, fresh] of freshEntries) {
-    anchor = placeBlock(container, found(root, `[data-hr-id="${id}"]`), fresh, anchor);
+    anchor = placeBlock(container, found(root, `[data-hr-id="${escapeAttr(id)}"]`), fresh, anchor);
   }
 };
 
@@ -216,12 +218,12 @@ const paintOps = (
     return index;
   },
   blockHtml: (id, markup) => {
-    const element = found(root, `[data-hr-id="${id}"]`);
+    const element = found(root, `[data-hr-id="${escapeAttr(id)}"]`);
     // 第二处：块级替换（内容来自服务器，已过白名单；不整篇重载所以滚动位置不丢）。
     if (element !== undefined && element.innerHTML !== markup) element.innerHTML = markup;
   },
   removeBlock: (id) => {
-    found(root, `[data-hr-id="${id}"]`)?.remove?.();
+    found(root, `[data-hr-id="${escapeAttr(id)}"]`)?.remove?.();
   },
   syncBlocks: (markup) => {
     syncAllBlocks(root, markup);
