@@ -11,7 +11,7 @@ import { withPost } from "./wire";
 
 const FOREIGN = [
   "<!doctype html>",
-  '<html><head><title>anim</title><script>const go=()=>requestAnimationFrame(go)</script></head>',
+  "<html><head><title>anim</title><script>const go=()=>requestAnimationFrame(go)</script></head>",
   '<body><div class="app">外来内容<script>go()</script></div></body></html>',
 ].join("\r\n");
 
@@ -120,7 +120,7 @@ describe("foreign doc · /api/style", () => {
           join(workspace, "doc.html"),
           [
             "<!doctype html><html><head><style id='hr-theme'>/* 旧主题一 */</style></head>",
-            "<body><div>x</div><style id=\"hr-theme\">/* 旧主题二 */</style></body></html>",
+            '<body><div>x</div><style id="hr-theme">/* 旧主题二 */</style></body></html>',
           ].join(""),
           "utf8",
         );

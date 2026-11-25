@@ -169,5 +169,7 @@ export const replaceTheme = (html: string, css: string): ReplaceThemeResult => {
 export const embeddedThemeCssOf = (html: string): string | undefined => {
   const parsed = parseHtml(html, { locations: true });
   const chosen = themesOf(parsed.root).find((anchor) => hasBytes(anchor.span));
-  return chosen === undefined ? undefined : html.slice(chosen.span.innerStart, chosen.span.innerEnd);
+  return chosen === undefined
+    ? undefined
+    : html.slice(chosen.span.innerStart, chosen.span.innerEnd);
 };

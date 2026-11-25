@@ -6,13 +6,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  codeOf,
-  isErrorResultOf,
-  leaveWorkspace,
-  sessionOf,
-  workspaceIn,
-} from "./harness";
+import { codeOf, isErrorResultOf, leaveWorkspace, sessionOf, workspaceIn } from "./harness";
 
 const FOREIGN_DOC =
   '<!doctype html><html><body><div class="app"><script>1</script>外来内容</div></body></html>';
