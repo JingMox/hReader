@@ -158,10 +158,12 @@ export const mountPresent = (deps: PresentDeps): PresentWidget => {
   };
 
   const update = (next: ReaderState): void => {
-    const isSlides = kindOf(host, parent) === "slides";
-    if (isSlides !== buttonShown) {
-      buttonShown = isSlides;
-      host.attr(`${parent} #hr-present-btn`, "hidden", isSlides ? undefined : "");
+    // 页表没到不放按钮：此刻点击发的 presentEntered 会被 reduce 拒掉（pages 空），
+    // 按钮等于死键——与 hash 续页等 `next.pages.length > 0` 是同一个闸。
+    const canPresent = kindOf(host, parent) === "slides" && next.pages.length > 0;
+    if (canPresent !== buttonShown) {
+      buttonShown = canPresent;
+      host.attr(`${parent} #hr-present-btn`, "hidden", canPresent ? undefined : "");
     }
     if (next.documentHtml !== lastHtml) {
       lastHtml = next.documentHtml;
