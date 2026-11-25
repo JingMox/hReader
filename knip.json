@@ -49,7 +49,7 @@
       "ignoreDependencies": ["@deepseek-ai/dsh-attachment", "@deepseek-ai/dsh-package-manifest"]
     },
     "packages/desktop": {
-      "entry": ["webview/*.js"]
+      "entry": ["webview/*.js", "tests/**/*.ts"]
     }
   },
   "ignoreIssues": {

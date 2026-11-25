@@ -83,6 +83,11 @@ pub fn parse(
                 let seconds = raw
                     .parse::<u64>()
                     .map_err(|_| OptionsError::BadHold(raw.clone()))?;
+                // `--hold` 是调试用开关；不设上限时 `Instant + Duration::from_secs(u64::MAX)`
+                // 会溢出 panic。
+                if seconds > 86_400 {
+                    return Err(OptionsError::BadHold(raw));
+                }
                 options.hold = Some(seconds);
             }
             "--open" => {
@@ -201,6 +206,23 @@ mod tests {
         assert_eq!(
             parse_in(&["--hold", "soon"]),
             Err(OptionsError::BadHold("soon".to_string()))
+        );
+    }
+
+    #[test]
+    fn hold_is_capped_below_instant_overflow() {
+        // `--hold` 进入 `Instant::now() + Duration::from_secs(n)`：u64::MAX 直接溢出 panic。
+        assert_eq!(
+            parse_in(&["--hold", &u64::MAX.to_string()]),
+            Err(OptionsError::BadHold(u64::MAX.to_string()))
+        );
+        assert_eq!(
+            parse_in(&["--hold", "86401"]),
+            Err(OptionsError::BadHold("86401".to_string()))
+        );
+        assert_eq!(
+            parse_in(&["--hold", "86400"]).map(|o| o.hold),
+            Ok(Some(86400))
         );
     }
 }

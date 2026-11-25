@@ -81,23 +81,38 @@ struct RawDaemonFile {
     workspace: Option<Field<String>>,
 }
 
+/// `daemon.json` 是几十字段以内的小信封；合法文件远比这个小。
+const MAX_DAEMON_FILE_BYTES: u64 = 64 * 1024;
+
 pub fn daemon_file_in(home: &Path) -> PathBuf {
     home.join(STORE_DIR).join(DAEMON_FILE)
 }
 
 pub fn read_daemon(path: &Path) -> Result<DaemonState, BadDaemonFile> {
-    let text = match fs::read_to_string(path) {
-        Ok(text) => text,
+    let bad = |reason: &'static str| BadDaemonFile {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(DaemonState::Absent)
         }
-        Err(_) => {
-            return Err(BadDaemonFile {
-                path: path.to_path_buf(),
-                reason: "无法读取",
-            })
-        }
+        Err(_) => return Err(bad("无法读取")),
     };
+    use std::io::Read;
+    let mut buffer = Vec::new();
+    if file
+        .take(MAX_DAEMON_FILE_BYTES + 1)
+        .read_to_end(&mut buffer)
+        .is_err()
+    {
+        return Err(bad("无法读取"));
+    }
+    if buffer.len() as u64 > MAX_DAEMON_FILE_BYTES {
+        return Err(bad("文件过大"));
+    }
+    let text = String::from_utf8(buffer).map_err(|_| bad("不是 UTF-8 文本"))?;
     parse_daemon(path, &text)
 }
 
@@ -197,5 +212,35 @@ mod tests {
     fn top_level_non_object_is_error() {
         let error = read_daemon(&fixture("not-an-object.json")).expect_err("非对象必须报错");
         assert!(error.to_string().contains("顶层不是对象"));
+    }
+
+    /// daemon.json 是有界信封（几十个字段以内、几百字节），读到超出上限的文件直接判坏，
+    /// 不许为一份不可能合法的输入付出无界内存。
+    #[test]
+    fn oversized_daemon_file_is_rejected_not_slurped() {
+        let dir = std::env::temp_dir().join(format!("hr-daemon-big-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("daemon.json");
+        let huge = format!(
+            "{{\"port\":8123,\"pid\":42,\"token\":\"t\",\"workspace\":\"/ws\",\"pad\":\"{}\"}}",
+            "x".repeat(128 * 1024)
+        );
+        fs::write(&path, huge).expect("write oversized");
+        let error = read_daemon(&path).expect_err("超限文件必须判坏");
+        assert!(error.to_string().contains("过大"), "{error}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 非 UTF-8 内容判坏而不是 panic。
+    #[test]
+    fn non_utf8_daemon_file_is_bad() {
+        let dir = std::env::temp_dir().join(format!("hr-daemon-utf8-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("daemon.json");
+        fs::write(&path, [0xff, 0xfe, 0x00]).expect("write non-utf8");
+        assert!(read_daemon(&path).is_err());
+        let _ = fs::remove_dir_all(&dir);
     }
 }

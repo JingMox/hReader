@@ -2,12 +2,10 @@
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::path::Path;
 use std::time::Duration;
 
 use serde::Serialize;
 
-use crate::cli_locate;
 use crate::daemon_file;
 use crate::options::ShellOptions;
 use crate::redact;
@@ -35,15 +33,8 @@ fn probe(argv: &[String], options: &ShellOptions) -> Result<String, String> {
         .map_err(|error| startup_message(&crate::StartupError::Open(error)))?;
     let doc_id =
         document_of(&action, &options.workspace).map_err(|error| startup_message(&error))?;
-    let located = cli_locate::locate(
-        options.cli_path.as_deref(),
-        std::env::var_os("HREADER_CLI")
-            .map(std::path::PathBuf::from)
-            .as_deref(),
-        std::env::var("PATH").ok().as_deref(),
-        &|candidate: &Path| candidate.is_file(),
-    )
-    .map_err(|error| startup_message(&crate::StartupError::Locate(error)))?;
+    // 与 GUI 共用同一条定位链：--cli-path / HREADER_CLI / PATH / 内置资源，少一处分叉。
+    let cli = crate::locate_cli(options).map_err(|error| startup_message(&error))?;
 
     let state = daemon_file::read_daemon(&daemon_file::daemon_file_in(&options.home))
         .map_err(|error| startup_message(&crate::StartupError::DaemonFile(error)))?;
@@ -53,7 +44,7 @@ fn probe(argv: &[String], options: &ShellOptions) -> Result<String, String> {
             return Err(startup_message(&crate::StartupError::Conflict(conflict)))
         }
         Decision::Spawn { .. } => Daemon::spawn(
-            &located.cli,
+            &cli,
             &doc_id,
             &options.workspace,
             &options.home,

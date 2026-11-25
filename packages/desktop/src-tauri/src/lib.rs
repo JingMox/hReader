@@ -270,14 +270,31 @@ fn default_gui_workspace(home: &Path) -> Option<PathBuf> {
 
 /// 若桌面壳私有目录里残留着**另一个工作区**的 daemon，先停掉它，确保新打开的文档/工作区不被旧 daemon 拒收。
 pub(crate) fn clear_other_workspace_daemon(home: &Path, target_workspace: &Path) {
+    clear_other_workspace_daemon_with(home, target_workspace, &SystemProbe, &|pid| {
+        supervisor::stop_pid(pid)
+    });
+}
+
+/// 注入探针与击杀动作的实现：`daemon.json` 里的 pid 可能早被 OS 复用——只有 `/healthz`
+/// 仍由这个 pid 应答才证明那还是"我们记的那个 daemon"，否则只清残留文件、绝不向陌生进程发 SIGTERM。
+pub(crate) fn clear_other_workspace_daemon_with(
+    home: &Path,
+    target_workspace: &Path,
+    probe: &dyn Probe,
+    stop: &dyn Fn(u32),
+) {
     let file = daemon_file::daemon_file_in(home);
-    if let Ok(daemon_file::DaemonState::Present(info)) = daemon_file::read_daemon(&file) {
-        if info.workspace != target_workspace {
-            supervisor::stop_pid(info.pid);
-            let _ = std::fs::remove_file(&file);
-            std::thread::sleep(Duration::from_millis(120));
-        }
+    let Ok(daemon_file::DaemonState::Present(info)) = daemon_file::read_daemon(&file) else {
+        return;
+    };
+    if info.workspace == target_workspace {
+        return;
     }
+    if probe.health_pid(info.port) == Some(info.pid) {
+        stop(info.pid);
+        std::thread::sleep(Duration::from_millis(120));
+    }
+    let _ = std::fs::remove_file(&file);
 }
 
 fn prepare_gui_launch(argv: &[String], cwd: &Path, options: &mut ShellOptions) {
@@ -446,13 +463,23 @@ pub(crate) fn fallback_cli_path() -> Option<PathBuf> {
     None
 }
 
-fn locate_cli(options: &ShellOptions) -> Result<PathBuf, StartupError> {
+/// GUI 与 `--smoke` 共用的 CLI 定位：`--cli-path`/`HREADER_CLI`/PATH 都落空时回退内置资源。
+pub(crate) fn locate_cli(options: &ShellOptions) -> Result<PathBuf, StartupError> {
     let env_cli = std::env::var_os("HREADER_CLI").map(PathBuf::from);
     let path_var = std::env::var("PATH").ok();
+    locate_cli_with(options, env_cli.as_deref(), path_var.as_deref())
+}
+
+/// 环境变量可注入的实现：`--smoke` 与 GUI 对"没找到时怎么办"必须完全一致。
+pub(crate) fn locate_cli_with(
+    options: &ShellOptions,
+    env_cli: Option<&Path>,
+    path_var: Option<&str>,
+) -> Result<PathBuf, StartupError> {
     match cli_locate::locate(
         options.cli_path.as_deref(),
-        env_cli.as_deref(),
-        path_var.as_deref(),
+        env_cli,
+        path_var,
         &|candidate: &Path| candidate.is_file(),
     ) {
         Ok(located) => Ok(located.cli),
@@ -851,6 +878,127 @@ mod tests {
             Err(StartupError::NoDocument(_))
         ));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    /// `clear_other_workspace_daemon` 的探针/击杀注入版：daemon.json 里的 pid 可能
+    /// 已经被 OS 复用——只有 `/healthz` 仍由这个 pid 应答才允许 SIGTERM，否则只清记录。
+    #[test]
+    fn clearing_a_foreign_workspace_daemon_verifies_pid_before_killing() {
+        use crate::spawn_decision::Probe;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        struct Fake {
+            health: Option<u32>,
+        }
+        impl Probe for Fake {
+            fn port_open(&self, _port: u16) -> bool {
+                self.health.is_some()
+            }
+            fn process_alive(&self, _pid: u32) -> bool {
+                true
+            }
+            fn health_pid(&self, _port: u16) -> Option<u32> {
+                self.health
+            }
+        }
+
+        let root = std::env::temp_dir().join(format!("hr-clear-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let home = root.join("home");
+        fs::create_dir_all(home.join(".hreader")).expect("home");
+        let file = daemon_file::daemon_file_in(&home);
+        fs::write(
+            &file,
+            "{\"port\":8123,\"token\":\"t\",\"pid\":42,\"workspace\":\"/old-ws\"}",
+        )
+        .expect("write daemon.json");
+
+        let killed = Rc::new(RefCell::new(Vec::<u32>::new()));
+        let stop = {
+            let killed = Rc::clone(&killed);
+            move |pid: u32| killed.borrow_mut().push(pid)
+        };
+
+        // pid 42 被别的进程复用（healthz 应答的是 7）：不许杀，只清掉残留文件。
+        clear_other_workspace_daemon_with(
+            &home,
+            Path::new("/new-ws"),
+            &Fake { health: Some(7) },
+            &stop,
+        );
+        assert_eq!(*killed.borrow(), Vec::<u32>::new(), "pid 复用时不许误杀");
+        assert!(!file.exists(), "残留记录仍应清除");
+
+        // healthz 完全不应答（pid 42 死活未知）：同样只清文件不杀进程。
+        fs::write(
+            &file,
+            "{\"port\":8123,\"token\":\"t\",\"pid\":42,\"workspace\":\"/old-ws\"}",
+        )
+        .expect("rewrite");
+        clear_other_workspace_daemon_with(
+            &home,
+            Path::new("/new-ws"),
+            &Fake { health: None },
+            &stop,
+        );
+        assert_eq!(
+            *killed.borrow(),
+            Vec::<u32>::new(),
+            "healthz 不应答时不许误杀"
+        );
+        assert!(!file.exists());
+
+        // healthz 确认还是 42 号 daemon：这才是"我记录的那个 daemon"，可以停。
+        fs::write(
+            &file,
+            "{\"port\":8123,\"token\":\"t\",\"pid\":42,\"workspace\":\"/old-ws\"}",
+        )
+        .expect("rewrite");
+        clear_other_workspace_daemon_with(
+            &home,
+            Path::new("/new-ws"),
+            &Fake { health: Some(42) },
+            &stop,
+        );
+        assert_eq!(*killed.borrow(), vec![42], "确认是本 daemon 才允许收尸");
+
+        // 同一个工作区的 daemon 不能动。
+        fs::write(
+            &file,
+            "{\"port\":8123,\"token\":\"t\",\"pid\":42,\"workspace\":\"/new-ws\"}",
+        )
+        .expect("rewrite");
+        clear_other_workspace_daemon_with(
+            &home,
+            Path::new("/new-ws"),
+            &Fake { health: Some(42) },
+            &stop,
+        );
+        assert_eq!(*killed.borrow(), vec![42], "同工作区 daemon 不许碰");
+        assert!(file.exists(), "同工作区的记录要留着");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn locate_cli_falls_back_to_bundled_when_path_lacks_hr() {
+        let options = ShellOptions {
+            smoke: true,
+            home: PathBuf::from("/tmp/h"),
+            workspace: PathBuf::from("/tmp/ws"),
+            cli_path: None,
+            port: None,
+            hold: None,
+        };
+        // PATH 里没有任何 hr：显式指定缺失会报错，未指定时必须落到内置资源。
+        let located = locate_cli_with(&options, None, Some("/definitely/no/hr/here"));
+        let cli = located.expect("PATH 找不到时应回退到内置 CLI");
+        assert!(cli.is_file(), "{cli:?} 必须真的存在");
+        assert!(
+            cli.file_name().and_then(|n| n.to_str()) == Some("hr.mjs")
+                || cli.file_name().and_then(|n| n.to_str()) == Some("cli.mjs"),
+            "{cli:?} 应是内置 cli"
+        );
     }
 
     #[test]

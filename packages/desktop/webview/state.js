@@ -187,7 +187,10 @@ function bridgeNavigate(path) {
     removeStorage(window.sessionStorage, "hrd_sidebar_tab");
     removeStorage(window.sessionStorage, "hrd_auto_outline");
   }
-  window.location.href = "http://hr-desktop.local" + path;
+  // 壳只认回带会话令牌的桥导航：文档/外部页伪造不了这些原生动作。
+  const token = encodeURIComponent((hrd.state.ctx && hrd.state.ctx.bridgeToken) || "");
+  const sep = path.indexOf("?") >= 0 ? "&" : "?";
+  window.location.href = "http://hr-desktop.local" + path + sep + "t=" + token;
 }
 
 window.__hrDesktopToast = showToast;

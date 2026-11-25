@@ -42,6 +42,8 @@ struct DesktopState {
     workspace: PathBuf,
     doc_id: String,
     cli: PathBuf,
+    /// `hr-desktop.local` 桥导航的会话令牌：页面 JS 必须回带它壳才执行原生动作。
+    bridge_token: String,
     /// 当前这份文档为什么打不开；`None` = 没有文档级失败。
     doc_error: Option<workbench::DocError>,
 }
@@ -59,6 +61,7 @@ impl DesktopState {
             ),
             is_macos: cfg!(target_os = "macos"),
             doc_error: self.doc_error.clone(),
+            bridge_token: self.bridge_token.clone(),
         }
     }
 
@@ -117,6 +120,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 workspace: session.workspace,
                 doc_id: session.doc_id,
                 cli: session.cli,
+                bridge_token: mint_bridge_token(),
                 doc_error: None,
             };
             (tauri::WebviewUrl::External(parsed), title, state)
@@ -130,6 +134,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 workspace,
                 doc_id: String::new(),
                 cli,
+                bridge_token: mint_bridge_token(),
                 doc_error: None,
             };
             (
@@ -152,6 +157,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 workspace,
                 doc_id: String::new(),
                 cli,
+                bridge_token: mint_bridge_token(),
                 doc_error: Some(workbench::DocError { doc_id, message }),
             };
             (
@@ -209,11 +215,25 @@ pub fn run(target: LaunchTarget) -> i32 {
                     }
                 })
                 .on_navigation(move |nav_url| {
-                    if nav_url.host_str() == Some("hr-desktop.local") {
-                        handle_bridge_navigation(&nav_app, &nav_shared, nav_url);
-                        return false;
+                    match classify_navigation(nav_url) {
+                        NavClass::Bridge => {
+                            let expected = nav_shared
+                                .lock()
+                                .map(|guard| guard.bridge_token.clone())
+                                .unwrap_or_default();
+                            if bridge_authorized(nav_url, &expected) {
+                                handle_bridge_navigation(&nav_app, &nav_shared, nav_url);
+                            }
+                            false
+                        }
+                        NavClass::Local => true,
+                        // 文档里的外链不能把整个工作台导航走：交给系统浏览器。
+                        NavClass::External => {
+                            open_external(nav_url);
+                            false
+                        }
+                        NavClass::Deny => false,
                     }
-                    true
                 })
                 .build()?;
             let _ = window.set_focus();
@@ -531,6 +551,74 @@ fn handle_menu_event(app: &tauri::AppHandle, shared: &SharedState, id: &str) {
     }
 }
 
+/// `on_navigation` 的目标分类：工作台只许在 loopback/Tauri scheme 里动，外链交给浏览器，
+/// 其余 scheme（`file:`/`javascript:`/`data:`…）一律拦截——文档内容本身不可信。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NavClass {
+    /// daemon 页面与 Tauri app scheme：放行。
+    Local,
+    /// `hr-desktop.local` 原生桥：壳接管，永不真正导航。
+    Bridge,
+    /// http(s) 外链：交给系统浏览器。
+    External,
+    /// 其他一律拦截。
+    Deny,
+}
+
+fn classify_navigation(url: &tauri::Url) -> NavClass {
+    let host = url.host_str().unwrap_or_default();
+    let is_loopback = matches!(host, "127.0.0.1" | "localhost" | "[::1]" | "::1");
+    match url.scheme() {
+        "tauri" => NavClass::Local,
+        "http" if host == "hr-desktop.local" => NavClass::Bridge,
+        "http" | "https" if host == "hr-desktop.local" => NavClass::Deny,
+        "http" if is_loopback || host == "tauri.localhost" => NavClass::Local,
+        "https" if host == "tauri.localhost" => NavClass::Local,
+        "http" | "https" => NavClass::External,
+        _ => NavClass::Deny,
+    }
+}
+
+/// 桥 URL 必须回带 `?t=<bridgeToken>`：文档/外部页猜不到这个会话随机值，伪造不了原生动作。
+fn bridge_authorized(url: &tauri::Url, expected: &str) -> bool {
+    if expected.is_empty() {
+        return false;
+    }
+    query_param(url, "t").is_some_and(|token| token == expected)
+}
+
+/// RandomState 的实例种子每次随机：令牌无需密码学强度，只需页面读不到也猜不中。
+fn mint_bridge_token() -> String {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut hasher = RandomState::new().build_hasher();
+    hasher.write_u128(nanos);
+    hasher.write_u32(std::process::id());
+    format!("{:016x}", hasher.finish())
+}
+
+/// 外链交给系统浏览器打开，而不是让 webview 离开工作台。
+fn open_external(url: &tauri::Url) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("open").arg(url.as_str()).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url.as_str()])
+            .spawn();
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        let _ = Command::new("xdg-open").arg(url.as_str()).spawn();
+    }
+}
+
 fn query_param(url: &tauri::Url, name: &str) -> Option<String> {
     url.query_pairs()
         .find(|(key, _)| key == name)
@@ -797,7 +885,9 @@ fn open_doc_in_workspace(app: tauri::AppHandle, shared: SharedState, doc: String
 
 fn safe_new_filename(raw: &str, workspace: &Path) -> String {
     let trimmed = raw.trim().replace(['/', '\\', '\0'], "-");
-    let stem = if trimmed.is_empty() {
+    // 文件树按点开头跳过：剥掉前导点，否则 `.hidden` 这类名字建出来用户永远看不到。
+    let stem = trimmed.trim_start_matches('.');
+    let stem = if stem.is_empty() {
         format!(
             "doc-{}",
             std::time::SystemTime::now()
@@ -806,7 +896,7 @@ fn safe_new_filename(raw: &str, workspace: &Path) -> String {
                 .unwrap_or(0)
         )
     } else {
-        trimmed
+        stem.to_string()
     };
     let mut name = if stem.ends_with(".html") || stem.ends_with(".htm") {
         stem
@@ -891,20 +981,38 @@ fn reveal_path(target: &Path) {
     }
 }
 
+/// reveal 的目标必须留在工作区里：`?doc=` 来自页面，绝对路径/`..` 会把它带出工作区
+/// （顺带用 Finder 的存在性确认做了 oracle）。越界或不存在一律回落到工作区根。
+fn resolve_reveal_target(workspace: &Path, doc: &str) -> PathBuf {
+    if doc.is_empty() {
+        return workspace.to_path_buf();
+    }
+    let rel = Path::new(doc);
+    let escapes = rel.is_absolute()
+        || rel.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        });
+    if escapes {
+        return workspace.to_path_buf();
+    }
+    let candidate = workspace.join(rel);
+    if candidate.exists() {
+        candidate
+    } else {
+        workspace.to_path_buf()
+    }
+}
+
 fn reveal_in_finder(shared: &SharedState, doc_opt: Option<&str>) {
     let target = match shared.lock() {
         Ok(guard) => {
             let doc = doc_opt.unwrap_or(&guard.doc_id);
-            if doc.is_empty() {
-                guard.workspace.clone()
-            } else {
-                let candidate = guard.workspace.join(doc);
-                if candidate.exists() {
-                    candidate
-                } else {
-                    guard.workspace.clone()
-                }
-            }
+            resolve_reveal_target(&guard.workspace, doc)
         }
         Err(_) => return,
     };
@@ -1223,6 +1331,77 @@ mod tests {
     }
 
     #[test]
+    fn navigation_targets_are_classified_by_scheme_and_host() {
+        use tauri::Url;
+        let nav = |raw: &str| classify_navigation(&Url::parse(raw).expect("url"));
+        assert_eq!(nav("http://127.0.0.1:8123/index.html"), NavClass::Local);
+        assert_eq!(nav("http://localhost:8123/s/a.html"), NavClass::Local);
+        assert_eq!(nav("http://[::1]:8123/x"), NavClass::Local);
+        assert_eq!(nav("tauri://localhost/index.html"), NavClass::Local);
+        assert_eq!(nav("http://tauri.localhost/index.html"), NavClass::Local);
+        assert_eq!(nav("http://hr-desktop.local/bridge"), NavClass::Bridge);
+        assert_eq!(nav("https://hr-desktop.local/x"), NavClass::Deny);
+        assert_eq!(nav("http://example.com/"), NavClass::External);
+        assert_eq!(nav("https://attacker.example/pwn"), NavClass::External);
+        assert_eq!(nav("file:///etc/passwd"), NavClass::Deny);
+        assert_eq!(nav("javascript:alert(1)"), NavClass::Deny);
+        assert_eq!(nav("data:text/html,<h1>x</h1>"), NavClass::Deny);
+        assert_eq!(nav("about:blank"), NavClass::Deny);
+    }
+
+    #[test]
+    fn bridge_urls_require_the_session_token() {
+        use tauri::Url;
+        let url = |q: &str| Url::parse(&format!("http://hr-desktop.local/{q}")).expect("url");
+        assert!(bridge_authorized(&url("bridge?t=secret&x=1"), "secret"));
+        assert!(!bridge_authorized(&url("bridge?t=other"), "secret"));
+        assert!(!bridge_authorized(&url("bridge"), "secret"));
+        assert!(!bridge_authorized(&url("bridge?t="), "secret"));
+        // 令牌本身不能是空串，否则 `?t=` 也能对上。
+        assert!(!bridge_authorized(&url("bridge?t="), ""));
+        let a = mint_bridge_token();
+        let b = mint_bridge_token();
+        assert!(!a.is_empty() && a != b, "桥令牌必须随机且不复用");
+    }
+
+    #[test]
+    fn reveal_never_leaves_the_workspace() {
+        let ws = std::env::temp_dir().join(format!("hr-reveal-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&ws);
+        fs::create_dir_all(ws.join("sub")).expect("建工作区");
+        fs::write(ws.join("doc.html"), "<p>x</p>").expect("写文档");
+        fs::write(ws.join("sub").join("doc.html"), "<p>x</p>").expect("写子文档");
+        // 绝对路径与 .. 逃逸一律回落到工作区根。
+        assert_eq!(resolve_reveal_target(&ws, "/etc/passwd"), ws);
+        assert_eq!(resolve_reveal_target(&ws, "../outside.html"), ws);
+        assert_eq!(resolve_reveal_target(&ws, "..\\..\\win"), ws);
+        // 空串（DocError / 空态）回落工作区；工作区内存在的相对路径照常解析。
+        assert_eq!(resolve_reveal_target(&ws, ""), ws);
+        assert_eq!(resolve_reveal_target(&ws, "missing.html"), ws);
+        assert_eq!(
+            resolve_reveal_target(&ws, "sub/doc.html"),
+            ws.join("sub/doc.html")
+        );
+        assert_eq!(resolve_reveal_target(&ws, "doc.html"), ws.join("doc.html"));
+        let _ = fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn new_doc_names_never_create_hidden_files() {
+        let ws = Path::new("/tmp/ws");
+        for raw in ["..", ".", ".hidden", "..\\..\\x"] {
+            let name = safe_new_filename(raw, ws);
+            assert!(
+                !name.starts_with('.'),
+                "{raw:?} 生成了隐藏文件名 {name:?}——文件树按点开头跳过，用户永远看不到这份文件"
+            );
+        }
+        assert_eq!(safe_new_filename(".hidden", ws), "hidden.html");
+        assert_eq!(safe_new_filename("note", ws), "note.html");
+        assert_eq!(safe_new_filename("note.html", ws), "note.html");
+    }
+
+    #[test]
     fn doc_error_keeps_the_workspace_and_clears_only_the_document() {
         let root = std::env::temp_dir().join(format!("hr-win-docerr-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -1237,6 +1416,7 @@ mod tests {
             workspace: root.clone(),
             doc_id: "bad.html".to_string(),
             cli: PathBuf::from("/nonexistent/hr"),
+            bridge_token: "test-token".to_string(),
             doc_error: None,
         };
         state.mark_doc_error(

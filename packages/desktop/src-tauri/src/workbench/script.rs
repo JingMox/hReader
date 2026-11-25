@@ -45,10 +45,16 @@ pub struct WorkbenchContext {
     pub is_macos: bool,
     /// `Some` 时当前没有打开成功的文档：前端在正文区渲染"这份文档打不开"。
     pub doc_error: Option<DocError>,
+    /// 原生桥导航（`hr-desktop.local`）的会话令牌：页面 JS 必须回带它壳才认账。
+    pub bridge_token: String,
 }
 
 fn serialize_context(ctx: &WorkbenchContext) -> String {
-    serde_json::to_string(ctx).expect("WorkbenchContext 序列化不应失败")
+    // payload 会原样落进 HTML 的 <script> 槽位：主题名、docError 文案、文件名都可控，
+    // 里面的 `</script>` 会提前终止初始化脚本变成注入。JSON 字符串里 `\/` 与 `/` 等价。
+    serde_json::to_string(ctx)
+        .expect("WorkbenchContext 序列化不应失败")
+        .replace("</", "<\\/")
 }
 
 /// 序列化实时工作台上下文，用于在 `on_page_load` 时刷新前端文档与工作区状态。
@@ -60,7 +66,9 @@ pub fn sync_payload_js(ctx: &WorkbenchContext) -> String {
 /// 生成注入到 Webview 窗口的完整初始化脚本。
 pub fn init_script(ctx: &WorkbenchContext) -> String {
     let payload = serialize_context(ctx);
-    let css_literal = serde_json::to_string(WORKBENCH_CSS).expect("CSS 字符串序列化不应失败");
+    let css_literal = serde_json::to_string(WORKBENCH_CSS)
+        .expect("CSS 字符串序列化不应失败")
+        .replace("</", "<\\/");
 
     let mut script = String::with_capacity(
         payload.len()
@@ -110,6 +118,7 @@ mod tests {
                 css: String::new(),
             }],
             is_macos: true,
+            bridge_token: "t".to_string(),
             doc_error: None,
         };
         let script = init_script(&ctx);
@@ -137,6 +146,38 @@ mod tests {
         assert!(sync_payload_js(&ctx).contains("window.__hrDesktopSync"));
     }
 
+    /// 注入脚本被原样塞进 HTML 的 script 槽位：payload 里任何 `</` 序列（主题名、
+    /// docError 文案、文件路径都可能带）都必须写成 `<\/`，否则 `</script>` 直接截断
+    /// 初始化脚本，攻击者控制的主题 JSON 就能在 webview 里注入任意代码。
+    #[test]
+    fn payloads_never_emit_a_literal_close_tag_sequence() {
+        let ctx = WorkbenchContext {
+            workspace: "/tmp/ws".to_string(),
+            doc_id: String::new(),
+            files: vec!["a.html".to_string()],
+            tree: vec![],
+            custom_themes: vec![CustomTheme {
+                id: "evil".to_string(),
+                name: "</SCRIPT><img src=x onerror=alert(1)>".to_string(),
+                base: "light".to_string(),
+                vars: vec![("--x".to_string(), "</script>".to_string())],
+                css: "a{}</script><script>alert(2)</script>".to_string(),
+            }],
+            is_macos: true,
+            bridge_token: "t".to_string(),
+            doc_error: Some(DocError {
+                doc_id: "bad.html".to_string(),
+                message: "</script><script>alert(3)</script>".to_string(),
+            }),
+        };
+        for js in [init_script(&ctx), sync_payload_js(&ctx)] {
+            assert!(
+                !js.to_ascii_lowercase().contains("</script"),
+                "脚本里出现未转义的 </script：{js}"
+            );
+        }
+    }
+
     #[test]
     fn doc_error_reaches_the_frontend_as_camel_case_payload() {
         let ctx = WorkbenchContext {
@@ -146,6 +187,7 @@ mod tests {
             tree: vec![],
             custom_themes: vec![],
             is_macos: true,
+            bridge_token: "t".to_string(),
             doc_error: Some(DocError {
                 doc_id: "bad.html".to_string(),
                 message: "hr serve 拒绝了这份文档：invalid_document".to_string(),

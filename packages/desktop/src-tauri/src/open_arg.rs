@@ -60,6 +60,13 @@ fn doc_id_of(raw: &str, workspace: &Path) -> Result<String, OpenArgError> {
     };
     let absolute = absolutize(raw, workspace);
     let relative = absolute.strip_prefix(workspace).map_err(|_| outside())?;
+    // 工作区在文件系统根时 strip_prefix 对残留的 `..` 段也放行，这里兜底。
+    if relative
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(outside());
+    }
     let doc_id = relative.to_string_lossy().replace('\\', "/");
     if doc_id.is_empty() {
         return Err(not_html());
@@ -206,6 +213,25 @@ mod tests {
                 ws()
             ),
             Ok(Action::NoAction)
+        );
+    }
+
+    /// 工作区在文件系统根时，`strip_prefix("/")` 对 `/../x.html` 也成功——残留的 `..`
+    /// 段会让 doc_id 越过工作区上界。残留的 ParentDir 一律按越界处理。
+    #[test]
+    fn residual_parent_segments_at_root_workspace_are_rejected() {
+        let root = Path::new("/");
+        assert_eq!(
+            action_of(&["--open".to_string(), "../x.html".to_string()], root),
+            Err(OpenArgError::OutsideWorkspace {
+                path: "../x.html".to_string()
+            })
+        );
+        assert_eq!(
+            action_of(&["--open".to_string(), "/a/../../x.html".to_string()], root),
+            Err(OpenArgError::OutsideWorkspace {
+                path: "/a/../../x.html".to_string()
+            })
         );
     }
 
