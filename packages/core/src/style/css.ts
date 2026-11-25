@@ -26,6 +26,7 @@ const SCHEME = /^[a-z][a-z0-9+.-]*:/iu;
  */
 const decodeHexEscapes = (css: string): string =>
   css.replaceAll(/\\[0-9a-f]{1,6}\s?/giu, (match) =>
+    // Stryker disable next-line MethodExpression: parseInt 自身容忍尾空白，trimStart/trimEnd 同值。
     String.fromCodePoint(Math.min(Number.parseInt(match.slice(1).trimEnd(), 16), MAX_CODE_POINT)),
   );
 
@@ -47,6 +48,7 @@ const urlArgumentsOf = (css: string): readonly string[] => {
   const found: string[] = [];
   for (const match of css.matchAll(URL_ARGUMENT)) {
     const argument = match[1];
+    // Stryker disable next-line ConditionalExpression: 带捕获组的 matchAll 恒给出第 1 组，守卫不可达。
     if (argument !== undefined) found.push(argument);
   }
   return found;

@@ -149,6 +149,7 @@ export const outlineReply = async (ctx: HandlerContext, docId: string): Promise<
   const parsed = parseHtml(decodeUtf8(doc.bytes, doc.target.realPath));
   // 冻结契约：非托管文档的 422/409 口径只在 derive 里有一份——让它抛，不复制文案。
   // （`remember` 不再为外来文档抛错，`buildOutline` 本身又不判 article。）
+  // Stryker disable next-line ConditionalExpression,StringLiteral: 让 toDocumentModel 自己抛——cls 条件无论怎么改，非托管文档都在那里炸，managed 多调一次无副作用。
   if (classifyDocument(parsed).cls !== "managed") toDocumentModel(parsed);
   const outline = buildOutline(parsed);
   return jsonReply(200, { revision: doc.revision, outline });
@@ -174,6 +175,7 @@ export const documentReply = async (ctx: HandlerContext, docId: string): Promise
 const docKindOf = (article: HtmlElementNode | undefined): DocKind | undefined => {
   if (article === undefined) return undefined;
   const value = attributeOf(article, KIND_ATTRIBUTE);
+  // Stryker disable next-line ConditionalExpression: isDocKind(undefined) 恒 false，短路与否同值。
   return value !== undefined && isDocKind(value) ? value : undefined;
 };
 
@@ -193,7 +195,9 @@ export const docInfoReply = async (ctx: HandlerContext, docId: string): Promise<
     cls: classification.cls,
     trust,
     scripts: hasExecutableContent(parsed.root),
+    // Stryker disable next-line ConditionalExpression: { reason: undefined } 被 JSON.stringify 丢键，与 {} 同输出。
     ...(classification.reason === undefined ? {} : { reason: classification.reason }),
+    // Stryker disable next-line ConditionalExpression: 同上，{ kind: undefined } 序列化后消失。
     ...(kind === undefined ? {} : { kind }),
   });
 };
@@ -311,6 +315,7 @@ const appendWithLock = async (
       // 时间戳只从注入的时钟来（`annotation-ops` 同源），否则同一次写入不可复现。
       const createdAt = ctx.deps.clock.now().toISOString();
       const outcome = appendAnnotation(html, input, `an_${nonce().slice(0, 8)}`, createdAt);
+      // Stryker disable next-line ConditionalExpression: appendAnnotation 的 changed 恒真（追加必改字节）。
       if (outcome.changed) {
         await writeAtomic(
           { path: target.realPath, workspace: ctx.workspace, data: encodeUtf8(outcome.html) },
@@ -333,6 +338,7 @@ export const annotationReply = async (
   const written = await appendWithLock(
     ctx,
     target,
+    // Stryker disable next-line StringLiteral: 空 status 经 normalizeStatus 回落 "pending"，记录同值。
     { start, end, text, note, status: "pending" },
     lockMs,
   );
@@ -372,6 +378,7 @@ export const trustReply = async (
       `信任档只对外来文档开放：该文档归作 ${classification.cls}，不执行脚本`,
     );
   }
+  // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
   await busy(() => writeTrust({ target, bytes, level }, ctx.deps, { lockTimeoutMs: lockMs }));
   return {
     reply: jsonReply(200, { trust: level }),

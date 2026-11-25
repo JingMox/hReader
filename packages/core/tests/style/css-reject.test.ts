@@ -103,3 +103,29 @@ describe("assertThemeSafe · 转义先反转义再判", () => {
     }).not.toThrow();
   });
 });
+
+describe("assertThemeSafe · 注释断词与续行逃逸", () => {
+  it.each([
+    ["未闭合的 url( + 协议相对", ".a{background:url('//evil.example/x"],
+    ["未闭合的 url( + 空格", ".a{background:url(  http://evil.example/x"],
+  ])("should reject %s with invalid_theme", (_label, css) => {
+    expect(errorFor(css).code).toBe("invalid_theme");
+  });
+
+  it("should allow a comment that breaks a scheme token mid-word", () => {
+    expect(() => {
+      assertThemeSafe(".a{background:url(java/**/script:x)}");
+    }).not.toThrow();
+  });
+
+
+  it("should echo the offending url argument in the error message", () => {
+    expect(errorFor(".a{background:url(ftp://files.example/x.png)}").message).toContain(
+      "ftp://files.example/x.png",
+    );
+  });
+
+  it("should name @import in the reason when rejecting it", () => {
+    expect(errorFor('@import url("x.css");').message).toContain("@import");
+  });
+});
