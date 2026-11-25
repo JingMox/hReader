@@ -43,10 +43,7 @@ describe("createWatcher · 目录事件与重复订阅", () => {
     withFakeTimers(() => {
       const { fires, watch } = fakeSource();
       const changes: string[] = [];
-      const watcher = createWatcher(
-        { now: Date.now, onFileChange: (path) => changes.push(path) },
-        watch,
-      );
+      const watcher = createWatcher({ onFileChange: (path) => changes.push(path) }, watch);
       try {
         watcher.add("/tmp/dir", undefined);
         // chokidar 对新建子目录报 addDir：目录事件不算"文件变了"。
@@ -68,10 +65,7 @@ describe("createWatcher · 目录事件与重复订阅", () => {
       // "同一 dir+file 只挂一个句柄 + 事件只报一次"，与时序无关、coverage 负载下不抖。
       const changes: string[] = [];
       const { fires, watch } = fakeSource();
-      const watcher = createWatcher(
-        { now: Date.now, onFileChange: (path) => changes.push(path) },
-        watch,
-      );
+      const watcher = createWatcher({ onFileChange: (path) => changes.push(path) }, watch);
       try {
         watcher.add("/tmp", "a.html");
         watcher.add("/tmp", "a.html");
@@ -102,7 +96,7 @@ describe("createWatcher · 挂载盲窗 reconcile", () => {
     const readies: (() => void)[] = [];
     return {
       readies,
-      watch: (_dir, _onEvent): ReadyHandle => ({
+      watch: (): ReadyHandle => ({
         close: () => undefined,
         ready: (handler) => {
           readies.push(handler);
@@ -114,16 +108,12 @@ describe("createWatcher · 挂载盲窗 reconcile", () => {
   it("should re-read the watched file on source ready, catching writes the attach gap hid", () => {
     const changes: string[] = [];
     const { readies, watch } = readySource();
-    const watcher = createWatcher(
-      { now: Date.now, onFileChange: (path) => changes.push(path) },
-      watch,
-    );
+    const watcher = createWatcher({ onFileChange: (path) => changes.push(path) }, watch);
     try {
       watcher.add("/tmp/dir", "a.html");
       // 盲窗里落下的外部写 chokidar 看不见：事件根本不来，只能靠就绪时的重读兜底。
-      // patch→add 的顺序是先 noteSelfWrite 后 add：回声窗口不得吞掉 reconcile
-      // （自写的那份由下游 revision 去重，不走回声窗口）。
-      watcher.noteSelfWrite(join("/tmp/dir", "a.html"));
+      // patch→add 相邻的场景：同一路径的写紧跟着挂监听——ready 时的 reconcile
+      // 必须照样送达 onFileChange，"算不算改"由下游字节 sha 判定。
       for (const ready of readies) ready();
       expect(changes).toEqual([join("/tmp/dir", "a.html")]);
     } finally {
@@ -134,10 +124,7 @@ describe("createWatcher · 挂载盲窗 reconcile", () => {
   it("should not reconcile a whole-directory watch (no single file to re-read)", () => {
     const changes: string[] = [];
     const { readies, watch } = readySource();
-    const watcher = createWatcher(
-      { now: Date.now, onFileChange: (path) => changes.push(path) },
-      watch,
-    );
+    const watcher = createWatcher({ onFileChange: (path) => changes.push(path) }, watch);
     try {
       watcher.add("/tmp/dir", undefined);
       for (const ready of readies) ready();
@@ -150,10 +137,7 @@ describe("createWatcher · 挂载盲窗 reconcile", () => {
   it("should not reconcile after close, even if ready lands late", () => {
     const changes: string[] = [];
     const { readies, watch } = readySource();
-    const watcher = createWatcher(
-      { now: Date.now, onFileChange: (path) => changes.push(path) },
-      watch,
-    );
+    const watcher = createWatcher({ onFileChange: (path) => changes.push(path) }, watch);
     watcher.add("/tmp/dir", "a.html");
     watcher.close();
     for (const ready of readies) ready();
@@ -166,7 +150,7 @@ describe("createWatcher · 边界输入", () => {
     // 这条留真 chokidar：注入源复刻不了"watch() 当场抛或异步 error"两种失败形态。
     const dir = mkdtempSync(join(tmpdir(), "hr-watch-"));
     const changes: string[] = [];
-    const watcher = createWatcher({ now: Date.now, onFileChange: (path) => changes.push(path) });
+    const watcher = createWatcher({ onFileChange: (path) => changes.push(path) });
     try {
       watcher.add(join(dir, "gone"), undefined);
       watcher.close();
@@ -182,10 +166,7 @@ describe("createWatcher · 边界输入", () => {
     withFakeTimers(() => {
       const changes: string[] = [];
       const { fires, watch } = fakeSource();
-      const watcher = createWatcher(
-        { now: Date.now, onFileChange: (path) => changes.push(path) },
-        watch,
-      );
+      const watcher = createWatcher({ onFileChange: (path) => changes.push(path) }, watch);
       try {
         watcher.add("/tmp", undefined);
         fires[0]?.("rename", undefined);

@@ -40,7 +40,7 @@ import {
 import { REVISION_CHARS } from "../../src/server/revision";
 import { ROUTES } from "../../src/server/routes";
 import { startServer } from "../../src/server/server";
-import { DEBOUNCE_MS, ECHO_MS, createWatcher } from "../../src/server/watcher";
+import { DEBOUNCE_MS, createWatcher } from "../../src/server/watcher";
 import type { WatchFn } from "../../src/server/watcher";
 import { nodeStyleDeps } from "../../src/style";
 import { disposeWatchers, responseLike, watcherLike } from "./casts";
@@ -297,24 +297,23 @@ describe("ensureNoDaemon · 三条早退（续）", () => {
   });
 });
 
-describe("watcher · 回声窗口过期后仍要转发", () => {
-  it("should emit once the self-write echo window has passed", async () => {
-    let now = 1000;
+describe("watcher · 相邻改动不丢", () => {
+  it("should emit every debounced change — no time-window drops", async () => {
+    // 旧的自写回声窗会把窗口内的别进程写（MCP/CLI）整段吞掉；
+    // 现在连续两次改动各自在去抖后都送达，"算不算改"由下游字节 sha 判定。
     const changes: string[] = [];
     let fire: ((event: string, name: string) => void) | undefined;
     const watcher = createWatcher(
-      { now: () => now, onFileChange: (path) => changes.push(path) },
+      { onFileChange: (path) => changes.push(path) },
       (_dir, onEvent) => {
         fire = onEvent;
         return watcherLike();
       },
     );
     watcher.add("/ws", "doc.html");
-    watcher.noteSelfWrite("/ws/doc.html");
     fire?.("change", "doc.html");
-    now += 10_000;
     fire?.("change", "doc.html");
-    // 去抖是定时器 + 回声窗口，等"条件成立"而不是固定睡 300ms：2s 上限、10ms 间隔。
+    // 去抖是定时器，等"条件成立"而不是固定睡：2s 上限、10ms 间隔。
     const deadline = Date.now() + 2000;
     while (Date.now() < deadline && changes.length === 0) {
       await new Promise((resolve) => {
@@ -561,7 +560,7 @@ describe("annotation · meta 缺 annotations 键", () => {
 describe("watcher · 重复 add 同一目录", () => {
   it("should not attach a second watcher for the same dir/file key", () => {
     let attached = 0;
-    const watcher = createWatcher({ now: () => 0, onFileChange: () => undefined }, () => {
+    const watcher = createWatcher({ onFileChange: () => undefined }, () => {
       attached += 1;
       return watcherLike();
     });
@@ -1038,7 +1037,6 @@ describe("event-ring/watcher · 帧头转义与常量", () => {
     expect(RETRY_AFTER_MS).toBe(2000);
     expect(MAX_CLIENTS).toBe(64);
     expect(DEBOUNCE_MS).toBe(100);
-    expect(ECHO_MS).toBe(200);
     expect(REVISION_CHARS).toBe(16);
   });
 });
@@ -1053,12 +1051,12 @@ describe("门面 · 可单测部件仍可用", () => {
     expect(ring.since(0).events).toEqual([]);
   });
 
-  it("should create a watcher with the three-method surface", () => {
-    const watcher = createWatcher({ now: () => 0, onFileChange: () => undefined });
+  it("should create a watcher with the two-method surface", () => {
+    const watcher = createWatcher({ onFileChange: () => undefined });
     watcher.close();
 
     expect(typeof watcher.add).toBe("function");
-    expect(typeof watcher.noteSelfWrite).toBe("function");
+    expect(typeof watcher.close).toBe("function");
   });
 
   it("should match routes and map error codes to statuses", () => {

@@ -69,11 +69,11 @@ const internalOf = (workspace: string, path: string): boolean => {
 
 interface PublishInput {
   readonly hub: Hub;
-  readonly deps: RuntimeDeps;
   readonly state: Watched;
   readonly workspace: string;
   readonly load: DocumentLoad;
   readonly target: ResolvedTarget;
+  readonly bytes: Uint8Array;
 }
 
 /** `revision` 只有一个口径：文件字节的 sha256 前 16 位（与 REST 响应、`patch` 回执同源）。
@@ -85,20 +85,15 @@ const publishChanged = (input: PublishInput): void => {
       ? diffNodes(previous.model, input.load.model)
       : [];
   input.state.load = input.load;
-  void input.deps.patch.fs.readFile(input.target.realPath).then(
-    (bytes) => {
-      const revision = revisionOf(bytes);
-      // 字节没变（mtime 抖动/格式化）才不发事件；"模型没差异"不等于"文件没变"（属性、无 id 的新节点）。
-      if (revision === input.state.revision) return;
-      input.state.revision = revision;
-      input.hub.publish("doc.changed", {
-        docId: relative(input.workspace, input.target.realPath),
-        revision,
-        changedNodes,
-      });
-    },
-    () => undefined,
-  );
+  const revision = revisionOf(input.bytes);
+  // 字节没变（mtime 抖动/格式化）才不发事件；"模型没差异"不等于"文件没变"（属性、无 id 的新节点）。
+  if (revision === input.state.revision) return;
+  input.state.revision = revision;
+  input.hub.publish("doc.changed", {
+    docId: relative(input.workspace, input.target.realPath),
+    revision,
+    changedNodes,
+  });
 };
 
 /** 打开文档时才挂监听：整库递归监听在 10 万文件上会把 CPU 烧穿。 */
@@ -116,19 +111,27 @@ const watchOf = (deps: RuntimeDeps, hub: Hub, state: Watched, workspace: string)
       hub.publish("library.changed", { path: docPath });
       return;
     }
-    void loadOfPath(deps, active).then(
-      (load) => {
-        publishChanged({ hub, deps, state, workspace, load, target: active });
+    // 先读字节对 sha：自写回声/mtime 抖动落在同一字节上直接短路，省掉整份模型重解析；
+    // 字节真变了才 load+diff+publish。别进程（MCP/CLI/编辑器）的写必然过这道闸——
+    // 旧的 200ms 回声窗会把窗口内的外部写整段吞掉（批注 resolve 后阅读器不刷新）。
+    void deps.patch.fs.readFile(active.realPath).then(
+      (bytes) => {
+        if (revisionOf(bytes) === state.revision) return;
+        void loadOfPath(deps, active).then(
+          (load) => {
+            publishChanged({ hub, state, workspace, load, target: active, bytes });
+          },
+          () => {
+            hub.publish("doc.error", { path: docPath });
+          },
+        );
       },
       () => {
         hub.publish("doc.error", { path: docPath });
       },
     );
   };
-  const watcher = createWatcher(
-    { now: () => deps.patch.clock.now().getTime(), onFileChange },
-    deps.watch,
-  );
+  const watcher = createWatcher({ onFileChange }, deps.watch);
   watcher.add(workspace, undefined);
   return watcher;
 };
@@ -226,7 +229,7 @@ const dispatchOf =
     return written.reply;
   };
 
-/** 自己的写直接广播（watcher 的回声窗口会吞掉同一路径），监听只负责"外部改动"。 */
+/** 自己的写直接广播（fs 事件照样走监听 → 下游 sha 去重），监听负责一切落盘改动。 */
 interface NoteContext {
   readonly options: { readonly workspace: string };
   readonly deps: RuntimeDeps;
@@ -240,7 +243,6 @@ const noteWriterOf =
   (written) => {
     const { options, deps, hub, state, watcher } = context;
     if (!written.changed) return;
-    watcher.noteSelfWrite(written.target.realPath);
     // 写路由可能是这份文档的第一次接触：remember 没跑过就不会挂监听，
     // 子目录文档的外部编辑会漏报（workspace 目录监听是 depth:0）。
     watcher.add(dirname(written.target.realPath), basename(written.target.realPath));

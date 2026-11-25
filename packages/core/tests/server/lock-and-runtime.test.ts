@@ -14,7 +14,6 @@ import { createEventRing } from "../../src/server/event-ring";
 import { createHub } from "../../src/server/hub";
 import type { Runtime } from "../../src/server/runtime";
 import { createRuntime } from "../../src/server/runtime";
-import { ECHO_MS } from "../../src/server/watcher";
 import { nodeStyleDeps } from "../../src/style";
 import { depsOf, fakeFs, fixedClock, recordingSleep } from "../io/harness";
 import { requestLike, watcherLike } from "./casts";
@@ -177,20 +176,15 @@ describe("runtime · 路由没带 docId 参数时回落默认文档", () => {
 const firstPublishEvents = async (workspace: string): Promise<readonly SseEvent[]> => {
   const { ring, hub } = ringOf();
   let fire: ((event: string, name: string | undefined) => void) | undefined;
-  // 注入 patch 时钟：回声窗口用拨钟跨过，不睡真时间。
-  let now = Date.now();
-  // 第一次 readFile 失败：noteWrite 的 modelOfPath 建不出模型 → state.model 保持 undefined。
+  // 第一次 readFile 失败：noteWrite 的 modelOfPath 建不出模型 → state.load 保持 undefined。
   let reads = 0;
   const patch = {
     ...nodePatchDeps,
-    clock: {
-      now: () => new Date(now),
-    },
     fs: {
       ...nodePatchDeps.fs,
       readFile: async (path: string) => {
         reads += 1;
-        if (reads === 1) throw new Error("EIO (injected: keep state.model undefined)");
+        if (reads === 1) throw new Error("EIO (injected: keep state.load undefined)");
         return await nodePatchDeps.fs.readFile(path);
       },
     },
@@ -208,15 +202,7 @@ const firstPublishEvents = async (workspace: string): Promise<readonly SseEvent[
     hub,
   );
   try {
-    return await publishFirstChange(
-      runtime,
-      workspace,
-      ring,
-      (name) => fire?.("change", name),
-      (ms) => {
-        now += ms;
-      },
-    );
+    return await publishFirstChange(runtime, workspace, ring, (name) => fire?.("change", name));
   } finally {
     runtime.close();
     hub.close();
@@ -228,7 +214,6 @@ const publishFirstChange = async (
   workspace: string,
   ring: ReturnType<typeof createEventRing>,
   emit: (name: string) => void,
-  advanceClock: (ms: number) => void,
 ): Promise<readonly SseEvent[]> => {
   const target = await resolveTarget({ workspace, file: "doc.html" }, nodePatchDeps.fs);
   runtime.noteWrite({
@@ -238,8 +223,6 @@ const publishFirstChange = async (
     changed: true,
     changedNodes: [],
   });
-  // 越过自写回声窗口（ECHO_MS=200），否则改动被吞掉：拨注入的时钟，不睡真时间。
-  advanceClock(ECHO_MS + 50);
   emit("doc.html");
   await waitFor(() => ring.since(0).events.filter((e) => e.type === "doc.changed").length >= 2);
   return ring.since(0).events;

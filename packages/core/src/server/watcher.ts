@@ -1,21 +1,20 @@
-// 这层管：目录级文件监听（chokidar 归一化 add/change/unlink + 去抖 100ms + 自身写入回声窗口 200ms）；不读文件、不解析内容。
+// 这层管：目录级文件监听（chokidar 归一化 add/change/unlink + 去抖 100ms）；不读文件、不解析内容。
+// 自写回声不在这一层判：时间窗分不清"我们的回声"和"别进程的写"（MCP/CLI 落在窗内的
+// 改动会被整段吞掉）——字节 sha 去重在下游 `publishChanged`，那才是内容级判定。
 
 import { basename, join } from "node:path";
 
 import { watch } from "chokidar";
 
 export const DEBOUNCE_MS = 100;
-export const ECHO_MS = 200;
 
 export interface Watcher {
   /** `file` 为 `undefined` 时监听整个目录（书库目录），否则只关心该文件名。 */
   readonly add: (dir: string, file: string | undefined) => void;
-  readonly noteSelfWrite: (path: string) => void;
   readonly close: () => void;
 }
 
 interface WatcherInput {
-  readonly now: () => number;
   readonly onFileChange: (path: string) => void;
 }
 
@@ -58,18 +57,11 @@ const chokidarWatch: WatchFn = (dir, onEvent) => {
 
 interface Scheduler {
   readonly schedule: (path: string) => void;
-  readonly note: (path: string) => void;
   readonly clear: () => void;
 }
 
 const schedulerOf = (input: WatcherInput): Scheduler => {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
-  const selfWrites = new Map<string, number>();
-  const emit = (path: string): void => {
-    const at = selfWrites.get(path);
-    if (at !== undefined && input.now() - at < ECHO_MS) return;
-    input.onFileChange(path);
-  };
   const schedule = (path: string): void => {
     const pending = timers.get(path);
     if (pending !== undefined) clearTimeout(pending);
@@ -77,15 +69,12 @@ const schedulerOf = (input: WatcherInput): Scheduler => {
       path,
       setTimeout(() => {
         timers.delete(path);
-        emit(path);
+        input.onFileChange(path);
       }, DEBOUNCE_MS),
     );
   };
   return {
     schedule,
-    note: (path) => {
-      selfWrites.set(path, input.now());
-    },
     clear: () => {
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
@@ -111,7 +100,7 @@ export const createWatcher = (input: WatcherInput, watchFn: WatchFn = chokidarWa
       watchers.set(key, handle);
       // 挂载盲窗：watch() 到事件源就绪之间落下的写，chokidar 看不见（首轮扫描把它当存量）。
       // 就绪时对被盯文件重读一次：外部写靠下游 revision 比对放行，自写同字节被去重——
-      // 所以 reconcile 直发 `onFileChange`，不走自写回声窗口（patch→add 顺序必在窗内）。
+      // reconcile 直发 `onFileChange`，一次性的对账不该被去抖排队/合并。
       // 整目录监听没有可重读的单文件，盲窗只能靠下一事件收敛。
       if (file !== undefined) {
         handle.ready?.(() => {
@@ -120,7 +109,6 @@ export const createWatcher = (input: WatcherInput, watchFn: WatchFn = chokidarWa
         });
       }
     },
-    noteSelfWrite: scheduler.note,
     close: () => {
       scheduler.clear();
       for (const handle of watchers.values()) handle.close();

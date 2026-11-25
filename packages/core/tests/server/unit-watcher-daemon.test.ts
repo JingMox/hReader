@@ -26,7 +26,7 @@ import {
   removeDaemonOf,
   writeDaemonOf,
 } from "../../src/server/daemon";
-import { createWatcher, DEBOUNCE_MS, ECHO_MS, type Watcher } from "../../src/server/watcher";
+import { createWatcher, DEBOUNCE_MS, type Watcher } from "../../src/server/watcher";
 
 type OnEvent = (event: string, name: string | undefined) => void;
 
@@ -35,35 +35,27 @@ const DIR = "/tmp/hr-watch-fake";
 interface WatchCase {
   readonly watcher: Watcher;
   readonly changes: string[];
-  readonly setClock: (value: number) => void;
   readonly fire: OnEvent;
 }
 
-/** 注入事件源 + 假时钟：fire 手动派发 chokidar 归一化语义的事件，去抖定时器用 vi 推进。 */
+/** 注入事件源：fire 手动派发 chokidar 归一化语义的事件，去抖定时器用 vi 推进。 */
 const withWatcher = (run: (testCase: WatchCase) => void): void => {
   vi.useFakeTimers();
   const changes: string[] = [];
-  let clock = 0;
   let closed = false;
   let onEvent: OnEvent = () => undefined;
-  const watcher = createWatcher(
-    { now: () => clock, onFileChange: (path) => changes.push(path) },
-    (_dir, emit) => {
-      onEvent = emit;
-      return {
-        close: () => {
-          closed = true;
-        },
-      };
-    },
-  );
+  const watcher = createWatcher({ onFileChange: (path) => changes.push(path) }, (_dir, emit) => {
+    onEvent = emit;
+    return {
+      close: () => {
+        closed = true;
+      },
+    };
+  });
   try {
     run({
       watcher,
       changes,
-      setClock: (value) => {
-        clock = value;
-      },
       fire: (event, name) => {
         if (!closed) onEvent(event, name);
       },
@@ -121,21 +113,18 @@ describe("createWatcher · 去抖与过滤（续）", () => {
   });
 });
 
-describe("createWatcher · 自身写入回声", () => {
-  it("should swallow the echo inside the window, then deliver after it", () => {
-    withWatcher(({ watcher, changes, fire, setClock }) => {
+describe("createWatcher · 相邻改动不丢", () => {
+  it("should deliver every debounced change — no time-window drops", () => {
+    // 旧的自写回声窗会把窗口内的别进程写（MCP/CLI）整段吞掉；现在的契约是
+    // 相邻两次改动各自在去抖后都送达，"算不算改"由下游字节 sha 判定。
+    withWatcher(({ watcher, changes, fire }) => {
       const target = join(DIR, "a.html");
       watcher.add(DIR, "a.html");
-      watcher.noteSelfWrite(target);
-      fire("change", "a.html");
-      setClock(ECHO_MS - 1);
-      vi.advanceTimersByTime(DEBOUNCE_MS * 2);
-      expect(changes).toEqual([]);
-
-      setClock(ECHO_MS * 10);
       fire("change", "a.html");
       vi.advanceTimersByTime(DEBOUNCE_MS * 2);
-      expect(changes).toEqual([target]);
+      fire("change", "a.html");
+      vi.advanceTimersByTime(DEBOUNCE_MS * 2);
+      expect(changes).toEqual([target, target]);
     });
   });
 
