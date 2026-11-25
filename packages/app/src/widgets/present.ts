@@ -43,7 +43,8 @@ export interface PresentWidget extends Widget {
 /** hash 页码参数：`#p=3` 表示第 3 页（1 基，给人看的）。 */
 const PAGE_HASH = "p=";
 
-const pageOfHash = (hash: string): number | undefined => {
+/** @internal 属性测试要直接打：任意字符串 → `undefined | 非负整数`，不许 NaN/负数。 */
+export const pageOfHash = (hash: string): number | undefined => {
   for (const part of hash.split("&")) {
     if (!part.startsWith(PAGE_HASH)) continue;
     const page = Number.parseInt(part.slice(PAGE_HASH.length), 10);
@@ -52,8 +53,9 @@ const pageOfHash = (hash: string): number | undefined => {
   return undefined;
 };
 
-/** 只重写 `p=` 这一段，其余 hash 参数原样保留（不跟现有/未来的 hash 用法打架）。 */
-const hashOfPage = (hash: string, page: number | undefined): string => {
+/** 只重写 `p=` 这一段，其余 hash 参数原样保留（不跟现有/未来的 hash 用法打架）。
+ *  @internal 属性测试要直接打：与 `pageOfHash` 的往返一致性。 */
+export const hashOfPage = (hash: string, page: number | undefined): string => {
   const parts = hash.split("&").filter((part) => part !== "" && !part.startsWith(PAGE_HASH));
   if (page !== undefined) parts.unshift(`${PAGE_HASH}${String(page + 1)}`);
   return parts.join("&");
