@@ -123,7 +123,7 @@ describe("sanitize 对抗 · <noscript> 的 raw-text 歧义（print 侧为已确
 
 describe("sanitize 对抗 · 命名空间与二次入口", () => {
   it.each([
-    '<svg><script>alert(1)</script></svg>',
+    "<svg><script>alert(1)</script></svg>",
     '<math><annotation-xml encoding="text/html"><script>alert(1)</script></annotation-xml></math>',
     '<svg><foreignObject><p onclick="x()">f</p></foreignObject></svg>',
     '<svg><animate attributeName="href" values="javascript:alert(1)"/></svg>',
@@ -182,10 +182,10 @@ describe("sanitize 对抗 · 整删名单的完整覆盖", () => {
     '<meta http-equiv="refresh" content="0; url=javascript:alert(1)">',
     '<object data="javascript:alert(1)"></object>',
     '<embed src="javascript:alert(1)">',
-    '<template><script>alert(1)</script></template>',
-    '<xmp><img onerror=alert(1)></xmp>',
-    '<noembed><img onerror=alert(1)></noembed>',
-    '<plaintext><img onerror=alert(1)>',
+    "<template><script>alert(1)</script></template>",
+    "<xmp><img onerror=alert(1)></xmp>",
+    "<noembed><img onerror=alert(1)></noembed>",
+    "<plaintext><img onerror=alert(1)>",
   ])("should remove the raw-text/embedded payload under import: %s", (hostile) => {
     const out = sanitizedToHtml(`<article>${hostile}</article>`, "import");
 
@@ -223,29 +223,21 @@ describe("hasExecutableContent · 漏报面", () => {
 
   it("should report executable for javascript: in button/input formaction", () => {
     expect(
-      hasExecutableContent(
-        parseHtml('<button formaction="javascript:alert(1)">go</button>').root,
-      ),
+      hasExecutableContent(parseHtml('<button formaction="javascript:alert(1)">go</button>').root),
     ).toBe(true);
     expect(
-      hasExecutableContent(
-        parseHtml('<input formaction="javascript:alert(1)" value="go">').root,
-      ),
+      hasExecutableContent(parseHtml('<input formaction="javascript:alert(1)" value="go">').root),
     ).toBe(true);
   });
 
   it("should report executable for an on* attribute with unusual spacing/case", () => {
-    expect(
-      hasExecutableContent(parseHtml('<p ONCLICK="x()">t</p>').root),
-    ).toBe(true);
-    expect(
-      hasExecutableContent(parseHtml('<img src=x onerror = "alert(1)">').root),
-    ).toBe(true);
+    expect(hasExecutableContent(parseHtml('<p ONCLICK="x()">t</p>').root)).toBe(true);
+    expect(hasExecutableContent(parseHtml('<img src=x onerror = "alert(1)">').root)).toBe(true);
   });
 
   it("should stay false for <xmp> text passthrough (inert in browser)", () => {
-    expect(
-      hasExecutableContent(parseHtml("<xmp><script>alert(1)</script></xmp>").root),
-    ).toBe(false);
+    expect(hasExecutableContent(parseHtml("<xmp><script>alert(1)</script></xmp>").root)).toBe(
+      false,
+    );
   });
 });

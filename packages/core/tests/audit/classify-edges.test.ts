@@ -80,12 +80,12 @@ describe("classifyDocument · 伪装与怪形 id", () => {
 
   it("should read the first value when data-hr-id is duplicated on the article", () => {
     // parse5 对重复属性保第一个：第一个合法 → managed；第一个非法 → normalizable。
-    expect(
-      stable('<article data-hr-id="good" data-hr-id="bad id"><p>x</p></article>').cls,
-    ).toBe("managed");
-    expect(
-      stable('<article data-hr-id="bad id" data-hr-id="good"><p>x</p></article>').cls,
-    ).toBe("normalizable");
+    expect(stable('<article data-hr-id="good" data-hr-id="bad id"><p>x</p></article>').cls).toBe(
+      "managed",
+    );
+    expect(stable('<article data-hr-id="bad id" data-hr-id="good"><p>x</p></article>').cls).toBe(
+      "normalizable",
+    );
   });
 });
 
@@ -94,15 +94,11 @@ describe("classifyDocument · 惰性/外来内容里的 article", () => {
     // 现状口径：树遍历进 template.content，惰性 article 也计入。
     // `<template><article>` 的外来页会被判 normalizable/managed 而不是 foreign——记录现行行为。
     expect(stable("<template><article>x</article></template>").cls).toBe("normalizable");
-    expect(stable('<template><article data-hr-id="a">x</article></template>').cls).toBe(
-      "managed",
-    );
+    expect(stable('<template><article data-hr-id="a">x</article></template>').cls).toBe("managed");
   });
 
   it("should count an article inside <noscript> (scripting-disabled parse)", () => {
-    expect(stable('<noscript><article data-hr-id="a">x</article></noscript>').cls).toBe(
-      "managed",
-    );
+    expect(stable('<noscript><article data-hr-id="a">x</article></noscript>').cls).toBe("managed");
   });
 
   it("should count a tag named article inside <svg> foreign content", () => {

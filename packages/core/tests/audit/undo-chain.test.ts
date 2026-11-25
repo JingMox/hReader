@@ -65,7 +65,8 @@ const requestOf = (rng: () => number, ids: readonly string[], step: number): Pat
   }
   if (roll < 0.3) return { targetId, action: "delete" };
   if (roll < 0.55) return { targetId, action: "replace", html: block };
-  if (roll < 0.8) return { targetId, action: rng() < 0.5 ? "insert_before" : "insert_after", html: block };
+  if (roll < 0.8)
+    return { targetId, action: rng() < 0.5 ? "insert_before" : "insert_after", html: block };
   // append 只对装得下块级内容的容器发；其余降级成 insert_before（父容器吃同样的片段）。
   return ids.includes(targetId)
     ? { targetId, action: "insert_before", html: block }
@@ -88,10 +89,7 @@ describe("undo 链 · 任意补丁序列 + 等量 undo = 原文（种子化 fuzz
           const ids = hrIdsOf(before);
           const request = requestOf(rng, ids, step);
           try {
-            const result = await patchFile(
-              { workspace: dir, file: DOC_FILE, request },
-              deps,
-            );
+            const result = await patchFile({ workspace: dir, file: DOC_FILE, request }, deps);
             const after = await bytesOf(dir);
             if (result.changed) {
               changes += 1;
@@ -117,9 +115,7 @@ describe("undo 链 · 任意补丁序列 + 等量 undo = 原文（种子化 fuzz
           await undoPatch({ workspace: dir, file: DOC_FILE }, deps);
           expect(await bytesOf(dir)).toEqual(expected);
         }
-        const code = await codeOfAsync(() =>
-          undoPatch({ workspace: dir, file: DOC_FILE }, deps),
-        );
+        const code = await codeOfAsync(() => undoPatch({ workspace: dir, file: DOC_FILE }, deps));
         expect(code).toBe("undo_unavailable");
       });
     },
@@ -131,11 +127,19 @@ describe("undo 链 · 任意补丁序列 + 等量 undo = 原文（种子化 fuzz
       const before = await bytesOf(dir);
 
       await patchFile(
-        { workspace: dir, file: DOC_FILE, request: { targetId: "p1", action: "replace", html: "<p>改</p>" } },
+        {
+          workspace: dir,
+          file: DOC_FILE,
+          request: { targetId: "p1", action: "replace", html: "<p>改</p>" },
+        },
         deps,
       );
       await patchFile(
-        { workspace: dir, file: DOC_FILE, request: { targetId: "box", action: "append", html: "<p>新段</p>" } },
+        {
+          workspace: dir,
+          file: DOC_FILE,
+          request: { targetId: "box", action: "append", html: "<p>新段</p>" },
+        },
         deps,
       );
       await patchFile(
@@ -197,7 +201,8 @@ describe("undo 链 · 故障隔离", () => {
 
 describe("undo 链 · normalize 与 style 共用同一条快照链", () => {
   it("should restore pre-normalize bytes when normalize ran with history", async () => {
-    const UNNORMALIZED = "<!doctype html><html><body><article><p>第一段</p></article></body></html>";
+    const UNNORMALIZED =
+      "<!doctype html><html><body><article><p>第一段</p></article></body></html>";
     await withWorkspace(async (dir) => {
       await writeBytesAt(join(dir, DOC_FILE), new TextEncoder().encode(UNNORMALIZED));
       const result = await normalizeFile(
@@ -243,7 +248,11 @@ describe("undo 链 · normalize 与 style 共用同一条快照链", () => {
       const styleDeps = await styleDepsOf(dir);
       await writeBytesAt(join(dir, DOC_FILE), new TextEncoder().encode(ARTICLE_DOC));
       await patchFile(
-        { workspace: dir, file: DOC_FILE, request: { targetId: "p1", action: "replace", html: "<p>改</p>" } },
+        {
+          workspace: dir,
+          file: DOC_FILE,
+          request: { targetId: "p1", action: "replace", html: "<p>改</p>" },
+        },
         deps,
       );
       const afterPatch = await bytesOf(dir);
@@ -265,9 +274,7 @@ describe("undo 链 · revertLast 的错误码映射", () => {
       await writeBytesAt(join(dir, DOC_FILE), new TextEncoder().encode(ARTICLE_DOC));
       const before = await bytesOf(dir);
 
-      const code = await codeOfAsync(() =>
-        revertLast({ workspace: dir, file: DOC_FILE }, deps),
-      );
+      const code = await codeOfAsync(() => revertLast({ workspace: dir, file: DOC_FILE }, deps));
 
       expect(code).toBe("nothing_to_undo");
       expect(await bytesOf(dir)).toEqual(before);

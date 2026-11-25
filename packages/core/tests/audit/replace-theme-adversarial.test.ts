@@ -80,11 +80,7 @@ describe("replaceTheme · 拒绝带 </style 逃逸的主题 CSS", () => {
 
   it("should reject theme css containing </style even split across a comment", () => {
     // `assertThemeSafe` 直接禁 `<`：任何形式的转义/注释拆分都过不了 `<` 的硬禁。
-    for (const css of [
-      ".a{}</style><script>x</script>",
-      ".a{}</sty\\6c e>",
-      "/*</style>*/.a{}",
-    ]) {
+    for (const css of [".a{}</style><script>x</script>", ".a{}</sty\\6c e>", "/*</style>*/.a{}"]) {
       expect(() =>
         replaceTheme(
           `<!doctype html><html><head><style id="hr-theme">x</style></head><body/></html>`,

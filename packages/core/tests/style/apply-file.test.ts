@@ -74,9 +74,9 @@ describe("applyStyle · 幂等与插入", () => {
 
     expect(result.changed).toBe(false);
     expect(env.fake.state.files.get(FILE)).toBe(afterFirst);
-    expect(
-      env.fake.state.log.filter((line) => line.startsWith("writeFileAtomic:")),
-    ).toHaveLength(writesAfterFirst);
+    expect(env.fake.state.log.filter((line) => line.startsWith("writeFileAtomic:"))).toHaveLength(
+      writesAfterFirst,
+    );
   });
 
   it("should insert the block into <head> when the document has none", async () => {
