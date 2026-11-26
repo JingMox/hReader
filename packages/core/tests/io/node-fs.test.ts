@@ -36,9 +36,15 @@ describe("nodePatchDeps · 默认依赖", () => {
       "writeFile",
       "writeFileAtomic",
     ]);
+    // Real clock proven by bracketing: the sampled time must lie inside
+    // [before, after] — a frozen or stubbed clock falls outside it. No
+    // elapsed-time budget involved, so scheduling stalls can't flake it.
+    const before = Date.now();
     const now = nodePatchDeps.clock.now();
+    const after = Date.now();
     expect(now instanceof Date).toBe(true);
-    expect(Math.abs(Date.now() - now.getTime())).toBeLessThan(5_000);
+    expect(now.getTime()).toBeGreaterThanOrEqual(before);
+    expect(now.getTime()).toBeLessThanOrEqual(after);
     await expect(nodePatchDeps.sleep(1)).resolves.toBeUndefined();
   });
 });

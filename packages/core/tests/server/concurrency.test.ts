@@ -95,14 +95,14 @@ describe("concurrency · 跨文档", () => {
 
   it("should run two documents in parallel without blocking each other", async () => {
     await withServer(async (ctx) => {
-      const started = Date.now();
       const both = await Promise.all([
         post(ctx.port, ctx.token, "doc.html", "a"),
         post(ctx.port, ctx.token, "other.html", "b"),
       ]);
 
+      // "Do not block each other" is proven deterministically by the held-lock
+      // case above; a serializing implementation would surface as a 503 there.
       expect(both.map((result) => result.status)).toEqual([200, 200]);
-      expect(Date.now() - started).toBeLessThan(5_000);
       expect(readFileSync(ctx.file, "utf8")).toContain(">a<");
       expect(readFileSync(join(ctx.workspace, "other.html"), "utf8")).toContain(">b<");
     });

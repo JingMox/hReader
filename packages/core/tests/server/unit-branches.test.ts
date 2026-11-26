@@ -609,7 +609,8 @@ describe("limits · keep-alive 空闲到点", () => {
       async (ctx) => {
         const socket = connect({ host: "127.0.0.1", port: ctx.port });
         const chunks: Buffer[] = [];
-        let closed = false;
+        let destroyedByUs = false;
+        let closedByServer = false;
         await new Promise<void>((resolve) => {
           socket.on("connect", () => {
             socket.write(
@@ -618,10 +619,11 @@ describe("limits · keep-alive 空闲到点", () => {
           });
           socket.on("data", (chunk: Buffer) => chunks.push(chunk));
           socket.on("close", () => {
-            closed = true;
+            closedByServer = !destroyedByUs;
             resolve();
           });
           setTimeout(() => {
+            destroyedByUs = true;
             socket.destroy();
             resolve();
           }, 3000);
@@ -630,7 +632,9 @@ describe("limits · keep-alive 空闲到点", () => {
         const raw = Buffer.concat(chunks).toString("latin1");
         expect(raw).toMatch(/^HTTP\/1\.1 200/u);
         expect(raw).not.toContain("408");
-        expect(closed).toBe(true);
+        // The flag is set before destroy, so a self-inflicted close can't pass
+        // for the server's keepAliveTimeout.
+        expect(closedByServer).toBe(true);
       },
       { headersMs: 200, bodyMs: 200, idleMs: 200 },
     );
@@ -688,25 +692,37 @@ describe("hub · 没有 Last-Event-ID 也不崩", () => {
   });
 });
 
-const idleAfterResponse = async (port: number, cookie: string): Promise<string> =>
-  new Promise<string>((resolve) => {
+/**
+ * Sends one keep-alive request and resolves on "close".
+ * `closedByServer` is false only when the fallback destroy caused the close:
+ * the flag is set before destroy, so a self-inflicted close can never
+ * masquerade as the server's keepAliveTimeout — the distinction the old
+ * wall-clock <2000ms check tried (and raced) to make.
+ */
+const idleAfterResponse = async (
+  port: number,
+  cookie: string,
+): Promise<{ readonly text: string; readonly closedByServer: boolean }> =>
+  new Promise((resolve) => {
     const socket = connect({ host: "127.0.0.1", port });
     let text = "";
+    let destroyedByUs = false;
+    const backstop = setTimeout(() => {
+      destroyedByUs = true;
+      socket.destroy();
+    }, 3000);
     socket.on("data", (chunk: Buffer) => {
       text += chunk.toString("latin1");
     });
     socket.on("close", () => {
-      resolve(text);
+      clearTimeout(backstop);
+      resolve({ text, closedByServer: !destroyedByUs });
     });
     socket.on("connect", () => {
       socket.write(
         `GET /api/doc/doc.html/model HTTP/1.1\r\nHost: 127.0.0.1:${String(port)}\r\nCookie: ${cookie}\r\nConnection: keep-alive\r\n\r\n`,
       );
     });
-    setTimeout(() => {
-      socket.destroy();
-      resolve(text);
-    }, 3000);
   });
 
 describe("limits · idle 计时器自己触发（不是 header 计时器）", () => {
@@ -714,13 +730,16 @@ describe("limits · idle 计时器自己触发（不是 header 计时器）", ()
   it("should close a completed-then-idle keep-alive socket without inventing a 408", async () => {
     await withServer(
       async (ctx) => {
-        const started = Date.now();
-        const raw = await idleAfterResponse(ctx.port, cookieOf(ctx.token));
+        const { text: raw, closedByServer } = await idleAfterResponse(
+          ctx.port,
+          cookieOf(ctx.token),
+        );
 
         expect(raw).toMatch(/^HTTP\/1\.1 200/u);
         expect(raw).not.toContain("408");
-        // 必须是真的"到点被关"，而不是测试自己的 3s 兜底 destroy 造成的假通过。
-        expect(Date.now() - started).toBeLessThan(2000);
+        // The close must come from the server's keepAliveTimeout (idleMs=100),
+        // not from the helper's fallback destroy.
+        expect(closedByServer).toBe(true);
       },
       { headersMs: 5000, bodyMs: 5000, idleMs: 100 },
     );
