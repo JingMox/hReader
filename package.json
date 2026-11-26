@@ -36,12 +36,14 @@
     "test:mutation": "stryker run",
     "theme:check": "node scripts/check-theme-contrast.mjs",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json --pretty false",
-    "verify": "pnpm format:check && pnpm lint && pnpm lint:sh && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm theme:check && pnpm depcruise && pnpm knip"
+    "verify": "pnpm format:check && pnpm lint && pnpm lint:sh && pnpm typecheck && pnpm build && pnpm test:coverage && pnpm test:perf && pnpm theme:check && pnpm depcruise && pnpm knip"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
     "@eslint/js": "^9.39.1",
+    "@hreader/core": "workspace:*",
     "@stryker-mutator/api": "catalog:",
     "@stryker-mutator/core": "catalog:",
     "@stryker-mutator/vitest-runner": "catalog:",

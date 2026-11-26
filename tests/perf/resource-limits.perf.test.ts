@@ -1,6 +1,11 @@
-// 对抗面·资源耗尽实测。恶意文档作者唯一的目标是拖死 daemon 的 event loop——
-// 解析、tag-balance 正则（nested quantifier 面）、sanitize、serialize 每道都必须近线性。
-// 这里钉住的是**数量级**，不是精确值：断言上限给足余量，回归（正则退化）直接红。
+// Adversarial surface · measured resource exhaustion. A hostile document's only
+// goal is to stall the daemon's event loop — parse, tag-balance regexes (the
+// nested-quantifier face), sanitize and serialize must all stay near-linear.
+// The pinned bounds are **orders of magnitude**, not precise values: they are
+// generous enough that only a real (regex) blowup turns red.
+// These are absolute CPU-time budgets, so they live outside the coverage run
+// (v8 instrumentation would false-red them) and run under `pnpm test:perf`
+// with a single worker (see vitest.perf.config.ts).
 
 import { describe, expect, it } from "vitest";
 
@@ -11,9 +16,9 @@ import {
   sanitizedAttributesOf,
   serializeHtml,
   hasExternalResource,
-} from "../src/index";
-import { tagBalanceDiagnostics } from "../src/html/balance";
-import type { HtmlNode } from "../src/index";
+} from "@hreader/core";
+import type { HtmlNode } from "@hreader/core";
+import { tagBalanceDiagnostics } from "../../packages/core/src/html/balance.ts";
 
 /**
  * Milliseconds of CPU time burned by this process (user+system). Unlike wall
@@ -55,7 +60,7 @@ const clean = (node: HtmlNode): void => {
   }
 };
 
-describe("resource · 解析与清洗保持近线性", () => {
+describe("resource · parsing and sanitizing stay near-linear", () => {
   it("should parse + balance + sanitize 3k-deep nesting inside a sane budget", () => {
     const html = deepDoc(3000);
     const total = timed(() => {
@@ -64,7 +69,8 @@ describe("resource · 解析与清洗保持近线性", () => {
       clean(parsed.root);
       serializeHtml({ root: parsed.root, diagnostics: [] });
     });
-    // 全链近线性：3000 层若出现平方/指数退化，毫秒数会跳出两位数一个数量级不止。
+    // Near-linear end to end: a quadratic/exponential blowup at 3000 levels
+    // would overshoot this by far more than an order of magnitude.
     expect(total).toBeLessThan(2000);
   });
 
@@ -90,8 +96,9 @@ describe("resource · 解析与清洗保持近线性", () => {
   });
 
   it("should keep tag-balance regexes linear on quote storms (the nested-quantifier face)", () => {
-    // '"a"'.repeat(n) + '!'：交替引号串是 TAG_PATTERN 里 (?:[^>"']|"[^"]*"|'[^']*')* 的歧义引爆面。
-    // 实测 10k 规模仍亚毫秒——V8 对该形态线性；若未来换引擎/改正则，这条首先红。
+    // '"a"'.repeat(n) + '!': alternating quotes are the ambiguity detonator of
+    // (?:[^>"']|"[^"]*"|'[^']*')* in TAG_PATTERN. 10k measures sub-millisecond —
+    // V8 is linear on this shape; an engine/regex change turns this red first.
     const html = quoteStormDoc(10_000);
     const total = timed(() => tagBalanceDiagnostics(html));
     expect(total).toBeLessThan(1000);

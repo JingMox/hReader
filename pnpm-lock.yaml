@@ -56,6 +56,9 @@ importers:
       '@eslint/js':
         specifier: ^9.39.1
         version: 9.39.1
+      '@hreader/core':
+        specifier: workspace:*
+        version: link:packages/core
       '@stryker-mutator/api':
         specifier: 'catalog:'
         version: 10.1.1

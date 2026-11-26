@@ -1,5 +1,8 @@
-// 这层管：`annotations/diff.ts` 的字符级 diff、20 000 上限两侧与性能边界。
-// 退化与否由 `degraded` 单独暴露：只看 chunk 是看不出"跑的是哪条算法"的。
+// Covers `annotations/diff.ts`: the character-level diff and both sides of the
+// 20 000 limit. The absolute cost bound of the degraded path lives in
+// tests/perf/annotations-diff.perf.test.ts (it false-reds under coverage
+// instrumentation). `degraded` alone exposes which algorithm ran — the chunks
+// cannot tell.
 
 import { describe, expect, it } from "vitest";
 
@@ -51,16 +54,6 @@ describe("diffText · 七种形态", () => {
 const long = "a".repeat(DIFF_CHAR_LIMIT);
 const longer = "a".repeat(DIFF_CHAR_LIMIT + 1);
 
-/**
- * Milliseconds of CPU time burned by this process (user+system). Unlike wall
- * time it is not inflated by scheduling stalls, so a bound on it holds under
- * CPU contention.
- */
-const cpuMs = (): number => {
-  const { user, system } = process.cpuUsage();
-  return (user + system) / 1000;
-};
-
 describe("diffText · 20 000 字符上限", () => {
   it("should pin the limit at exactly 20 000", () => {
     expect(DIFF_CHAR_LIMIT).toBe(20_000);
@@ -81,7 +74,7 @@ describe("diffText · 20 000 字符上限", () => {
   });
 });
 
-describe("diffText · 单侧超限与性能", () => {
+describe("diffText · degradation past the limits", () => {
   it("should degrade a single-sided 20k edit (char gate is per side)", () => {
     // 单侧超 20 000 就降级：`tooLong` 看的是两侧各自长度，不是总和。
     const result = diffText(longer, "b");
@@ -104,19 +97,6 @@ describe("diffText · 单侧超限与性能", () => {
 
     expect(result.degraded).toBe(true);
     expect(result.chunks.map((chunk) => chunk.kind)).toEqual(["del", "ins"]);
-  });
-
-  it("should return 20k inputs in under 200ms (degraded path is O(n))", () => {
-    const before = Array.from({ length: 40 }, (_, i) => `第${String(i)}行`).join("\n");
-    const padded = `${before}${"x".repeat(DIFF_CHAR_LIMIT - before.length + 1)}`;
-    const after = `${padded.slice(0, -1)}y`;
-    const started = cpuMs();
-    const result = diffText(padded, after);
-    const elapsed = cpuMs() - started;
-
-    expect(result.degraded).toBe(true);
-    expect(result.chunks.length).toBeGreaterThan(0);
-    expect(elapsed).toBeLessThan(200);
   });
 });
 

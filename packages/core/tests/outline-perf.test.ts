@@ -1,4 +1,7 @@
-// 这层管：`hr_outline` 的性能与规模（“1MB ≤150ms / 10k 节点”）以及确定性。
+// 这层管：`hr_outline` 的规模（10k 节点、1MB 文档）与确定性。
+// The absolute "1MB ≤150ms" budget lives in tests/perf/outline.perf.test.ts —
+// an absolute bound false-reds under v8 coverage instrumentation; only the
+// instrumentation-invariant growth ratio stays here.
 
 import { describe, expect, it } from "vitest";
 
@@ -75,33 +78,29 @@ describe("hr_outline · 规模与确定性", () => {
   }, 120_000);
 });
 
-describe("hr_outline · 1MB 性能门", () => {
-  it("should outline a 1MB document within budget (calibrated to the same process)", () => {
+describe("hr_outline · 1MB growth shape", () => {
+  it("should grow linearly against a 1/10 reference on a 1MB document", () => {
     const big = documentOf(3_000);
     const small = documentOf(300);
     expect(big.length).toBeGreaterThanOrEqual(1_000_000);
 
     // 交错取样：每轮先测 1/10 参考、紧接着测 1MB，两端在相邻时间窗吃同一份 CPU 争用，
     // 所以 `big/small` 比值抗噪。量的是本进程 CPU 时间（见 `cpuMs`），但满核争用下大文档的
-    // 工作集被反复挤出缓存，CPU 成本本身也会涨——线性 ≈10，实测加压可上 15：界限给 20，
-    // 绝对门靠 150ms 下限（空机）与 1500ms 上限（兜底）守。
+    // 工作集被反复挤出缓存，CPU 成本本身也会涨——线性 ≈10，实测加压可上 15：界限给 20。
+    // The absolute budget (150ms floor, 1500ms ceiling) lives in
+    // tests/perf/outline.perf.test.ts.
     measure(big);
     measure(small);
-    let bigMs = Number.POSITIVE_INFINITY;
     let smallMs = Number.POSITIVE_INFINITY;
     let ratio = Number.POSITIVE_INFINITY;
     for (let window = 0; window < 5; window += 1) {
       const reference = measure(small);
       const cost = measure(big);
       smallMs = Math.min(smallMs, reference);
-      bigMs = Math.min(bigMs, cost);
       ratio = Math.min(ratio, cost / reference);
     }
-    const budget = Math.max(150, smallMs * 20);
 
     expect(smallMs).toBeGreaterThan(0);
-    expect(bigMs).toBeLessThan(budget);
     expect(ratio, `best big/small ratio ${ratio.toFixed(1)}`).toBeLessThan(20);
-    expect(bigMs).toBeLessThan(1_500);
   }, 120_000);
 });
