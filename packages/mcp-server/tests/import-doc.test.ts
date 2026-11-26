@@ -1,4 +1,4 @@
-// 这层管：`hr_import_doc` 端到端（外来 → 落盘 + report 回执）与失败路径（源不存在/已托管/目标占用/越界/撞源）。
+// This layer: `hr_import_doc` end to end (foreign → on disk + report receipt) and failure paths (missing source / already managed / target taken / out of bounds / collides with source).
 
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -32,7 +32,7 @@ const callOf = async (args: Record<string, unknown>): Promise<unknown> => {
   return result;
 };
 
-/** 演示稿式外来 HTML：脚本、事件属性、装饰 div、无 `<article>`。 */
+/** Presentation-style foreign HTML: scripts, event attributes, decorative divs, no `<article>`. */
 const FOREIGN = [
   "<!doctype html><html><head><title>外来演示</title>",
   "<script>window.boot()</script></head>",
@@ -46,7 +46,7 @@ const seedForeign = async (name = "deck.html", html = FOREIGN): Promise<void> =>
   await writeFile(join(workspace, name), html, "utf8");
 };
 
-describe("hr_import_doc · 成功", () => {
+describe("hr_import_doc · success", () => {
   it("should write <name>.hr.html next to the source and echo the report", async () => {
     await seedForeign();
     const result = await callOf({ filePath: "deck.html" });
@@ -81,7 +81,7 @@ describe("hr_import_doc · 成功", () => {
   });
 });
 
-describe("hr_import_doc · 失败路径", () => {
+describe("hr_import_doc · failure paths", () => {
   it("should report not_found for a missing source", async () => {
     const result = await callOf({ filePath: "ghost.html" });
 
@@ -130,7 +130,7 @@ describe("hr_import_doc · 失败路径", () => {
 
   it("should fold a non-EEXIST write failure into io_failure", async () => {
     await seedForeign();
-    // 目标路径的中间段已是一个文件：`mkdir` 撞上 ENOTDIR。
+    // A middle segment of the target path is already a file: `mkdir` hits ENOTDIR.
     await writeFile(join(workspace, "blocked"), "file");
     const result = await callOf({ filePath: "deck.html", outPath: "blocked/deck.hr.html" });
 
@@ -139,7 +139,7 @@ describe("hr_import_doc · 失败路径", () => {
 
   it("should fold a non-EEXIST writeFile failure via writeFailureOf", async () => {
     await seedForeign();
-    // 父目录存在但不可写：`mkdir` 过、`writeFile` 抛 EACCES——不是 EEXIST，走 writeFailureOf。
+    // Parent directory exists but is not writable: `mkdir` passes, `writeFile` throws EACCES — not EEXIST, so it goes through writeFailureOf.
     const locked = join(workspace, "locked");
     await mkdir(locked, { recursive: true });
     await chmod(locked, 0o500);

@@ -1,4 +1,4 @@
-// 这层管：`hr_patch_node`（唯一的落盘工具）；变换、原子写、undo 快照全部由 core 的 `patchFile` 负责。
+// This layer: `hr_patch_node` (the only write tool); transform, atomic write, and undo snapshots are all done by core's `patchFile`.
 
 import { nodePatchDeps, patchFile } from "@hreader/core";
 import type { PatchAction, PatchRequest } from "@hreader/core";
@@ -9,7 +9,7 @@ import { guarded, okResult } from "../errors";
 import { docIdOf, UI_URI_PREFIX } from "../ui";
 import { FILE_PATH_HINT, coreFailureOf, documentTargetOf } from "./target";
 
-/** 与 core 的 `PatchAction` 同集合；写成 `satisfies` 让 core 改名时这里编译期就红。 */
+/** Same set as core's `PatchAction`; written as `satisfies` so a rename in core turns red at compile time here. */
 const ACTIONS = [
   "replace",
   "insert_before",
@@ -31,7 +31,7 @@ export const patchNodeShape = {
 
 type PatchNodeArgs = z.infer<z.ZodObject<typeof patchNodeShape>>;
 
-/** `delete` 必须不带 html，其余四种必带：这个分叉交给 core 的类型，不在适配层重判。 */
+/** `delete` must carry no html; the other four must: this fork is delegated to core's types, not re-judged in the adapter. */
 const requestOf = (args: PatchNodeArgs): PatchRequest =>
   args.action === "delete"
     ? { targetId: args.nodeId, action: args.action }

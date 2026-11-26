@@ -49,7 +49,7 @@ interface Reply {
   readonly body: Record<string, unknown>;
 }
 
-/** HTTP 臂：真起一个 daemon（`port: 0`），写路由走 cookie + csrf。 */
+/** HTTP arm: boots a real daemon (`port: 0`); the write route goes through cookie + csrf. */
 const daemonArmOf = async (
   workspaceOf: string,
 ): Promise<{
@@ -102,7 +102,7 @@ const patched = (): Promise<unknown> =>
     htmlContent: "<p>新正文</p>",
   });
 
-/** 当前 workspace 里所有快照文件名（按文档分桶的那层之下），升序。 */
+/** All snapshot filenames in the current workspace (under the per-document bucket layer), ascending. */
 const snapshotsOf = async (workspaceOf: string): Promise<readonly string[]> => {
   const root = join(workspaceOf, ".hreader", "history");
   const names: string[] = [];
@@ -115,20 +115,20 @@ const snapshotsOf = async (workspaceOf: string): Promise<readonly string[]> => {
 const styled = (): Promise<unknown> =>
   mcpCallOf("hr_apply_style", { filePath: FILE, visualId: PRESET });
 
-describe("hr_undo · 换样式占一个撤销台阶的语义", () => {
-  it("换样式留快照：一次 undo 只退样式，第二次退 patch，第三次 nothing_to_undo", async () => {
+describe("hr_undo · style change occupies one undo rung", () => {
+  it("should leave a snapshot for the style change: one undo retracts only the style, the second retracts the patch, the third answers nothing_to_undo", async () => {
     const base = await bytesIn(workspace);
     await patched();
     const afterPatch = await bytesIn(workspace);
     await styled();
     expect(await bytesIn(workspace)).not.toBe(afterPatch);
 
-    // 第一次 undo 退掉的是样式那一步：回到 patch 后、样式前的字节。
+    // The first undo retracts the style step: back to post-patch, pre-style bytes.
     const undo = await mcpCallOf("hr_undo", { filePath: FILE });
     expect(undo.isError).toBe(false);
     expect(await bytesIn(workspace)).toBe(afterPatch);
 
-    // 第二次 undo 退掉 patch：回到全文最初的字节。
+    // The second undo retracts the patch: back to the document's original bytes.
     const second = await mcpCallOf("hr_undo", { filePath: FILE });
     expect(second.isError).toBe(false);
     expect(await bytesIn(workspace)).toBe(base);
@@ -138,8 +138,8 @@ describe("hr_undo · 换样式占一个撤销台阶的语义", () => {
   });
 });
 
-describe("hr_undo · 快照数量的守卫", () => {
-  it("applyStyle 与 patch 各留一份快照（每步写各有一个撤销台阶）", async () => {
+describe("hr_undo · snapshot-count guard", () => {
+  it("should leave one snapshot each for applyStyle and patch (each write step gets its own undo rung)", async () => {
     await patched();
     const afterPatch = await snapshotsOf(workspace);
     expect(afterPatch).toHaveLength(1);
@@ -147,13 +147,13 @@ describe("hr_undo · 快照数量的守卫", () => {
     await styled();
     const afterStyle = await snapshotsOf(workspace);
     expect(afterStyle).toHaveLength(2);
-    // 两份快照是不同内容的不同文件：patch 前字节与样式前字节不是同一份。
+    // Two snapshots are different files with different contents: pre-patch bytes and pre-style bytes are not the same.
     expect(afterStyle[0]).not.toBe(afterStyle[1]);
   });
 });
 
-describe("hr_undo · 与 HTTP undo 的差分", () => {
-  it("同一序列走 HTTP undo，与 hr_undo 得到同一个 revision 与同一份字节", async () => {
+describe("hr_undo · diff against HTTP undo", () => {
+  it("should get the same revision and the same bytes from HTTP undo and hr_undo on the same sequence", async () => {
     const httpWorkspace = await workspaceIn("hreader-mcp-undo-parity-http-");
     await writeFile(join(httpWorkspace, "doc.html"), ANNOTATED_DOC, "utf8");
     const arm = await daemonArmOf(httpWorkspace);
@@ -162,10 +162,10 @@ describe("hr_undo · 与 HTTP undo 的差分", () => {
       const httpRevision = await httpSequenceOf(arm);
       const mcpRevision = await mcpSequenceOf();
 
-      // 两条路径的 sha256（revision = sha256 前 16 位）与整份字节都必须逐字相等。
+      // Both paths' sha256 (revision = first 16 chars of sha256) and whole bytes must be identical.
       expect(mcpRevision).toBe(httpRevision);
       expect(await bytesIn(workspace)).toBe(await bytesIn(httpWorkspace));
-      // 并且都停在 patch 后、样式前：undo 只退掉了样式那一步，两侧同台阶。
+      // And both land at post-patch, pre-style: undo only retracted the style step — both sides on the same rung.
       expect(await bytesIn(workspace)).toContain("新正文");
       expect(await bytesIn(workspace)).not.toBe(ANNOTATED_DOC);
     } finally {
@@ -174,14 +174,14 @@ describe("hr_undo · 与 HTTP undo 的差分", () => {
     }
   }, 30_000);
 
-  it("两侧对第三次 undo 都报 nothing_to_undo（错误码映射只有 revertLast 一份）", async () => {
+  it("should answer nothing_to_undo on the third undo on both sides (revertLast is the only error-code mapping)", async () => {
     const httpWorkspace = await workspaceIn("hreader-mcp-undo-parity-2nd-");
     await writeFile(join(httpWorkspace, "doc.html"), ANNOTATED_DOC, "utf8");
     const arm = await daemonArmOf(httpWorkspace);
 
     try {
       await httpSequenceOf(arm);
-      // 第二次 undo 退 patch：两侧都应回到全文最初的字节。
+      // The second undo retracts the patch: both sides should be back at the document's original bytes.
       const second = await arm.post(`/api/doc/${DOC_ID}/undo`, { docId: DOC_ID });
       expect(second.status).toBe(200);
       await mcpSequenceOf();
@@ -202,7 +202,7 @@ describe("hr_undo · 与 HTTP undo 的差分", () => {
   }, 30_000);
 });
 
-/** HTTP 臂跑 patch → style → undo，返回那次 undo 的 revision。 */
+/** The HTTP arm runs patch → style → undo and returns that undo's revision. */
 const httpSequenceOf = async (arm: Awaited<ReturnType<typeof daemonArmOf>>): Promise<unknown> => {
   await arm.post("/api/patch", {
     docId: DOC_ID,
@@ -216,7 +216,7 @@ const httpSequenceOf = async (arm: Awaited<ReturnType<typeof daemonArmOf>>): Pro
   return undo.body["revision"];
 };
 
-/** MCP 臂跑同一序列，返回那次 undo 的 revision。 */
+/** The MCP arm runs the same sequence and returns that undo's revision. */
 const mcpSequenceOf = async (): Promise<unknown> => {
   await patched();
   await styled();

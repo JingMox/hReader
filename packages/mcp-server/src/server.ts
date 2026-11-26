@@ -1,4 +1,4 @@
-// 这层管：装配（纯组装，不含 IO、不读 argv）。两种传输共用这一份注册表。
+// This layer: assembly (pure wiring — no IO, no argv reads). Both transports share this one registry.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -6,7 +6,7 @@ import { registerPrompts } from "./prompts";
 import { registerResources } from "./resources";
 import { registerTools } from "./tools";
 
-/** 与 `package.json` 的 `version` 同值；改版本时两处一起改（不在运行期读盘）。 */
+/** Same value as `package.json`'s `version`; change both together (not read from disk at runtime). */
 export const SERVER_VERSION = "1.1.0";
 
 export const createServer = (workspace: string): McpServer => {

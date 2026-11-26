@@ -1,5 +1,5 @@
-// 这层管：MCP-UI 视图资源（`ui://hreader/view/{docId}`）——「没 daemon 也要能读」，
-// 以及 daemon 在跑时横幅指向它的真实端口（Marco 4：视图只引用端口，不代管进程）。
+// This layer: the MCP-UI view resource (`ui://hreader/view/{docId}`) — "readable even with no daemon",
+// plus the banner pointing at the daemon's real port while it runs (Marco 4: the view only references the port, it does not manage the process).
 
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,7 +14,7 @@ const VIEW_URI_PREFIX = "ui://hreader/view/";
 
 const viewUriOf = (relativePath: string): string => `${VIEW_URI_PREFIX}${docIdOf(relativePath)}`;
 
-/** 资源内容里只有 `text`：与工具结果的 `content[]` 不是一个形状。 */
+/** Resource content holds only `text`: not the same shape as a tool result's `content[]`. */
 const textOfResource = (contents: readonly unknown[]): string => {
   const [first] = contents;
   return typeof first === "object" &&
@@ -25,7 +25,7 @@ const textOfResource = (contents: readonly unknown[]): string => {
     : "";
 };
 
-/** `homedir()` 读 `HOME`：把它指到临时目录，测试才不会撞上开发机上真的 `~/.hreader/daemon.json`。 */
+/** `homedir()` reads `HOME`: point it at a temp directory so tests never collide with the dev machine's real `~/.hreader/daemon.json`. */
 const withHome = async (home: string, body: () => Promise<void>): Promise<void> => {
   const original = process.env["HOME"];
   process.env["HOME"] = home;
@@ -88,7 +88,7 @@ describe("ui://hreader/view", () => {
   });
 });
 
-/** `resources/read` 的失败走 JSON-RPC error：`code` 是规范码，`data.code` 是我们的细码。 */
+/** `resources/read` failures go through a JSON-RPC error: `code` is the spec code, `data.code` our fine code. */
 const resourceErrorOf = async (uri: string): Promise<{ code: unknown; data: unknown }> => {
   const session = await sessionOf();
   const error: unknown = await session.client.readResource({ uri }).then(
@@ -102,11 +102,11 @@ const resourceErrorOf = async (uri: string): Promise<{ code: unknown; data: unkn
   };
 };
 
-describe("ui://hreader/view · 不存在时不再回假成功", () => {
+describe("ui://hreader/view · missing no longer fakes success", () => {
   it("should reject an unreadable document instead of returning a shell page", async () => {
     const { code, data } = await resourceErrorOf(viewUriOf("missing.html"));
 
-    // 钉的是既定行为：回一页"文档不可读"的壳对宿主是假成功。
+    // What is pinned is established behavior: answering a "document unreadable" shell page is a fake success to the host.
     expect(code).toBe(-32002);
     expect(Reflect.get(Object(data), "code")).toBe("not_found");
   });
@@ -126,7 +126,7 @@ describe("ui://hreader/view · 不存在时不再回假成功", () => {
     const { code, data } = await resourceErrorOf(viewUriOf("link.html"));
     await rm(outside, { recursive: true, force: true });
 
-    // 参数指错了（docId 指向工作区外）：`-32602`，细码仍是 `path_outside_workspace`。
+    // The argument points wrong (docId escapes the workspace): `-32602`, fine code still `path_outside_workspace`.
     expect(code).toBe(-32602);
     expect(Reflect.get(Object(data), "code")).toBe("path_outside_workspace");
   });
@@ -139,7 +139,7 @@ describe("ui://hreader/view · 不存在时不再回假成功", () => {
   });
 });
 
-describe("ui://hreader/view · daemon 落点文件", () => {
+describe("ui://hreader/view · daemon drop file", () => {
   it("should treat a daemon.json without a numeric port as no daemon", async () => {
     await writeFile(join(workspace, "doc.html"), "<article></article>", "utf8");
     await mkdir(join(workspace, ".hreader"), { recursive: true });

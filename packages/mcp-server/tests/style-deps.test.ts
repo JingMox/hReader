@@ -1,7 +1,7 @@
-// 这层管：`styleDepsOf` 指向的主题根——内置预设的 `theme.css` 必须真的在它下面；
-// 以及"资源整个没定位到"时的错归因防线（错误码 + 启动 WARNING）。
-// 源码布局下 core 自己算得对，只有打完 bundle / 拷出仓库才会错；`stdio.test.ts` 的真产物用例是主证据，
-// 这里把它钉成能直接指出"缺哪个文件"的便宜断言。
+// This layer: the theme root `styleDepsOf` points at — every builtin preset's `theme.css` must really sit under it;
+// plus the misattribution line of defense for "resources not located at all" (error code + startup WARNING).
+// In the source layout core computes it correctly; only bundling / copying out of the repo breaks it. `stdio.test.ts`'s real-artifact case is the main evidence;
+// here it is pinned into cheap assertions that can name the missing file directly.
 
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +18,7 @@ import {
   styleRootWarningOf,
 } from "../src/style-deps";
 
-/** 一定不存在的一段路径：拿它冒充"产物被拷到仓库外"的布局。 */
+/** A path segment guaranteed not to exist: stands in for the "artifact copied outside the repo" layout. */
 const ABSENT_ROOT = join(tmpdir(), "hreader-styles-root-that-is-not-there");
 
 const errorOf = (run: () => unknown): unknown => {
@@ -33,8 +33,8 @@ const errorOf = (run: () => unknown): unknown => {
 describe("styleDepsOf", () => {
   it("should point the builtin theme root at a directory that holds every preset's theme.css", () => {
     const { stylesRoot } = styleDepsOf("/workspace");
-    // 预设的 `inheritsVisual` 去重后每个 visual 都得有 `styles/<id>/theme.css`；
-    // 主题根指对了，全部 id 的换肤就都成立——错的是那个根，不是缺文件。
+    // After deduping presets' `inheritsVisual`, every visual needs a `styles/<id>/theme.css`;
+    // with the theme root right, reskinning works for every id — a wrong root is the bug, not missing files.
     const missing = BUILTIN_STYLES.map((style) => style.inheritsVisual).filter(
       (visualId) => !existsSync(join(stylesRoot, visualId, "theme.css")),
     );
@@ -43,9 +43,9 @@ describe("styleDepsOf", () => {
   });
 });
 
-describe("styleDepsOf · 整条链", () => {
+describe("styleDepsOf · the whole chain", () => {
   it("should load a builtin preset all the way through, not merely find its theme.css", async () => {
-    // "文件在"不等于"链通"：这一步真的过 core 的 `loadStyle`（读 theme.css + 命中预设 spec）。
+    // "File present" ≠ "chain linked": this step really goes through core's `loadStyle` (reads theme.css + hits the preset spec).
     const { spec } = await loadStyle({ id: "atelier-editorial" }, styleDepsOf("/workspace"));
 
     expect(spec.id).toBe("atelier-editorial");
@@ -53,13 +53,13 @@ describe("styleDepsOf · 整条链", () => {
   });
 });
 
-describe("styleDepsOf · 主题资源缺失", () => {
+describe("styleDepsOf · theme resources missing", () => {
   it("should refuse with style_io_failure instead of letting core blame the id", () => {
     const caught = errorOf(() => styleDepsOf("/workspace", ABSENT_ROOT));
 
-    // 错归因比报错更贵：风格是存在的，是资源没定位到——所以不能是 `unknown_style`。
+    // Misattribution costs more than an error: the style exists — its resources were not located — so it must not be `unknown_style`.
     expect(caught instanceof HrError && caught.code).toBe("style_io_failure");
-    // 正文只给包内相对位置（绝对路径不该进 content）；绝对的那份在启动 WARNING 里。
+    // The body only gets the package-relative location (absolute paths must not enter content); the absolute one lives in the startup WARNING.
     expect(caught instanceof Error ? caught.message : "").toContain(
       "styles/atelier-editorial/theme.css",
     );
@@ -72,7 +72,7 @@ describe("styleDepsOf · 主题资源缺失", () => {
   });
 });
 
-/** 造一棵"主题资源齐全"的假根：哨兵文件真的存在，`firstThemeRootOf` 才会认它。 */
+/** Build a fake root with "all theme resources present": the sentinel file must really exist for `firstThemeRootOf` to accept it. */
 const themeRootOf = (name: string): string => {
   const root = join(mkdtempSync(join(tmpdir(), `hreader-style-${name}-`)), "styles");
   mkdirSync(join(root, "atelier-editorial"), { recursive: true });
@@ -80,14 +80,14 @@ const themeRootOf = (name: string): string => {
   return root;
 };
 
-describe("候选顺序", () => {
+describe("candidate order", () => {
   it("should put the package-local styles first, with core's repo root as the dev fallback", () => {
     const [first, second] = styleCandidatesOf("/workspace");
 
-    // 包内优先：发布版里包内那份才是真值源（把顺序反了，这条必红）。
-    // 写精确值而不是 `toContain("packages/mcp-server/styles")`：任何包含该片段的路径（含仓库根那份）都能过子串断言。
+    // Package-local first: in a release the package copy is the source of truth (reverse the order and this goes red).
+    // Exact value asserted, not `toContain("packages/mcp-server/styles")`: any path containing that fragment (including the repo-root copy) passes a substring check.
     expect(first).toBe(fileURLToPath(new URL("../styles/", import.meta.url)));
-    // 仓库根只兜底源码直跑：它由 core 拼，本包不自己写一次深度。
+    // The repo root only covers running from source: it is computed by core; this package does not respell the depth.
     expect(second).toBe(nodeStyleDeps("/workspace").stylesRoot);
   });
 
@@ -95,8 +95,8 @@ describe("候选顺序", () => {
     const packageLocal = themeRootOf("package");
     const repoRoot = themeRootOf("repo");
 
-    // 这两条锁的是**辅助函数契约**（"取第一个真有主题的候选"），不是生产接线：
-    // "包内优先"是否真的接上，由 `install-sim.test.ts` 的哨兵臂黑盒覆盖（往包内那份写哨兵，落盘含哨兵）。
+    // These two pin the **helper-function contract** ("take the first candidate that really has themes"), not production wiring:
+    // whether "package-local first" is truly wired is covered black-box by `install-sim.test.ts`'s sentinel arm (writes a sentinel into the package copy; the landing contains the sentinel).
     expect(firstThemeRootOf([packageLocal, repoRoot])).toBe(packageLocal);
     expect(firstThemeRootOf([repoRoot, packageLocal])).toBe(repoRoot);
   });

@@ -1,4 +1,4 @@
-// 这层管：工具结果的两副面孔与日志落点——失败保留 `HrError.code`，堆栈只进 stderr。
+// This layer: the two faces of tool results and where logs land — failures keep `HrError.code`; stacks only go to stderr.
 
 import { HrError } from "@hreader/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -51,7 +51,7 @@ describe("failureOf", () => {
 
   it("should keep the raw text out of the body and use a generic message instead", () => {
     const stderr = stderrText();
-    // 诊断（`boom`）进 stderr，正文只给人话：宿主按码分流，模型看文案，两件事不混。
+    // Diagnostics (`boom`) go to stderr; the body only gets human words: the host routes on the code, the model reads the text — the two never mix.
     expect(textOf(failureOf("hr_probe", new Error("boom")))).toBe("[internal] 服务器内部错误");
     expect(textOf(failureOf("hr_probe", "裸字符串"))).toBe("[internal] 服务器内部错误");
     expect(stderr.read()).toContain("boom");
@@ -65,7 +65,7 @@ describe("failureOf", () => {
     });
     const text = textOf(failureOf("hr_probe", bare));
 
-    // 调用点漏包时的兜底：码仍然诚实，但正文里既无 errno 原文也无绝对路径。
+    // The fallback for a caller that forgot to wrap: the code stays honest, and the body carries neither the raw errno nor an absolute path.
     expect(text).toBe("[not_found] 目标不存在");
     expect(text).not.toContain("ENOENT");
     expect(text).not.toContain("/x/y.html");
@@ -88,7 +88,7 @@ describe("log", () => {
   it("should fall back to the message when an Error carries no stack", () => {
     const stderr = stderrText();
     const bare = new Error("没有堆栈");
-    // 有的运行环境不给 `stack`（`exactOptionalPropertyTypes` 也不允许直接赋 `undefined`）。
+    // Some runtimes do not provide `stack` (`exactOptionalPropertyTypes` also forbids assigning `undefined` directly).
     Object.defineProperty(bare, "stack", { value: undefined });
 
     logFailure("hr_probe", bare);
@@ -107,7 +107,7 @@ describe("log", () => {
     logLine("x".repeat(2 * 1024 * 1024));
 
     const written = stderr.read();
-    // runner 是被 MB 级单行卡死的：上限按"行"断言，截断处标出被截掉的长度。
+    // What stalls the runner is megabyte-long single lines: the cap is asserted per "line", and the truncation point marks how much was cut.
     expect(written).toContain("…[truncated ");
     expect(written).toContain(" chars]");
     expect(longestLineOf(written)).toBeLessThan(10_000);
@@ -121,7 +121,7 @@ describe("log", () => {
     logFailure("hr_probe", outer);
 
     const written = stderr.read();
-    // 链尾的错因不能丢：截断发生在每层内部，`caused by` 的骨架必须还在。
+    // The tail cause must not be lost: truncation happens inside each layer, so the `caused by` skeleton must survive.
     expect(written).toContain("caused by");
     expect(written).toContain("…[truncated ");
     expect(longestLineOf(written)).toBeLessThan(10_000);
@@ -138,14 +138,14 @@ describe("log", () => {
 
     const written = stderr.read();
     expect(written).toContain("truncated");
-    // 每层 message 只有十几个字符：没有层数上限的话 64 层会一字不少全写出来。
+    // Each layer's message is only a dozen chars: without a depth cap, 64 layers would print in full.
     expect(written).not.toContain("wrap 0");
   });
 
   it("should stop at the depth bound even when the cause chain is cyclic", () => {
     const stderr = stderrText();
     const loop = new Error("self-cause");
-    // `cause` 指回自己是合法的运行期形状：不设上限 `while (current instanceof Error)` 就是死循环。
+    // A `cause` pointing back at itself is a legal runtime shape: without a cap, `while (current instanceof Error)` loops forever.
     loop.cause = loop;
 
     logFailure("hr_probe", loop);
@@ -154,14 +154,14 @@ describe("log", () => {
   });
 });
 
-describe("绝对路径折叠", () => {
+describe("absolute-path folding", () => {
   it("should leave the message untouched when the root is the filesystem root", () => {
-    // `root === "/"` 时根是**每个**绝对路径的前缀：折它只会把文案拆坏。
+    // With `root === "/"` the root is a prefix of **every** absolute path: folding it only mangles the text.
     expect(elidedOf("找不到风格：/x.yaml", ["/"])).toBe("找不到风格：/x.yaml");
   });
 
   it("should not touch a sibling directory that merely starts with the root", () => {
-    // `root=/ws/hReader` 不许吃掉 `/ws/hReader-something/x`：根后面必须跟分隔符。
+    // `root=/ws/hReader` must not eat `/ws/hReader-something/x`: a separator must follow the root.
     expect(elidedOf("读取失败：/ws/hReader-something/x.html", ["/ws/hReader"])).toBe(
       "读取失败：/ws/hReader-something/x.html",
     );
@@ -169,20 +169,20 @@ describe("绝对路径折叠", () => {
 
   it("should fold the root and the separator together, leaving a relative path", () => {
     expect(elidedOf("读取失败：/ws/a.html", ["/ws"])).toBe("读取失败：a.html");
-    // 根后面跟的是空格/标点时不算路径前缀，原样保留（宁可漏折，也不许把句子拆坏）。
+    // When what follows the root is a space/punctuation it is not a path prefix — keep it (better miss a fold than break a sentence).
     expect(elidedOf("就是 /ws 本身", ["/ws"])).toBe("就是 /ws 本身");
   });
 
   it("should fold every root it is given, and treat the regex metacharacters as literal", () => {
     expect(elidedOf("/real/a.html 与 /link/a.html", ["/link", "/real"])).toBe("a.html 与 a.html");
-    // `.` 在根里是字面点，不许当通配符。
+    // `.` inside a root is a literal dot, never a wildcard.
     expect(elidedOf("/ws.v2/a.html 与 XwsYv2/a.html", ["/ws.v2"])).toBe("a.html 与 XwsYv2/a.html");
   });
 });
 
-describe("折叠顺序", () => {
-  // macOS 上 cwd=`/var/folders/x`、realpath=`/private/var/folders/x`：先折短的会命中长串中段，
-  // 折出 `/privatedoc.html` + 半截 `/private`。长根先折就没这问题。
+describe("fold order", () => {
+  // On macOS cwd=`/var/folders/x`, realpath=`/private/var/folders/x`: folding the short one first hits the middle of the longer string,
+  // producing `/privatedoc.html` + a dangling `/private`. Longest-first avoids it.
   it("should fold the longer root first when one root is a suffix of the other", () => {
     const cwd = "/var/folders/x";
     const real = "/private/var/folders/x";
@@ -192,14 +192,14 @@ describe("折叠顺序", () => {
         rootsOf(cwd, () => real),
       ),
     ).toBe("realpath时路径不存在：doc.html");
-    // 调用方给的顺序反着来也一样：排序在折叠里做，不依赖入参。
+    // Reversed input order gives the same result: sorting happens inside the fold, independent of the arguments.
     expect(elidedOf(`realpath时路径不存在：${cwd}/doc.html`, [real, cwd])).toBe(
       "realpath时路径不存在：doc.html",
     );
   });
 });
 
-describe("折叠根的来源", () => {
+describe("where the fold roots come from", () => {
   it("should keep one root when the real path equals cwd", () => {
     expect(rootsOf("/ws", (path) => path)).toEqual(["/ws"]);
   });
@@ -217,9 +217,9 @@ describe("折叠根的来源", () => {
   });
 });
 
-describe("JSON-RPC 分流", () => {
+describe("JSON-RPC routing", () => {
   it("should map business codes onto the spec codes the host switches on", () => {
-    // `-32002` 是 MCP 的 "Resource not found"；`-32603` 只留给真正没料到的失败。
+    // `-32002` is MCP's "Resource not found"; `-32603` is reserved for genuinely unexpected failures.
     expect(rpcCodeOf("not_found")).toBe(-32002);
     expect(rpcCodeOf("unknown_style")).toBe(-32002);
     expect(rpcCodeOf("invalid_input")).toBe(-32602);
@@ -234,27 +234,27 @@ describe("JSON-RPC 分流", () => {
     const noCode: object = {};
     const syscallOne = Object.assign(new Error("boom"), { code: "EWEIRD", syscall: "open" });
 
-    // 有 `syscall` 才是 fs 层错误：没有它的未知错误就是"我们没料到"。
+    // Only an error with `syscall` is fs-layer; an unknown error without it is "we did not expect this".
     expect(textOf(failureOf("hr_probe", ours))).toBe("[internal] 服务器内部错误");
     expect(textOf(failureOf("hr_probe", syscallOne))).toBe(
       "[io_failure] 文件操作失败（细节见服务器日志）",
     );
-    // 有 `code` 但不是字符串（如数字 errno）、或根本没有 `code`：都不是 fs 层，走 `internal`。
+    // A `code` that is not a string (e.g. a numeric errno), or no `code` at all: neither is fs-layer → `internal`.
     expect(textOf(failureOf("hr_probe", numeric))).toBe("[internal] 服务器内部错误");
     expect(textOf(failureOf("hr_probe", noCode))).toBe("[internal] 服务器内部错误");
   });
 });
 
-describe("JSON-RPC 出口", () => {
+describe("JSON-RPC exit", () => {
   it("should keep the fine code in data, and fold the path only where we ask it to", () => {
     const error = new HrError("unknown_style", `找不到风格：${process.cwd()}/x.yaml`);
 
-    // 宿主按 `data.code` 细分，`code` 只是 JSON-RPC 的粗粒度开关。
+    // The host subdivides on `data.code`; `code` is only the JSON-RPC coarse switch.
     const rpc = rpcErrorOf(error);
     expect(rpc.code).toBe(-32002);
     expect(rpc.data).toEqual({ code: "unknown_style" });
 
-    // 折叠不是出口的默认动作（用户传的 `filePath` 必须原样回显）：由调用点显式对 core 文案调用 `foldedOf`。
+    // Folding is not the exits' default (the caller's `filePath` must echo verbatim): call sites explicitly run `foldedOf` on core text.
     expect(rpc.message).toContain(process.cwd());
     const folded = rpcErrorOf(foldedOf(error));
     expect(folded.message).not.toContain(process.cwd());

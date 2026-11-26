@@ -1,8 +1,8 @@
-// 这层管：`hr_undo` 的五条用户可见行为、两层快照的严格 LIFO、三条错误码的诚实性、
-// 并发、以及"快照被外部删掉/改坏"时不留半还原状态、无 no-op 台阶。
+// This layer: `hr_undo`'s five user-visible behaviors, strict LIFO over two snapshot layers, three error codes' honesty,
+// concurrency, and "snapshot deleted/corrupted externally" leaving no half-restored state and no no-op rung.
 //
-// 它会因为什么而红：把 `revertLast` 换成 `undoPatch`（`undo_unavailable` 会漏进工具结果）、
-// 去掉 core 的 `runLocked`（两个并发 undo 都成功）、或 undo 只"报告成功"而不真写回字节。
+// What makes it red: swapping `revertLast` for `undoPatch` (`undo_unavailable` leaks into tool results),
+// removing core's `runLocked` (both concurrent undos succeed), or undo "reporting success" without really writing bytes back.
 
 import { createHash } from "node:crypto";
 import { readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -51,7 +51,7 @@ const callOf = async (name: string, args: Record<string, unknown>): Promise<Outc
     isError,
     code: isError ? codeOf(result) : "",
     text: textOf(result),
-    // 错误结果的 text 是 `[code] 提示` 而非 JSON：只有成功结果才有一份可解析的报文。
+    // An error result's text is `[code] hint`, not JSON: only success results carry a parseable payload.
     payload: isError ? {} : payloadOf(result),
     uri: isError ? "" : uiUriOf(result),
   };
@@ -66,11 +66,11 @@ const bytesOf = (): Promise<string> => readFile(join(workspace, "doc.html"), "ut
 
 const DOC_ID = "doc.html";
 
-/** 前端对齐用的 revision = 内容 sha256 的前 16 位（`revertLast` 的定义）。 */
+/** revision for frontend alignment = first 16 chars of the content sha256 (`revertLast`'s definition). */
 const revisionOf = (content: string): string =>
   createHash("sha256").update(content, "utf8").digest("hex").slice(0, 16);
 
-describe("hr_undo · 有效性", () => {
+describe("hr_undo · validity", () => {
   it("should put the pre-patch bytes back, and report the same revision the frontend would", async () => {
     const before = await bytesOf();
     await patchOf("p-1", "<p>新正文</p>");
@@ -78,11 +78,11 @@ describe("hr_undo · 有效性", () => {
     const undo = await undoOf();
 
     expect(undo.isError).toBe(false);
-    // 判定用文件字节，不是"工具没报错"。
+    // Verdicts use file bytes, not "the tool did not error".
     expect(await bytesOf()).toBe(before);
     expect(patched).not.toBe(before);
     expect(undo.payload["revision"]).toBe(revisionOf(before));
-    // `bytes` 是**还原后**的字节数（就是写前那份快照的字节数）。
+    // `bytes` is the **restored** byte count (i.e. the byte count of the pre-write snapshot).
     expect(undo.payload["bytes"]).toBe(Buffer.byteLength(before, "utf8"));
     expect(String(undo.payload["restoredFrom"])).toContain(join(".hreader", "history"));
     expect(undo.uri).toBe(`ui://hreader/view/${Buffer.from(DOC_ID).toString("base64url")}`);
@@ -100,7 +100,7 @@ describe("hr_undo · 有效性", () => {
   });
 });
 
-describe("hr_undo · 快照消费", () => {
+describe("hr_undo · snapshot consumption", () => {
   it("should answer nothing_to_undo on the second undo (the only snapshot is consumed)", async () => {
     await patchOf("p-1", "<p>新正文</p>");
     const first = await undoOf();
@@ -119,7 +119,7 @@ describe("hr_undo · 快照消费", () => {
   });
 });
 
-describe("hr_undo · 错误码诚实性", () => {
+describe("hr_undo · error-code honesty", () => {
   it("should map a missing path to not_found and a directory to not_a_file", async () => {
     const missing = await undoOf("nope.html");
     const asDir = await undoOf(".");
@@ -138,13 +138,13 @@ describe("hr_undo · 错误码诚实性", () => {
     for (const result of cases) {
       expect(result.isError).toBe(true);
       expect(result.text).not.toContain("undo_unavailable");
-      // 反向：既不是 core 内部码，也不是兜底的 `internal`。
+      // The reverse: neither a core-internal code nor the `internal` fallback.
       expect(result.code).not.toBe("internal");
     }
   });
 });
 
-describe("hr_undo · 并发与残缺", () => {
+describe("hr_undo · concurrency and corruption", () => {
   it("should let exactly one of two concurrent undos win", async () => {
     await patchOf("p-1", "<p>新正文</p>");
     const [first, second] = await Promise.all([undoOf(), undoOf()]);
@@ -163,14 +163,14 @@ describe("hr_undo · 并发与残缺", () => {
     await rm(join(workspace, ".hreader", "history"), { recursive: true, force: true });
 
     const undo = await undoOf();
-    // 快照没了 = 没有历史可退；目标文件必须原地不动（不是半还原）。
+    // Snapshot gone = no history to retract; the target file must sit untouched (not half-restored).
     expect(undo.code).toBe("nothing_to_undo");
     expect(await bytesOf()).toBe(patched);
   });
 });
 
-describe("hr_undo · 两层快照严格 LIFO", () => {
-  it("两次 patch 后逐次 undo 严格退最近一份（不是退任意一份）", async () => {
+describe("hr_undo · strict LIFO over two snapshot layers", () => {
+  it("should retract strictly the most recent snapshot after two patches (not any arbitrary one)", async () => {
     const s0 = await bytesOf();
     await patchOf("h1", "<h1>标题一</h1>");
     const s1 = await bytesOf();
@@ -185,7 +185,7 @@ describe("hr_undo · 两层快照严格 LIFO", () => {
     expect(await bytesOf()).toBe(s0);
     const third = await undoOf();
 
-    // 每一步的 revision 就是"该步还原后"的内容哈希，且三步互不相等。
+    // Each step's revision is the content hash "after that step's restore", and the three differ from each other.
     expect(first.payload["revision"]).toBe(revisionOf(s1));
     expect(second.payload["revision"]).toBe(revisionOf(s0));
     expect(new Set([revisionOf(s0), revisionOf(s1), revisionOf(s2)]).size).toBe(3);
@@ -193,11 +193,11 @@ describe("hr_undo · 两层快照严格 LIFO", () => {
   });
 });
 
-describe("hr_undo · 快照被改坏", () => {
-  it("哈希不符时拒绝写回（io_failure），目标文件不动且快照不被消费", async () => {
+describe("hr_undo · corrupted snapshot", () => {
+  it("should refuse to write back on hash mismatch (io_failure), leaving the target untouched and the snapshot unconsumed", async () => {
     await patchOf("p-1", "<p>新正文</p>");
     const patched = await bytesOf();
-    // 快照目录按文档路径分桶：`.hreader/history/<docId 的 sha1>/<hash16>-<ts>-<seq>.html`。
+    // The snapshot directory is bucketed by document path: `.hreader/history/<docId sha1>/<hash16>-<ts>-<seq>.html`.
     const root = join(workspace, ".hreader", "history");
     const buckets = await readdir(root);
     expect(buckets).toHaveLength(1);
@@ -208,15 +208,15 @@ describe("hr_undo · 快照被改坏", () => {
 
     const undo = await undoOf();
     expect(undo.code).toBe("io_failure");
-    // ① 目标文件字节不变（不是写回半截内容）。
+    // ① The target file's bytes unchanged (no half-written content).
     expect(await bytesOf()).toBe(patched);
-    // ② 快照仍在：坏快照也不消费，否则真历史一起丢。
+    // ② The snapshot still there: a corrupt snapshot is not consumed, or real history goes down with it.
     expect(await readdir(dir)).toEqual(names);
   });
 });
 
-describe("hr_undo · 批注在场时 undo（C）", () => {
-  it("退回到 patch 前，`pending_ai` 批注原样保留并在 hr_outline 里仍可见", async () => {
+describe("hr_undo · undo with annotations present (C)", () => {
+  it("should return to pre-patch bytes with the `pending_ai` annotation preserved and still visible in hr_outline", async () => {
     await patchOf("p-1", "<p>改后的正文</p>");
     const undo = await undoOf();
     expect(undo.isError).toBe(false);
@@ -228,8 +228,8 @@ describe("hr_undo · 批注在场时 undo（C）", () => {
   });
 });
 
-describe("hr_undo · 无 no-op 台阶（D）", () => {
-  it("没改动就不出快照（changed/undoable=false、historyPath=null），undo 仍是 nothing_to_undo", async () => {
+describe("hr_undo · no no-op rung (D)", () => {
+  it("should produce no snapshot when nothing changed (changed/undoable=false, historyPath=null), with undo still answering nothing_to_undo", async () => {
     const noop = await patchOf("p-1", '<p data-hr-id="p-1">正文</p>');
 
     expect(noop.payload["changed"]).toBe(false);

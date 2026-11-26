@@ -1,5 +1,5 @@
-// 这层管：本包唯一一份 `StyleDeps`——三条出口（工具 / 资源 / prompt）都从这里取，不各自拼；
-// 以及"主题资源到底在不在"的唯一判定（哨兵文件 + 一条给人看的 WARNING 文案）。
+// This layer: the package's single `StyleDeps` — all three exits (tool / resource / prompt) take it from here instead of each building one;
+// plus the single verdict on "are the theme resources actually there" (sentinel file + one human WARNING line).
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -9,36 +9,36 @@ import { HrError, nodeStyleDeps } from "@hreader/core";
 import type { StyleDeps } from "@hreader/core";
 
 /**
- * 包内自带的主题资源（**不同的事实**，不是仓库根的第二份拼写）：`build` 把仓库根 `styles/` 整棵拷成
- * `<pkg>/styles`，而 `src/style-deps.ts` 与 `dist/main.js` 都恰好比包根深一层，所以 `../styles/`
- * 在源码布局和发布布局里都指向 `<pkg>/styles`。
+ * The theme resources shipped inside the package (**a different fact**, not a second spelling of the repo root): `build` copies the repo-root `styles/` tree
+ * into `<pkg>/styles`, and both `src/style-deps.ts` and `dist/main.js` happen to sit one level below the package root, so `../styles/`
+ * points at `<pkg>/styles` in both the source layout and the published layout.
  *
- * 仓库根在哪**只**由 core 拼：`packages/core/src/style/node.ts:14` 的 `nodeStyleDeps(workspace).stylesRoot`。
- * 那边注释写着"发布时需把 styles/ 拷进包内再改这里"——本文件就是那个"包内"，两边要能互相找到，
- * 否则发布时只会改一处。
+ * The repo root is computed **only** by core: `nodeStyleDeps(workspace).stylesRoot` in `packages/core/src/style/node.ts:14`.
+ * That comment says "when publishing, copy styles/ into the package and update here" — this file is that "inside the package"; the two sides must find each other,
+ * or a release would change only one.
  */
 const PACKAGE_STYLES_ROOT = fileURLToPath(new URL("../styles/", import.meta.url));
 
-/** 哨兵：拿一个真实预设的真实文件当证据——空目录不能让 `existsSync(stylesRoot)` 蒙混过关。 */
+/** Sentinel: use a real file of a real preset as proof — an empty directory must not let `existsSync(stylesRoot)` pass. */
 const SENTINEL_VISUAL_ID = "atelier-editorial";
 const THEME_FILE = "theme.css";
 
 const themesAbsentOf = (stylesRoot: string): boolean =>
   !existsSync(join(stylesRoot, SENTINEL_VISUAL_ID, THEME_FILE));
 
-/** 候选顺序写死"包内优先"：发布版里包内那份才是真值源，仓库根只兜底源码直跑（未 build）。 */
+/** Candidate order is hardcoded "package-local first": in a release the package copy is the source of truth; the repo root only covers running from source (unbuilt). */
 export const styleCandidatesOf = (workspace: string): readonly string[] => [
   PACKAGE_STYLES_ROOT,
   nodeStyleDeps(workspace).stylesRoot,
 ];
 
-/** 第一个真有主题资源的候选；一个都没有就返回 `undefined`（"在不在"只问哨兵文件）。 */
+/** The first candidate that actually holds theme resources; `undefined` when none does ("is it there" only asks the sentinel file). */
 export const firstThemeRootOf = (candidates: readonly string[]): string | undefined =>
   candidates.find((root) => !themesAbsentOf(root));
 
 /**
- * `stylesRootOverride` 只为让"资源缺失"这条错误码可测；正常调用一律不传（传了它就是唯一候选）。
- * 检查放在**真用时**（不落模块顶层）：import 本文件不该因为布局问题就炸。
+ * `stylesRootOverride` exists only to make the "resources missing" error code testable; normal callers never pass it (when passed it is the only candidate).
+ * The check runs **at actual use** (not at module top level): importing this file must not blow up over a layout problem.
  */
 const candidatesOf = (workspace: string, stylesRootOverride?: string): readonly string[] =>
   stylesRootOverride === undefined ? styleCandidatesOf(workspace) : [stylesRootOverride];
@@ -47,16 +47,16 @@ const stylesRootOf = (workspace: string, stylesRootOverride?: string): string | 
   firstThemeRootOf(candidatesOf(workspace, stylesRootOverride));
 
 /**
- * 资源一个都定位不到时**不许**让 core 报 `unknown_style`——风格是存在的，是资源没定位到；
- * 错归因比报错更贵。错误码选 `style_io_failure` 而不是新码：错误码是宿主用来分流的契约，
- * 一个只为"我们打包打错了"存在的码，会把构建缺陷永久写进对外接口。
+ * When no resources can be located we must **not** let core report `unknown_style` — the style exists; its resources were not found;
+ * misattribution costs more than an error. The code is `style_io_failure`, not a new one: error codes are the contract the host routes on,
+ * and a code that only exists for "we packaged it wrong" would etch a build defect into the public interface forever.
  */
 export const styleDepsOf = (workspace: string, stylesRootOverride?: string): StyleDeps => {
   const stylesRoot = stylesRootOf(workspace, stylesRootOverride);
   if (stylesRoot === undefined) {
     throw new HrError(
       "style_io_failure",
-      // 正文里只给包内相对位置：绝对路径属于宿主布局，只该出现在 stderr 的 WARNING 里。
+      // The body only gives the package-relative location: absolute paths belong to host layout and only appear in the stderr WARNING.
       `主题资源不可用：styles/${SENTINEL_VISUAL_ID}/${THEME_FILE} 不存在` +
         "（预设 id 需要 styles/ 目录随包发布）。若你是从仓库内运行，说明 styles/ 未随产物一同定位；" +
         "若你装的是发布版，请报告该包缺少主题资源。",
@@ -65,7 +65,7 @@ export const styleDepsOf = (workspace: string, stylesRootOverride?: string): Sty
   return { ...nodeStyleDeps(workspace), stylesRoot };
 };
 
-/** 启动时给宿主的一条 WARNING；资源齐时返回 `undefined`，一个字都不打。 */
+/** One WARNING line for the host at startup; returns `undefined` when resources are all present — prints nothing at all. */
 export const styleRootWarningOf = (
   workspace: string,
   stylesRootOverride?: string,

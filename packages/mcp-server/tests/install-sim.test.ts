@@ -1,6 +1,6 @@
-// 这层管："假安装"证据——`dist/` + `styles/` 一起拷到**没有仓库**的目录里，
-// 真子进程 stdio 握手，对三个内置预设逐个 `hr_apply_style`，并断言样式**真的生效**（不是"没报错"）。
-// 它测的是交付形态：`build` 里少了拷 `styles/` 那一步，本文件必红。
+// This layer: "fake install" evidence — `dist/` + `styles/` copied together into a directory **with no repo**,
+// a real-subprocess stdio handshake, `hr_apply_style` on each of the three builtin presets, asserting the styles **really take effect** (not "no error").
+// It tests the delivery shape: if `build` ever drops the `styles/` copy step, this file must go red.
 
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -24,7 +24,7 @@ import {
 
 const APPLY_ID = 5;
 
-/** 内置预设逐个测：换肤入口是预设 id，真正落盘的主题按各预设的 `inheritsVisual` 找。 */
+/** Test each builtin preset: the reskin entry is the preset id; the theme actually written is found via each preset's `inheritsVisual`. */
 const PRESETS = BUILTIN_STYLES;
 
 const DOC_HTML =
@@ -46,7 +46,7 @@ const applyLineOf = (presetId: string): string =>
     },
   });
 
-/** 随包发布的主题：`shipped` 是写进模拟安装目录的那份，`repo` 是仓库根的原件。 */
+/** Themes shipped with the package: `shipped` is the copy inside the simulated install dir, `repo` is the repo-root original. */
 interface ShippedTheme {
   readonly shipped: string;
   readonly repo: string;
@@ -59,7 +59,7 @@ interface ApplyOutcome {
   readonly tone: string;
 }
 
-/** 工具成功帧的正文是 `{visual, tone}` 的 JSON；字段分开取，不做整体类型断言。 */
+/** The success frame's body is `{visual, tone}` JSON; fields are read individually, no whole-shape type assertion. */
 const outcomeOf = (text: string): ApplyOutcome => {
   const parsed: unknown = JSON.parse(text);
   const visual = isRecord(parsed) ? parsed["visual"] : undefined;
@@ -81,7 +81,7 @@ afterAll(async () => {
   await Promise.all(sims.map((sim) => rm(sim, { recursive: true, force: true })));
 });
 
-/** 对单个预设跑一次真进程：干净文档 → 握手 → `hr_apply_style` → 断言样式真的落盘。 */
+/** Run one real process per preset: clean doc → handshake → `hr_apply_style` → assert the style really landed on disk. */
 const applyPresetOf = async (
   sim: string,
   theme: ShippedTheme,
@@ -101,34 +101,34 @@ const applyPresetOf = async (
   const written = await readFile(docPath, "utf8");
 
   expect(frame?.["error"]).toBeUndefined();
-  // 资源真的定位到了：启动 WARNING 一个字都没有，换肤也真的写了盘。
+  // The resources really resolved: not one byte of startup WARNING, and the reskin really wrote to disk.
   expect(probe.stderrText).not.toContain("WARNING 主题资源缺失");
   const outcome = outcomeOf(textOf(frame));
   expect(outcome.changed).toBe(true);
-  // 生效 = 落盘的 `<style id="hr-theme">` 内容与随包发布的那份 theme.css 逐字相同（core 原样拼接）。
-  // 拿"写了个 style 标签"或"没报错"当证据，正是之前栽过的坑。
+  // "Took effect" = the landed `<style id="hr-theme">` is byte-identical to the shipped theme.css (core concatenates it verbatim).
+  // Taking "wrote a style tag" or "did not error" as proof is exactly the pit we fell into before.
   expect(themeOf(written)).toBe(theme.shipped);
-  // 哨兵：模拟目录那份与仓库那份**只差这一行注释**。实现若偷懒去读仓库根那份，这两条必红——
-  // 没有它们时 `shipped === repo`，"读包内"与"读仓库"在断言上完全不可分。
+  // Sentinel: the simulated copy differs from the repo copy **by exactly this one comment line**. If the implementation lazily reads the repo-root copy, these two must go red —
+  // without them `shipped === repo`, and "read package-local" vs "read repo" are indistinguishable to the assertion.
   expect(themeOf(written)).toContain(theme.sentinel);
   expect(themeOf(written)).not.toBe(theme.repo);
   expect(outcome.bytes).toBe(Buffer.byteLength(written, "utf8"));
-  // 调性走的是另一条 core 链路（loadStyle → resolveThemePath），同样要能读到随包资源。
+  // Tone goes through a different core chain (loadStyle → resolveThemePath); it must read the shipped resources too.
   expect(outcome.tone).toContain(preset.language.persona);
   return outcome;
 };
 
-describe("假安装（/tmp，无仓库）", () => {
+describe("fake install (/tmp, no repo)", () => {
   it("should style a document with every builtin preset when only dist/ and styles/ are shipped", async () => {
-    // 一次真安装：只拷产物与资源，模拟 `npm i` 之后的包目录。
+    // A real install: only artifacts and resources are copied, mimicking the package directory after `npm i`.
     const sim = await mkdtemp(join(tmpdir(), "hreader-install-sim-"));
     sims.push(sim);
     await cp(join(PACKAGE_ROOT, "dist"), join(sim, "dist"), { recursive: true });
     await cp(join(PACKAGE_ROOT, "styles"), join(sim, "styles"), { recursive: true });
 
-    // 前提断言：这里真的没有仓库，资源就在产物旁边。
+    // Premise assertion: there is really no repo here — resources sit next to the artifacts.
     expect(existsSync(join(sim, "packages"))).toBe(false);
-    // 每个视觉主题目录都改写成"仓库原件 + 一行哨兵注释"：两份内容不同，才分得出实现读的是哪一份。
+    // Every visual theme directory is rewritten as "repo original + one sentinel comment line": only differing contents can tell which copy the implementation reads.
     const themes = new Map<string, ShippedTheme>();
     for (const preset of PRESETS) {
       const visualId = preset.inheritsVisual;
@@ -144,10 +144,11 @@ describe("假安装（/tmp，无仓库）", () => {
     const outcomes: ApplyOutcome[] = [];
     for (const preset of PRESETS) {
       const theme = themes.get(preset.inheritsVisual);
-      if (theme === undefined) throw new Error(`哨兵缺视觉主题：${preset.inheritsVisual}`);
+      if (theme === undefined)
+        throw new Error(`sentinel missing the visual theme: ${preset.inheritsVisual}`);
       outcomes.push(await applyPresetOf(sim, theme, preset));
     }
-    // 结构性断言：每个预设都真的跑过（把循环改成"只测第一个"，这条立刻红）。
+    // Structural assertion: every preset really ran (change the loop to "only the first" and this goes red instantly).
     expect(outcomes).toHaveLength(PRESETS.length);
   }, 120_000);
 });

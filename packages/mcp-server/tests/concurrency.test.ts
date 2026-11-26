@@ -1,8 +1,8 @@
-// 这层管：并发写（core 有 `runLocked`，MCP 层从没验过它在这条路上生效）。
+// This layer: concurrent writes (core has `runLocked`, but the MCP layer never verified it works on this path).
 //
-// 它会因为什么而红：去掉 `patchFile` 里的 `runLocked` 之后，两条 `readFile → 改 → writeFile`
-// 会互相覆盖——表现正是"两个响应都 `isError:false`，文件里只有一处改动"。
-// 那是唯一被禁止的结局（双绿却丢改动）；串行化成功、或干脆一个报冲突，都算合格。
+// What makes it red: remove `runLocked` from `patchFile` and two `readFile → modify → writeFile` calls
+// overwrite each other — surfacing exactly as "both responses `isError:false`, only one change on disk".
+// That is the only forbidden outcome (double green with a lost change); serialization succeeding, or one side reporting a conflict, both pass.
 
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -44,7 +44,7 @@ const patchOf = async (nodeId: string, html: string): Promise<Outcome> => {
   return { isError: isErrorResultOf(result), text: textOf(result) };
 };
 
-describe("hr_patch_node · 并发写同一份文档", () => {
+describe("hr_patch_node · concurrent writes to the same document", () => {
   it("should never answer both calls green while one of the two changes is lost", async () => {
     await writeFile(join(workspace, "doc.html"), ANNOTATED_DOC, "utf8");
 
@@ -55,18 +55,18 @@ describe("hr_patch_node · 并发写同一份文档", () => {
     const body = await readFile(join(workspace, "doc.html"), "utf8");
     const landed = [body.includes("并发甲的标题"), body.includes("并发乙的正文")];
 
-    // 唯一禁止的结局：两个都成功、盘上只落了一处。
+    // The only forbidden outcome: both succeed, only one change lands on disk.
     expect(first.isError && second.isError).toBe(false);
     if (!first.isError && !second.isError) {
       expect(landed).toEqual([true, true]);
       return;
     }
-    // 允许的另一种语义：其中一个明说冲突（`isError`），且落的正好是另一个。
+    // The other allowed semantics: one side reports a conflict (`isError`), and what landed is exactly the other's.
     expect(landed.filter(Boolean)).toHaveLength(1);
   }, 30_000);
 
   it("should keep the lock off the read path, so two reads still answer at once", async () => {
-    // 对照组：读工具不拿锁——它俩一旦互相阻塞，说明锁被放到了错误的位置（把整台 server 串死）。
+    // Control group: read tools take no lock — if these two block each other, the lock was placed wrong (serializing the whole server).
     await writeFile(join(workspace, "doc.html"), ANNOTATED_DOC, "utf8");
     const session = await sessionOf();
     const results = await Promise.all([

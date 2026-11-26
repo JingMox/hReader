@@ -1,5 +1,5 @@
-// 这层管：in-memory transport 的连接与「工具结果怎么读」——两个工具测试文件共用，避免各抄一份。
-// 所有工具都以 `process.cwd()` 为 workspace，所以临时目录的切换由调用方负责。
+// This layer: in-memory transport connections and "how to read a tool result" — shared by two tool test files so neither copies it.
+// Every tool uses `process.cwd()` as workspace, so switching temp directories is the caller's job.
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,7 +11,7 @@ import { vi } from "vitest";
 
 import { createServer } from "../src/server";
 
-/** 带一条 `pending_ai` 批注的稿子：大纲/读节点/结批注三个工具都靠它。 */
+/** A doc carrying one `pending_ai` annotation: the outline / read-node / resolve-annotation tools all depend on it. */
 export const ANNOTATED_DOC = `<!doctype html>
 <html lang="zh">
 <head><meta charset="utf-8"><title>草案</title></head>
@@ -59,7 +59,7 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
 export const isErrorResultOf = (result: unknown): boolean =>
   isRecord(result) && result["isError"] === true;
 
-/** 工具的正文只有文本块：拼起来就是 `okResult` 的 JSON 或 `failureOf` 的 `[code] message`。 */
+/** A tool's body holds only text blocks: concatenated they are `okResult`'s JSON or `failureOf`'s `[code] message`. */
 export const textOf = (result: unknown): string => {
   const content = isRecord(result) ? result["content"] : undefined;
   if (!Array.isArray(content)) return "";
@@ -77,7 +77,7 @@ export const payloadOf = (result: unknown): Record<string, unknown> => {
   return isRecord(parsed) ? parsed : {};
 };
 
-/** 失败必须是工具结果，且错误码还在正文里。 */
+/** Failures must be tool results, with the error code still in the body. */
 export const codeOf = (result: unknown): string => /^\[([^\]]+)\]/u.exec(textOf(result))?.[1] ?? "";
 
 export const uiUriOf = (result: unknown): string => {
@@ -86,7 +86,7 @@ export const uiUriOf = (result: unknown): string => {
   return isRecord(ui) && typeof ui["resourceUri"] === "string" ? ui["resourceUri"] : "";
 };
 
-/** 把 stderr 收进内存里断言：巨型输入的失败日志不许漏进测试输出（MB 级单行曾把 CI runner 卡死）。 */
+/** Capture stderr in memory for assertions: failure logs that echo giant input verbatim must not leak into test output (MB-scale single lines once stalled the CI runner). */
 export const stderrText = (): { read(): string } => {
   const written: string[] = [];
   vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
@@ -96,6 +96,6 @@ export const stderrText = (): { read(): string } => {
   return { read: () => written.join("") };
 };
 
-/** 一段文本里最长一行的长度：日志边界用"行"量，与 runner 卡死的计量方式一致。 */
+/** Length of the longest line in a text: log bounds are measured in "lines", matching how the runner stalls. */
 export const longestLineOf = (text: string): number =>
   text.split("\n").reduce((max, line) => Math.max(max, line.length), 0);

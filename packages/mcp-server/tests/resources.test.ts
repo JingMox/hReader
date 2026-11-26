@@ -1,5 +1,5 @@
-// 这层管：Resources（`hreader://styles/{id}`）与 Prompt（`use-hreader-style`）——
-// 列什么、读出来是什么、未知 id 是不是错误。
+// This layer: Resources (`hreader://styles/{id}`) and the Prompt (`use-hreader-style`) —
+// what is listed, what a read returns, and whether an unknown id is an error.
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

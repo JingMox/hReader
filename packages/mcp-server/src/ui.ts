@@ -1,5 +1,5 @@
-// 这层管：MCP-UI 视图资源（`ui://hreader/view/{docId}`）。docId 由相对路径可逆编码，
-// 服务重启后同一个 URI 仍能读出同一份文档；视图只**引用**已跑的 daemon，不代管进程。
+// This layer: the MCP-UI view resource (`ui://hreader/view/{docId}`). docId is a reversible encoding of the relative path,
+// so the same URI still reads the same document after a restart; the view only **references** a running daemon, it does not manage the process.
 
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
@@ -23,7 +23,7 @@ export const UI_MIME_TYPE = "text/html;profile=mcp-app";
 export const docIdOf = (relativePath: string): string =>
   Buffer.from(normalize(relativePath).split(sep).join("/"), "utf8").toString("base64url");
 
-/** 解不回来就 `undefined`：这是 URI 解析，不是路径校验层，坏 id 一律走"视图已失效"页。 */
+/** Undecodable input → `undefined`: this is URI parsing, not the path-validation layer; bad ids all go to the "view expired" page. */
 export const relativePathOfDocId = (docId: string): string | undefined => {
   const decoded = Buffer.from(docId, "base64url").toString("utf8");
   const segments = decoded.split("/");
@@ -31,16 +31,16 @@ export const relativePathOfDocId = (docId: string): string | undefined => {
   return decoded;
 };
 
-/** daemon 的端口只从 core 的落点文件读：写死端口会让视图在换端口后指向空气。 */
+/** The daemon's port is only read from core's drop file: a hardcoded port would point the view at thin air after a port change. */
 const portOf = (value: unknown): number | undefined => {
   if (typeof value !== "object" || value === null || !("port" in value)) return undefined;
   const { port } = value;
   return typeof port === "number" ? port : undefined;
 };
 
-/** 本仓唯一一处 `~/.hreader/daemon.json` 路径拼写：core 只导出 `startServer`，未导出 `daemonStatePath()`
- * （`daemonFileOf` 收在 `core/src/server/index.ts`，不在包入口）；core 若日后导出即改为引用。
- * 视图只读这个落点拿端口，不写它。 */
+/** The repo's single spelling of the `~/.hreader/daemon.json` path: core only exports `startServer`, not `daemonStatePath()`
+ * (`daemonFileOf` lives in `core/src/server/index.ts`, off the package entry); switch to a reference if core ever exports it.
+ * The view only reads this drop file for the port — it never writes it. */
 const DAEMON_STATE_FILE = join(".hreader", "daemon.json");
 
 const daemonBaseUrlOf = async (home: string): Promise<string | undefined> => {
@@ -85,10 +85,10 @@ ${body}
 `;
 
 /**
- * 视图里的文档不是可信 HTML：工作区里的外来文件也能走到这里。复用 core 最强的
- * `import` 清洗口径（可执行面/事件属性/外链资源/`data-hr-*`/内联样式全剥），
- * 再加两道视图特有规则：`<style>` 元素整删（文档级 CSS 会改写整个视图页）、
- * 注释整删（注释 data 不转义，串行化会原样放出）。
+ * Documents inside a view are not trusted HTML: foreign files in the workspace can reach this path too. We reuse core's strongest
+ * `import` sanitization (executable surface / event attributes / external resources / `data-hr-*` / inline styles all stripped),
+ * plus two view-specific rules: `<style>` elements are deleted outright (document-level CSS would rewrite the whole view page),
+ * and comments are deleted outright (comment data is not escaped and would serialize out verbatim).
  */
 const sanitizeNode = (node: HtmlNode): HtmlNode | undefined => {
   if (node.kind === "comment") return undefined;
@@ -116,14 +116,14 @@ const sanitizedNodes = (nodes: readonly HtmlNode[]): HtmlNode[] =>
     return kept === undefined ? [] : [kept];
   });
 
-/** 文档整树净化后再包 `<article>`：剥掉的是可执行/外链/样式面，正文结构原样留下。 */
+/** Sanitize the whole document tree before wrapping it in `<article>`: the executable/external/style surface is stripped; body structure stays as-is. */
 const safeDocumentHtmlOf = (text: string): string =>
   sanitizedNodes([parseHtml(text).root])
     .map((node) => serializeHtml({ root: node, diagnostics: [] }))
     .join("");
 
-/** 无 daemon 不是错误（宿主 UI 不该因为后台没开就拿不到资源）；**文档读不出来才是**——
- * 以前回一页"文档不可读"的壳，对宿主是假成功（跟 `unknown_style` 撒谎同类）。 */
+/** No daemon is not an error (host UI should not lose the resource just because nothing runs in the background); **an unreadable document is** —
+ * we used to return a "document unreadable" shell page, which is a fake success to the host (same family as lying with `unknown_style`). */
 export const viewHtmlOf = async (target: DocumentTarget): Promise<string> => {
   const banner = daemonBanner(await daemonBaseUrlOf(homedir()));
   const text = await readInsideWorkspace(target);

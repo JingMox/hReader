@@ -1,7 +1,7 @@
-// 这层管：被交付的那个产物——高风险面。
-// 测的是 `package.json` 的 `bin` 指向的 `dist/main.js`（宿主唯一会 spawn 的东西），不是 src：
-// 真子进程、真 stdio，逐行验证 stdout 只有 JSON-RPC 帧；错误路径同样不许往 stdout 漏一个字符。
-// 坏输入与超限帧在 `stream.test.ts`，探针本身在 `probe.ts`。
+// This layer: the artifact actually shipped — a high-risk surface.
+// What is tested is `package.json`'s `bin` pointing at `dist/main.js` (the only thing a host will spawn), not src:
+// a real subprocess over real stdio, verifying line by line that stdout carries only JSON-RPC frames; error paths must not leak one character to stdout either.
+// Broken input and oversized frames live in `stream.test.ts`; the probe itself is `probe.ts`.
 
 import { existsSync, statSync } from "node:fs";
 import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -75,7 +75,7 @@ describe("dist/main.js · tool surface", () => {
 
 const STYLE_PRESET = "atelier-editorial";
 
-/** 三条出口问同一个预设：工具、资源、prompt——它们必须给出同一份风格。 */
+/** Three exits asked for the same preset: tool, resource, prompt — all three must serve the same style. */
 const STYLE_EXIT_LINES = linesOf([
   INITIALIZE,
   INITIALIZED,
@@ -99,11 +99,11 @@ const STYLE_EXIT_LINES = linesOf([
   },
 ]);
 
-/** 预设的视觉维度落在 `inherits_visual`；仓库里只有那一份 `theme.css`。 */
+/** The preset's visual axis lands at `inherits_visual`; the repo holds exactly that one `theme.css`. */
 const presetOf = (id: string): (typeof BUILTIN_STYLES)[number] | undefined =>
   BUILTIN_STYLES.find((style) => style.id === id);
 
-/** prompt 的正文：`messages[0].content.text`（不经过 JSON 转义，多行片段才比得动）。 */
+/** The prompt's body: `messages[0].content.text` (no JSON escaping layer, so multi-line fragments can actually be compared). */
 const promptBodyOf = (answer: Record<string, unknown> | undefined): string => {
   const messages: unknown = resultOf(answer)["messages"];
   const first: unknown = Array.isArray(messages) ? messages[0] : undefined;
@@ -114,8 +114,8 @@ const promptBodyOf = (answer: Record<string, unknown> | undefined): string => {
 const injectedThemeOf = (html: string): string =>
   /<style id="hr-theme">([\s\S]*?)<\/style>/u.exec(html)?.[1] ?? "";
 
-describe("dist/main.js · 风格三出口", () => {
-  // 内置预设的 theme.css 在源码布局里找得到、在 bundle 里找不到——只有真产物能证明这件事。
+describe("dist/main.js · three style exits", () => {
+  // A builtin preset's theme.css is findable in the source layout and absent from the bundle — only the real artifact can prove this.
   it("should serve a builtin preset through the tool, the resource and the prompt alike", async () => {
     const styleDir = await mkdtemp(join(tmpdir(), "hreader-mcp-style-"));
     await writeFile(join(styleDir, "a.html"), ANNOTATED_DOC, "utf8");
@@ -128,8 +128,8 @@ describe("dist/main.js · 风格三出口", () => {
     const resource = JSON.stringify(resultOf(byId.get(3))["contents"]);
     const promptText = promptBodyOf(byId.get(4));
     const preset = presetOf(STYLE_PRESET);
-    if (preset === undefined) throw new Error(`内置预设里没有 ${STYLE_PRESET}`);
-    // 三个出口必须都回到**同一份源**：工具的 CSS 等于盘上的 theme.css，资源与 prompt 等于预设 spec。
+    if (preset === undefined) throw new Error(`no ${STYLE_PRESET} among the builtin presets`);
+    // All three exits must trace back to **the same source**: the tool's CSS equals the on-disk theme.css; resource and prompt equal the preset spec.
     const themeCss = await readFile(
       join(REPO_ROOT, "styles", preset.inheritsVisual, "theme.css"),
       "utf8",
@@ -139,11 +139,11 @@ describe("dist/main.js · 风格三出口", () => {
 
     expect(stderrText).not.toContain("unknown_style");
     expect(resultOf(byId.get(2))["isError"]).toBeUndefined();
-    // ① 工具：注入的样式块与预设的 theme.css 逐字一致（改一个字符就红）。
+    // ① Tool: the injected style block is byte-identical to the preset's theme.css (one changed char goes red).
     expect(injected.trim()).toBe(themeCss.trim());
-    // ② 资源：YAML 里带的是同一份 spec 的人设，而不是某个写死的短语。
+    // ② Resource: the YAML carries the same spec's persona, not some hardcoded phrase.
     expect(resource).toContain(preset.language.persona);
-    // ③ prompt：编译出的规约与资源同源，取 compileTone 的前三行当落地锚。
+    // ③ Prompt: the compiled spec shares the resource's source; compileTone's first three lines serve as the anchor.
     expect(promptText).toContain(toneSpec.split("\n").slice(0, 3).join("\n").trim());
     expect(promptText).toContain(preset.language.persona);
     await rm(styleDir, { recursive: true, force: true });
@@ -152,7 +152,7 @@ describe("dist/main.js · 风格三出口", () => {
 
 describe("dist/main.js · self-contained", () => {
   it("should run a real tools/call with no node_modules anywhere near it", async () => {
-    // 唯一能证明"自包含"的办法：把产物拷到一个没有任何依赖的目录，然后真的调一次工具。
+    // The only way to prove "self-contained": copy the artifact to a directory with zero dependencies, then really call a tool.
     const hostDir = await mkdtemp(join(tmpdir(), "hreader-host-sim-"));
     try {
       const entry = await binPathOf();
@@ -180,7 +180,7 @@ describe("dist/main.js · self-contained", () => {
       expect(resultOf(answer)["isError"]).toBeUndefined();
       expect(isRecord(outline) && Array.isArray(outline["nodes"])).toBe(true);
       expect(isRecord(outline) ? outline["wordCount"] : 0).toBeGreaterThan(0);
-      // 仓库外布局：stderr 只有两行——`workspace=` 与一条"主题资源缺失"的 WARNING（stdout 不受影响）。
+      // Out-of-repo layout: stderr gets exactly two lines — `workspace=` plus one "theme resources missing" WARNING (stdout unaffected).
       const stderrLines = stderrText.trimEnd().split("\n");
       expect(stderrLines).toHaveLength(2);
       expect(stderrLines[0]?.startsWith("[hreader-mcp] workspace=/")).toBe(true);

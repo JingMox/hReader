@@ -1,4 +1,4 @@
-// 这层管：`hr_apply_style`（换视觉 / 取调性规约）；CSS 注入与规约编译都在 core。
+// This layer: `hr_apply_style` (swap visuals / fetch tone spec); CSS injection and spec compilation live in core.
 
 import { applyStyle, compileTone, HrError, loadStyle } from "@hreader/core";
 import type { ApplyStyleResult } from "@hreader/core";
@@ -40,7 +40,7 @@ const visualOf = async (
     : applyStyle({ workspace, file, visualId: args.visualId }, styleDepsOf(workspace));
 
 const toneOf = async (toneId: string, workspace: string): Promise<string> => {
-  // 风格解析的文案来自 core：绝对路径在这个出口折掉（用户传的 `filePath` 不经过这里）。
+  // Style-resolution wording comes from core: absolute paths are folded at this exit (the caller's `filePath` does not pass through here).
   const loaded = await loadStyle({ id: toneId }, styleDepsOf(workspace)).catch((error: unknown) => {
     throw foldedOf(error);
   });
