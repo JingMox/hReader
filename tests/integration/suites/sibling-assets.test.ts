@@ -208,7 +208,7 @@ describe.skipIf(skip !== undefined)("sibling-assets", () => {
     await browser.close();
     await daemon.stop();
     await ext.close();
-    killAllTracked();
+    await killAllTracked();
     home.cleanup();
   });
 
