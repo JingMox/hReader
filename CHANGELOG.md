@@ -6,10 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Fixed
-
-- **Reader annotations now reach agents**: `hr outline` / `hr_outline` `pendingAnnotations` previously only recognized the legacy meta schema (`targetId` / `comment` / `pending_ai`), so notes written by the reader (`nodeId` / `note` / `pending`) were invisible to agents and the annotate → patch loop was broken. Both schemas are now read.
-
 ### Added
 
 - **Document kinds** (`hr new <file> --kind note|report|minutes|brief|slides`, and an optional `kind` on MCP `hr_create_doc`): start from a themed skeleton that already carries every `data-hr-id` and the right components, then patch block by block. The kind is recorded as `data-hr-kind` on `<article>`.
@@ -18,6 +14,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **`media-card` component**: one shell for audio/video with a caption and an optional collapsible transcript.
 - `atelier-editorial` theme: emphasized KPI figures, numbered timeline markers, sidebar metadata styling, and audio/video sizing inside `diagram-stage`.
 - GitHub Pages gallery (`site/`) with example documents, a Markdown vs. free-form HTML vs. hReader comparison, and `scripts/build-site.sh` to regenerate it.
+- **Open any HTML**: `hr serve` starts in any workspace and classifies each file as `managed`, `normalizable`, or `foreign`. Foreign pages are served from `/s/<docId>` inside a sandboxed iframe that never carries `allow-same-origin`, under a Content-Security-Policy picked per effective permission (see SECURITY.md). New additive routes: `GET /api/doc/:id/info`, `POST /api/doc/:id/trust`, `POST /api/doc/:id/normalize`.
+- **`hr import` and the MCP tool `hr_import_doc`**: convert a foreign HTML file (saved web pages, scripted decks) into a managed `*.hr.html` document — scripts, event handlers and inline styles are stripped, sections get `data-hr-id`s, and a report lists what was dropped and why.
+- **Presentation mode**: `P`/`F5` or the button enters a keyboard-driven slide view for `slides` documents, with step reveal through `data-hr-step`, `#p=` deep links, and speaker notes hidden while presenting. Ships with `deck-noir`, a dark 16:9 theme.
+- **Script and network permissions for foreign HTML**: two independent dimensions. Each has a global mode — `allow`, `deny`, or `per-doc` (the default) — stored in `~/.hreader/permissions.json`; per-document grants are keyed by workspace-relative path in `<workspace>/.hreader/trust.json`, survive edits and theme switches, and are lost on rename or move. Legacy content-hash `local` grants migrate automatically to `{scripts: true, network: false}`. New routes `POST /api/doc/:id/permissions` and `GET`/`POST /api/permissions`, a `permissions.changed` SSE event, and an additive `permissions` field on `GET /api/doc/:id/info`. Grants are read-only for agents — no MCP tool or `hr` command can change them.
+- **Immersive mode and native fullscreen**: `i` or the status-bar button hides all reader chrome; Esc or the top-edge hot-zone button exits, and it also works on managed documents as a pure reading view. On desktop, ⌘⇧I toggles immersive mode and ^⌘F/F11 toggles native fullscreen. Foreign iframes carry `allow="fullscreen"`, so pages can call the Fullscreen API themselves.
+
+### Changed
+
+- `hr pdf` / `hr png` now use the theme embedded in the document unless `--visual` is given.
+- Desktop: links to external sites open in the system browser instead of navigating the workbench.
+- Hand-rolled infrastructure replaced with mature libraries: `puppeteer-core` (driving Chrome for export), `pdf-lib`, `util.parseArgs`, `zod`, `yaml`, `write-file-atomic`, `chokidar`, plus `serde`, `percent-encoding`, `which` and `signal-hook` on the Rust side.
+- The `trust` field of `GET /api/doc/:id/info` and `POST /api/doc/:id/trust` now reports the **effective** scripts permission: with a global `deny` mode it returns `off` even when the document carries a grant.
+- The legacy `POST /api/doc/:id/trust` endpoint now only changes the scripts dimension; it no longer clears a granted network permission.
+- Per-document permission grants are keyed by document path, not content hash.
+- Edge-case status codes: a request with both a bad body and a missing document returns 400 before 404; lowercase HTTP methods return 405; a document ID containing NUL returns 400; `ENAMETOOLONG` returns 404; a non-UTF-8 body returns 400. Patch and annotation writes to a foreign document return 422 without touching the file, while a theme switch on one returns 200.
+- Overlong diagnostic lines on `hr` and `hreader-mcp` stderr are truncated at 8 KiB with a `…[truncated N chars]` marker. stdout and `--json` output are unchanged.
+- Internal: CI runs as parallel jobs with per-job timeouts, wall-clock test assertions were replaced with deterministic proofs, and absolute-time performance budgets moved into a dedicated `pnpm test:perf` suite that runs without coverage instrumentation.
+
+### Fixed
+
+- **Reader annotations now reach agents**: `hr outline` / `hr_outline` `pendingAnnotations` previously only recognized the legacy meta schema (`targetId` / `comment` / `pending_ai`), so notes written by the reader (`nodeId` / `note` / `pending`) were invisible to agents and the annotate → patch loop was broken. Both schemas are now read.
+- The workspace watcher now recurses into subdirectories: files added, changed, renamed or removed inside subfolders broadcast `library.changed`, so the reader and desktop file trees stay fresh. Symlinks pointing outside the workspace cannot leak events, and `.hreader`, `.git`, `node_modules` and temp files are ignored at any depth.
+- The watcher no longer swallows external writes, mishandles symlinked workspaces, or misses writes that landed before it became ready.
+- The undo chain now includes style changes.
+- `EPIPE` on closed pipes and a deep-nesting overflow in `print-html` no longer crash the CLI.
+- Presentation-mode edge cases around keyboard input and step reveal.
+
+### Security
+
+- Foreign pages always render in a sandboxed iframe whose `sandbox` attribute never contains `allow-same-origin`, and every `/s/` response carries a CSP `sandbox` directive so even a top-level navigation stays in an opaque origin (see SECURITY.md).
+- Fixed CSS-comment `</style>` injection and print-export mXSS through `<noscript>`.
+- Fixed CSS URL filter bypasses that could lead to SSRF during export.
+- The desktop bridge is authenticated with a per-session token, and native navigation follows an allowlist.
+- Fixed `</script>` injection into the desktop startup script.
+- Terminal escape sequences are stripped from CLI output.
+- MCP `ui://` resource views sanitize document HTML instead of inlining raw workspace bytes.
 
 ## [1.0.0] - 2026-11-21
 
