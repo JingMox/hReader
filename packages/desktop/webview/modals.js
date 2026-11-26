@@ -51,6 +51,7 @@ function buildSettingsBodyHtml(themeOpts) {
       </select>
     </div>
     ${buildTypographyFieldsHtml(prefs, themeOpts)}
+    <div class="hrd-field"><span>文件树显示所有文件（含页面资源与非 HTML 文件）</span><input type="checkbox" id="hrd-set-showall" ${prefs.showAllFiles ? "checked" : ""}/></div>
     <div class="hrd-field" style="border-bottom:none;">
       <span>笔记库根目录（工作区）</span>
       <button type="button" class="hrd-btn" id="hrd-set-pick-ws">更改根目录…</button>
@@ -127,6 +128,7 @@ async function applySettingsFromModal(m) {
     focusMode: m.querySelector("#hrd-set-focus").checked,
     showBlockIds: m.querySelector("#hrd-set-ids").checked,
     defaultVisual: visual,
+    showAllFiles: m.querySelector("#hrd-set-showall").checked,
   });
   // 全局权限不落本地 prefs：服务端是唯一真相源，这里直接写 daemon。
   // GET 没回来时两个框仍是禁用态——只写"放开过"的值，不把占位写回去。
@@ -141,6 +143,9 @@ async function applySettingsFromModal(m) {
     }
   }
   hrd.applyPrefs();
+  // "显示所有文件"立即生效：不必重开窗口才能看到资源文件。
+  const searchEl = document.getElementById("hr-search");
+  hrd.renderFilesPanel(searchEl ? searchEl.value : "");
   hrd.closeModal();
   const sel = document.getElementById("hr-theme-select");
   if (sel && visual && sel.value !== visual) {
@@ -187,6 +192,8 @@ function openSettingsModal() {
   m.querySelector("#hrd-set-reset").addEventListener("click", () => {
     hrd.savePrefs({ ...hrd.DEFAULT_PREFS });
     hrd.applyPrefs();
+    const searchEl = document.getElementById("hr-search");
+    hrd.renderFilesPanel(searchEl ? searchEl.value : "");
     hrd.closeModal();
     // 服务端的两个全局档也要跟着回"逐个文档"，否则本地清了远端还在接管开关。
     hrd

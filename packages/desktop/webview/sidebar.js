@@ -121,6 +121,16 @@ function handleFilesPanelClick(e, search) {
     hrd.openNewDocModal();
     return;
   }
+  // 页面资源标记：展开/收起该页的资源列表，不影响"点击行打开文档"。
+  const assetToggle = e.target.closest("[data-hrd-assets]");
+  if (assetToggle) {
+    const key = "assets:" + assetToggle.getAttribute("data-hrd-assets");
+    if (hrd.state.expandedDirs.has(key)) hrd.state.expandedDirs.delete(key);
+    else hrd.state.expandedDirs.add(key);
+    hrd.saveExpandedDirs(hrd.state.expandedDirs);
+    hrd.renderFilesPanel(search.value);
+    return;
+  }
   const dirBtn = e.target.closest("[data-hrd-dir]");
   if (dirBtn) {
     const dirPath = dirBtn.getAttribute("data-hrd-dir");
@@ -129,6 +139,13 @@ function handleFilesPanelClick(e, search) {
     else hrd.state.expandedDirs.add(dirPath);
     hrd.saveExpandedDirs(hrd.state.expandedDirs);
     hrd.renderFilesPanel(search.value);
+    return;
+  }
+  // 资源文件（含"显示所有文件"下的非 HTML 文件）：不当文档打开，交给系统默认程序。
+  const assetBtn = e.target.closest("[data-hrd-asset]");
+  if (assetBtn) {
+    const assetPath = assetBtn.getAttribute("data-hrd-asset");
+    if (assetPath) hrd.bridgeNavigate("/open-asset?doc=" + encodeURIComponent(assetPath));
     return;
   }
   const item = e.target.closest("[data-hrd-file]");

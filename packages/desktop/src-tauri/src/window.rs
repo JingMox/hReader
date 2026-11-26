@@ -759,6 +759,7 @@ fn handle_bridge_navigation(app: &tauri::AppHandle, shared: &SharedState, url: &
         "/pick-file" => pick_file_async(app.clone(), Arc::clone(shared)),
         "/pick-folder" => pick_folder_async(app.clone(), Arc::clone(shared)),
         "/reveal" => reveal_in_finder(shared, query_param(url, "doc").as_deref()),
+        "/open-asset" => open_asset_in_workspace(shared, query_param(url, "doc").as_deref()),
         "/open-themes-dir" => open_themes_dir(app, shared),
         "/reload-themes" => reload_themes(app, shared),
         "/export-pdf" => {
@@ -1122,6 +1123,36 @@ fn reveal_in_finder(shared: &SharedState, doc_opt: Option<&str>) {
         Err(_) => return,
     };
     reveal_path(&target);
+}
+
+/// Open a file with the system default application: like `reveal`, but the
+/// file itself launches (e.g. a PDF in Preview), not its Finder selection.
+fn open_path_default(target: &Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("open").arg(target).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("explorer").arg(target).spawn();
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        let _ = Command::new("xdg-open").arg(target).spawn();
+    }
+}
+
+/// 资源文件走系统默认程序打开：解析规则与 reveal 相同——绝不越出工作区，
+/// 越界或不存在的路径一律回落到工作区根目录。
+fn open_asset_in_workspace(shared: &SharedState, doc_opt: Option<&str>) {
+    let target = match shared.lock() {
+        Ok(guard) => {
+            let doc = doc_opt.unwrap_or(&guard.doc_id);
+            resolve_reveal_target(&guard.workspace, doc)
+        }
+        Err(_) => return,
+    };
+    open_path_default(&target);
 }
 
 fn export_async(
@@ -1558,6 +1589,7 @@ mod tests {
             "/pick-file",
             "/pick-folder",
             "/reveal",
+            "/open-asset",
             "/open-themes-dir",
             "/reload-themes",
             "/export-pdf",

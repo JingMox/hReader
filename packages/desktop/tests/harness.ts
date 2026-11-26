@@ -57,8 +57,12 @@ export interface DesktopContext {
 export interface TreeNode {
   name: string;
   path: string;
-  kind: "file" | "dir";
+  kind: "file" | "dir" | "page-folder";
   children?: TreeNode[];
+  assets?: TreeNode[];
+  title?: string;
+  entry?: string;
+  hidden?: boolean;
 }
 
 export interface Prefs {
@@ -70,6 +74,7 @@ export interface Prefs {
   showBlockIds?: boolean;
   focusMode?: boolean;
   defaultVisual?: string;
+  showAllFiles?: boolean;
   [key: string]: unknown;
 }
 

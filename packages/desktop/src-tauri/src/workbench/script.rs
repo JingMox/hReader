@@ -120,6 +120,10 @@ mod tests {
                 path: "demo.html".to_string(),
                 kind: TreeEntryKind::File,
                 children: Vec::new(),
+                assets: Vec::new(),
+                title: None,
+                entry: None,
+                hidden: false,
             }],
             custom_themes: vec![CustomTheme {
                 id: "nord".to_string(),
