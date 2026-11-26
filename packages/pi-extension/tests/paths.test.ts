@@ -1,6 +1,6 @@
-// 这层管：daemon.json 的解析、docId 的推导规则、阅读器 URL 的拼法。
-// docId 规则：docId = 目标相对 `daemon.workspace` 的路径，`/` 分隔；
-// 相对路径的基是 workspace（不是 Pi 的 cwd）；workspace 自身与越界路径都不算文档。
+// daemon.json parsing, docId resolution rules, and reader URL assembly.
+// docId rule: docId = the target's path relative to `daemon.workspace`, `/`-separated; relative input resolves
+// against the workspace (not Pi's cwd); the workspace itself and out-of-bounds paths are not documents.
 
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,82 +24,82 @@ const depsOf = (files: Readonly<Record<string, string>> = {}) =>
   fakeDepsOf({ home: "/home/u", files }).deps;
 
 describe("parseDaemon", () => {
-  it("合法 daemon.json 解析出四个字段", () => {
+  it("should parse the four fields out of a valid daemon.json", () => {
     expect(parseDaemon(VALID)).toEqual(INFO);
   });
 
-  it("不是 JSON、或 JSON 不是对象，都当没有 daemon", () => {
+  it("should count non-JSON or a non-object JSON as no daemon", () => {
     expect(parseDaemon("{ not json")).toBeUndefined();
     expect(parseDaemon("[1,2]")).toBeUndefined();
     expect(parseDaemon("null")).toBeUndefined();
   });
 
-  it("port 不是正整数就当没有 daemon", () => {
+  it("should count a non-positive-integer port as no daemon", () => {
     expect(parseDaemon(JSON.stringify({ ...INFO, port: 0 }))).toBeUndefined();
   });
 
-  it("pid 不是正整数就当没有 daemon", () => {
+  it("should count a non-positive-integer pid as no daemon", () => {
     expect(parseDaemon(JSON.stringify({ ...INFO, pid: -1 }))).toBeUndefined();
   });
 
-  it("token 为空串就当没有 daemon", () => {
+  it("should count an empty token as no daemon", () => {
     expect(parseDaemon(JSON.stringify({ ...INFO, token: "" }))).toBeUndefined();
   });
 
-  it("workspace 为空串就当没有 daemon", () => {
+  it("should count an empty workspace as no daemon", () => {
     expect(parseDaemon(JSON.stringify({ ...INFO, workspace: "" }))).toBeUndefined();
   });
 });
 
 describe("daemonFileOf / readDaemonOf", () => {
-  it("daemon.json 在 `<home>/.hreader/` 下", () => {
+  it("should place daemon.json under `<home>/.hreader/`", () => {
     expect(daemonFileOf("/home/u")).toBe("/home/u/.hreader/daemon.json");
   });
 
-  it("读得到就解析出记录", async () => {
+  it("should parse the record when the file reads", async () => {
     await expect(readDaemonOf(depsOf({ "/home/u/.hreader/daemon.json": VALID }))).resolves.toEqual(
       INFO,
     );
   });
 
-  it("文件不存在或读失败一律当没有 daemon，不抛", async () => {
+  it("should count a missing file or read failure as no daemon without throwing", async () => {
     await expect(readDaemonOf(depsOf({}))).resolves.toBeUndefined();
   });
 });
 
 describe("docIdOf", () => {
-  it("相对路径以 daemon 的 workspace 为基", () => {
+  it("should resolve a relative path against the daemon workspace", () => {
     expect(docIdOf("/work", "docs/x.html")).toEqual({ ok: true, docId: "docs/x.html" });
   });
 
-  it("绝对路径落在 workspace 内也接受", () => {
+  it("should also accept an absolute path inside the workspace", () => {
     expect(docIdOf("/work", "/work/a/b.md")).toEqual({ ok: true, docId: "a/b.md" });
   });
 
-  it("绝对路径里的 `.` 与 `..` 先归一化再判断", () => {
+  it("should normalize `.` and `..` in an absolute path before judging", () => {
     expect(docIdOf("/work", "/work/a/./b/../c.md")).toEqual({ ok: true, docId: "a/c.md" });
   });
 });
 
-describe("docIdOf 的越界判定", () => {
-  it("指向 workspace 自身不算文档", () => {
+describe("docIdOf out-of-bounds detection", () => {
+  it("should not count the workspace itself as a document", () => {
     expect(docIdOf("/work", ".")).toEqual({ ok: false, reason: "outside_workspace" });
   });
 
-  it("父目录越界不算文档", () => {
+  it("should not count a path escaping to a parent directory as a document", () => {
     expect(docIdOf("/work", "..")).toEqual({ ok: false, reason: "outside_workspace" });
   });
 
-  it("workspace 之外的兄弟目录不算文档", () => {
+  it("should not count a sibling directory outside the workspace as a document", () => {
     expect(docIdOf("/work", "/etc/passwd")).toEqual({ ok: false, reason: "outside_workspace" });
   });
 
-  it("workspace 尾部带 `/` 时结论不变（真 daemon.json 里很可能是这种形状）", () => {
+  it("should reach the same verdict when workspace ends in `/` (the likely shape of a real daemon.json)", () => {
     expect(docIdOf("/work/", "a.md")).toEqual({ ok: true, docId: "a.md" });
     expect(docIdOf("/work/", "/work/a.md")).toEqual({ ok: true, docId: "a.md" });
   });
 
-  it("前缀相似不是子目录：`/tmp/wsfoo` 不在 `/tmp/ws` 下", () => {
+  it("should not treat a shared prefix as a subdirectory: `/tmp/wsfoo` is not under `/tmp/ws`", () => {
     expect(docIdOf("/tmp/ws", "/tmp/wsfoo/a.md")).toEqual({
       ok: false,
       reason: "outside_workspace",
@@ -108,8 +108,8 @@ describe("docIdOf 的越界判定", () => {
   });
 });
 
-describe("docIdOf 的前缀相似洞（真目录）", () => {
-  it("`<base>/ws` 与 `<base>/wsfoo` 不是父子", async () => {
+describe("docIdOf shared-prefix hole (real directories)", () => {
+  it("should not treat `<base>/ws` and `<base>/wsfoo` as parent and child", async () => {
     const base = await mkdtemp(join(tmpdir(), "hr-docid-"));
     const workspace = join(base, "ws");
     const sibling = join(base, "wsfoo");
@@ -126,11 +126,11 @@ describe("docIdOf 的前缀相似洞（真目录）", () => {
 });
 
 describe("readerUrlOf", () => {
-  it("URL 里的 t 就是 daemon.json 的 token（`GET /s/:docId` 是 token 认证）", () => {
+  it("should put the daemon.json token in the URL's t (`GET /s/:docId` is token-auth)", () => {
     expect(readerUrlOf(INFO, "docs/x.html")).toBe("http://127.0.0.1:7331/s/docs%2Fx.html?t=tok-1");
   });
 
-  it("docId 里的空格与 token 里的保留字符都被转义", () => {
+  it("should escape spaces in docId and reserved characters in the token", () => {
     expect(readerUrlOf({ ...INFO, token: "a b&c" }, "带 空格.md")).toBe(
       "http://127.0.0.1:7331/s/%E5%B8%A6%20%E7%A9%BA%E6%A0%BC.md?t=a%20b%26c",
     );

@@ -1,5 +1,6 @@
-// 这层管：批注引流——`doc.changed` 只对**本会话绑定文档**触发、`anId` 进程内去重、
-// `confirm=false` 后同一批注不再问、无 UI 模式只提示；全程走真扩展（命令 → 订阅 → 拉批注 → 注入）。
+// Annotation intake: `doc.changed` triggers only for the **session-bound document**, `anId` dedupes in
+// process, a `confirm=false` silences that annotation, and UI-less mode only notifies — all through the
+// real extension (command → subscribe → fetch annotations → inject).
 
 import { describe, expect, it } from "vitest";
 
@@ -59,8 +60,8 @@ const runOf = async (
   return { routed, fake, context, annotationCalls };
 };
 
-describe("批注引流", () => {
-  it("绑定文档上的新批注：确认后把 节点源码 + 批注 + 路径 + nodeId 注入会话", async () => {
+describe("annotation intake", () => {
+  it("should inject node source + annotation + path + nodeId into the session on confirm of a new annotation on the bound document", async () => {
     const { fake, context } = await runOf({
       events: [CHANGED],
       annotations: [annotationsOf([annotationOf("an-a", "p1", "把这段改短")])],
@@ -75,7 +76,7 @@ describe("批注引流", () => {
     expect(message?.content).toContain("把这段改短");
   });
 
-  it("同一 `anId` 来两次 `doc.changed`：只确认一次、只注入一次", async () => {
+  it("should confirm and inject only once when the same `anId` fires `doc.changed` twice", async () => {
     const { fake, context } = await runOf({
       events: [CHANGED + CHANGED],
       annotations: [annotationsOf([annotationOf("an-a", "p1", "改短")])],
@@ -85,8 +86,8 @@ describe("批注引流", () => {
   });
 });
 
-describe("批注引流的去重", () => {
-  it("一次事件里的多条 pending 只拉一次 `/annotations`（请求数不随批注条数长）", async () => {
+describe("intake deduplication", () => {
+  it("should fetch `/annotations` only once for multiple pending entries in one event (request count does not grow with annotations)", async () => {
     const { fake, context, annotationCalls } = await runOf({
       events: [CHANGED],
       annotations: [
@@ -103,8 +104,8 @@ describe("批注引流的去重", () => {
   });
 });
 
-describe("批注引流的确认策略", () => {
-  it("`confirm=false` 后同一 `anId` 不再问，但不拦后面的新批注", async () => {
+describe("intake confirm policy", () => {
+  it("should not ask the same `anId` again after `confirm=false` but still allow later new annotations", async () => {
     const { fake, context } = await runOf(
       {
         events: [CHANGED, CHANGED],
@@ -124,7 +125,7 @@ describe("批注引流的确认策略", () => {
     expect(fake.sentMessages[0]?.content).toContain("第二条");
   });
 
-  it("无 UI（print/json 模式）只通知、不确认、不注入", async () => {
+  it("should only notify — no confirm, no inject — without UI (print/json mode)", async () => {
     const { fake, context } = await runOf(
       {
         events: [CHANGED],
@@ -138,8 +139,8 @@ describe("批注引流的确认策略", () => {
   });
 });
 
-describe("批注引流的待处理状态口径（与 core 同：`pending_ai` + `pending`）", () => {
-  it("阅读器新建的 `pending` 批注与旧版 `pending_ai` 批注都问、都注入", async () => {
+describe("intake pending-status criterion (same as core: `pending_ai` + `pending`)", () => {
+  it("should ask and inject both reader-created `pending` and legacy `pending_ai` annotations", async () => {
     const { fake, context } = await runOf({
       events: [CHANGED],
       annotations: [
@@ -155,7 +156,7 @@ describe("批注引流的待处理状态口径（与 core 同：`pending_ai` + `
     expect(fake.sentMessages[1]?.content).toContain("旧版写的");
   });
 
-  it("已解决/已拒绝/缺 `status`/非字符串 `status` 的批注不问", async () => {
+  it("should not ask annotations that are resolved/dismissed/missing `status`/non-string `status`", async () => {
     const { fake, context } = await runOf({
       events: [CHANGED],
       annotations: [
@@ -172,8 +173,8 @@ describe("批注引流的待处理状态口径（与 core 同：`pending_ai` + `
   });
 });
 
-describe("批注引流的过滤与认证", () => {
-  it("已解决的批注（非 `pending_ai`/`pending`）不问", async () => {
+describe("intake filtering and auth", () => {
+  it("should not ask a resolved annotation (not `pending_ai`/`pending`)", async () => {
     const { fake, context } = await runOf({
       events: [CHANGED],
       annotations: [annotationsOf([annotationOf("an-a", "p1", "已完成", "resolved")])],
@@ -182,7 +183,7 @@ describe("批注引流的过滤与认证", () => {
     expect(fake.sentMessages).toEqual([]);
   });
 
-  it("别的文档的 `doc.changed` 不触发拉批注", async () => {
+  it("should not fetch annotations for another document's `doc.changed`", async () => {
     const { annotationCalls } = await runOf({
       events: [OTHER_CHANGED],
       annotations: [annotationsOf([])],
@@ -190,7 +191,7 @@ describe("批注引流的过滤与认证", () => {
     expect(annotationCalls()).toBe(0);
   });
 
-  it("`doc.error` 不触发拉批注", async () => {
+  it("should not fetch annotations on `doc.error`", async () => {
     const { annotationCalls } = await runOf({
       events: [DOC_ERROR],
       annotations: [annotationsOf([])],
@@ -198,7 +199,7 @@ describe("批注引流的过滤与认证", () => {
     expect(annotationCalls()).toBe(0);
   });
 
-  it("拉批注带 cookie 认证（值就是 token）", async () => {
+  it("should fetch annotations with cookie auth (the token itself)", async () => {
     const { routed } = await runOf({ events: [CHANGED], annotations: [annotationsOf([])] });
     const call = routed.calls.find((entry) => entry.url.endsWith("/annotations"));
     expect(call?.url).toBe("http://127.0.0.1:7331/api/doc/docs%2Fa.html/annotations");

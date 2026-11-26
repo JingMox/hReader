@@ -1,5 +1,6 @@
-// 这层管：`/hr-style`——视觉 id 只来自 `GET /api/theme`（不扫目录）、非法 id 连 POST 都不发、
-// 合法 id 发的 body 恰好是 `{ docId, visualId }` 且带 CSRF 头、未绑定文档时只提示、状态行里记住本会话风格。
+// `/hr-style`: visual ids come only from `GET /api/theme` (no directory scan), an illegal id never even
+// POSTs, a legal one sends a body of exactly `{ docId, visualId }` with the CSRF header, an unbound
+// session only gets a hint, and the status line remembers this session's style.
 
 import { describe, expect, it } from "vitest";
 
@@ -18,7 +19,7 @@ const THEMES: ScriptedReply = {
 const STYLED: ScriptedReply = {
   text: JSON.stringify({ changed: true, revision: 3, changedNodes: [] }),
 };
-/** 订阅端点：常驻空流，免得 `/hreader` 的重连循环打断命令。 */
+/** Subscription endpoint: a resident empty stream, so `/hreader`'s reconnect loop cannot interrupt the command. */
 const EVENTS: ScriptedReply = { chunks: [], keepOpen: true };
 
 interface Harness {
@@ -50,8 +51,8 @@ const harnessOf = (
 const postsOf = (harness: Harness, urlPart: string): readonly HreaderRequest[] =>
   harness.calls.filter((call) => call.url.includes(urlPart)).map((call) => call.request);
 
-describe("/hr-style 列表来源", () => {
-  it("无参时逐字列出 `GET /api/theme` 的原值（不排序、不裁剪、不加后缀）", async () => {
+describe("/hr-style list source", () => {
+  it("should list `GET /api/theme` values verbatim on no args (no sorting, no trimming, no suffix)", async () => {
     const harness = harnessOf({ "/api/theme": [THEMES] });
     await harness.run("hr-style", "");
     expect(harness.notifies).toHaveLength(1);
@@ -62,7 +63,7 @@ describe("/hr-style 列表来源", () => {
     );
   });
 
-  it("`themes` 里的空串/非字符串被剔除，非数组当作没有可选值（不报出假 id）", async () => {
+  it("should drop empty/non-string entries of `themes` and treat a non-array as no options (never report a fake id)", async () => {
     const dirty = harnessOf({
       "/api/theme": [{ text: JSON.stringify({ themes: ["", 42, "feynman-tech"] }) }],
     });
@@ -76,7 +77,7 @@ describe("/hr-style 列表来源", () => {
     expect(malformed.notifies[0]?.message).toContain("themes 为空");
   });
 
-  it("`GET /api/theme` 本身失败：把 daemon 的错误码转成文本，不发 POST", async () => {
+  it("should turn the daemon's error code into text and send no POST when `GET /api/theme` itself fails", async () => {
     const harness = harnessOf({
       "/api/theme": [
         { status: 500, text: JSON.stringify({ code: "io_failure", message: "读目录失败" }) },
@@ -89,8 +90,8 @@ describe("/hr-style 列表来源", () => {
   });
 });
 
-describe("/hr-style 非法 id", () => {
-  it("非法 id：一次 notify 里同时给出用户输入与全部可选 id，且不发 POST", async () => {
+describe("/hr-style illegal id", () => {
+  it("should notify once with both the user input and all available ids, and send no POST, for an illegal id", async () => {
     const harness = harnessOf({ "/api/theme": [THEMES] });
     await harness.run("hr-style", "nope");
     expect(harness.notifies).toHaveLength(1);
@@ -101,7 +102,7 @@ describe("/hr-style 非法 id", () => {
     expect(postsOf(harness, "/api/style")).toHaveLength(0);
   });
 
-  it("合法 id：POST 恰一次，body 恰好两个键，带 cookie 与 `x-hr-csrf: 1`", async () => {
+  it("should POST exactly once with a two-key body carrying cookie and `x-hr-csrf: 1` for a legal id", async () => {
     const harness = harnessOf({
       "/api/theme": [THEMES],
       "/api/style": [STYLED],
@@ -122,8 +123,8 @@ describe("/hr-style 非法 id", () => {
   });
 });
 
-describe("/hr-style 未绑定文档", () => {
-  it("只提示先跑 `/hreader <路径>`，不发任何 POST", async () => {
+describe("/hr-style with no bound document", () => {
+  it("should only hint to run `/hreader <path>` first and send no POST", async () => {
     const harness = harnessOf({ "/api/theme": [THEMES], "/api/style": [STYLED] });
     await harness.run("hr-style", "feynman-tech");
     expect(harness.notifies).toHaveLength(1);
@@ -133,8 +134,8 @@ describe("/hr-style 未绑定文档", () => {
   });
 });
 
-describe("/hr-style 落盘", () => {
-  it("`changed:false`（视觉没变）：仍是 info，但不说“已换成”", async () => {
+describe("/hr-style persistence", () => {
+  it('should stay info but not claim "switched" for `changed:false` (the visual did not change)', async () => {
     const harness = harnessOf({
       "/api/theme": [THEMES],
       "/api/style": [{ text: JSON.stringify({ changed: false, revision: 3, changedNodes: [] }) }],
@@ -146,7 +147,7 @@ describe("/hr-style 落盘", () => {
     expect(harness.notifies.at(-1)?.message).toContain("与当前视觉相同");
   });
 
-  it("POST 失败（daemon 报 `unknown_style`）：文本带错误码，不污染本会话风格", async () => {
+  it("should surface the error code as text without polluting this session's style when POST fails (daemon reports `unknown_style`)", async () => {
     const harness = harnessOf({
       "/api/theme": [THEMES],
       "/api/style": [
@@ -162,7 +163,7 @@ describe("/hr-style 落盘", () => {
     expect(harness.notifies.at(-1)?.message).not.toContain("风格");
   });
 
-  it("daemon 没在跑：只提示 `hr serve`，一次 fetch 都不发", async () => {
+  it("should only hint `hr serve` and send no fetch at all when the daemon is down", async () => {
     const harness = harnessOf({}, { daemon: "{}" });
     await harness.run("hr-style", "feynman-tech");
     expect(harness.notifies[0]?.type).toBe("error");
@@ -171,8 +172,8 @@ describe("/hr-style 落盘", () => {
   });
 });
 
-describe("/hreader 状态行里的风格", () => {
-  it("换过风格后，`/hreader` 无参的状态行追加 `，风格 <id>`", async () => {
+describe("style in the `/hreader` status line", () => {
+  it("should append the style suffix to the no-args `/hreader` status line after a style switch", async () => {
     const harness = harnessOf({
       "/api/theme": [THEMES],
       "/api/style": [STYLED],

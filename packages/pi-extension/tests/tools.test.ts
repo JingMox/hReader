@@ -1,5 +1,6 @@
-// 这层管：三个工具的契约——名字/参数 schema/成功形状 `{ content, details.revision }`、
-// 失败不抛裸异常（错误码来自 daemon）、`delete` 不发片段、参数校验前就挡掉越界路径。
+// Contracts of the three tools: names / param schemas / the success shape `{ content, details.revision }`,
+// never throwing bare on failure (error codes come from the daemon), `delete` sending no fragment, and
+// out-of-bounds paths rejected before any param validation.
 
 import { describe, expect, it } from "vitest";
 
@@ -57,8 +58,8 @@ const harnessOf = (
 
 const textOf = (result: HreaderToolResult): string => result.content[0]?.text ?? "";
 
-describe("工具注册面", () => {
-  it("三个工具的参数 schema 都是 TypeBox 对象（逐个数，不只 `patch_node`）", () => {
+describe("tool registration surface", () => {
+  it("should give all three tools TypeBox object param schemas (counted one by one, not just `patch_node`)", () => {
     const { tools } = harnessOf({});
     expect([...tools.keys()]).toEqual([
       "hreader_outline",
@@ -73,7 +74,7 @@ describe("工具注册面", () => {
 });
 
 describe("hreader_outline", () => {
-  it("GET `/api/doc/<docId>/outline`，带上 daemon 的 revision", async () => {
+  it("should GET `/api/doc/<docId>/outline` and carry the daemon's revision", async () => {
     const harness = harnessOf({
       "/outline": [{ text: JSON.stringify({ revision: 3, outline: { wordCount: 12 } }) }],
     });
@@ -85,22 +86,22 @@ describe("hreader_outline", () => {
   });
 });
 
-describe("hreader_outline 的失败路径（都不许抛裸异常）", () => {
-  it("daemon 没起：返回文本提示，不发请求（绝不 spawn）", async () => {
+describe("hreader_outline failure paths (none may throw bare)", () => {
+  it("should return a text hint and send no request when the daemon is down (never spawns)", async () => {
     const harness = harnessOf({}, { withDaemon: false });
     const result = await harness.run("hreader_outline", { path: "docs/a.html" });
     expect(harness.calls).toEqual([]);
     expect(textOf(result)).toContain("hr serve");
   });
 
-  it("路径越界：返回 `path_outside_workspace`，不发请求", async () => {
+  it("should return `path_outside_workspace` and send no request for an out-of-bounds path", async () => {
     const harness = harnessOf({});
     const result = await harness.run("hreader_outline", { path: "/etc/passwd" });
     expect(harness.calls).toEqual([]);
     expect(textOf(result)).toContain("path_outside_workspace");
   });
 
-  it("daemon 报错：文本里带错误码，不抛异常", async () => {
+  it("should carry the error code in text without throwing when the daemon errors", async () => {
     const harness = harnessOf({
       "/outline": [{ status: 404, text: '{"code":"not_found","message":"没有这个文档"}' }],
     });
@@ -110,14 +111,14 @@ describe("hreader_outline 的失败路径（都不许抛裸异常）", () => {
   });
 });
 
-describe("hreader_outline 的传输失败", () => {
-  it("非 JSON 的服务端错误也降级成文本（`http_<status>`）", async () => {
+describe("hreader_outline transport failures", () => {
+  it("should also degrade a non-JSON server error to text (`http_<status>`)", async () => {
     const harness = harnessOf({ "/outline": [{ status: 502, text: "<html>bad gateway" }] });
     const result = await harness.run("hreader_outline", { path: "docs/a.html" });
     expect(textOf(result)).toContain("daemon 返回 502");
   });
 
-  it("连不上 daemon（fetch 抛错）→ io_failure 文本", async () => {
+  it("should return io_failure text when the daemon is unreachable (fetch throws)", async () => {
     const { deps } = fakeDepsOf({
       home: "/home/u",
       daemon: DAEMON,
@@ -131,7 +132,7 @@ describe("hreader_outline 的传输失败", () => {
 });
 
 describe("hreader_read_node", () => {
-  it("取节点 HTML（节点源码来自 `/s/:docId` 的源文件字节），只附该节点未处理的批注", async () => {
+  it("should fetch node HTML (node source comes from `/s/:docId` source bytes) and attach only that node's pending annotations", async () => {
     const harness = harnessOf({
       "/s/": [{ text: HTML }],
       "/annotations": [{ text: ANNOTATIONS }],
@@ -143,16 +144,16 @@ describe("hreader_read_node", () => {
     const text = textOf(result);
     expect(text).toContain('"docId": "docs/a.html"');
     expect(text).toContain('"nodeId": "p1"');
-    // JSON 文本里的引号会被转义，所以按"内容"断言：切到了 p1 自己的源码，且没带上兄弟节点。
+    // Quotes inside JSON text get escaped, so assert on content: p1's own source was sliced, siblings left out.
     expect(text).toContain("原始正文");
     expect(text).not.toContain("第二段");
-    // 只附该节点上的 pending 批注：`an-b` 已解决、`an-c` 属于别的节点。
+    // Only pending annotations on this node are attached: `an-b` is resolved, `an-c` belongs to another node.
     expect(text).toContain("an-a");
     expect(text).not.toContain("an-b");
     expect(text).not.toContain("an-c");
   });
 
-  it("节点不存在：`node_not_found` 文本", async () => {
+  it("should return node_not_found text for a missing node", async () => {
     const harness = harnessOf({ "/s/": [{ text: HTML }], "/annotations": [{ text: ANNOTATIONS }] });
     const result = await harness.run("hreader_read_node", {
       path: "docs/a.html",
@@ -161,7 +162,7 @@ describe("hreader_read_node", () => {
     expect(textOf(result)).toContain("[node_not_found]");
   });
 
-  it("取不到文档源码：`io_failure` 文本", async () => {
+  it("should return io_failure text when the document source cannot be fetched", async () => {
     const harness = harnessOf({ "/s/": [{ status: 404, text: "" }] });
     const result = await harness.run("hreader_read_node", {
       path: "docs/a.html",
@@ -172,7 +173,7 @@ describe("hreader_read_node", () => {
 });
 
 describe("hreader_patch_node", () => {
-  it("POST `/api/patch`，body 用 core 的字段名 `targetId`/`fragment`，带 CSRF 头", async () => {
+  it("should POST `/api/patch` with core's field names `targetId`/`fragment` and the CSRF header", async () => {
     const harness = harnessOf({ "/api/patch": [{ text: '{"changed":true,"revision":4}' }] });
     const result = await harness.run("hreader_patch_node", {
       path: "docs/a.html",
@@ -193,8 +194,8 @@ describe("hreader_patch_node", () => {
   });
 });
 
-describe("hreader_patch_node 的写盘形状", () => {
-  it("`delete` 不发片段（同 MCP 侧 requestOf 的分叉）", async () => {
+describe("hreader_patch_node write shape", () => {
+  it("should send no fragment for `delete` (same fork as MCP's requestOf)", async () => {
     const harness = harnessOf({ "/api/patch": [{ text: '{"changed":true,"revision":5}' }] });
     await harness.run("hreader_patch_node", {
       path: "docs/a.html",
@@ -209,7 +210,7 @@ describe("hreader_patch_node 的写盘形状", () => {
     });
   });
 
-  it("daemon 拒绝：文本带错误码，不抛异常", async () => {
+  it("should carry the error code in text without throwing when the daemon refuses", async () => {
     const harness = harnessOf({
       "/api/patch": [{ status: 409, text: '{"code":"busy","message":"文档正被占用"}' }],
     });

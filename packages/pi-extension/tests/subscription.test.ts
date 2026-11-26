@@ -1,5 +1,5 @@
-// 这层管：`/api/events` 订阅——认证头、`Last-Event-ID`（含 `id: 0` 不得入缓存）、`reset` 降级、
-// 断线重连、`stop()` 真停（Pi 退出时不能挂住进程）。
+// The `/api/events` subscription: auth headers, `Last-Event-ID` (where `id: 0` must not enter the cache),
+// `reset` staleness handling, reconnect after drops, and `stop()` really stopping (Pi must not hang on exit).
 
 import { describe, expect, it } from "vitest";
 
@@ -23,7 +23,7 @@ interface Counter {
   count: number;
 }
 
-/** 在脚本回复上挂 `cancel` 计数：`cancel()` 是否真落到 body 上，只能这样观测。 */
+/** Counts `cancel` on the scripted reply: whether `cancel()` really lands on the body can only be observed this way. */
 const cancellingOf = (reply: ScriptedReply, counter: Counter): ScriptedReply => ({
   ...reply,
   onCancel: () => {
@@ -31,7 +31,7 @@ const cancellingOf = (reply: ScriptedReply, counter: Counter): ScriptedReply => 
   },
 });
 
-/** 监听未处理 rejection 跑一段，返回期间收到的 reason（收尾一定摘掉监听）。 */
+/** Runs a stretch while listening for unhandled rejections and returns the reasons heard (the listener is always removed). */
 const rejectionsDuringOf = async (run: () => Promise<void>): Promise<readonly unknown[]> => {
   const seen: unknown[] = [];
   const onRejection = (reason: unknown): void => {
@@ -69,8 +69,8 @@ const driveOf = async (
   return { calls: script.calls, events, stales, downs, bads, subscription };
 };
 
-describe("subscribeOf 的连接与认证", () => {
-  it("连 `/api/events`，带 `Cookie: hr=<token>`（cookie 的值就是 daemon token）", async () => {
+describe("subscribeOf connection and authentication", () => {
+  it("should connect to `/api/events` with `Cookie: hr=<token>` (the cookie value is the daemon token)", async () => {
     const { calls, events, subscription } = await driveOf([
       { chunks: [READY + DOC_CHANGED], keepOpen: true },
     ]);
@@ -83,22 +83,22 @@ describe("subscribeOf 的连接与认证", () => {
     expect(events.map((event) => event.type)).toEqual(["doc.changed"]);
   });
 
-  it("首连不写 CSRF 头（读端点不吃 `x-hr-csrf`）", async () => {
+  it("should send no CSRF header on the first connect (a read endpoint takes no `x-hr-csrf`)", async () => {
     const { calls, subscription } = await driveOf([{ chunks: [READY], keepOpen: true }]);
     subscription.stop();
     expect(calls[0]?.request.headers["x-hr-csrf"]).toBeUndefined();
   });
 });
 
-describe("subscribeOf 的帧去向", () => {
-  it("`reset` 帧走降级提示，不进业务事件（不许被未知类型吞掉）", async () => {
+describe("subscribeOf frame routing", () => {
+  it("should route a `reset` frame to the staleness notice, not to business events (it must not be swallowed as unknown)", async () => {
     const { events, stales, subscription } = await driveOf([{ chunks: [RESET], keepOpen: true }]);
     subscription.stop();
     expect(stales).toHaveLength(1);
     expect(events).toEqual([]);
   });
 
-  it("四个业务类型之外的类型被忽略，且**不报**成坏帧（`applause` 与坏帧必须可区分）", async () => {
+  it("should ignore types outside the four business types without reporting them as bad frames (`applause` vs bad frame must differ)", async () => {
     const { bads, events, subscription } = await driveOf([
       { chunks: [READY + UNKNOWN], keepOpen: true },
     ]);
@@ -107,7 +107,7 @@ describe("subscribeOf 的帧去向", () => {
     expect(bads).toEqual([]);
   });
 
-  it("`id:` 原样交给调用方（`Last-Event-ID` 的候选）", async () => {
+  it("should pass `id:` verbatim to the caller (a `Last-Event-ID` candidate)", async () => {
     const { events, subscription } = await driveOf([{ chunks: [DOC_CHANGED], keepOpen: true }]);
     subscription.stop();
     expect(events[0]?.id).toBe("7");
@@ -115,8 +115,8 @@ describe("subscribeOf 的帧去向", () => {
   });
 });
 
-describe("subscribeOf 的断线重连", () => {
-  it("断流后重连带 `Last-Event-ID`", async () => {
+describe("subscribeOf reconnects", () => {
+  it("should reconnect with `Last-Event-ID` after the stream drops", async () => {
     const { calls, downs, subscription } = await driveOf(
       [{ chunks: [DOC_CHANGED] }, { chunks: [], keepOpen: true }],
       { delay: steppedDelayOf(1) },
@@ -127,7 +127,7 @@ describe("subscribeOf 的断线重连", () => {
     expect(calls[1]?.request.headers["last-event-id"]).toBe("7");
   });
 
-  it("`ready` 的 `id: 0` 不得当 `Last-Event-ID`（它不在环里）", async () => {
+  it("should not take `ready`'s `id: 0` as `Last-Event-ID` (it is not in the ring)", async () => {
     const { calls, subscription } = await driveOf(
       [{ chunks: [READY] }, { chunks: [], keepOpen: true }],
       { delay: steppedDelayOf(1) },
@@ -137,7 +137,7 @@ describe("subscribeOf 的断线重连", () => {
     expect(calls[1]?.request.headers["last-event-id"]).toBeUndefined();
   });
 
-  it("HTTP 非 2xx 也按断线处理并重连", async () => {
+  it("should treat a non-2xx HTTP status as a drop and reconnect", async () => {
     const { calls, downs, subscription } = await driveOf(
       [{ status: 401 }, { chunks: [], keepOpen: true }],
       { delay: steppedDelayOf(1) },
@@ -147,15 +147,15 @@ describe("subscribeOf 的断线重连", () => {
     expect(calls).toHaveLength(2);
   });
 
-  it("daemon 重启换 port/token：断线窗口重读 daemon.json，重连走新地址", async () => {
-    // 旧 info 在 subscribeOf 时定格；daemon.json 已被新进程重写成 :7332/tok-2。
-    // 不重读的话第二次连接会带着 tok-1 打 :7331 永远 401——这条就是那次事故的回归。
+  it("should re-read daemon.json in the down window and reconnect to the new address when a daemon restart changes port/token", async () => {
+    // The old info froze at subscribeOf; daemon.json has been rewritten by the new process to :7332/tok-2.
+    // Without the re-read the second connect would hit :7331 with tok-1 forever 401 — this is that incident's regression.
     const readFile = (file: string): Promise<Uint8Array> =>
       file === "/home/.hreader/daemon.json"
         ? Promise.resolve(new TextEncoder().encode(daemonJsonOf({ port: 7332, token: "tok-2" })))
         : Promise.reject(new Error(`ENOENT: ${file}`));
     const script = scriptedFetchOf([
-      { chunks: [DOC_CHANGED] }, // 先收到 id=7 再断：旧游标对**新**环无效
+      { chunks: [DOC_CHANGED] }, // receives id=7, then drops: the old cursor is invalid on the **new** ring
       { chunks: [], keepOpen: true },
     ]);
     const subscription = subscribeOf(
@@ -175,7 +175,7 @@ describe("subscribeOf 的断线重连", () => {
     expect(script.calls.at(-1)?.request.headers["last-event-id"]).toBeUndefined();
   });
 
-  it("daemon.json 没换（同 port+token）：保持旧 info 与 `Last-Event-ID` 游标", async () => {
+  it("should keep the old info and `Last-Event-ID` cursor when daemon.json is unchanged (same port+token)", async () => {
     const readFile = (): Promise<Uint8Array> =>
       Promise.resolve(new TextEncoder().encode(daemonJsonOf({ port: 7331, token: "tok-1" })));
     const script = scriptedFetchOf([{ chunks: [DOC_CHANGED] }, { chunks: [], keepOpen: true }]);
@@ -196,8 +196,8 @@ describe("subscribeOf 的断线重连", () => {
   });
 });
 
-describe("subscribeOf 的异常与弃帧", () => {
-  it("`fetch` 抛错（daemon 退出）不把异常抛给 Pi，只走重连", async () => {
+describe("subscribeOf errors and dropped frames", () => {
+  it("should not throw at Pi when `fetch` rejects (daemon exited); it only reconnects", async () => {
     const { deps } = fakeDepsOf({
       fetch: () => Promise.reject(new Error("ECONNREFUSED")),
       delay: steppedDelayOf(0),
@@ -214,19 +214,19 @@ describe("subscribeOf 的异常与弃帧", () => {
     expect(downs).toHaveLength(1);
   });
 
-  it("帧的 `data` 不是带 `type` 的 JSON：丢掉这一帧，但报出原文（不许静默吞掉协议漂移）", async () => {
+  it("should drop a frame whose `data` is not JSON-with-type but report the raw text (protocol drift must not be swallowed silently)", async () => {
     const { bads, events, subscription } = await driveOf([
       { chunks: [`data: 不是 JSON\n\ndata: {"no":"type"}\n\n${UNKNOWN}`] },
     ]);
     subscription.stop();
     expect(events).toEqual([]);
-    // 前两帧都是坏帧，但同一订阅只报一条（节流）；原文必须原样带出来。
+    // Both leading frames are bad, but one subscription reports only one (throttling); the raw text must surface verbatim.
     expect(bads).toEqual(["不是 JSON"]);
   });
 });
 
-describe("坏帧判定与节流", () => {
-  it("垃圾帧逐个判：非 JSON / 无 type / 非对象 各报一条；未知类型的 JSON 不报", async () => {
+describe("bad-frame detection and throttling", () => {
+  it("should judge junk frames individually: non-JSON / no type / non-object each report once; unknown-type JSON does not", async () => {
     const cases = [
       { frame: "data: 不是 JSON\n\n", bad: true },
       { frame: 'data: {"no":"type"}\n\n', bad: true },
@@ -243,14 +243,14 @@ describe("坏帧判定与节流", () => {
     }
   });
 
-  it("坏帧上报有节流：50 个坏帧只报一条（一坏帧一提示会永久刷屏）", async () => {
+  it("should throttle bad-frame reports: 50 bad frames yield one report (a hint per frame would flood forever)", async () => {
     const frames = Array.from({ length: 50 }, () => "data: 不是 JSON\n\n");
     const { bads, subscription } = await driveOf([{ chunks: [frames.join("")] }]);
     subscription.stop();
     expect(bads).toHaveLength(1);
   });
 
-  it("重连后流健康过一次，再坏可以再报一条（节流不是一次性闸门）", async () => {
+  it("should allow one more report after a healthy stream post-reconnect (the throttle is not a one-shot gate)", async () => {
     const { bads, subscription } = await driveOf(
       [
         { chunks: ["data: 不是 JSON\n\n"] },
@@ -264,8 +264,8 @@ describe("坏帧判定与节流", () => {
   });
 });
 
-describe("读流收尾（连接不许泄漏）", () => {
-  it("溢出弃帧也要关掉 body：cancel 恰好 1 次（不靠 abort 那条唯一路径）", async () => {
+describe("stream teardown (connections must not leak)", () => {
+  it("should close the body even on overflow drop: cancel exactly once (not only via the abort path)", async () => {
     const counter: Counter = { count: 0 };
     const flood = `data: {"x":"${"y".repeat(1024 * 1024 + 16)}`;
     const { downs, subscription } = await driveOf([
@@ -278,7 +278,7 @@ describe("读流收尾（连接不许泄漏）", () => {
     expect(counter.count).toBe(1);
   });
 
-  it("abort 与 finally 不会各关一次：同一个 reader 的 cancel 恰好 1 次", async () => {
+  it("should not double-close via abort plus finally: one cancel per reader", async () => {
     const counter: Counter = { count: 0 };
     const { subscription } = await driveOf([
       cancellingOf({ chunks: [DOC_CHANGED], keepOpen: true }, counter),
@@ -288,7 +288,7 @@ describe("读流收尾（连接不许泄漏）", () => {
     expect(counter.count).toBe(1);
   });
 
-  it("`cancel()` 抛错不会变成未处理的 rejection（Node 24 默认会带崩进程）", async () => {
+  it("should not let a `cancel()` throw become an unhandled rejection (Node 24 crashes by default)", async () => {
     const seen = await rejectionsDuringOf(async () => {
       const { subscription } = await driveOf([
         { chunks: [READY], keepOpen: true, cancelThrows: true },
@@ -300,8 +300,8 @@ describe("读流收尾（连接不许泄漏）", () => {
   });
 });
 
-describe("subscribeOf 的收尾", () => {
-  it("`stop()` 会中断读流：不再重连、不触发 onDown", async () => {
+describe("subscribeOf teardown", () => {
+  it("should interrupt the read on `stop()`: no reconnect, no onDown", async () => {
     const { calls, downs, subscription } = await driveOf([
       { chunks: [DOC_CHANGED], keepOpen: true },
     ]);
@@ -311,14 +311,14 @@ describe("subscribeOf 的收尾", () => {
     expect(downs).toEqual([]);
   });
 
-  it("重连等待可被 abort 打断：`stop()` 之后进程不会被定时器留住", async () => {
+  it("should let abort interrupt the reconnect wait: no timer keeps the process after `stop()`", async () => {
     const controller = new AbortController();
     const waiting = delayOf(60_000, controller.signal);
     controller.abort();
     await expect(waiting).resolves.toBeUndefined();
   });
 
-  it("重连等待到点自己结束；signal 已经 abort 时立刻返回", async () => {
+  it("should finish the reconnect wait on time and return at once when signal is already aborted", async () => {
     const alive = new AbortController();
     await expect(delayOf(1, alive.signal)).resolves.toBeUndefined();
     alive.abort();

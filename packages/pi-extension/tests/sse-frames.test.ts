@@ -1,5 +1,6 @@
-// 这层管：SSE 帧解码器的三类跨块切点与"哪些行不算帧"；帧字面量逐字抄自 core 的
-// `packages/core/src/server/event-ring.ts`（扩展侧独立拼写，由 protocol-pins 的钉子约束漂移）。
+// The SSE frame decoder's three cross-chunk cut points and "which lines do not make a frame"; frame
+// literals are copied verbatim from core's `packages/core/src/server/event-ring.ts` (the extension
+// re-spells them, drift held by the protocol-pins).
 
 import { describe, expect, it } from "vitest";
 
@@ -19,12 +20,12 @@ const DOC_CHANGED_FRAME: SseEnvelope = {
 };
 const RESET_FRAME: SseEnvelope = { data: '{"type":"reset","reason":"events_expired"}' };
 
-/** utf-8 严格解码：遇到不完整的多字节序列直接抛错（“刀口真落在字内部”只能这么证）。 */
+/** Strict utf-8 decode: throws on an incomplete multi-byte sequence (the only way to prove "the cut lands inside a char"). */
 const strictDecodedOf = (bytes: Uint8Array): string =>
   new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 
-describe("测试自己的刀口（`cutInsideCharOf` 不可自证就只是句声明）", () => {
-  it("刀口落在多字节字内部，而字起点处切不报错——两条一起才能证明刀口的位置", () => {
+describe("the test's own blade (`cutInsideCharOf` is just a claim unless proven)", () => {
+  it("should cut inside a multi-byte char while a cut at the char start stays clean — both together prove the blade's position", () => {
     const text = DOC_CHANGED;
     const bytes = bytesOf(text);
     const inside = cutInsideCharOf(text, "文档");
@@ -42,25 +43,25 @@ const drainOf = (chunks: readonly Uint8Array[]): readonly SseEnvelope[] => {
   return [...frames, ...decoder.flush()];
 };
 
-/** 字符下标 → 落在第几个字节：多字节字被劈开的那一刀只能按字节给。 */
+/** Char index → which byte it lands on: the cut that splits a multi-byte char can only be given by byte. */
 const cutAtCharOf = (text: string, needle: string, inNeedle: number): number =>
   byteOfIndex(text, text.indexOf(needle) + inNeedle);
 
-describe("createSseDecoder 的帧边界", () => {
-  it("注释帧（`: ready` / `: keep-alive`）不出帧，也不崩", () => {
+describe("createSseDecoder frame boundaries", () => {
+  it("should neither emit a frame nor crash on comment frames (`: ready` / `: keep-alive`)", () => {
     expect(drainOf([bytesOf(CONNECT_COMMENT + KEEP_ALIVE)])).toEqual([]);
   });
 
-  it("一块里多帧：只交出有 data 的帧，顺序与到达顺序一致", () => {
+  it("should yield only frames with data, in arrival order, when one chunk holds several", () => {
     expect(drainOf([bytesOf(MIXED)])).toEqual([DOC_CHANGED_FRAME, RESET_FRAME]);
   });
 
-  it("`data:` 行被腰斩在两块之间", () => {
+  it("should survive a `data:` line split across two chunks", () => {
     const cut = cutAtCharOf(DOC_CHANGED, "doc.changed", 4);
     expect(drainOf(chunksAt(DOC_CHANGED, [cut]))).toEqual([DOC_CHANGED_FRAME]);
   });
 
-  it("终止符 `\\r\\n` 从中间分开（`\\r` 落在块尾）仍算一行", () => {
+  it("should still count a `\\r\\n` split mid-terminator (`\\r` at the chunk end) as one line", () => {
     const text = 'data: {"type":"doc.error","path":"a.html"}\r\n\r\n';
     const cut = byteOfIndex(text, text.indexOf("\r\n") + 1);
     expect(drainOf(chunksAt(text, [cut]))).toEqual([
@@ -68,7 +69,7 @@ describe("createSseDecoder 的帧边界", () => {
     ]);
   });
 
-  it("`\\r` 落在块尾时 `id:` 不得丢（等下一块再切，否则 Last-Event-ID 形同虚设）", () => {
+  it("should not lose `id:` when `\\r` lands at a chunk end (cut waits for the next chunk, or Last-Event-ID is void)", () => {
     const text = 'id: 2\r\ndata: {"type":"doc.changed","path":"a.html"}\r\n\r\n';
     const decoder = createSseDecoder();
     const blocks = chunksAt(text, [byteOfIndex(text, text.indexOf("\r\n") + 1)]);
@@ -78,16 +79,16 @@ describe("createSseDecoder 的帧边界", () => {
     ]);
   });
 
-  it("多字节 UTF-8 字被块边界劈开时不出乱码", () => {
-    // 刀口必须落在 `文` **字内部**：切在两个字之间只证明 data 行没断，证明不了流式解码。
+  it("should not mojibake when a multi-byte UTF-8 char is split by a chunk boundary", () => {
+    // The blade must land **inside** `文`: cutting between two chars only proves the data line survived, not streaming decode.
     const frames = drainOf(chunksAt(DOC_CHANGED, [cutInsideCharOf(DOC_CHANGED, "文档")]));
     expect(frames).toEqual([DOC_CHANGED_FRAME]);
     expect(frames[0]?.data.includes("\uFFFD")).toBe(false);
   });
 });
 
-describe("createSseDecoder 的跨块累积", () => {
-  it("一帧拆成逐字节的块，跨块累积仍是一帧", () => {
+describe("createSseDecoder cross-chunk accumulation", () => {
+  it("should still assemble one frame from byte-sized chunks", () => {
     const cuts = Array.from(
       { length: bytesOf(DOC_CHANGED).length - 1 },
       (_item, index) => index + 1,
@@ -95,7 +96,7 @@ describe("createSseDecoder 的跨块累积", () => {
     expect(drainOf(chunksAt(DOC_CHANGED, cuts))).toEqual([DOC_CHANGED_FRAME]);
   });
 
-  it("流结束时末帧缺空行终止符，由 flush 交出；再 flush 不再重复", () => {
+  it("should flush the final frame that lacks its blank-line terminator, and not repeat it on a second flush", () => {
     const decoder = createSseDecoder();
     expect(decoder.push(bytesOf('data: {"type":"ready"}'))).toEqual([]);
     expect(decoder.flush()).toEqual([{ data: '{"type":"ready"}' }]);
@@ -103,36 +104,36 @@ describe("createSseDecoder 的跨块累积", () => {
   });
 });
 
-describe("createSseDecoder 的字段口径", () => {
-  it("`ready` 带 `retry:` 与 `id: 0`：retry 不进 data，id 原样交给订阅层判定", () => {
+describe("createSseDecoder field semantics", () => {
+  it("should keep retry out of data and pass `id: 0` verbatim to the subscription layer for `ready`", () => {
     expect(drainOf([bytesOf(READY)])).toEqual([{ id: "0", data: '{"type":"ready"}' }]);
   });
 
-  it("`reset` 帧没有 `id:` 字段", () => {
+  it("should carry no `id:` field on a `reset` frame", () => {
     const [frame] = drainOf([bytesOf(RESET)]);
     expect(frame).toEqual(RESET_FRAME);
     expect(frame !== undefined && "id" in frame).toBe(false);
   });
 
-  it("同一帧多条 `data:` 行按换行拼接", () => {
+  it("should join multiple `data:` lines of one frame with newlines", () => {
     expect(drainOf([bytesOf("data: a\ndata: b\n\n")])).toEqual([{ data: "a\nb" }]);
   });
 
-  it("字段名后没有冒号时按空值处理，不崩", () => {
+  it("should treat a field name without a colon as an empty value without crashing", () => {
     expect(drainOf([bytesOf("data\ndata: x\n\n")])).toEqual([{ data: "\nx" }]);
   });
 
-  it("只有 `id:` 没有 `data:` 的空帧被丢弃", () => {
+  it("should drop an empty frame that has `id:` but no `data:`", () => {
     expect(drainOf([bytesOf("id: 5\n\n")])).toEqual([]);
   });
 
-  it("`\\r` 单独作行终止符（老式换行）也能切帧", () => {
+  it("should also cut frames on a lone `\\r` (legacy newline)", () => {
     expect(drainOf([bytesOf('data: {"type":"library.changed"}\r\r')])).toEqual([
       { data: '{"type":"library.changed"}' },
     ]);
   });
 
-  it("无换行的巨型响应体不算帧：超限后置 overflowed，且不交半截帧", () => {
+  it("should not count a giant newline-free body as a frame: set overflowed past the limit and yield no half frame", () => {
     const decoder = createSseDecoder(16);
     expect(decoder.overflowed()).toBe(false);
     expect(decoder.push(bytesOf("data: {"))).toEqual([]);

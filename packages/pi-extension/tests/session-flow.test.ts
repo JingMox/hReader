@@ -1,5 +1,6 @@
-// 这层管：真处理器（`handlersOf`）与会话收尾——`reset` 帧的降级提示、二次 `/hreader` 换订阅、
-// `session_shutdown` 真停、垃圾帧不崩、`confirm` 抛错不外溢。
+// Real handlers (`handlersOf`) and session teardown: the `reset` frame's staleness notice, a second
+// `/hreader` swapping the subscription, `session_shutdown` really stopping, junk frames not crashing,
+// and `confirm` failures not leaking.
 
 import { describe, expect, it } from "vitest";
 
@@ -58,8 +59,8 @@ const flowWithFilesOf = (
   };
 };
 
-describe("事件流的降级提示", () => {
-  it("`reset` 帧（环已过期）走到真处理器，notify 里点名 events_expired", async () => {
+describe("event-stream staleness notice", () => {
+  it("should route a `reset` frame (ring expired) to the real handler and name events_expired in the notify", async () => {
     const flow = flowOf({
       "/api/events": [{ chunks: ['data: {"type":"reset","reason":"events_expired"}\n\n'] }],
     });
@@ -69,7 +70,7 @@ describe("事件流的降级提示", () => {
     expect(warnings.map((note) => note.message).join("\n")).toContain("events_expired");
   });
 
-  it("垃圾帧：4 帧只报一条提示（节流），既不崩也不注入", async () => {
+  it("should report only one hint for 4 junk frames (throttled), neither crashing nor injecting", async () => {
     const flow = flowOf({
       "/api/events": [
         {
@@ -85,15 +86,15 @@ describe("事件流的降级提示", () => {
     await flow.run(DOC_ID);
     await settleOf(16);
     expect(flow.fake.sentMessages).toEqual([]);
-    // 逐个帧的“该不该算坏帧”由 `subscription.test.ts` 的四例表钉；这里钉的是节流形状：4 帧 → 1 条。
+    // Per-frame "is it bad" is pinned by `subscription.test.ts`'s four-case table; pinned here is the throttle shape: 4 frames → 1 report.
     expect(
       flow.context.notifies.filter((note) => note.message.includes("无法解析的事件帧")),
     ).toHaveLength(1);
   });
 });
 
-describe("断流截断", () => {
-  it("断流截在 JSON 中间：残半帧静默丢弃，不报“疑似 core 协议漂移”的假警报", async () => {
+describe("mid-stream truncation", () => {
+  it('should silently drop a half frame cut mid-JSON without raising a false "possible core protocol drift" alarm', async () => {
     const flow = flowOf({ "/api/events": [{ chunks: ['id: 5\ndata: {"type":"doc.ch'] }] });
     await flow.run(DOC_ID);
     await settleOf(16);
@@ -103,8 +104,8 @@ describe("断流截断", () => {
   });
 });
 
-describe("末帧没有终止符", () => {
-  it("流结束时末帧缺空行终止符，由 flush 交出（`doc.changed` 照样触发引流）", async () => {
+describe("final frame without terminator", () => {
+  it("should flush the final frame lacking its blank-line terminator (`doc.changed` still triggers the intake)", async () => {
     const flow = flowOf({
       "/api/events": [{ chunks: ['id: 9\ndata: {"type":"doc.changed","docId":"docs/a.html"}'] }],
       "/annotations": [{ text: '{"revision":1,"annotations":[]}' }],
@@ -115,8 +116,8 @@ describe("末帧没有终止符", () => {
   });
 });
 
-describe("会话收尾", () => {
-  it("同一会话再跑 `/hreader`：旧流被真关掉（`cancel` 落到旧 body 上，不出现两个连接并跑）", async () => {
+describe("session teardown", () => {
+  it("should really close the old stream on a second `/hreader` in one session (`cancel` lands on the old body; no two connections in flight)", async () => {
     let oldCancels = 0;
     const flow = flowOf({
       "/api/events": [
@@ -138,7 +139,7 @@ describe("会话收尾", () => {
     expect(oldCancels).toBe(1);
   });
 
-  it("`session_shutdown` 真停订阅，且重复调用不抛（subscription 已清空）", async () => {
+  it("should really stop the subscription on `session_shutdown` and not throw when called twice (subscription already cleared)", async () => {
     const flow = flowOf({ "/api/events": [{ chunks: ["data: {}\n\n"], keepOpen: true }] });
     await flow.run(DOC_ID);
     await settleOf(8);
@@ -148,8 +149,8 @@ describe("会话收尾", () => {
   });
 });
 
-describe("引流时的异常不外溢", () => {
-  it("`confirm` 抛错：只 notify 一条 warning，不把异常抛回 Pi", async () => {
+describe("intake errors do not escape", () => {
+  it("should emit only one warning notify on a `confirm` throw without throwing back at Pi", async () => {
     const flow = flowOf(
       {
         "/api/events": [{ chunks: [CHANGED] }],
@@ -171,8 +172,8 @@ describe("引流时的异常不外溢", () => {
   });
 });
 
-describe("事件与已绑定文档的关系", () => {
-  it("别的文档的 `doc.changed` 不触发引流（按绑定的 docId 过滤）", async () => {
+describe("events vs the bound document", () => {
+  it("should not trigger intake for another document's `doc.changed` (filtered by the bound docId)", async () => {
     const flow = flowWithFilesOf(
       {
         "/api/events": [
@@ -189,8 +190,8 @@ describe("事件与已绑定文档的关系", () => {
   });
 });
 
-describe("引流的中途失败", () => {
-  it("`doc.changed` 里没有 `docId`：不拉批注（`path` 是 doc.error 的字段）", async () => {
+describe("mid-intake failures", () => {
+  it("should not fetch annotations when `doc.changed` lacks `docId` (`path` is a doc.error field)", async () => {
     const flow = flowWithFilesOf(
       {
         "/api/events": [
@@ -206,8 +207,8 @@ describe("引流的中途失败", () => {
   });
 });
 
-describe("引流时资源中途消失", () => {
-  it("事件到达时 daemon.json 已消失：不拉批注、不注入", async () => {
+describe("resources disappearing mid-intake", () => {
+  it("should neither fetch annotations nor inject when daemon.json is gone by the time the event arrives", async () => {
     const files: Record<string, string> = { [DAEMON_PATH]: DAEMON_JSON };
     const flow = flowWithFilesOf(
       { "/api/events": [{ chunks: [CHANGED] }], "/annotations": [{ text: PENDING }] },
@@ -220,7 +221,7 @@ describe("引流时资源中途消失", () => {
     expect(flow.fake.sentMessages).toEqual([]);
   });
 
-  it("批注端点报错：不注入、不崩", async () => {
+  it("should neither inject nor crash when the annotation endpoint errors", async () => {
     const flow = flowWithFilesOf(
       {
         "/api/events": [{ chunks: [CHANGED] }],
@@ -234,8 +235,8 @@ describe("引流时资源中途消失", () => {
   });
 });
 
-describe("引流时拿不到文档", () => {
-  it("取不到 `/s/:docId`：注入文本照发，但明说读不到节点源码", async () => {
+describe("document unavailable during intake", () => {
+  it("should still send the injected text when `/s/:docId` cannot be fetched, stating node source is unreadable", async () => {
     const flow = flowWithFilesOf(
       {
         "/api/events": [{ chunks: [CHANGED] }],
@@ -249,7 +250,7 @@ describe("引流时拿不到文档", () => {
     expect(flow.fake.sentMessages[0]?.content).toContain("（读不到节点源码）");
   });
 
-  it("节点已不在文档里：注入文本点明这一点", async () => {
+  it("should state in the injected text that the node is no longer in the document", async () => {
     const flow = flowWithFilesOf(
       {
         "/api/events": [{ chunks: [CHANGED] }],

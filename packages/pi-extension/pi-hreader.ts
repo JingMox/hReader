@@ -1,10 +1,13 @@
-// 这层管：hReader 的 Pi 扩展——订阅 daemon 的 SSE 事件、把文档推给阅读器、向会话注入批注。
-// Pi 只把**单个模块**当扩展加载（`~/.pi/agent/extensions/*/pi-hreader.ts` 或 `pi -e ./pi-hreader.ts`），
-// 所以全部实现都在本文件：零本地相对 import、零 `@hreader/*`。
-// 因此这里是 core 协议知识的第二份拼写（有意的重复），约束手段是 `tests/protocol-pins.test.ts` 的漂移钉子，不是共享代码。
-// 纯层（帧解析 / 路径推导 / 错误文本 / 节点切片）在前；副作用（文件/网络/定时器）只经 `HreaderDeps` 注入。
-// Pi 的类型是从 `pi-coding-agent@1.5.2` 的 d.ts **手抄**的（不装该依赖，它的 d.ts 要求 DOM 与完整
-// `@types/node`，与本仓 `lib: ["ES2023"]` + `types: []` + `skipLibCheck: false` 冲突）。原文如下，类型一漂移就比这几段：
+// hReader's Pi extension: subscribes to the daemon's SSE events, pushes documents to the reader, and injects annotations into the session.
+// Pi loads a **single module** as an extension (`~/.pi/agent/extensions/*/pi-hreader.ts` or `pi -e ./pi-hreader.ts`),
+// so the whole implementation lives in this file: zero local relative imports, zero `@hreader/*`.
+// This file is therefore a second spelling of core protocol knowledge (deliberate duplication), held in place
+// by the drift pins in `tests/protocol-pins.test.ts` rather than shared code.
+// The pure layer (frame parsing / path resolution / error texts / node slicing) comes first; side effects
+// (file/network/timers) only enter through the injected `HreaderDeps`.
+// Pi's types were **copied by hand** from `pi-coding-agent@1.5.2`'s d.ts (that dependency is not installed: its d.ts
+// wants DOM and full `@types/node`, conflicting with this repo's `lib: ["ES2023"]` + `types: []` + `skipLibCheck: false`).
+// The originals follow — if a type drifts, these are the sections to diff:
 //   ExtensionUIContext（dist/core/extensions/types.d.ts:83-91）
 //     confirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>;
 //     notify(message: string, type?: "info" | "warning" | "error"): void;
@@ -31,18 +34,18 @@ const DAEMON_FILE = "daemon.json";
 const DAEMON_MISSING_HINT = "hReader daemon 没在跑：先运行 `hr serve`（本扩展不会自己拉起进程）";
 const USAGE_HINT = "用法：/hreader <path>——相对 daemon 的 workspace 或绝对路径";
 
-/** 认证链路（`packages/core/src/server/auth.ts:7`）：cookie 名固定 `hr`，值就是 daemon token。 */
+/** Authentication (`packages/core/src/server/auth.ts:7`): the cookie name is fixed `hr`, its value the daemon token. */
 const COOKIE_NAME = "hr";
-/** 写命令的 CSRF 头（`auth.ts:9`），值是字面量 `"1"`（`auth.ts:68` `csrfAllowed = (value) => value === "1"`）。 */
+/** CSRF header for write commands (`auth.ts:9`), with the literal value `"1"` (`auth.ts:68` `csrfAllowed = (value) => value === "1"`). */
 const CSRF_HEADER = "x-hr-csrf";
 const CSRF_VALUE = "1";
-/** core 在 `ready` 帧里给的 `retry: 2000`（`event-ring.ts:74`）：扩展侧按同一节奏重连。 */
+/** The `retry: 2000` core sends in the `ready` frame (`event-ring.ts:74`); the extension reconnects on the same cadence. */
 export const RECONNECT_MS = 2000;
-/** 无换行的巨型错误体不许一路攒到 `flush()`：超过就弃帧重连（环里有 `Last-Event-ID` 兜底）。 */
+/** A giant newline-free error body must not accumulate all the way to `flush()`: over the limit, drop the frame and reconnect (`Last-Event-ID` in the ring covers it). */
 const SSE_BUFFER_LIMIT = 1024 * 1024;
-/** 批注的"待处理"状态集（`packages/core/src/meta/constants.ts` `PENDING_ANNOTATION_STATUSES`）：旧版 `pending_ai` 与阅读器写的 `pending` 两态并存。 */
+/** The "pending" annotation statuses (`packages/core/src/meta/constants.ts` `PENDING_ANNOTATION_STATUSES`): legacy `pending_ai` and the reader's `pending` coexist. */
 const PENDING_ANNOTATION_STATUSES: ReadonlySet<string> = new Set(["pending_ai", "pending"]);
-/** `doc.changed` 的正文只有这四个业务类型（`runtime.ts:88/106/110/118/232`、`server.ts:159`）。 */
+/** `doc.changed` payloads carry exactly these four business types (`runtime.ts:88/106/110/118/232`, `server.ts:159`). */
 export const BUSINESS_EVENT_TYPES: ReadonlySet<string> = new Set([
   "doc.changed",
   "doc.error",
@@ -50,7 +53,7 @@ export const BUSINESS_EVENT_TYPES: ReadonlySet<string> = new Set([
   "error",
 ]);
 
-/** patch 的五个动作（`packages/core/src/ops/patch-node/constants.ts:3` `PatchAction`）。 */
+/** The five patch actions (`packages/core/src/ops/patch-node/constants.ts:3` `PatchAction`). */
 export const PATCH_ACTIONS = [
   "replace",
   "insert_before",
@@ -59,7 +62,7 @@ export const PATCH_ACTIONS = [
   "delete",
 ] as const;
 
-/** `daemon.json` 的形状，与 `packages/core/src/server/contracts.ts` 的 `DaemonInfo` 同构。 */
+/** Shape of `daemon.json`, isomorphic to `DaemonInfo` in `packages/core/src/server/contracts.ts`. */
 export interface DaemonInfo {
   readonly port: number;
   readonly token: string;
@@ -84,7 +87,7 @@ const jsonOfText = (text: string): unknown => {
   }
 };
 
-/** core 从不下发 `event:` 行，类型只在 `data` 的 JSON 里：取不出来就是坏帧。 */
+/** core never sends `event:` lines — the type lives inside the `data` JSON, so a frame without one is a bad frame. */
 const eventOf = (envelope: SseEnvelope): HreaderEvent | undefined => {
   const value = jsonOfText(envelope.data);
   if (!isRecord(value) || typeof value["type"] !== "string") return undefined;
@@ -101,7 +104,7 @@ const daemonFieldsOf = (record: Readonly<Record<string, unknown>>): DaemonInfo |
   return { port, token, pid, workspace };
 };
 
-/** 字段类型不对就当"没有 daemon"：坏文件不能把扩展带进半吊子状态。 */
+/** Wrong field types count as "no daemon": a corrupt file must not carry the extension into a half-state. */
 export const parseDaemon = (text: string): DaemonInfo | undefined => {
   let value: unknown;
   try {
@@ -114,7 +117,7 @@ export const parseDaemon = (text: string): DaemonInfo | undefined => {
 
 export const daemonFileOf = (home: string): string => join(home, DAEMON_DIR, DAEMON_FILE);
 
-/** 读 `daemon.json`：文件缺失/坏 JSON/权限问题一律当"daemon 没起"（提示里给的命令能修好这三种）。 */
+/** Reads `daemon.json`: a missing file, bad JSON, or a permission problem all count as "daemon not running" (the hint's suggested command fixes all three). */
 export const readDaemonOf = async (deps: HreaderDeps): Promise<DaemonInfo | undefined> => {
   try {
     return parseDaemon(new TextDecoder().decode(await deps.readFile(daemonFileOf(deps.home))));
@@ -128,9 +131,10 @@ export type DocIdResult =
   | { readonly ok: false; readonly reason: "outside_workspace" };
 
 /**
- * docId = 目标相对 daemon workspace 的路径，`/` 分隔（`GET /s/:docId` 与 `/api/doc/:docId/*` 都吃这个形状）。
- * 相对路径的基是 workspace 而不是 Pi 的 cwd；workspace 自身与越界路径都不算文档。
- * 前缀相似不是子目录：`relative` 而不是 `startsWith`，`/tmp/wsfoo` 不会被当成 `/tmp/ws` 下的文件。
+ * docId = the target's path relative to the daemon workspace, `/`-separated (`GET /s/:docId` and `/api/doc/:docId/*`
+ * both consume this shape). Relative input resolves against the workspace, not Pi's cwd; the workspace itself and
+ * out-of-bounds paths are not documents.
+ * A shared prefix is not a subdirectory: `relative`, not `startsWith` — `/tmp/wsfoo` is not inside `/tmp/ws`.
  */
 export const docIdOf = (workspace: string, target: string): DocIdResult => {
   const root = resolve(workspace);
@@ -139,18 +143,18 @@ export const docIdOf = (workspace: string, target: string): DocIdResult => {
   if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     return { ok: false, reason: "outside_workspace" };
   }
-  // 分隔符归一成 `/`：posix 上 `split(sep)` 是恒等变换，Windows 上把 `\` 换掉。
-  // 注意后半句只在 win32 成立，本条路径**未在 Windows CI 上验证过**（本仓开发机是 darwin）。
+  // Normalize separators to `/`: on posix `split(sep)` is the identity, on Windows it replaces `\`.
+  // The second half only holds on win32 — this path has **not been verified on Windows CI** (this repo is developed on darwin).
   return { ok: true, docId: rel.split(sep).join("/") };
 };
 
-/** `GET /s/:docId` 用 `token` 认证（`routes.ts`），所以 URL 里的 `t` 就是 `daemon.json` 的 token。 */
+/** `GET /s/:docId` authenticates by `token` (`routes.ts`), so the URL's `t` is the `daemon.json` token. */
 export const readerUrlOf = (info: DaemonInfo, docId: string): string =>
   `${apiUrlOf(info, pathOf(ENDPOINTS.document, { docId }))}?t=${encodeURIComponent(info.token)}`;
 
 /**
- * 扩展用到的每一条 HTTP 端点，逐条对应 `packages/core/src/server/routes.ts` 的 `route(...)` 行。
- * 所有 URL 都由这张表拼出来（不再有第二处路径字面量），所以漂移钉子钉的就是真实用法。
+ * Every HTTP endpoint the extension uses, one per `route(...)` line in `packages/core/src/server/routes.ts`.
+ * All URLs are built from this table (no second place holds path literals), so the drift pins cover real usage.
  */
 export const ENDPOINTS = {
   events: { method: "GET", segments: ["api", "events"], auth: "cookie" },
@@ -161,7 +165,7 @@ export const ENDPOINTS = {
     auth: "cookie",
   },
   patch: { method: "POST", segments: ["api", "patch"], auth: "cookie+csrf" },
-  // 可选视觉 id 的**唯一**来源（`static.ts:136` 返回 `{ themes, default }`）。
+  // The **only** source of available visual ids (`static.ts:136` returns `{ themes, default }`).
   themes: { method: "GET", segments: ["api", "theme"], auth: "none" },
   style: { method: "POST", segments: ["api", "style"], auth: "cookie+csrf" },
   document: { method: "GET", segments: ["s", ":docId"], auth: "token" },
@@ -169,12 +173,12 @@ export const ENDPOINTS = {
 
 export interface Endpoint {
   readonly method: "GET" | "POST";
-  /** `:docId` 这样的段是占位符，其余是字面量（与 `routes.ts` 同一套写法）。 */
+  /** Segments like `:docId` are placeholders; the rest are literals (the same convention `routes.ts` uses). */
   readonly segments: readonly string[];
   readonly auth: "none" | "cookie" | "token" | "cookie+csrf";
 }
 
-/** 占位符段的值必须编码：`/` 在 `:docId` 里只能是 `%2F`（`routes.ts` 注释已确认）。 */
+/** Placeholder segment values must be encoded: a `/` inside `:docId` can only appear as `%2F` (per the `routes.ts` comment). */
 export const pathOf = (endpoint: Endpoint, params: Readonly<Record<string, string>> = {}): string =>
   `/${endpoint.segments
     .map((segment) =>
@@ -186,18 +190,18 @@ const apiUrlOf = (info: DaemonInfo, path: string): string =>
   `http://127.0.0.1:${String(info.port)}${path}`;
 
 export interface SseEnvelope {
-  /** `id:` 字段原文。`ready` 帧的 `id: 0` 不在环里，能不能当 `Last-Event-ID` 由订阅层判定。 */
+  /** Verbatim `id:` field. The `ready` frame's `id: 0` is not in the ring; whether it may serve as `Last-Event-ID` is the subscription layer's call. */
   readonly id?: string;
-  /** 同一帧多条 `data:` 行按 `\n` 拼接后的原文（core 只写一条）。 */
+  /** Verbatim `data:` — multiple `data:` lines of one frame joined by `\n` (core only ever writes one). */
   readonly data: string;
 }
 
 export interface SseDecoder {
-  /** 喂一块字节，只返回本轮**已完整**的帧；半个帧留在解码器里等下一块。 */
+  /** Feeds a chunk and returns only the frames completed so far; a half frame stays in the decoder for the next chunk. */
   readonly push: (chunk: Uint8Array) => readonly SseEnvelope[];
-  /** 流结束时把最后一帧（缺空行终止符）交出来；流真截断在半个字/半行上时，残余丢弃。 */
+  /** At end of stream, yields the final frame (missing its blank-line terminator); a stream truly cut mid-char/mid-line discards the remnant. */
   readonly flush: () => readonly SseEnvelope[];
-  /** 缓冲区超限（对方不按 SSE 发东西）：已丢帧，调用方应断开重连。 */
+  /** Buffer over the limit (the peer is not speaking SSE): frames were dropped and the caller should reconnect. */
   readonly overflowed: () => boolean;
 }
 
@@ -216,8 +220,8 @@ interface LineCut {
 }
 
 /**
- * 切出一行。SSE 的行终止符可以是 `\r\n` / `\n` / `\r`；`\r` 落在块尾时无法判断是不是 `\r\n` 的前半，
- * 必须等下一块（`atEnd` 为真则按终止符处理）——这就是"终止符半分"切点。
+ * Cuts one line. SSE line terminators may be `\r\n` / `\n` / `\r`; a `\r` at a chunk's end might be the first half
+ * of `\r\n`, so it must wait for the next chunk (`atEnd` treats it as a terminator) — the "split terminator" edge.
  */
 const cutLine = (buffer: string, atEnd: boolean): LineCut | undefined => {
   const index = buffer.search(/[\r\n]/);
@@ -236,7 +240,7 @@ const applyField = (state: DecodeState, line: string): void => {
   if (name === "id") state.id = value;
 };
 
-/** 一帧结束：没有 `data:` 就是注释/心跳（`: keep-alive`、`: ready`）或空行，直接丢弃。 */
+/** End of a frame: no `data:` means a comment/heartbeat (`: keep-alive`, `: ready`) or a blank line — drop it. */
 const envelopeOf = (state: DecodeState): SseEnvelope | undefined => {
   const { data, id } = state;
   state.data = [];
@@ -271,8 +275,8 @@ const pump = (state: DecodeState, atEnd: boolean): readonly SseEnvelope[] => {
 };
 
 /**
- * 增量 SSE 解码器：字节在**跨块**处才解码（`TextDecoder` 默认的流式模式），
- * 否则多字节 UTF-8 被块边界劈开就会出乱码而逐块单测全绿。
+ * Incremental SSE decoder: bytes decode only **across** chunks (`TextDecoder`'s streaming mode), or a multi-byte
+ * UTF-8 char split by a chunk boundary would mojibake while per-chunk unit tests stayed green.
  */
 export const createSseDecoder = (limit: number = SSE_BUFFER_LIMIT): SseDecoder => {
   const state: DecodeState = {
@@ -290,13 +294,14 @@ export const createSseDecoder = (limit: number = SSE_BUFFER_LIMIT): SseDecoder =
       return pump(state, false);
     },
     flush: () => {
-      // 不带 `stream: true` 收尾：截断在半个字中间时按 U+FFFD 落地，然后整帧丢弃。
+      // Final decode without `stream: true`: a stream cut mid-char lands as U+FFFD, and the frame is then dropped wholesale.
       state.buffer += state.decoder.decode();
       const envelopes = pump(state, true);
       const last = envelopeOf(state);
       if (last === undefined) return envelopes;
-      // 断流截断是预期语义：残半行捞出来的帧若不成形就**静默**丢掉。报出去的话，每次普通断流
-      // 都会让用户看到一条“疑似 core 协议漂移”假警报；真·流中坏帧仍由 `dispatchOf` 上报。
+      // Truncated streams are expected semantics: a frame salvaged from a half line that does not parse is dropped
+      // **silently** — reporting it would flash a false "possible core protocol drift" alarm on every routine
+      // disconnect; genuinely malformed mid-stream frames are still surfaced by `dispatchOf`.
       return eventOf(last) === undefined ? envelopes : [...envelopes, last];
     },
     overflowed: () => state.overflow,
@@ -304,8 +309,8 @@ export const createSseDecoder = (limit: number = SSE_BUFFER_LIMIT): SseDecoder =
 };
 
 /**
- * 扩展从 Pi 拿到的上下文里真正用到的部分（签名原文见文件头）。窄接口同时让测试替身
- * 不必伪造 Pi 的整套 API，也让本文件不必 `import type` 那个要求 DOM 的包。
+ * The slice of Pi's extension context this extension actually uses (original signatures in the file header). A narrow
+ * interface lets test doubles skip faking Pi's whole API and lets this file avoid `import type` on the DOM-requiring package.
  */
 export interface HreaderUi {
   readonly notify: (message: string, type?: "info" | "warning" | "error") => void;
@@ -318,7 +323,7 @@ export interface HreaderContext {
   readonly cwd: string;
 }
 
-/** `RegisteredCommand.handler`：`args` 是斜杠命令后的整串，可能为空串。 */
+/** `RegisteredCommand.handler`: `args` is the whole string after the slash command, possibly empty. */
 export interface HreaderCommandOptions {
   readonly description: string;
   readonly handler: (args: string, ctx: HreaderContext) => Promise<void>;
@@ -334,8 +339,8 @@ export interface HreaderTool<TParams extends TSchema = TSchema> {
   readonly label: string;
   readonly description: string;
   readonly parameters: TParams;
-  // 方法语法是故意的：Pi 的 `ToolDefinition` 也是方法（双变），写成属性会让 `HreaderTool<typeof X>`
-  // 因为 `params` 逆变而无法装进 `HreaderTool<TSchema>`（替身表就得强制转换）。
+  // Method syntax is deliberate: Pi's `ToolDefinition` is also a method (bivariant); a property would make
+  // `HreaderTool<typeof X>` fail `HreaderTool<TSchema>` on `params` contravariance (forcing a cast in the doubles table).
   execute(
     toolCallId: string,
     params: Static<TParams>,
@@ -351,7 +356,7 @@ export interface HreaderCustomMessage {
   readonly display: boolean;
 }
 
-/** `ExtensionAPI` 里本扩展用到的那部分；默认导出必须能被 Pi 当扩展工厂调用。 */
+/** The part of `ExtensionAPI` this extension uses; the default export must be callable by Pi as the extension factory. */
 export interface HreaderPi {
   readonly registerCommand: (name: string, options: HreaderCommandOptions) => void;
   readonly registerTool: <TParams extends TSchema>(tool: HreaderTool<TParams>) => void;
@@ -365,7 +370,7 @@ export interface HreaderPi {
 export interface FetchReply {
   readonly ok: boolean;
   readonly status: number;
-  /** 事件流是 `ReadableStream`；一次性响应可以是 `null`（此时只读 `text()`）。 */
+  /** Event streams come back as a `ReadableStream`; a one-shot response may be `null` (read `text()` only). */
   readonly body: ReadableStream<Uint8Array> | null;
   readonly text: () => Promise<string>;
 }
@@ -380,16 +385,16 @@ export interface HreaderRequest {
 export type FetchLike = (url: string, request: HreaderRequest) => Promise<FetchReply>;
 
 export interface HreaderDeps {
-  /** `~`：`daemon.json` 在 `~/.hreader/` 下，测试给临时目录。 */
+  /** `~`: `daemon.json` lives under `~/.hreader/`; tests pass a temp dir. */
   readonly home: string;
-  /** 读原始字节；UTF-8 解码在 `readDaemonOf` 里做，这样默认实现就是 `node:fs` 的原函数本身。 */
+  /** Reads raw bytes; UTF-8 decoding happens in `readDaemonOf` so the default implementation can be `node:fs`'s own function. */
   readonly readFile: (file: string) => Promise<Uint8Array>;
   readonly fetch: FetchLike;
-  /** 重连等待。默认实现必须 `unref()`，否则 Pi 的 print 模式退不出去。 */
+  /** Reconnect wait. The default implementation must `unref()`, or Pi's print mode cannot exit. */
   readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
-/** daemon 的错误码文案（`packages/core/src/hr-error.ts` 的 `HrErrorCode` 全集，漏一个漂移钉子会红）。 */
+/** The daemon's error-code copy (the full `HrErrorCode` set of `packages/core/src/hr-error.ts`; a missing entry turns a drift pin red). */
 export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   invalid_html: "HTML 不合法",
   no_article: "文档里没有 `<article>`",
@@ -443,23 +448,23 @@ export const errorTextOf = (code: string, detail?: string): string => {
       : `[${code}] ${text}——${detail}`;
 };
 
-/** 终端回显的长度上界：超长的 id（实测 4KB）会把一条 notify 撑成几千字符，满屏糊掉其它输出。 */
+/** Upper bound for terminal echo: a huge id (4KB observed) inflates one notify into thousands of characters and smears everything else off screen. */
 export const NOTIFY_MAX = 400;
 
-/** 单行净化：控制字符（含 ESC 与换行）→ `?`。id 来自不可信的 workspace 目录名，回显 ESC 等于把终端交给 daemon；只用于**展示**（校验与 `POST` 用原值）。 */
+/** Single-line sanitizer: control chars (ESC and newlines included) → `?`. Ids come from untrusted workspace directory names, so echoing ESC would hand the terminal to the daemon; display only — validation and `POST` use the raw value. */
 export const safeTextOf = (text: string): string =>
   Array.from(text, (char) => {
     const code = char.charCodeAt(0);
     return code < 0x20 || (code >= 0x7f && code <= 0x9f) ? "?" : char;
   }).join("");
 
-/** 截断并附 `…`，结果**不超过** `max` 个字符。 */
+/** Truncates with a `…` suffix; the result is **at most** `max` characters. */
 export const clipTextOf = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
 
-/** 用户输入的 id 回显上限：留住后面的可选列表，不让一大坨长输入把它挤掉。 */
+/** Echo cap for user-typed ids: keeps the candidate list visible instead of letting one long input push it off. */
 const ECHO_MAX = 120;
-/** 进终端的唯一出口：所有 `ctx.ui.notify` 都走它（消息自身的换行是故意的，所以只截断、不整条净化）。 */
+/** The only exit into the terminal: every `ctx.ui.notify` goes through it (a message's own newlines are deliberate, so it clips rather than sanitizing whole). */
 export const notifyOf = (
   ctx: HreaderContext,
   message: string,
@@ -468,11 +473,11 @@ export const notifyOf = (
   ctx.ui.notify(clipTextOf(message, NOTIFY_MAX), type);
 };
 
-/** 可选 id 的展示形式：逐个净化后用 `、` 拼。 */
+/** Display form of the available ids: each sanitized, then joined with `、`. */
 export const idListTextOf = (ids: readonly string[]): string =>
   ids.map((id) => safeTextOf(id)).join("、");
 
-/** 从 `/s/:docId` 取到的**源文件字节**里切出某个节点：core 没有 readNode 路由，节点源码只能从这里来。 */
+/** Cuts one node out of the **source file bytes** fetched via `/s/:docId`: core has no readNode route, so node source can only come from here. */
 export const nodeSliceOf = (html: string, nodeId: string): string | undefined => {
   const open = nodeId === "root" ? html.indexOf("<article") : findByIdOf(html, nodeId);
   if (open === undefined || open === -1) return undefined;
@@ -500,7 +505,7 @@ const tagAtOf = (html: string, start: number): TagStart | undefined => {
   if (head === null) return undefined;
   const tagEnd = html.indexOf(">", start);
   if (tagEnd === -1) return undefined;
-  // `slice/join` 而不是 `head[1] ?? ""`：perFile 100% 下，兜底分支必须是能跑到的。
+  // `slice/join` rather than `head[1] ?? ""`: under per-file 100% coverage a fallback branch must be reachable.
   return {
     start,
     name: head.slice(1, 2).join(""),
@@ -509,15 +514,15 @@ const tagAtOf = (html: string, start: number): TagStart | undefined => {
   };
 };
 
-/** 从开标签往后数同名标签的嵌套深度，回到 0 就是该节点的收尾位置（`</tag>` 之后）。 */
+/** Counts same-tag nesting depth forward from the open tag; back at 0, the node ends right after `</tag>`. */
 const closeIndexOf = (html: string, start: number): number | undefined => {
   const tag = tagAtOf(html, start);
   if (tag === undefined) return undefined;
   if (tag.selfClosing || VOID_TAGS.has(tag.name)) return tag.tagEnd + 1;
   let depth = 1;
   let cursor = tag.tagEnd + 1;
-  // 没有 `while (cursor < html.length)` 收尾：`closeAt + 1` 最多到 `length - 2`，
-  // 所以"循环条件为假"这条出口永远走不到（perFile 100% 会把它变成红点）。收尾只走 `closeAt === -1`。
+  // No `while (cursor < html.length)` exit: `closeAt + 1` can reach `length - 2` at most, so a "condition went
+  // false" exit is unreachable (per-file 100% would flag it red). The only way out is `closeAt === -1`.
   for (;;) {
     const openAt = html.indexOf(`<${tag.name}`, cursor);
     const closeAt = html.indexOf(`</${tag.name}`, cursor);
@@ -530,8 +535,8 @@ const closeIndexOf = (html: string, start: number): number | undefined => {
     depth -= 1;
     cursor = closeAt + 1;
     if (depth === 0) {
-      // 没有 `>`（源文件被截断在半写的标签中间）时**不能**返回 `-1 + 1 = 0`：
-      // 那会让 `html.slice(open, 0)` 得到空串，被上层当成“读到了空节点源码”。
+      // With no `>` (the source file was cut mid-tag) returning `-1 + 1 = 0` is **not** allowed:
+      // `html.slice(open, 0)` would be "", which callers would read as "node source was empty".
       const end = html.indexOf(">", closeAt);
       return end === -1 ? undefined : end + 1;
     }
@@ -540,7 +545,7 @@ const closeIndexOf = (html: string, start: number): number | undefined => {
 
 const VOID_TAGS: ReadonlySet<string> = new Set(["br", "img", "hr", "input", "meta", "link"]);
 
-/** 读文档源文件（`/s/:docId` 是 token 认证，不吃 cookie）。 */
+/** Reads the document source file (`/s/:docId` is token-auth, no cookie). */
 const documentOf = async (
   deps: HreaderDeps,
   info: DaemonInfo,
@@ -570,7 +575,7 @@ const jsonOf = async (reply: FetchReply): Promise<unknown> => {
 };
 
 const failureTextOf = (status: number, value: unknown): string => {
-  // 2xx 却不是 JSON 时，说“返回 200：未知错误”会把人往错方向引（那是代理/前端页插进来的时候）。
+  // A non-JSON 2xx must not say "200: unknown error" — that misleads when a proxy/front page slips in.
   if (status < 400 && !isRecord(value)) {
     return `daemon 返回 ${String(status)} 但响应不是 JSON（看 daemon 日志）`;
   }
@@ -584,7 +589,7 @@ const failureTextOf = (status: number, value: unknown): string => {
   return errorTextOf(code, messageOf());
 };
 
-/** 一次 API 调用：读命令带 cookie，写命令再带 `x-hr-csrf: 1`（`routes.ts` 的 auth 列）。 */
+/** One API call: reads carry the cookie, writes additionally carry `x-hr-csrf: 1` (the `routes.ts` auth column). */
 const apiOf = async (
   deps: HreaderDeps,
   info: DaemonInfo,
@@ -592,7 +597,7 @@ const apiOf = async (
   params: Readonly<Record<string, string>>,
   body?: Readonly<Record<string, unknown>>,
 ): Promise<ApiResult> => {
-  // 写不写 CSRF 头由端点表里的 auth 决定，不在调用处再写一遍 `method === "POST"`。
+  // Whether to send the CSRF header is decided by the endpoint table's auth, not by repeating `method === "POST"` at call sites.
   const write = endpoint.auth === "cookie+csrf";
   const headers: Record<string, string> = {
     cookie: `${COOKIE_NAME}=${info.token}`,
@@ -621,11 +626,11 @@ export interface HreaderEvent {
 
 export interface SubscribeHandlers {
   readonly onEvent: (event: HreaderEvent) => void;
-  /** `reset` 帧（`event-ring.ts:83`）：环已过期，必须让用户知道事件丢了。 */
+  /** `reset` frame (`event-ring.ts:83`): the ring expired, and the user must learn that events were lost. */
   readonly onStale: () => void;
-  /** 一轮读流结束（断线/服务端关闭），即将重连。 */
+  /** One read round ended (disconnect/server close); a reconnect follows. */
   readonly onDown: () => void;
-  /** 帧的 `data` 不是带 `type` 的 JSON 对象：丢掉它，但不能静默（那是协议漂移的样子）。 */
+  /** The frame's `data` is not a JSON object with `type`: drop it, but not silently — that is what protocol drift looks like. */
   readonly onBadFrame: (detail: string) => void;
 }
 
@@ -635,18 +640,19 @@ export interface Subscription {
 
 interface CycleContext {
   readonly deps: HreaderDeps;
-  /** daemon 重启会换 port/token：断线窗口里被 `loopOf` 刷新，故非 readonly。 */
+  /** A daemon restart changes port/token; refreshed by `loopOf` in the down window, hence not readonly. */
   info: DaemonInfo;
   readonly handlers: SubscribeHandlers;
   readonly signal: AbortSignal;
-  /** 已报过的告警类别（`bad`/`down`），见 `reportOnceOf`。 */
+  /** Alert categories already reported (`bad`/`down`), see `reportOnceOf`. */
   readonly reported: Set<"bad" | "down">;
   lastEventId: string | undefined;
 }
 
 /**
- * 一次订阅内同类告警只放行一条：一坏帧一提示在 50ms 的坏流上就是每秒 20 条永久刷屏。
- * 流健康过一次（收到业务事件）就清空，重连后再出问题可以再报一次。
+ * One alert per category per subscription: a hint per bad frame on a 50ms bad stream would be 20 permanent
+ * lines a second. The set clears once the stream proves healthy (a business event arrives), so a post-reconnect
+ * problem may report once more.
  */
 const reportOnceOf = (context: CycleContext, key: "bad" | "down"): boolean => {
   if (context.reported.has(key)) return false;
@@ -654,7 +660,7 @@ const reportOnceOf = (context: CycleContext, key: "bad" | "down"): boolean => {
   return true;
 };
 
-/** 一帧的去向：`reset` → 降级提示；四个业务类型 → 处理；其余（含 `ready`）忽略。 */
+/** Where a frame goes: `reset` → staleness notice; the four business types → handled; everything else (`ready` included) ignored. */
 const dispatchOf = (context: CycleContext, envelope: SseEnvelope): void => {
   const event = eventOf(envelope);
   if (event === undefined) {
@@ -669,11 +675,11 @@ const dispatchOf = (context: CycleContext, envelope: SseEnvelope): void => {
     context.reported.clear();
     context.handlers.onEvent(event);
   }
-  // `ready` 的 `id: 0` 不在环里：拿它当 `Last-Event-ID` 会让重连从"环首"重新回放。
+  // `ready`'s `id: 0` is not in the ring: using it as `Last-Event-ID` would make reconnect replay from the ring head.
   if (event.id !== undefined && event.id !== "0") context.lastEventId = event.id;
 };
 
-/** 被 abort 的流上 `cancel()` 会 reject：Node 24 默认把未处理的 rejection 变成进程崩溃。 */
+/** `cancel()` rejects on an aborted stream: Node 24 turns unhandled rejections into a process crash by default. */
 const cancelQuietlyOf = (reader: ReadableStreamDefaultReader<Uint8Array>): void => {
   reader.cancel().catch(() => undefined);
 };
@@ -698,8 +704,8 @@ const readStreamOf = async (
     for (const envelope of decoder.flush()) dispatchOf(context, envelope);
   } finally {
     context.signal.removeEventListener("abort", onAbort);
-    // 溢出弃帧从 `return` 出去时也必须关掉 body：`loopOf` 2 秒后重连，不然每次溢出泄漏一个连接
-    // （2s 一次溢出 = 无上界增长）。正常读完时 `cancel()` 是无害的 no-op。
+    // An overflow exit via `return` must still close the body: `loopOf` reconnects 2s later, so every overflow
+    // would otherwise leak a connection (one per 2s = unbounded growth). After a normal read `cancel()` is a harmless no-op.
     cancelQuietlyOf(reader);
   }
 };
@@ -723,11 +729,11 @@ const runCycleOf = async (context: CycleContext): Promise<void> => {
     if (!reply.ok || reply.body === null) return;
     await readStreamOf(context, reply.body);
   } catch {
-    // 断线是常态：交给外层 `onDown` + 重连，不把异常抛给 Pi。
+    // Disconnects are routine: hand off to the outer `onDown` + reconnect instead of throwing at Pi.
   }
 };
 
-/** 经函数读 `aborted`：`while (!signal.aborted)` 会把后面的读取窄化成 `false`（TS 认为只读属性不变）。 */
+/** Reads `aborted` through a function: `while (!signal.aborted)` would narrow later reads to `false` (TS treats a readonly property as fixed). */
 const abortedOf = (signal: AbortSignal): boolean => signal.aborted;
 
 const loopOf = async (context: CycleContext): Promise<void> => {
@@ -736,21 +742,22 @@ const loopOf = async (context: CycleContext): Promise<void> => {
     if (abortedOf(context.signal)) return;
     if (reportOnceOf(context, "down")) context.handlers.onDown();
     await context.deps.delay(RECONNECT_MS, context.signal);
-    // daemon 重启会重写 daemon.json（新 port/token）：捏着旧 info 重连只会一直 ECONNREFUSED/401。
-    // 只在断线窗口读盘——流活着时 runCycleOf 阻塞在读上，到不了这里。
+    // A daemon restart rewrites daemon.json (new port/token): reconnecting with stale info only yields endless
+    // ECONNREFUSED/401. The disk read happens only in the down window — while the stream lives, runCycleOf is
+    // blocked on read and never gets here.
     const fresh = await readDaemonOf(context.deps);
     if (
       fresh !== undefined &&
       (fresh.port !== context.info.port || fresh.token !== context.info.token)
     ) {
       context.info = fresh;
-      // 新 daemon 的事件环是另一条：旧游标不是"靠后"是"无效"，清掉从头收。
+      // A new daemon has a different event ring: the old cursor is not "behind" but "invalid" — clear it and start over.
       context.lastEventId = undefined;
     }
   }
 };
 
-/** 订阅 `/api/events`：一次读到断就退，退完等 `RECONNECT_MS` 再带 `Last-Event-ID` 重连，直到 `stop()`。 */
+/** Subscribes to `/api/events`: reads until the stream drops, waits `RECONNECT_MS`, reconnects with `Last-Event-ID`, until `stop()`. */
 export const subscribeOf = (
   deps: HreaderDeps,
   info: DaemonInfo,
@@ -775,13 +782,13 @@ export const subscribeOf = (
 
 interface HreaderSession {
   docId: string | undefined;
-  /** 每个文档换过的视觉 id：`POST /api/style` 带的就是 `docId`，风格是**文档属性**，换回来仍记得。 */
+  /** Visual id chosen per document: `POST /api/style` takes a `docId`, the style is a **document property** the extension still remembers on switching back. */
   readonly themeOf: Map<string, string>;
-  /** `/hr-style` 的单调序号：后发起的命令赢，慢响回来时靠它识别“已经被取代了”。 */
+  /** Monotonic `/hr-style` sequence: the latest command wins, and a slow reply uses it to tell it was superseded. */
   styleSeq: number;
   subscription: Subscription | undefined;
   readonly asked: Set<string>;
-  /** 引流串行化：同一个 chunk 里的两条 `doc.changed` 不能并发跑（去重集合还没登记就会问两遍）。 */
+  /** Serializes the flow: two `doc.changed` in one chunk must not run concurrently (the dedupe set is not yet registered and would ask twice). */
   queue: Promise<void>;
 }
 
@@ -800,7 +807,7 @@ interface PendingAnnotation {
   readonly note: string;
 }
 
-/** 认 `pending_ai` 与 `pending`（与 core 同口径）；`resolved`/已拒绝等其它状态一律排除，不该再问用户一次。 */
+/** Accepts `pending_ai` and `pending` (same criterion as core); `resolved`/dismissed and every other status are excluded — the user must not be asked twice. */
 const pendingOf = (value: unknown): PendingAnnotation | undefined => {
   if (!isRecord(value)) return undefined;
   const id = value["id"];
@@ -823,7 +830,7 @@ const pendingListOf = (
   });
 };
 
-/** `doc.changed` 的正文里，文档标识叫 `docId`（`runtime.ts:232`）；`path` 只出现在 `doc.error`/`library.changed`。 */
+/** In a `doc.changed` payload the document key is `docId` (`runtime.ts:232`); `path` only appears in `doc.error`/`library.changed`. */
 const docIdOfEvent = (payload: Readonly<Record<string, unknown>>): string | undefined => {
   const docId = payload["docId"];
   return typeof docId === "string" ? docId : undefined;
@@ -858,9 +865,9 @@ interface OfferContext {
 
 const offerOf = async (context: OfferContext, annotation: PendingAnnotation): Promise<void> => {
   const text = injectionOf(annotation, context.docId, context.document);
-  // 无 UI（print/json 模式）时 `confirm` 不可用：只提示，不擅自把批注塞进会话。
+  // With no UI (print/json mode) `confirm` is unavailable: notify only, never inject the annotation into the session uninvited.
   if (!context.ctx.hasUI) {
-    // `nodeId`/`note` 是 daemon 来源的不可信片段：回显前净化。
+    // `nodeId`/`note` are untrusted fragments from the daemon: sanitize before echoing.
     notifyOf(
       context.ctx,
       `有新批注（${safeTextOf(annotation.nodeId)}）：${safeTextOf(annotation.note)}`,
@@ -890,7 +897,7 @@ const intakeOf =
     if (pending.length === 0) return;
     const document = await documentOf(deps, info, docId);
     for (const annotation of pending) {
-      // 先登记再问：`confirm` 挂着时又来一个 `doc.changed`，同一 `anId` 不能再问一遍。
+      // Register before asking: if another `doc.changed` arrives while `confirm` is pending, the same `anId` must not prompt twice.
       session.asked.add(annotation.id);
       await offerOf({ pi, ctx, docId, document }, annotation);
     }
@@ -909,9 +916,10 @@ interface ToolContext {
   readonly docId: string;
 }
 
-/** 三工具共同的壳：daemon 缺失/路径越界都变成**文本**，绝不抛裸异常。
- * 这里没有 `try/catch`：三个 IO 缝各自内部就把异常收成 `undefined` / `ok: false`，所以 `work` 只剩
- * 不抛的纯计算。往 `work` 里加 IO 前，先把那个缝 total 化，否则工具的"永不抛"承诺会在这里破掉。 */
+/** Shared shell of the three tools: a missing daemon or an out-of-workspace path becomes **text**, never a bare throw.
+ * There is no `try/catch` here: each of the three IO seams already folds errors into `undefined` / `ok: false`
+ * internally, leaving `work` as pure non-throwing computation. Before adding IO to `work`, totalize that seam
+ * first, or the tools' "never throws" promise breaks here. */
 const runToolOf = async (
   deps: HreaderDeps,
   path: string,
@@ -964,7 +972,7 @@ const readNodeToolOf = (deps: HreaderDeps): HreaderTool<typeof READ_NODE_PARAMS>
       const html = nodeSliceOf(document, params.nodeId);
       if (html === undefined) return toolResultOf(errorTextOf("node_not_found", params.nodeId));
       const listed = await apiOf(deps, info, ENDPOINTS.annotations, { docId });
-      // 只要这个节点身上的未处理批注：别的节点的批注属于别的工具调用。
+      // Only the pending annotations on this node: other nodes' annotations belong to other tool calls.
       const notes = listed.ok
         ? pendingListOf(listed.value["annotations"], new Set()).filter(
             (annotation) => annotation.nodeId === params.nodeId,
@@ -981,7 +989,7 @@ const readNodeToolOf = (deps: HreaderDeps): HreaderTool<typeof READ_NODE_PARAMS>
     }),
 });
 
-/** `delete` 不发片段（同 MCP 侧 `patch-node.ts:35-38` 的分叉）；其余四种必带。 */
+/** `delete` sends no fragment (same fork as MCP's `patch-node.ts:35-38`); the other four actions require one. */
 const patchBodyOf = (
   docId: string,
   params: { readonly nodeId: string; readonly action: string; readonly htmlContent: string },
@@ -1008,20 +1016,20 @@ const patchNodeToolOf = (deps: HreaderDeps): HreaderTool<typeof PATCH_NODE_PARAM
 });
 
 const statusHintOf = (info: DaemonInfo, session: HreaderSession): string => {
-  // 只看**当前绑定文档**的记录：别的文档的风格与本篇无关。
+  // Only the record of the **currently bound document**: other documents' styles are irrelevant to this one.
   const themeId = session.docId === undefined ? undefined : session.themeOf.get(session.docId);
   const style = themeId === undefined ? "" : `，风格 ${safeTextOf(themeId)}`;
   return `${USAGE_HINT}\ndaemon 在跑：127.0.0.1:${String(info.port)}，workspace ${safeTextOf(info.workspace)}${style}`;
 };
 
-/** `GET /api/theme` 的 `themes` 字段；非法形状/空串一律剔除，宁可少报也不报出个假 id。 */
+/** The `themes` field of `GET /api/theme`; malformed shapes and empty strings are all dropped — better to under-report than to invent an id. */
 const themeIdsOf = (value: Readonly<Record<string, unknown>>): readonly string[] => {
   const listed = value["themes"];
   if (!Array.isArray(listed)) return [];
   return listed.filter((item): item is string => isNonEmptyString(item));
 };
 
-/** 上下文在订阅时就定下来：订阅只从"已绑定文档"的那条分叉里起，所以处理器里它不可能是 undefined。 */
+/** The context is settled at subscribe time: the subscription only starts from the "document bound" fork, so inside the handlers it cannot be undefined. */
 const handlersOf = (
   deps: HreaderDeps,
   session: HreaderSession,
@@ -1035,7 +1043,7 @@ const handlersOf = (
         notifyOf(ctx, "处理 hReader 批注事件时出错（见 Pi 日志）", "warning");
       });
   },
-  // 环过期是“你断了太久”，必须让用户知道，不能让“未知类型”把它吞掉。
+  // An expired ring means "you were down too long": the user must hear it, not have it swallowed by "unknown type".
   onStale: () => {
     notifyOf(
       ctx,
@@ -1061,8 +1069,8 @@ const hreaderCommandOf =
     }
     const target = args.trim();
     if (target === "") {
-      // 无参只给用法 + daemon 状态。`GET /` 是 cookie 认证、`/s/:docId` 是 token 认证，
-      // 无参时没有可点的合法链接，打印根 URL 就是死链。
+      // No args prints usage + daemon status. `GET /` is cookie-auth and `/s/:docId` token-auth,
+      // so with no args there is no clickable valid link — printing the root URL would be a dead one.
       notifyOf(ctx, statusHintOf(info, session), "info");
       return;
     }
@@ -1080,7 +1088,7 @@ const hreaderCommandOf =
 
 const STYLE_USAGE_HINT = "用法：/hr-style <视觉 id>——不给 id 就列出 daemon 报的可选值";
 
-/** 取可选视觉 id；列表取不到/为空时**已经** notify 过，返回 `undefined` 让调用方直接收尾。 */
+/** Fetches the available visual ids; on a missing/empty list the caller has **already** been notified, so it returns `undefined` for a clean exit. */
 const styleIdsOf = async (
   deps: HreaderDeps,
   info: DaemonInfo,
@@ -1099,14 +1107,14 @@ const styleIdsOf = async (
   return ids;
 };
 
-/** 校验 id 与文档绑定；不合法时**已经** notify 过，返回 `undefined`。 */
+/** Validates the id and the document binding; on failure the caller has **already** been notified, so it returns `undefined`. */
 const styleTargetOf = (
   ids: readonly string[],
   requested: string,
   session: HreaderSession,
   ctx: HreaderContext,
 ): { readonly docId: string; readonly visualId: string } | undefined => {
-  // 先对照列表校验：不在列表里的 id 连 POST 都不发（`applyStyle` 侧会报 `unknown_style`，但那时已经动了锁）。
+  // Validate against the list first: an unlisted id never even POSTs (`applyStyle` would report `unknown_style`, but by then the lock was already taken).
   if (!ids.includes(requested)) {
     const echo = clipTextOf(safeTextOf(requested), ECHO_MAX);
     notifyOf(ctx, `没有叫 ${echo} 的风格\n可选风格：${idListTextOf(ids)}`, "error");
@@ -1125,8 +1133,8 @@ const styleDoneTextOf = (_changed: boolean, docId: string, requested: string): s
     ? `已把 ${safeTextOf(docId)} 换成 ${safeTextOf(requested)}`
     : `${safeTextOf(requested)} 与当前视觉相同，文档没变`;
 
-/** `/hr-style <id>` 的唯一语义是**换视觉**；id 只从 `GET /api/theme` 来（扩展不扫主题目录）。
- * 入场先取号，带号码回写——先发慢响一律静默丢弃，不 notify 也不改状态（“后发起的命令赢”）。 */
+/** `/hr-style <id>`'s only semantics is **switch the visual**; ids come solely from `GET /api/theme` (the extension never scans the theme directory).
+ * Take a ticket on entry and write back with it — a stale earlier reply is silently dropped: no notify, no state change ("the latest command wins"). */
 const styleCommandOf =
   (deps: HreaderDeps, session: HreaderSession) =>
   async (args: string, ctx: HreaderContext): Promise<void> => {
@@ -1145,9 +1153,9 @@ const styleCommandOf =
     }
     const target = styleTargetOf(ids, requested, session, ctx);
     if (target === undefined) return;
-    // body 只有这两个键（`handlers.ts:191-197` 只读 `docId`/`visualId`）。
+    // The body has only these two keys (`handlers.ts:191-197` reads only `docId`/`visualId`).
     const result = await apiOf(deps, info, ENDPOINTS.style, {}, target);
-    // 发票期间又被更晚的 `/hr-style` 取代：这一发的结果已经过时，静默丢。
+    // Superseded by a later `/hr-style` while the request was in flight: this reply is stale — drop it silently.
     if (token !== session.styleSeq) return;
     if (!result.ok) {
       notifyOf(ctx, result.text, "error");
@@ -1176,14 +1184,14 @@ export const hreaderExtensionOf =
     pi.registerTool(outlineToolOf(deps));
     pi.registerTool(readNodeToolOf(deps));
     pi.registerTool(patchNodeToolOf(deps));
-    // 常驻的 SSE 连接会占住事件循环：Pi 退出会话时必须主动收尾，否则进程挂不出去。
+    // A resident SSE connection holds the event loop: it must be wound down when Pi exits the session, or the process cannot quit.
     pi.on("session_shutdown", () => {
       session.subscription?.stop();
       session.subscription = undefined;
     });
   };
 
-/** 默认重连等待：`unref()` 是硬要求（真是否住进程由 smoke 脚本的退出码证明）。 */
+/** Default reconnect wait: `unref()` is a hard requirement (whether it truly frees the process is proven by the smoke script's exit code). */
 export const delayOf = (ms: number, signal: AbortSignal): Promise<void> =>
   new Promise((done) => {
     if (signal.aborted) {
@@ -1205,8 +1213,8 @@ export const delayOf = (ms: number, signal: AbortSignal): Promise<void> =>
 const liveDeps = (): HreaderDeps => ({
   home: homedir(),
   readFile,
-  // 全局 `fetch` 的签名比 `FetchLike` 更宽（`RequestInit`），直接给即可：
-  // 包一层 `(url, request) => fetch(url, request)` 会多出一个测试永远走不到的函数。
+  // The global `fetch` has a wider signature than `FetchLike` (`RequestInit`), so it is passed as-is:
+  // wrapping it as `(url, request) => fetch(url, request)` would add a function no test ever reaches.
   fetch,
   delay: delayOf,
 });
