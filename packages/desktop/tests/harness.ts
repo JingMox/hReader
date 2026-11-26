@@ -209,6 +209,10 @@ export const WORKBENCH_HTML = `
     </div>
     <div id="hr-statusbar">
       <span id="hr-conn"></span>
+      <span id="hr-perms">
+        <button id="hr-perm-scripts" type="button"></button>
+        <button id="hr-perm-network" type="button"></button>
+      </span>
       <span id="hr-hint"></span>
     </div>
     <style id="hr-theme"></style>
