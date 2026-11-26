@@ -215,12 +215,23 @@ const buildLarge = (sections: number): string =>
 
 const byteLength = (text: string): number => new TextEncoder().encode(text).length;
 
+/**
+ * Milliseconds of CPU time burned by this process (user+system). Unlike wall
+ * time it is not inflated by scheduling stalls, so a bound on it holds under
+ * CPU contention; same-machine slowness (coverage, weak cores) is absorbed by
+ * the slowdown factor below.
+ */
+const cpuMs = (): number => {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
+};
+
 const fastest = (run: () => unknown, attempts: number): number => {
   let best = Number.POSITIVE_INFINITY;
   for (let index = 0; index < attempts; index += 1) {
-    const started = performance.now();
+    const started = cpuMs();
     run();
-    best = Math.min(best, performance.now() - started);
+    best = Math.min(best, cpuMs() - started);
   }
   return best;
 };
@@ -257,7 +268,7 @@ describe("performance · one megabyte document", () => {
     expect(byteLength(big)).toBeGreaterThan(1_000_000);
     expect(
       elapsed,
-      `1MB/${String(byteLength(big))}B read took ${elapsed.toFixed(1)}ms (slowdown ${slowdown.toFixed(1)}x)`,
+      `1MB/${String(byteLength(big))}B read took ${elapsed.toFixed(1)}ms cpu (slowdown ${slowdown.toFixed(1)}x)`,
     ).toBeLessThan(60 * slowdown);
   }, 30_000);
 
@@ -273,7 +284,7 @@ describe("performance · one megabyte document", () => {
     expect(byteLength(result.html)).toBeLessThanOrEqual(65_536);
     expect(
       elapsed,
-      `article read took ${elapsed.toFixed(1)}ms (slowdown ${slowdown.toFixed(1)}x)`,
+      `article read took ${elapsed.toFixed(1)}ms cpu (slowdown ${slowdown.toFixed(1)}x)`,
     ).toBeLessThan(120 * slowdown);
   }, 60_000);
 });

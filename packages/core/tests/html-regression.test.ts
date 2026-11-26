@@ -60,20 +60,34 @@ const PERF_ITERATIONS = 16;
 const PERF_WINDOWS = 5;
 
 /**
- * 一个"窗口"= 连做 16 次 `injectNodeIds(parseHtml(...))` 取平均；窗口内平均把单次 1~3ms 的 GC 抖动摊平。
- * 关键在**交错**：浅/深两档在相邻窗口里各测一次再相除，CPU 争用同时抬高分子分母，比值因此抗噪。
- * 取 5 个窗口里最小的那个比值（争用是单向抬高，最小值最接近真实比）。
+ * Milliseconds of CPU time burned by this process (user+system). Unlike wall
+ * time it is not inflated by scheduling stalls, so a bound on it holds under
+ * CPU contention; same-machine slowness (coverage, weak cores) lifts the
+ * shallow and deep costs together, leaving the growth ratio intact.
+ */
+const cpuMs = (): number => {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
+};
+
+/**
+ * One "window" = 16 iterations of `injectNodeIds(parseHtml(...))` averaged;
+ * the per-window average flattens 1~3ms GC jitter.
+ * The key is **interleaving**: shallow/deep are measured in adjacent windows
+ * and divided, so both ends share the same machine conditions — the ratio is
+ * noise-resistant. Take the smallest ratio over 5 windows (interference only
+ * ever raises a sample; the minimum is closest to the true ratio).
  */
 const injectionWindowMs = (depth: number): number => {
   const html = nestedDocument(depth);
-  const started = performance.now();
+  const started = cpuMs();
   for (let index = 0; index < PERF_ITERATIONS; index += 1) {
     injectNodeIds(parseHtml(html));
   }
-  return (performance.now() - started) / PERF_ITERATIONS;
+  return (cpuMs() - started) / PERF_ITERATIONS;
 };
 
-/** 交错测 5 对 (浅, 深)，返回最小的单对比值与两档各自的最小耗时。 */
+/** Interleave 5 (shallow, deep) pairs; return the smallest single-pair ratio and each depth's minimum cost. */
 const growthPair = (
   shallowDepth: number,
   deepDepth: number,

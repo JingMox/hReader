@@ -1,7 +1,12 @@
-// 这层管：`hr style extract` 拒绝"不是普通文件"的语料路径（目录、符号链接到设备、FIFO）；普通语料见 style-extract。
+// This file covers `hr style extract` refusing corpus paths that are not
+// regular files (directory, symlink to a device, FIFO); a normal corpus is
+// covered by style-extract.
 //
-// 牙有两处：一是"快"（只看 `stat.size` 的实现会给 `/dev/zero` 与 FIFO 放行，随后无界读或永等写入方），
-// 二是"停在 fileSizeOf"（目录名带合法后缀时，只有 `isDirectory` 那支会给出"是目录"）。
+// Two sharp edges: "check the kind before reading" (an implementation that
+// only looks at `stat.size` would admit /dev/zero and a FIFO, then read an
+// unbounded stream or wait on a writer forever), and "stop at fileSizeOf"
+// (when a directory name carries a valid corpus suffix, only the
+// `isDirectory` branch produces the "是目录" refusal).
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, symlinkSync } from "node:fs";
@@ -16,14 +21,16 @@ const NO_KEY = { OPENCODE_API_KEY: "" };
 const extract = async (args: readonly string[], dir: string) =>
   runCli(["style", "extract", "--no-llm", ...args], { cwd: dir, env: NO_KEY });
 
-/** 10s harness 兜底之外，这里要求"立刻"拒：放行就意味着去读一个无界或永不就绪的流。 */
-const expectRefusedFast = async (path: string, dir: string): Promise<void> => {
-  const startedAt = Date.now();
+/**
+ * "Does not hang" is not proven by a stopwatch: refusing after one `stat`
+ * type check without touching `readFile` is pinned by the stubbed-fs test in
+ * style-extract-corpus-kind; if a mutant entered the read path (unbounded
+ * device, FIFO waiting on a writer), runCli's 10s hard timeout and vitest's
+ * testTimeout would turn it red — no wall-clock assertion needed.
+ */
+const expectRefused = async (path: string, dir: string): Promise<void> => {
   const result = await extract([path, "--json"], dir);
 
-  // 1s 是宽松上限：满负载实测最大 209ms（4.78× 余量）。变异体会以 vitest 的 5s testTimeout 变红，
-  // 不是这条断言兜底——所以它证明的是"没挂死"，不是"没超限"。
-  expect(Date.now() - startedAt).toBeLessThan(1000);
   expect(result.code).toBe(1);
   expect(result.stdout).toContain('"code":"invalid_input"');
   expect(result.stdout).toContain("只能是普通文件");
@@ -54,7 +61,7 @@ describe("hr style extract · 设备与管道", () => {
         const path = join(dir, "zero.md");
         symlinkSync("/dev/zero", path);
 
-        await expectRefusedFast(path, dir);
+        await expectRefused(path, dir);
       });
     },
   );
@@ -65,7 +72,7 @@ describe("hr style extract · 设备与管道", () => {
       const path = join(dir, "pipe.md");
       execFileSync("mkfifo", [path]);
 
-      await expectRefusedFast(path, dir);
+      await expectRefused(path, dir);
     });
   });
 });
