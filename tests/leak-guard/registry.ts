@@ -228,6 +228,9 @@ const ownerPidOf = (name: string): number => {
  * Dead dirs from earlier runs: owner pid is dead → any still-living registered process in
  * there is an orphan; kill it, then remove the dir. Dirs whose owner is still alive
  * (another agent mid-run) are never touched. Returns swept dir names (diagnostics).
+ * Pid reuse degrades this to a miss, never a misfire: if the dead owner's pid got
+ * recycled, pidAlive looks true and the dir is skipped — stale state lingers one
+ * more run, but nothing foreign can be killed.
  */
 export const sweepStaleRunDirs = (ownDir: string): string[] => {
   const swept: string[] = [];

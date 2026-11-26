@@ -4,6 +4,11 @@
 // any registered process still alive with its marker in the cmdline gets SIGKILLed
 // and fails the whole run. Attribution only trusts "a record in the run dir + marker
 // match", so other agents' same-host processes can never be flagged.
+//
+// Scope: the gate only sees machine-level residue. A child a suite forgot to stop
+// whose owner worker exited normally is already reaped by the owner's exit-time
+// sweep (registry.ts registerChild hook), so it never reaches this list — the gate
+// flags surviving processes, not sloppy teardown.
 
 import { rmSync } from "node:fs";
 
