@@ -1,6 +1,6 @@
-// This layer owns the doc-directory capability tokens (`cap`): minting them
-// from a per-process secret, registering which directory each cap covers, and
-// the constant-time lookup `/f/` performs per request. No HTTP, no disk IO.
+// This layer owns the document capability tokens (`cap`): minting them from a
+// per-process secret, registering which document each cap covers, and the
+// constant-time lookup `/f/` performs per request. No HTTP, no disk IO.
 
 import { createHmac, randomBytes } from "node:crypto";
 import { basename, dirname } from "node:path";
@@ -14,30 +14,33 @@ const KEY_BYTES = 32;
 export const CAP_LENGTH = 22;
 
 /**
- * `dirRelative` is the doc directory's workspace-relative path ("" for a doc
- * sitting at the workspace root). The secret only lives in this process, so a
- * restart voids every previously issued cap.
+ * `subject` is the material a cap binds to — for documents, the directory's
+ * workspace-relative path plus "\0" plus the document basename, so two
+ * documents in one directory never share a cap. The secret only lives in this
+ * process, so a restart voids every previously issued cap.
  */
-export const capabilityOf = (key: Uint8Array, dirRelative: string): string =>
-  createHmac("sha256", key).update(dirRelative).digest("base64url").slice(0, CAP_LENGTH);
+export const capabilityOf = (key: Uint8Array, subject: string): string =>
+  createHmac("sha256", key).update(subject).digest("base64url").slice(0, CAP_LENGTH);
 
 /**
- * One directory covered by a cap. `docs` is the `/f/` ".html exception" set:
- * only basenames registered here may be served as the document itself —
- * every other HTML stays unservable even though it shares the directory.
+ * One document bound to a cap. `dir` is the scope root whitelisted assets
+ * resolve under; `docName` is the single name served as the `/f/` ".html
+ * exception" — sibling documents in the same directory stay unservable.
  */
-export interface DirGrant {
+export interface DocGrant {
   readonly cap: string;
   /** Real path of the doc directory; the root every `/f/` path resolves inside. */
   readonly dir: string;
-  readonly docs: Map<string, ResolvedTarget>;
+  /** Exact basename of the document this cap may serve as HTML. */
+  readonly docName: string;
+  readonly doc: ResolvedTarget;
 }
 
 export interface CapabilityBook {
-  /** Registers the doc's directory (idempotent per directory) and returns its grant. */
-  readonly register: (target: ResolvedTarget) => DirGrant;
-  /** Constant-time cap check: forged, cross-directory, and stale caps all miss. */
-  readonly lookup: (cap: string) => DirGrant | undefined;
+  /** Registers the document (idempotent per document) and returns its grant. */
+  readonly register: (target: ResolvedTarget) => DocGrant;
+  /** Constant-time cap check: forged, cross-document, and stale caps all miss. */
+  readonly lookup: (cap: string) => DocGrant | undefined;
   /** `register` + `/f/<cap>/<basename>` in one step: a cap only exists once handed out. */
   readonly frameUrlOf: (target: ResolvedTarget) => string;
 }
@@ -48,27 +51,25 @@ const dirRelativeOf = (target: ResolvedTarget): string => {
 };
 
 export const createCapabilityBook = (key: Uint8Array = randomBytes(KEY_BYTES)): CapabilityBook => {
-  const grants: DirGrant[] = [];
-  const byDir = new Map<string, DirGrant>();
-  const register = (target: ResolvedTarget): DirGrant => {
-    const dir = dirname(target.realPath);
-    const existing = byDir.get(dir);
-    if (existing !== undefined) {
-      existing.docs.set(basename(target.realPath), target);
-      return existing;
-    }
-    const grant: DirGrant = {
-      cap: capabilityOf(key, dirRelativeOf(target)),
-      dir,
-      docs: new Map([[basename(target.realPath), target]]),
+  const grants: DocGrant[] = [];
+  const byDoc = new Map<string, DocGrant>();
+  const register = (target: ResolvedTarget): DocGrant => {
+    const existing = byDoc.get(target.realPath);
+    if (existing !== undefined) return existing;
+    const name = basename(target.realPath);
+    const grant: DocGrant = {
+      cap: capabilityOf(key, `${dirRelativeOf(target)}\0${name}`),
+      dir: dirname(target.realPath),
+      docName: name,
+      doc: target,
     };
-    byDir.set(dir, grant);
+    byDoc.set(target.realPath, grant);
     grants.push(grant);
     return grant;
   };
   return {
     register,
-    // Grants stay few (one per directory touched this session): scanning them
+    // Grants stay few (one per document opened this session): scanning them
     // with tokenMatches' constant-time comparison is cheap and never lets a
     // hashmap probe leak a correct-prefix timing signal.
     lookup: (cap) => {

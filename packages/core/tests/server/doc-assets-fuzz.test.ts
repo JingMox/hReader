@@ -15,7 +15,7 @@ import { isInside } from "../../src/io/paths";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import type { ResolvedTarget } from "../../src/io/paths";
 import { nodeStyleDeps } from "../../src/style";
-import { createCapabilityBook, type DirGrant } from "../../src/server/capability";
+import { createCapabilityBook, type DocGrant } from "../../src/server/capability";
 import { docAssetReply } from "../../src/server/doc-assets";
 import type { HandlerContext } from "../../src/server/handlers";
 
@@ -24,9 +24,9 @@ const PAGE = "<!doctype html><html><body><h1>page</h1></body></html>";
 
 interface Fixture {
   readonly ctx: HandlerContext;
-  readonly grant: DirGrant;
+  readonly grant: DocGrant;
   /** A second registered document in the same directory — its own cap. */
-  readonly sibling: DirGrant;
+  readonly sibling: DocGrant;
   readonly workspace: string;
   readonly home: string;
   /** Every path the FileSystem port was asked to read. */

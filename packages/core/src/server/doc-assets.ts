@@ -13,7 +13,7 @@ import { documentServeOf, type HandlerContext } from "./handlers";
  * D9's extension whitelist — the only resource kinds a page may pull from its
  * own directory. `.html`/`.htm` are absent on purpose (another document must
  * never be readable as a resource); the served document itself is exempted via
- * `grant.docs` before this map is consulted.
+ * `grant.docName` before this map is consulted.
  */
 const TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
@@ -66,6 +66,9 @@ const BASE_HEADERS: Readonly<Record<string, string>> = {
   ...CORS,
   "x-content-type-options": "nosniff",
   "cache-control": "no-store",
+  // Same stamp the document reply carries: asset responses must never help a
+  // cross-origin page learn the frame URL via Referer leakage.
+  "referrer-policy": "no-referrer",
 };
 
 /**
@@ -116,10 +119,10 @@ export const docAssetReply = async (
 ): Promise<Reply> => {
   const grant = ctx.caps.lookup(cap);
   if (grant === undefined) return notFound();
-  // The one HTML exception: the document itself, by exact registered basename.
-  // It keeps the permission-matrix headers (CSP + sandbox), plus this route's CORS.
-  const doc = grant.docs.get(rawPath);
-  if (doc !== undefined) return withCors((await documentServeOf(ctx, doc)).reply);
+  // The one HTML exception: the document this cap was minted for, by exact
+  // basename. It keeps the permission-matrix headers (CSP + sandbox), plus
+  // this route's CORS.
+  if (rawPath === grant.docName) return withCors((await documentServeOf(ctx, grant.doc)).reply);
   const segments = segmentsOf(rawPath);
   if (segments === undefined || typeOf(rawPath) === undefined) return notFound();
   let real: string;
@@ -142,14 +145,17 @@ export const docAssetReply = async (
   } catch {
     return notFound();
   }
-  if (!stat.isFile()) return notFound();
+  // stat.size precheck: an over-ceiling file is refused before a single byte
+  // lands in memory. 404 rather than 413 — same oracle argument as every
+  // other rejection here.
+  if (!stat.isFile() || stat.size > MAX_DOC_ASSET_BYTES) return notFound();
   let bytes: Uint8Array;
   try {
     bytes = await ctx.deps.fs.readFile(real);
   } catch {
     return notFound();
   }
-  // 404 rather than 413: same oracle argument as every other rejection here.
+  // The file may have grown between lstat and readFile — recheck the bytes.
   if (bytes.length > MAX_DOC_ASSET_BYTES) return notFound();
   return {
     status: 200,
