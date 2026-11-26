@@ -49,22 +49,31 @@ describe("capabilityOf", () => {
 });
 
 describe("createCapabilityBook", () => {
-  it("should hand the same cap to documents sharing one directory", () => {
+  it("should mint one cap per document, never shared across a directory", () => {
     const book = createCapabilityBook();
     const first = book.register(targetOf("page/index.html"));
     const second = book.register(targetOf("page/other.html"));
-    expect(second.cap).toBe(first.cap);
+    // Two documents in the same directory get distinct caps and distinct
+    // grants — the cap names a document, not its directory.
+    expect(second.cap).not.toBe(first.cap);
     expect(second.dir).toBe(first.dir);
-    expect([...second.docs.keys()].sort()).toEqual(["index.html", "other.html"]);
+    expect(book.lookup(first.cap)).toBe(first);
+    expect(book.lookup(second.cap)).toBe(second);
+    // Re-registering the same document reuses its own grant.
+    expect(book.register(targetOf("page/index.html"))).toBe(first);
   });
 
-  it("should mint each cap from the directory path, never the file name", () => {
+  it("should mint each cap from the directory path and the document name", () => {
     const key = new Uint8Array(32).fill(5);
     const book = createCapabilityBook(key);
-    expect(book.register(targetOf("page/index.html")).cap).toBe(capabilityOf(key, "page"));
-    expect(book.register(targetOf("page/sub/doc.html")).cap).toBe(capabilityOf(key, "page/sub"));
-    // A document at the workspace root mints over "".
-    expect(book.register(targetOf("index.html")).cap).toBe(capabilityOf(key, ""));
+    expect(book.register(targetOf("page/index.html")).cap).toBe(
+      capabilityOf(key, "page\0index.html"),
+    );
+    expect(book.register(targetOf("page/sub/doc.html")).cap).toBe(
+      capabilityOf(key, "page/sub\0doc.html"),
+    );
+    // A document at the workspace root mints over "\0<name>".
+    expect(book.register(targetOf("index.html")).cap).toBe(capabilityOf(key, "\0index.html"));
   });
 
   it("should hand different caps to different directories", () => {
@@ -130,9 +139,11 @@ describe("createCapabilityBook", () => {
     const grant = book.register(targetOf("page/index.html"));
     expect(url).toBe(`/f/${grant.cap}/index.html`);
     // Basename is URL-encoded exactly once; the cap itself is already base64url-safe.
+    // Every document carries its own cap, so each URL is checked against the
+    // grant of the document it names — not a sibling in the same directory.
     const spaced = book.frameUrlOf(targetOf("page/a b.html"));
-    expect(spaced).toBe(`/f/${grant.cap}/a%20b.html`);
+    expect(spaced).toBe(`/f/${book.register(targetOf("page/a b.html")).cap}/a%20b.html`);
     const paren = book.frameUrlOf(targetOf("page/a(1).html"));
-    expect(paren).toBe(`/f/${grant.cap}/a(1).html`);
+    expect(paren).toBe(`/f/${book.register(targetOf("page/a(1).html")).cap}/a(1).html`);
   });
 });

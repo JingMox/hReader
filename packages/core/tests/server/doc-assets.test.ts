@@ -100,6 +100,7 @@ describe("GET /f/<cap>/<path>", () => {
       expect(css.headers["content-type"]).toBe("text/css; charset=utf-8");
       expect(css.headers["x-content-type-options"]).toBe("nosniff");
       expect(css.headers["access-control-allow-origin"]).toBe("null");
+      expect(css.headers["referrer-policy"]).toBe("no-referrer");
       expect(css.body).toBe(CSS);
       const nested = await httpCall(port, { path: `${base}/sub/app.js` });
       expect(nested.status).toBe(200);
@@ -308,6 +309,28 @@ describe("GET /f/<cap>/<path>", () => {
       expect(secret.status).toBe(200);
     }, seed));
 
+  it("should serve each HTML only under its own document capability", () =>
+    withServer(async ({ port, token }) => {
+      // A and B share page/ and were both opened: each cap covers the
+      // directory's whitelisted assets, but the HTML exception is bound to
+      // the document the cap was minted for — the other registered HTML is
+      // indistinguishable from any non-whitelist name under A's cap.
+      const frameA = await frameUrlOf(port, token, "page/index.html");
+      const frameB = await frameUrlOf(port, token, "page/other.html");
+      const capA = capOf(frameA);
+      const capB = capOf(frameB);
+      expect(capB).not.toBe(capA);
+      const baseA = frameA.slice(0, frameA.lastIndexOf("/"));
+      const cross = await httpCall(port, { path: `${baseA}/other.html` });
+      expect(cross.status).toBe(404);
+      const indexUnderB = await httpCall(port, { path: `/f/${capB}/index.html` });
+      expect(indexUnderB.status).toBe(404);
+      // Each cap still serves its own document and the directory's assets.
+      for (const path of [frameA, frameB, `${baseA}/style.css`, `/f/${capB}/style.css`]) {
+        expect((await httpCall(port, { path })).status, path).toBe(200);
+      }
+    }, seed));
+
   it("should treat the cap as the only credential on this route", () =>
     withServer(async ({ port, token }) => {
       const frame = await frameUrlOf(port, token, "page/index.html");
@@ -410,7 +433,7 @@ describe("docAssetReply · late-IO failures (direct calls)", () => {
   // These branches are TOCTOU windows — realpath/lstat/readFile disagreeing —
   // unreachable without steering the FileSystem port (same seam static-app uses).
   const PAGE = join(tmpdir(), "hr-da-unit");
-  const FILE_STAT = { isFile: () => true, isSymbolicLink: () => false, mtimeMs: 0 };
+  const FILE_STAT = { isFile: () => true, isSymbolicLink: () => false, mtimeMs: 0, size: 2 };
   // A FileSystem that would happily serve anything handed to it: used to prove
   // the verdict is lexical — a grammar miss can never reach the serving arms.
   const SERVING_FS = {
@@ -454,7 +477,13 @@ describe("docAssetReply · late-IO failures (direct calls)", () => {
   it("should 404 when readFile loses the race after lstat", async () => {
     const { ctx, cap } = ctxWith({
       realpath: (path) => Promise.resolve(path),
-      lstat: () => Promise.resolve({ isFile: () => true, isSymbolicLink: () => false, mtimeMs: 0 }),
+      lstat: () =>
+        Promise.resolve({
+          isFile: () => true,
+          isSymbolicLink: () => false,
+          mtimeMs: 0,
+          size: 2,
+        }),
       readFile: () => Promise.reject(new Error("EACCES between lstat and readFile")),
     });
     const reply = await docAssetReply(ctx, cap, "x.css");
@@ -464,11 +493,33 @@ describe("docAssetReply · late-IO failures (direct calls)", () => {
   it("should 404 a body above the byte ceiling without a real disk", async () => {
     const { ctx, cap } = ctxWith({
       realpath: (path) => Promise.resolve(path),
-      lstat: () => Promise.resolve({ isFile: () => true, isSymbolicLink: () => false, mtimeMs: 0 }),
+      lstat: () =>
+        Promise.resolve({
+          isFile: () => true,
+          isSymbolicLink: () => false,
+          mtimeMs: 0,
+          size: 2,
+        }),
       readFile: () => Promise.resolve(new Uint8Array(MAX_DOC_ASSET_BYTES + 1)),
     });
     const reply = await docAssetReply(ctx, cap, "x.css");
     expect(reply.status).toBe(404);
+  });
+
+  it("should reject an oversized file on stat.size without reading a byte", async () => {
+    let reads = 0;
+    const { ctx, cap } = ctxWith({
+      ...SERVING_FS,
+      lstat: () => Promise.resolve({ ...FILE_STAT, size: MAX_DOC_ASSET_BYTES + 1 }),
+      readFile: () => {
+        reads += 1;
+        return Promise.resolve(new Uint8Array(0));
+      },
+    });
+    expect((await docAssetReply(ctx, cap, "x.css")).status).toBe(404);
+    // The precheck must happen before readFile: an over-ceiling file never
+    // lands in memory.
+    expect(reads).toBe(0);
   });
 
   it("should serve a body exactly at the byte ceiling", async () => {
@@ -510,7 +561,12 @@ describe("docAssetReply · late-IO failures (direct calls)", () => {
     const { ctx, cap } = ctxWith({
       ...SERVING_FS,
       lstat: () =>
-        Promise.resolve({ isFile: () => false, isSymbolicLink: () => false, mtimeMs: 0 }),
+        Promise.resolve({
+          isFile: () => false,
+          isSymbolicLink: () => false,
+          mtimeMs: 0,
+          size: 0,
+        }),
     });
     expect((await docAssetReply(ctx, cap, "x.css")).status).toBe(404);
   });

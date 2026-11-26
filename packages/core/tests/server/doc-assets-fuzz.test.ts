@@ -25,6 +25,8 @@ const PAGE = "<!doctype html><html><body><h1>page</h1></body></html>";
 interface Fixture {
   readonly ctx: HandlerContext;
   readonly grant: DirGrant;
+  /** A second registered document in the same directory — its own cap. */
+  readonly sibling: DirGrant;
   readonly workspace: string;
   readonly home: string;
   /** Every path the FileSystem port was asked to read. */
@@ -40,6 +42,7 @@ const fixtureOf = (): Fixture => {
   const page = join(workspace, "page");
   mkdirSync(join(page, "sub", "deep"), { recursive: true });
   writeFileSync(join(page, "index.html"), PAGE);
+  writeFileSync(join(page, "other.html"), PAGE);
   writeFileSync(join(page, "style.css"), "/* marker:style */\n");
   writeFileSync(join(page, "sub", "deep", "app.js"), "console.info(1);\n");
   writeFileSync(join(page, ".hidden.txt"), "hidden\n");
@@ -55,6 +58,13 @@ const fixtureOf = (): Fixture => {
     lockPath: join(workspace, ".hreader", "locks", "x.lock"),
   };
   const grant = caps.register(target);
+  const sibling = caps.register({
+    realPath: join(page, "other.html"),
+    relative: "page/other.html",
+    workspace,
+    storeDir: join(workspace, ".hreader"),
+    lockPath: join(workspace, ".hreader", "locks", "x.lock"),
+  });
   const reads: string[] = [];
   const deps = {
     ...nodePatchDeps,
@@ -74,7 +84,7 @@ const fixtureOf = (): Fixture => {
     styleDeps: nodeStyleDeps(workspace),
     caps,
   };
-  return { ctx, grant, workspace, home, reads };
+  return { ctx, grant, sibling, workspace, home, reads };
 };
 
 afterAll(() => {
@@ -163,12 +173,13 @@ describe("/f/ scope verdict (property)", () => {
     );
   });
 
-  it("should keep serving the doc exception only by its exact basename", async () => {
-    const { ctx, grant } = fixtureOf();
+  it("should serve each registered HTML only under its own cap", async () => {
+    const { ctx, grant, sibling } = fixtureOf();
     await fc.assert(
       fc.asyncProperty(
         fc.oneof(
           fc.constant("index.html"),
+          fc.constant("other.html"),
           fc.constant("INDEX.HTML"),
           fc.constant("index.HTML"),
           fc.constant("./index.html"),
@@ -178,12 +189,18 @@ describe("/f/ scope verdict (property)", () => {
           fc.string({ maxLength: 60 }),
         ),
         async (rawPath) => {
+          // Both documents were opened and share one directory — but a cap is
+          // bound to a document. A sibling's basename under this cap is just
+          // another non-whitelist name: the HTML exception never crosses.
           const reply = await docAssetReply(ctx, grant.cap, rawPath);
           expect([200, 404]).toContain(reply.status);
-          // No spelling other than the exact registered basename may ever
-          // produce an HTML response — other 200s are whitelisted assets.
           if (String(reply.headers["content-type"]).includes("text/html")) {
             expect(rawPath).toBe("index.html");
+          }
+          const sibReply = await docAssetReply(ctx, sibling.cap, rawPath);
+          expect([200, 404]).toContain(sibReply.status);
+          if (String(sibReply.headers["content-type"]).includes("text/html")) {
+            expect(rawPath).toBe("other.html");
           }
         },
       ),

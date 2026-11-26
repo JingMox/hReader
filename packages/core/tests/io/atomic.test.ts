@@ -104,6 +104,7 @@ describe("writeAtomic · 只读目标", () => {
             isFile: () => true,
             isSymbolicLink: () => false,
             mtimeMs: NOW,
+            size: 3,
             mode: 0o444,
           }),
       },

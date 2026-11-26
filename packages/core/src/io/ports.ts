@@ -4,6 +4,8 @@ export interface FileStat {
   readonly isFile: () => boolean;
   readonly isSymbolicLink: () => boolean;
   readonly mtimeMs: number;
+  /** 逻辑大小（字节）；容量预检用——读到的真实长度仍以 readFile 返回值为准。 */
+  readonly size: number;
   /** 完整 `st_mode`（含文件类型位）；缺省 = 该 fs 不提供，调用方不得因此改权。 */
   readonly mode?: number;
 }
