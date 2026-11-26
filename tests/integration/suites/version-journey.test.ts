@@ -38,7 +38,7 @@ describe.skipIf(skip !== undefined)("version-journey", () => {
   afterAll(async () => {
     await browser.close();
     await daemon.stop();
-    killAllTracked();
+    await killAllTracked();
     home.cleanup();
   });
 
