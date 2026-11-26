@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   mountForeign,
+  type DocGate,
   type DocPermissions,
   type ForeignDeps,
   type PermissionPatch,
@@ -701,5 +702,44 @@ describe("foreign · 自导航拦截", () => {
 
     expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
     expect(lastText(fake, ERROR)).toBeUndefined();
+  });
+});
+
+describe("foreign · 壳层门栏上报", () => {
+  it("should report the foreign gate with the effective network state on mount", () => {
+    const fake = createFakeHost();
+    const gates: DocGate[] = [];
+    mountForeign(depsOf(fake, { reportGate: (gate) => gates.push(gate) }));
+
+    expect(gates).toEqual([{ docId: "外 文档.html", foreign: true, network: false }]);
+  });
+
+  it("should re-report the gate whenever syncInfo refreshes the effective view", () => {
+    const fake = createFakeHost();
+    const gates: DocGate[] = [];
+    const handle = mountForeign(depsOf(fake, { reportGate: (gate) => gates.push(gate) }));
+
+    handle.syncInfo({ cls: "foreign", scripts: true, permissions: permsOf({ network: true }) });
+
+    expect(gates.at(-1)).toEqual({ docId: "外 文档.html", foreign: true, network: true });
+  });
+
+  it("should clear the gate on destroy so a following managed doc keeps open-external", () => {
+    const fake = createFakeHost();
+    const gates: DocGate[] = [];
+    const handle = mountForeign(depsOf(fake, { reportGate: (gate) => gates.push(gate) }));
+
+    handle.destroy();
+
+    expect(gates.at(-1)).toEqual({ docId: "外 文档.html", foreign: false, network: false });
+  });
+
+  it("should stay silent when the embedding shell never provided a gate channel", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(depsOf(fake));
+
+    // 无 reportGate 依赖：浏览器里这段代码不能炸。
+    handle.syncInfo({ cls: "foreign", scripts: true, permissions: permsOf({ network: true }) });
+    handle.destroy();
   });
 });
