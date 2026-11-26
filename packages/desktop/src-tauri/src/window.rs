@@ -560,7 +560,7 @@ fn handle_menu_event(app: &tauri::AppHandle, shared: &SharedState, id: &str) {
         "pick-file" => pick_file_async(app.clone(), Arc::clone(shared)),
         "pick-folder" => pick_folder_async(app.clone(), Arc::clone(shared)),
         "welcome" => open_welcome(app.clone(), Arc::clone(shared)),
-        "reveal" => reveal_in_finder(shared, None),
+        "reveal" => reveal_in_finder(app, shared, None),
         "open-themes-dir" => open_themes_dir(app, shared),
         "reload-themes" => reload_themes(app, shared),
         "export-pdf" => export_async(app.clone(), Arc::clone(shared), "pdf", None),
@@ -758,7 +758,8 @@ fn handle_bridge_navigation(app: &tauri::AppHandle, shared: &SharedState, url: &
         "/welcome" => open_welcome(app.clone(), Arc::clone(shared)),
         "/pick-file" => pick_file_async(app.clone(), Arc::clone(shared)),
         "/pick-folder" => pick_folder_async(app.clone(), Arc::clone(shared)),
-        "/reveal" => reveal_in_finder(shared, query_param(url, "doc").as_deref()),
+        "/reveal" => reveal_in_finder(app, shared, query_param(url, "doc").as_deref()),
+        "/open-asset" => open_asset_in_workspace(app, shared, query_param(url, "doc").as_deref()),
         "/open-themes-dir" => open_themes_dir(app, shared),
         "/reload-themes" => reload_themes(app, shared),
         "/export-pdf" => {
@@ -1086,11 +1087,56 @@ fn reveal_path(target: &Path) {
     }
 }
 
-/// reveal 的目标必须留在工作区里：`?doc=` 来自页面，绝对路径/`..` 会把它带出工作区
-/// （顺带用 Finder 的存在性确认做了 oracle）。越界或不存在一律回落到工作区根。
-fn resolve_reveal_target(workspace: &Path, doc: &str) -> PathBuf {
+/// `/open-asset` 只把"被动类型"交给系统默认程序：查看器打开的格式不会执行
+/// 代码。其余一切——包括目录、.app bundle、脚本与无扩展名文件——只 reveal。
+const ASSET_OPEN_WHITELIST: &[&str] = &[
+    // images
+    "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "bmp", "tiff", "heic",
+    // documents
+    "pdf", "txt", "md", "csv", "json", // audio / video
+    "mp3", "wav", "m4a", "ogg", "mp4", "webm", "mov", // fonts
+    "ttf", "otf", "woff", "woff2", "css",
+];
+
+/// What the bridge may do with a verified in-workspace target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AssetOpenAction {
+    /// Hand the file to the system default application.
+    Open,
+    /// Only reveal it in the file manager — never executes anything.
+    Reveal,
+}
+
+/// 扩展名大小写不敏感判白名单；目录（含 .app bundle）一律 Reveal——
+/// `open` 一个 .app 会启动它，等同于执行任意二进制。
+fn asset_open_action(target: &Path) -> AssetOpenAction {
+    if target.is_dir() {
+        return AssetOpenAction::Reveal;
+    }
+    let openable = target
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            ASSET_OPEN_WHITELIST
+                .iter()
+                .any(|allowed| ext.eq_ignore_ascii_case(allowed))
+        });
+    if openable {
+        AssetOpenAction::Open
+    } else {
+        AssetOpenAction::Reveal
+    }
+}
+
+/// reveal 与 open-asset 共用的目标解析：`?doc=` 来自页面，绝对路径/`..` 先字面
+/// 拒查；再 canonicalize，要求真实路径仍落在（同样 canonicalize 后的）工作区内。
+/// 越界或不存在返回 `None`——调用方什么都不做，绝不能回落到工作区根再动手。
+fn resolve_verified_target(workspace: &Path, doc: &str) -> Option<PathBuf> {
+    let ws_real = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.to_path_buf());
     if doc.is_empty() {
-        return workspace.to_path_buf();
+        return Some(ws_real);
     }
     let rel = Path::new(doc);
     let escapes = rel.is_absolute()
@@ -1103,25 +1149,64 @@ fn resolve_reveal_target(workspace: &Path, doc: &str) -> PathBuf {
             )
         });
     if escapes {
-        return workspace.to_path_buf();
+        return None;
     }
-    let candidate = workspace.join(rel);
-    if candidate.exists() {
-        candidate
+    let real = workspace.join(rel).canonicalize().ok()?;
+    if real.starts_with(&ws_real) {
+        Some(real)
     } else {
-        workspace.to_path_buf()
+        None
     }
 }
 
-fn reveal_in_finder(shared: &SharedState, doc_opt: Option<&str>) {
-    let target = match shared.lock() {
+fn reveal_in_finder(app: &tauri::AppHandle, shared: &SharedState, doc_opt: Option<&str>) {
+    let resolved = match shared.lock() {
         Ok(guard) => {
             let doc = doc_opt.unwrap_or(&guard.doc_id);
-            resolve_reveal_target(&guard.workspace, doc)
+            resolve_verified_target(&guard.workspace, doc)
         }
         Err(_) => return,
     };
-    reveal_path(&target);
+    match resolved {
+        Some(target) => reveal_path(&target),
+        None => toast(app, "无法打开：路径不存在或已移出工作区", true),
+    }
+}
+
+/// Open a file with the system default application: like `reveal`, but the
+/// file itself launches (e.g. a PDF in Preview), not its Finder selection.
+fn open_path_default(target: &Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("open").arg(target).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("explorer").arg(target).spawn();
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        let _ = Command::new("xdg-open").arg(target).spawn();
+    }
+}
+
+/// 资源文件先过边界校验，再按类型分流：白名单被动类型交给系统默认程序，
+/// 其余一律"在 Finder 中显示"——系统 `open` 对 .app/.command/.sh 等会直接执行。
+fn open_asset_in_workspace(app: &tauri::AppHandle, shared: &SharedState, doc_opt: Option<&str>) {
+    let resolved = match shared.lock() {
+        Ok(guard) => {
+            let doc = doc_opt.unwrap_or(&guard.doc_id);
+            resolve_verified_target(&guard.workspace, doc)
+        }
+        Err(_) => return,
+    };
+    match resolved {
+        Some(target) => match asset_open_action(&target) {
+            AssetOpenAction::Open => open_path_default(&target),
+            AssetOpenAction::Reveal => reveal_path(&target),
+        },
+        None => toast(app, "无法打开：路径不存在或已移出工作区", true),
+    }
 }
 
 fn export_async(
@@ -1558,6 +1643,7 @@ mod tests {
             "/pick-file",
             "/pick-folder",
             "/reveal",
+            "/open-asset",
             "/open-themes-dir",
             "/reload-themes",
             "/export-pdf",
@@ -1597,25 +1683,132 @@ mod tests {
         assert!(!bridge_authorized(&url("bridge?t=a+b"), "a+b"));
     }
 
+    /// reveal / open-asset 的目标必须 canonicalize 后仍落在工作区内：越界或
+    /// 不存在一律拒绝（None），绝不回落到工作区根再动手。
     #[test]
-    fn reveal_never_leaves_the_workspace() {
+    fn verified_target_rejects_escape_and_missing_paths() {
         let ws = std::env::temp_dir().join(format!("hr-reveal-{}", std::process::id()));
         let _ = fs::remove_dir_all(&ws);
         fs::create_dir_all(ws.join("sub")).expect("建工作区");
         fs::write(ws.join("doc.html"), "<p>x</p>").expect("写文档");
         fs::write(ws.join("sub").join("doc.html"), "<p>x</p>").expect("写子文档");
-        // 绝对路径与 .. 逃逸一律回落到工作区根。
-        assert_eq!(resolve_reveal_target(&ws, "/etc/passwd"), ws);
-        assert_eq!(resolve_reveal_target(&ws, "../outside.html"), ws);
-        assert_eq!(resolve_reveal_target(&ws, "..\\..\\win"), ws);
-        // 空串（DocError / 空态）回落工作区；工作区内存在的相对路径照常解析。
-        assert_eq!(resolve_reveal_target(&ws, ""), ws);
-        assert_eq!(resolve_reveal_target(&ws, "missing.html"), ws);
+        // 绝对路径与 .. 逃逸直接拒绝，不是回落根目录。
+        assert_eq!(resolve_verified_target(&ws, "/etc/passwd"), None);
+        assert_eq!(resolve_verified_target(&ws, "../outside.html"), None);
+        assert_eq!(resolve_verified_target(&ws, "..\\..\\win"), None);
+        // 不存在的路径也拒绝——没东西可验证。
+        assert_eq!(resolve_verified_target(&ws, "missing.html"), None);
+        let _ = fs::remove_dir_all(&ws);
+    }
+
+    /// 空 doc 指工作区自身；工作区内的相对路径解析到 canonicalize 后的真实路径。
+    #[test]
+    fn verified_target_resolves_real_paths_inside_the_workspace() {
+        let ws = std::env::temp_dir().join(format!("hr-verified-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&ws);
+        fs::create_dir_all(ws.join("sub")).expect("建工作区");
+        fs::write(ws.join("sub").join("doc.html"), "<p>x</p>").expect("写子文档");
+        let ws_real = ws.canonicalize().expect("canonicalize ws");
+        assert_eq!(resolve_verified_target(&ws, ""), Some(ws_real.clone()));
         assert_eq!(
-            resolve_reveal_target(&ws, "sub/doc.html"),
-            ws.join("sub/doc.html")
+            resolve_verified_target(&ws, "sub/doc.html"),
+            Some(ws_real.join("sub/doc.html"))
         );
-        assert_eq!(resolve_reveal_target(&ws, "doc.html"), ws.join("doc.html"));
+        let _ = fs::remove_dir_all(&ws);
+    }
+
+    /// 符号链接可以合法存在，但 canonicalize 之后落到工作区外的一律拒绝；
+    /// 指回工作区内部的链接解析到真实路径后照常可用。
+    #[cfg(unix)]
+    #[test]
+    fn verified_target_rejects_symlinks_that_escape_the_workspace() {
+        let ws = std::env::temp_dir().join(format!("hr-vlink-{}", std::process::id()));
+        let outside = std::env::temp_dir().join(format!("hr-vlink-out-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&ws);
+        let _ = fs::remove_dir_all(&outside);
+        fs::create_dir_all(ws.join("in")).expect("ws");
+        fs::create_dir_all(&outside).expect("outside");
+        fs::write(ws.join("in/ok.png"), "png").expect("inside");
+        fs::write(outside.join("evil.png"), "png").expect("outside file");
+        std::os::unix::fs::symlink(&outside, ws.join("linkdir")).expect("dir link");
+        std::os::unix::fs::symlink(outside.join("evil.png"), ws.join("link.png"))
+            .expect("file link");
+        std::os::unix::fs::symlink(ws.join("in"), ws.join("inside-link")).expect("inside link");
+
+        assert_eq!(resolve_verified_target(&ws, "linkdir/evil.png"), None);
+        assert_eq!(resolve_verified_target(&ws, "link.png"), None);
+        assert_eq!(resolve_verified_target(&ws, "linkdir"), None);
+        // 指向工作区内部的符号链接解析后留在边界内，照常可用。
+        let ws_real = ws.canonicalize().expect("canonicalize ws");
+        assert_eq!(
+            resolve_verified_target(&ws, "inside-link/ok.png"),
+            Some(ws_real.join("in/ok.png"))
+        );
+        let _ = fs::remove_dir_all(&ws);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    /// D29：`open` 遇到 .app/.command/.pkg/.sh 等会直接执行——只有被动类型
+    /// （图片/文档/音视频/字体/css）交给系统默认程序，其余一律只"在 Finder 中显示"。
+    #[test]
+    fn asset_open_action_only_allows_passive_extensions() {
+        let ws = std::env::temp_dir().join(format!("hr-allow-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&ws);
+        fs::create_dir_all(&ws).expect("ws");
+        let openable = [
+            "a.png", "b.JPG", "c.gif", "d.webp", "e.avif", "f.svg", "g.ico", "h.bmp", "i.tiff",
+            "j.heic", "k.pdf", "l.txt", "m.md", "n.csv", "o.json", "p.mp3", "q.wav", "r.m4a",
+            "s.ogg", "t.mp4", "u.webm", "v.mov", "w.ttf", "x.otf", "y.woff", "z.woff2", "aa.css",
+            "AB.Css",
+        ];
+        for name in openable {
+            let p = ws.join(name);
+            fs::write(&p, "x").expect("write");
+            assert_eq!(
+                asset_open_action(&p),
+                AssetOpenAction::Open,
+                "{name} 应交给系统默认程序"
+            );
+        }
+        let reveal_only = [
+            "a.command",
+            "b.sh",
+            "c.pkg",
+            "d.js",
+            "e.html",
+            "f.exe",
+            "g.appx",
+            "h.workflow",
+            "i.scpt",
+            "j.tool",
+            "k.terminal",
+            "l",
+            "noext",
+        ];
+        for name in reveal_only {
+            let p = ws.join(name);
+            fs::write(&p, "x").expect("write");
+            assert_eq!(
+                asset_open_action(&p),
+                AssetOpenAction::Reveal,
+                "{name} 只能在 Finder 中显示"
+            );
+        }
+        let _ = fs::remove_dir_all(&ws);
+    }
+
+    /// .app 本质是目录 bundle：任何目录都只可 reveal，`open` 一个 .app 会启动它。
+    #[test]
+    fn asset_open_action_reveals_directories_including_bundles() {
+        let ws = std::env::temp_dir().join(format!("hr-bundle-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&ws);
+        fs::create_dir_all(ws.join("evil.app")).expect("app bundle");
+        fs::create_dir_all(ws.join("pics")).expect("plain dir");
+        assert_eq!(
+            asset_open_action(&ws.join("evil.app")),
+            AssetOpenAction::Reveal
+        );
+        assert_eq!(asset_open_action(&ws.join("pics")), AssetOpenAction::Reveal);
         let _ = fs::remove_dir_all(&ws);
     }
 

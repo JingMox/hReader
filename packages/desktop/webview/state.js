@@ -11,6 +11,7 @@ const DEFAULT_PREFS = {
   showBlockIds: false,
   focusMode: false,
   defaultVisual: "atelier-editorial",
+  showAllFiles: false,
 };
 
 function readStorage(storage, key) {
