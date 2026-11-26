@@ -1,10 +1,9 @@
 // 这层管：运行期状态（当前文档 / 分发到 handler / SSE 广播）；不监听端口、不写 daemon.json。
 
 import type { IncomingMessage } from "node:http";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { basename, dirname, relative, sep } from "node:path";
 
 import { parseHtml } from "../html/parse";
-import { isTmpFileName } from "../io/atomic";
 import { decodeUtf8 } from "../io/bytes";
 import { resolveTarget, type ResolvedTarget } from "../io/paths";
 import type { PatchDeps } from "../io/ports";
@@ -31,7 +30,7 @@ import type { Hub } from "./hub";
 import { revisionOf } from "./revision";
 import { paramOf, type Route } from "./routes";
 import { assetReply, indexReply, themesReply, themeReply } from "./static";
-import { createWatcher, type WatchFn, type Watcher } from "./watcher";
+import { createWatcher, isLibraryPath, type WatchFn, type Watcher } from "./watcher";
 
 interface RuntimeDeps {
   readonly patch: PatchDeps;
@@ -62,13 +61,6 @@ const loadOfPath = async (deps: RuntimeDeps, target: ResolvedTarget): Promise<Do
     parseHtml(decodeUtf8(await deps.patch.fs.readFile(target.realPath), target.realPath)),
   );
 
-/** `.hreader/` 是库（锁/历史），tmp 是原子写的中间态：都不算"文档变了"，否则 SSE 会被自己的痕迹刷屏。 */
-const internalOf = (store: string, path: string): boolean => {
-  if (path === store || path.startsWith(`${store}${sep}`)) return true;
-  const name = basename(path);
-  return isTmpFileName(name) || name.endsWith("~");
-};
-
 interface PublishInput {
   readonly hub: Hub;
   readonly state: Watched;
@@ -97,27 +89,28 @@ const publishChanged = (input: PublishInput): void => {
   });
 };
 
-/** 打开文档时才挂监听：整库递归监听在 10 万文件上会把 CPU 烧穿。 */
+/** 整库递归挂载一次覆盖所有子目录（书库是文档级规模，内部目录由 `ignored` 整棵剪掉）；
+ *  被服务文档另挂文件级监听——挂载盲窗的 reconcile 心跳只跑在文件级挂载上。 */
 const watchOf = (deps: RuntimeDeps, hub: Hub, state: Watched, workspace: string): Watcher => {
   // 事件路径必须与 realPath 同口径：workspace 含符号链接时（macOS /var→/private/var、
   // 软链的家目录），未解析的目录前缀拼出的事件路径永远 ≠ active.realPath——活跃文档的
   // 改动被错报成 library.changed（浏览器不认），MCP/CLI 的写就此丢刷新。整目录监听因此
   // 挂在解析后的真实路径上；realpath 失败退回词法路径（保持旧行为，仍比不报强）。
   let root = workspace;
-  let store = join(workspace, ".hreader");
   const onFileChange = (path: string, probe?: boolean): void => {
-    if (internalOf(store, path)) return;
     const active = state.active;
     // 盲窗对账只对活跃文档有意义：未活跃路径的探针不能放大成 library.changed 刷屏
     // （心跳每个 tick 一条）。文档没开过的话首开本来就会全量读，盲窗丢它不可惜。
     if (path !== active?.realPath) {
-      if (probe !== true) {
-        // 载荷只给 workspace 相对路径：绝对路径不进浏览器（与 `doc.changed` 同口径）。
-        hub.publish("library.changed", { path: relative(root, path) });
+      // 内部口径只挡"是否广播 library.changed"：活跃文档落在 node_modules/ 之类的
+      // 内部目录里也照走上面的 realPath 比对拿 doc.changed。
+      if (probe !== true && isLibraryPath(root, path)) {
+        // 载荷只给 workspace 相对路径：绝对路径不进浏览器；分隔符与 docId 同用 "/"（doc.changed 同口径）。
+        hub.publish("library.changed", { path: relative(root, path).split(sep).join("/") });
       }
       return;
     }
-    const docPath = relative(root, path);
+    const docPath = relative(root, path).split(sep).join("/");
     // 先读字节对 sha：自写回声/mtime 抖动落在同一字节上直接短路，省掉整份模型重解析；
     // 字节真变了才 load+diff+publish。别进程（MCP/CLI/编辑器）的写必然过这道闸——
     // 旧的 200ms 回声窗会把窗口内的外部写整段吞掉（批注 resolve 后阅读器不刷新）。
@@ -142,7 +135,6 @@ const watchOf = (deps: RuntimeDeps, hub: Hub, state: Watched, workspace: string)
   void deps.patch.fs.realpath(workspace).then(
     (real) => {
       root = real;
-      store = join(real, ".hreader");
       watcher.add(real, undefined);
     },
     () => {
@@ -271,8 +263,8 @@ const noteWriterOf =
   (written) => {
     const { deps, hub, state, watcher } = context;
     if (!written.changed) return;
-    // 写路由可能是这份文档的第一次接触：remember 没跑过就不会挂监听，
-    // 子目录文档的外部编辑会漏报（workspace 目录监听是 depth:0）。
+    // 写路由可能是这份文档的第一次接触：remember 没跑过就没有它的文件级挂载——
+    // 盲窗 reconcile 心跳只跑在文件级挂载上，不补挂会在挂载盲窗里丢一次外部编辑。
     watcher.add(dirname(written.target.realPath), basename(written.target.realPath));
     state.active = written.target;
     state.revision = written.revision;
