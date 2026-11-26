@@ -1,4 +1,4 @@
-// 这层管：`hr style extract` 的薄适配（读语料 → 统计层 → 写盘/打印）；不做统计、不做样式编译。
+// This layer: thin adapter for `hr style extract` (read corpus -> stats layer -> write/print); no statistics, no style compilation.
 
 import { dirname, extname, resolve } from "node:path";
 
@@ -20,7 +20,7 @@ import { existsOf, fileSizeOf, readTextFile } from "../input";
 import type { LlmPort } from "../llm/client";
 import { dataStyleExtract, humanStyleExtract, jsonOk } from "../output";
 
-/** 单篇 1 MiB、总量 4 MiB。先看字节数再解码，别让 CLI 替用户把超限语料读成字符串。 */
+/** 1 MiB per file, 4 MiB total. Check byte size before decoding — the CLI must not read over-limit corpus into a string for the user. */
 export const MAX_CORPUS_FILE_BYTES = 1024 * 1024;
 
 export const MAX_CORPUS_BYTES = 4 * 1024 * 1024;
@@ -44,9 +44,9 @@ const corpusOf = async (files: readonly string[]): Promise<readonly CorpusText[]
   const corpus: CorpusText[] = [];
   let total = 0;
   for (const path of files) {
-    // 先看后缀再读盘：后缀不合法的文件没必要整份读进来再拒。
+    // Check the suffix before reading: a file with an illegal suffix need not be read in full to be refused.
     const format = formatOf(path);
-    // 再看字节数（`stat`，不解码）：超限文件绝不能先被读成字符串再拒。
+    // Then check byte size (`stat`, no decode): an over-limit file must never be read into a string before being refused.
     const bytes = await fileSizeOf(path);
     if (bytes > MAX_CORPUS_FILE_BYTES) {
       throw new HrError("invalid_input", `单篇语料超过 1 MiB：${path}（${String(bytes)} 字节）`);
@@ -61,25 +61,25 @@ const corpusOf = async (files: readonly string[]): Promise<readonly CorpusText[]
 };
 
 export interface StyleExtractInput {
-  /** 语料文件的绝对路径（argv 顺序）。 */
+  /** Absolute paths of corpus files (argv order). */
   readonly files: readonly string[];
   readonly workspace: string;
   readonly id: string;
   readonly name: string;
   readonly inheritsVisual: string;
-  /** `--out` 的 workspace 相对路径；`undefined` = 只打印到 stdout。 */
+  /** `--out` as a workspace-relative path; `undefined` = print to stdout only. */
   readonly out: string | undefined;
-  /** 回执里印的 `--out`（用户视角）：不给就印 workspace 相对路径。 */
+  /** The `--out` printed in the receipt (user's view): falls back to the workspace-relative path when not given. */
   readonly displayOut?: string | undefined;
   readonly force: boolean;
   readonly json: boolean;
-  /** 有 key 且没给 `--no-llm` 时的传输层；`undefined` = 纯统计版（纯统计版，不是错误）。 */
+  /** Transport used when a key exists and `--no-llm` was not given; `undefined` = statistics-only run (a normal path, not an error). */
   readonly llm: LlmPort | undefined;
 }
 
 /**
- * `llm_failure` 在这里补上 CLI 的出路：core 不认识 `--no-llm`（那是本进程的旗标）。
- * 禁的是**自动**重试（写盘非幂等 + 费用不可控），不是禁止提示用户手动重跑一次。
+ * `llm_failure` gets its CLI escape hatch here: core does not know `--no-llm` (a flag of this process).
+ * What is banned is **automatic** retry (writes are not idempotent and spend real money) — not telling the user to retry by hand.
  */
 const withNoLlmHint = (error: unknown): unknown =>
   error instanceof HrError && error.code === "llm_failure"
@@ -125,8 +125,10 @@ const emitOf = async (
 };
 
 /**
- * 花钱前的预检：覆盖守卫、父目录守卫、越界都是确定性失败，不该等模型返回才报（一次调用是真金白银）。
- * `out` 已由 `run.ts` 归一到 workspace 相对路径，`..` 开头即越界；core 的 `saveStyleText` 写盘前会再查一遍。
+ * Preflight before spending: the overwrite guard, parent-dir guard, and out-of-bounds are all deterministic
+ * failures that should not wait for the model to return (one call costs real money).
+ * `out` is already normalized by `run.ts` to a workspace-relative path — a `..` prefix is out-of-bounds;
+ * core's `saveStyleText` re-checks before writing.
  */
 const assertOutWritable = async (input: StyleExtractInput): Promise<void> => {
   const out = input.out;
@@ -135,7 +137,7 @@ const assertOutWritable = async (input: StyleExtractInput): Promise<void> => {
     throw new HrError("path_outside_workspace", `风格只能写到 workspace 内：${out}`);
   }
   const target = resolve(input.workspace, out);
-  // `--force` 只放开"覆盖"这一件事：父目录依旧不自动建。
+  // `--force` lifts exactly one thing — overwrite; the parent directory is still not auto-created.
   if (!input.force && (await existsOf(target))) {
     throw new HrError("file_exists", `目标已存在：${target}（加 --force 覆盖）`);
   }

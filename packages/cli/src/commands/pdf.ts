@@ -1,4 +1,4 @@
-// 这层管：`hr pdf`（打印稿 → 会话层出字节 → 结构校验 → 原子写）；不判 argv、不定退出码。
+// This layer: `hr pdf` (print sheet -> session-layer bytes -> structural validation -> atomic write); no argv checks, no exit codes.
 
 import { dirname } from "node:path";
 
@@ -19,33 +19,33 @@ export type RenderPdf = (input: {
   readonly html: string;
   readonly pageSize: PdfPageSize;
   readonly timeoutMs: number;
-  /** 开工前就要定下来：它是 `Page.printToPDF` 的 `generateDocumentOutline`，协议层不给默认值。 */
+  /** Must be settled before work starts: it is `Page.printToPDF`'s `generateDocumentOutline`, and the protocol layer gives no default. */
   readonly outline: boolean;
-  /** `true` = 打印稿自带 `@page` 纸张（slides），Chrome 听 CSS；`pageSize` 只剩兜底意义。 */
+  /** `true` = the print sheet carries its own `@page` size (slides), and Chrome obeys CSS; `pageSize` is then only a fallback. */
   readonly preferCSSPageSize: boolean;
 }) => Promise<{ bytes: Uint8Array }>;
 
 export interface PdfCommandInput {
-  /** 绝对路径：打印稿要先读源文档。 */
+  /** Absolute path: the print sheet is built by first reading the source document. */
   readonly path: string;
-  /** 原样的 `--page-size`：非法值属于语义错误（`invalid_input` exit 1），不是用法错误。 */
+  /** `--page-size` verbatim: illegal values are semantic errors (`invalid_input` exit 1), not usage errors. */
   readonly pageSize: string;
   readonly timeoutMs: number;
-  /** 大纲开关（缺省开）。`--no-outline` 时为 false：请求里就是 `generateDocumentOutline: false`。 */
+  /** Outline toggle (default on). False under `--no-outline`: the request carries `generateDocumentOutline: false`. */
   readonly outline: boolean;
-  /** `--outline` 与 `--no-outline` 同传：语义错误，开工前报 `invalid_input`。 */
+  /** `--outline` with `--no-outline`: a semantic error, reported as `invalid_input` before work starts. */
   readonly outlineConflict: boolean;
-  /** 打印稿主题：`undefined` = 用文档已嵌入的 `#hr-theme`（没有才回落默认）；显式值合法值由 core 判。 */
+  /** Print-sheet theme: `undefined` = the document's embedded `#hr-theme` (default only when absent); explicit values are validated by core. */
   readonly visual: string | undefined;
-  /** 绝对路径（`run.ts` 已真实化）。 */
+  /** Absolute path (already realpathed by `run.ts`). */
   readonly out: string;
   readonly force: boolean;
   readonly workspace: string;
   readonly json: boolean;
   readonly warn: (message: string) => void;
-  /** 回执里印的 `--out`（用户视角）：不给就印真实路径。 */
+  /** The `--out` printed in the receipt (user's view): falls back to the real path when not given. */
   readonly displayOut?: string | undefined;
-  /** 会话层注入点：`run.ts` 接真 Chrome，进程内测试接假传输。 */
+  /** Session-layer injection point: `run.ts` wires real Chrome, in-process tests wire a fake transport. */
   readonly render: RenderPdf;
 }
 
@@ -67,7 +67,7 @@ const assertPdfHeaderOf = (bytes: Uint8Array): void => {
   }
 };
 
-/** 落盘三连与 `hr export` 同序同语义（io → 越界 → 已存在）：先判掉必然失败的写，再花时间渲染。 */
+/** The three write checks keep `hr export`'s order and meaning (io -> out-of-bounds -> exists): fail writes that cannot succeed before spending time on rendering. */
 const assertPdfOutOf = async (input: PdfCommandInput): Promise<void> => {
   await assertWritableDirOf(dirname(input.out), nodePatchDeps);
   assertOutInsideOf(input.out, input.workspace);
@@ -100,8 +100,8 @@ export const pdfCommand = async (input: PdfCommandInput): Promise<string> => {
   await assertPdfOutOf(input);
   const bytes = await productPdfOf(input, pageSize);
   assertPdfHeaderOf(bytes);
-  // 页数与大纲数读的是产物真值（一次解析两个口径都出来）；结构读不出抛 `render_empty`，
-  // `--no-outline` 的产物里没有 `/Outlines` 键，大纲自然得 0，命令层不做短路。
+  // Page and outline counts read the product's true values (one parse yields both); unparseable structure throws `render_empty`,
+  // a `--no-outline` product has no `/Outlines` key and naturally counts 0 — no shortcut in the command layer.
   const facts = await inspectPdfOf(bytes);
   if (facts.pages === 0) throw new HrError("render_empty", "PDF 里没有页面");
   const pages = facts.pages;

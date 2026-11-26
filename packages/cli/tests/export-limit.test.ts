@@ -1,5 +1,5 @@
-// `hr export` 帮助里必须写明 4 MiB，超限时必须拒绝拼接
-// 并给出「按章拆分」的出路。两半都钉：只说上限不给办法、或只报错不说上限，都算红。
+// `hr export` help must state 4 MiB, and an over-limit export must refuse concatenation
+// and offer the "split by chapter" way out. Pin both halves: a limit with no remedy, or an error with no limit, both go red.
 
 import { existsSync, writeFileSync } from "node:fs";
 
@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { checked } from "./cli-support";
 import { fieldOf, parseJsonLine, runCli, withTempDir } from "./harness";
 
-/** 4 MiB = 4194304；这里造 ~4.7 MiB 的正文，确保拼接后的打印稿真的越线。 */
+/** 4 MiB = 4194304; build ~4.7 MiB of body so the concatenated printout really crosses the line. */
 const OVER_SIZED_PATHS = 7000;
 const PARAGRAPH_TEXT = "y".repeat(700);
 
@@ -23,7 +23,7 @@ const bigDoc = (): string => {
   ].join("\n");
 };
 
-describe("hr export · 4 MiB 上限", () => {
+describe("hr export · 4 MiB limit", () => {
   it("should state the 4 MiB limit in `hr export --help`", async () => {
     const help = checked(await runCli(["export", "--help"]));
 
@@ -47,7 +47,7 @@ describe("hr export · 4 MiB 上限", () => {
       const message = String(fieldOf(envelope, "message"));
       expect(message).toContain("4 MiB");
       expect(message).toContain("按章拆分");
-      // 越线就得在拼接前拒掉：不许留半成品产物。
+      // Over the line must be refused before concatenation: no half-finished artifacts allowed.
       expect(existsSync(`${dir}/big.out.html`)).toBe(false);
     });
   });

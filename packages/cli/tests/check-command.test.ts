@@ -1,4 +1,4 @@
-// 这层管：`hr check`——排版约束与文档级诊断的两种输出（人读 / JSON），以及读不到文件时的退出码。
+// This layer covers `hr check` — typography constraints and document-level diagnostics in both outputs (human / JSON), plus the exit code when the file is unreadable.
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,7 +16,7 @@ const BAD = DOC.replace(
   '<div data-hr-component="split-compare" data-hr-id="hr-d" style="gap:0"><div data-hr-id="hr-e">A</div></div></article>',
 );
 
-describe("hr check · 人读输出", () => {
+describe("hr check · human output", () => {
   it("should print one ok line for a clean document", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -55,7 +55,7 @@ describe("hr check · 人读输出", () => {
   });
 });
 
-describe("hr check · JSON 与错误", () => {
+describe("hr check · JSON and errors", () => {
   it("should print { issues, count } with a null path when there is no location", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(join(dir, "plain.html"), "<p>不是文档</p>");
@@ -91,7 +91,7 @@ describe("hr check · JSON 与错误", () => {
   });
 });
 
-describe("output · check/new 形状", () => {
+describe("output · check/new shapes", () => {
   it("should keep the issue path in JSON when there is one", () => {
     const issue = { code: "inline_style", severity: "warning", message: "m", path: "p[0]" };
 

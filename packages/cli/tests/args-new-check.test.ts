@@ -1,4 +1,4 @@
-// 这层管：`hr new` / `hr check` 的 argv → intent（默认值、显式值、用法错误）；不碰盘。
+// This layer covers `hr new` / `hr check` argv → intent (defaults, explicit values, usage errors); no disk.
 
 import { describe, expect, it } from "vitest";
 
@@ -40,7 +40,7 @@ describe("parseArgs · new", () => {
   });
 });
 
-describe("parseArgs · new 的用法错误", () => {
+describe("parseArgs · new usage errors", () => {
   it("should reject a missing <file>", () => {
     expectFailure(["new"], "new 缺少 <file>", "new");
   });

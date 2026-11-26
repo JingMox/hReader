@@ -1,4 +1,4 @@
-// 这层管：`HrErrorCode` → 退出码的唯一映射（冻结表）；不解释错误、不打印。
+// This layer: the single `HrErrorCode` -> exit-code mapping (frozen table); no error interpretation, no printing.
 
 import type { HrErrorCode } from "@hreader/core";
 
@@ -8,7 +8,7 @@ export const EXIT_USAGE = 2;
 export const EXIT_IO = 3;
 export const EXIT_INTERNAL = 70;
 
-/** `satisfies` 让"新增 code 却不改表"变成类型错误：穷尽性由编译器保证，不靠人自查。 */
+/** `satisfies` turns "new code without updating the table" into a type error: exhaustiveness is compiler-guaranteed, not self-checked. */
 const EXIT_CODES = {
   invalid_html: EXIT_FAILURE,
   no_article: EXIT_FAILURE,
@@ -50,9 +50,9 @@ const EXIT_CODES = {
   needs_normalize: EXIT_USAGE,
   port_in_use: EXIT_USAGE,
   content_model_conflict: EXIT_USAGE,
-  // 重复 id 是「先 normalize --write 就能修」的状态，与 `needs_normalize` 同档
+  // Duplicate ids are a "fixable by normalize --write" state, same tier as `needs_normalize`
   duplicate_id: EXIT_USAGE,
 } satisfies Record<HrErrorCode, number>;
 
-/** `satisfies` 已保证表内穷尽：CLI 与 core 同仓同版本，不存在"新 core 配旧 CLI"的运行时分支。 */
+/** `satisfies` already guarantees exhaustiveness: CLI and core ship from the same repo and version — there is no "new core with old CLI" runtime branch. */
 export const exitCodeOf = (code: HrErrorCode): number => EXIT_CODES[code];

@@ -1,5 +1,5 @@
-// 这层管：`renderPdfOnBrowserOf`/`renderPngOnBrowserOf` 的页面级行为（导航、打印参数、
-// 量高与裁剪、像素断言）；假 `BrowserLike`/`PageLike`，不起 Chrome。
+// This layer covers page-level behavior of `renderPdfOnBrowserOf`/`renderPngOnBrowserOf` (navigation, print
+// parameters, height measurement and cropping, pixel assertions); fake `BrowserLike`/`PageLike`, no Chrome.
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,11 +43,11 @@ const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
     if (error instanceof HrError) return error;
     throw error;
   }
-  throw new Error("预期抛出 HrError");
+  throw new Error("expected an HrError to be thrown");
 };
 
 describe("printParamsOf", () => {
-  it("纸张表按 pt 对齐 Chrome 的四舍五入值", () => {
+  it("should align the paper table to Chrome's rounded pt values", () => {
     expect(PAGE_SIZES.a4.widthPt).toBeCloseTo(595.28, 2);
     expect(PAGE_SIZES.a4.heightPt).toBeCloseTo(841.89, 2);
     expect(PAGE_SIZES.letter.widthPt).toBeCloseTo(612, 2);
@@ -56,34 +56,37 @@ describe("printParamsOf", () => {
     expect(PAGE_SIZES.a5.heightPt).toBeCloseTo(595.28, 2);
   });
 
-  it.each<PdfPageSize>(["a4", "letter", "a5"])("%s 的纸张（pt 字符串）与 CSS 余白一致", (size) => {
-    const params = printParamsOf(size, true);
-    expect(params.printBackground).toBe(true);
-    // 钉死 false：print-css 的 `@page{size:A4}` 会让 --page-size 失效。
-    expect(params.preferCSSPageSize).toBe(false);
-    // 单位必须带在字符串里：裸数字会被 puppeteer 当 px。
-    expect(params.width).toBe(`${String(PAGE_SIZES[size].widthPt)}pt`);
-    expect(params.height).toBe(`${String(PAGE_SIZES[size].heightPt)}pt`);
-    expect(params.margin).toEqual({ top: "20mm", bottom: "20mm", left: "18mm", right: "18mm" });
-    expect(params.outline).toBe(true);
-  });
+  it.each<PdfPageSize>(["a4", "letter", "a5"])(
+    "should keep %s paper (pt string) consistent with the CSS margins",
+    (size) => {
+      const params = printParamsOf(size, true);
+      expect(params.printBackground).toBe(true);
+      // Pinned false: print-css `@page{size:A4}` would nullify --page-size.
+      expect(params.preferCSSPageSize).toBe(false);
+      // The unit must ride inside the string: a bare number is read as px by puppeteer.
+      expect(params.width).toBe(`${String(PAGE_SIZES[size].widthPt)}pt`);
+      expect(params.height).toBe(`${String(PAGE_SIZES[size].heightPt)}pt`);
+      expect(params.margin).toEqual({ top: "20mm", bottom: "20mm", left: "18mm", right: "18mm" });
+      expect(params.outline).toBe(true);
+    },
+  );
 
-  it("outline 键由调用方显式给：false 时也是 false 而不是缺键", () => {
+  it("should pass outline explicitly from the caller: false stays false instead of a missing key", () => {
     expect(printParamsOf("a5", false).outline).toBe(false);
     expect(Object.hasOwn(printParamsOf("a5", false), "outline")).toBe(true);
-    // 运行时看不出"必填"，但签名长度能：`printParamsOf.length === 2`。
+    // Runtime cannot see "required", but signature length can: `printParamsOf.length === 2`.
     expect(printParamsOf.length).toBe(2);
   });
 
-  it("isPdfPageSize 只认三种纸张", () => {
+  it("should only accept the three paper kinds in isPdfPageSize", () => {
     expect(["a4", "letter", "a5"].every((value) => isPdfPageSize(value))).toBe(true);
     expect(isPdfPageSize("A4")).toBe(false);
     expect(isPdfPageSize("b5")).toBe(false);
   });
 });
 
-describe("renderPdfOnBrowserOf · 开场与产物", () => {
-  it("HTML 写进临时目录后以 file:// 导航", async () => {
+describe("renderPdfOnBrowserOf · opening and artifact", () => {
+  it("should navigate via file:// after writing the HTML into a temp dir", async () => {
     await withDir(async (dir) => {
       const page = fakePageOf({ pages: 1 });
       const bytes = await renderPdfOnBrowserOf({
@@ -101,7 +104,7 @@ describe("renderPdfOnBrowserOf · 开场与产物", () => {
     });
   });
 
-  it("outline: false 传给 page.pdf 的是 false", async () => {
+  it("should pass false to page.pdf when outline is false", async () => {
     await withDir(async (dir) => {
       const page = fakePageOf({ pages: 1 });
       await renderPdfOnBrowserOf({
@@ -117,25 +120,25 @@ describe("renderPdfOnBrowserOf · 开场与产物", () => {
   });
 });
 
-describe("cssPageParamsOf · slides 页框交给 CSS", () => {
-  it("preferCSSPageSize 为 true，宽高按 16:9 兜底且余白清零", () => {
+describe("cssPageParamsOf · slides page frame belongs to CSS", () => {
+  it("should set preferCSSPageSize true, fall back to 16:9 for w/h, and zero the margins", () => {
     const params = cssPageParamsOf(true);
     expect(params.preferCSSPageSize).toBe(true);
-    // 兜底值只在产物缺 @page 时生效；960×540pt 与骨架的 13.333in×7.5in 同一页框。
+    // The fallback applies only when the artifact lacks @page; 960×540pt is the same page frame as the skeleton's 13.333in×7.5in.
     expect(params.width).toBe("960pt");
     expect(params.height).toBe("540pt");
     expect(params.margin).toEqual({ top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" });
     expect(params.outline).toBe(true);
   });
 
-  it("preferCSSPageSize=true 时渲染层不看 pageSize：CSS 纸张参数直达 page.pdf", async () => {
+  it("should ignore pageSize in the render layer when preferCSSPageSize is true: CSS paper params reach page.pdf directly", async () => {
     await withDir(async (dir) => {
       const page = fakePageOf({ pages: 1 });
       await renderPdfOnBrowserOf({
         browser: fakeBrowserOf(page),
         html: "<p>hi</p>",
         dir,
-        // a5 是最远离 16:9 的合法值：还落进产物就说明分支没生效。
+        // a5 is the legal value farthest from 16:9: if it still lands in the artifact the branch did not take effect.
         pageSize: "a5",
         outline: true,
         preferCSSPageSize: true,
@@ -146,15 +149,15 @@ describe("cssPageParamsOf · slides 页框交给 CSS", () => {
   });
 });
 
-describe("renderPdfOnBrowserOf · 失败映射", () => {
-  it("navigate 失败映射成 chrome_failed", async () => {
+describe("renderPdfOnBrowserOf · failure mapping", () => {
+  it("should map a navigate failure to chrome_failed", async () => {
     await withDir(async (dir) => {
       const error = await failureOf(renderPdfOf({ goto: "error" }, dir));
       expect(error.code).toBe("chrome_failed");
     });
   });
 
-  it("printToPDF 失败映射成 chrome_failed", async () => {
+  it("should map a printToPDF failure to chrome_failed", async () => {
     await withDir(async (dir) => {
       const error = await failureOf(renderPdfOf({ pdf: "error" }, dir));
       expect(error.code).toBe("chrome_failed");
@@ -172,15 +175,15 @@ const renderPngOf = (options: FakePageOptions, dir: string, maxHeight = 20_000) 
     maxHeight,
   });
 
-describe("renderPngOnBrowserOf · 量高与裁剪", () => {
-  it("整页高交给 setViewport，并按 scale 折算设备像素", async () => {
+describe("renderPngOnBrowserOf · height measurement and cropping", () => {
+  it("should hand the full page height to setViewport, scaled to device pixels", async () => {
     await withDir(async (dir) => {
       const image = await renderPngOf({ contentHeight: 900.4 }, dir);
       expect([image.width, image.height, image.clipped]).toEqual([1600, 1802, false]);
     });
   });
 
-  it("短文档换小视口复量（首量 1000 封顶时再用 100 量一次）", async () => {
+  it("should re-measure a short document with a small viewport (measure again at 100 once the first 1000 caps)", async () => {
     await withDir(async (dir) => {
       const page = fakePageOf({ contentHeight: 640 });
       await renderPngOnBrowserOf({
@@ -191,15 +194,15 @@ describe("renderPngOnBrowserOf · 量高与裁剪", () => {
         scale: 1,
         maxHeight: 20_000,
       });
-      // 两次量高（1000 与 100）+ 一次截图视口（640）。
+      // Two height measurements (1000 and 100) + one screenshot viewport (640).
       expect(page.viewports.map((v) => v.height)).toEqual([1000, 100, 640]);
       expect(page.shotCalls[0]?.clip).toEqual({ x: 0, y: 0, width: 800, height: 640, scale: 1 });
     });
   });
 });
 
-describe("renderPngOnBrowserOf · 长图与裁剪", () => {
-  it("长文档量一次就够（高于 1000 不进入短文档复量）", async () => {
+describe("renderPngOnBrowserOf · long image and clipping", () => {
+  it("should measure a long document once (above 1000 skips the short-document re-measure)", async () => {
     await withDir(async (dir) => {
       const page = fakePageOf({ contentHeight: 5000 });
       await renderPngOnBrowserOf({
@@ -214,7 +217,7 @@ describe("renderPngOnBrowserOf · 长图与裁剪", () => {
     });
   });
 
-  it("超出 --max-height 裁短并标 clipped", async () => {
+  it("should clip beyond --max-height and mark clipped", async () => {
     await withDir(async (dir) => {
       const image = await renderPngOf({ contentHeight: 5000 }, dir, 2000);
       expect([image.width, image.height, image.clipped]).toEqual([1600, 4000, true]);
@@ -223,8 +226,8 @@ describe("renderPngOnBrowserOf · 长图与裁剪", () => {
   });
 });
 
-describe("renderPngOnBrowserOf · 失败归口", () => {
-  it("cssContentSize 缺失时报 render_empty", async () => {
+describe("renderPngOnBrowserOf · failure routing", () => {
+  it("should report render_empty when cssContentSize is missing", async () => {
     await withDir(async (dir) => {
       const error = await failureOf(renderPngOf({ contentHeight: "none" }, dir));
       expect(error.code).toBe("render_empty");
@@ -232,21 +235,21 @@ describe("renderPngOnBrowserOf · 失败归口", () => {
     });
   });
 
-  it("截图失败映射成 chrome_failed", async () => {
+  it("should map a screenshot failure to chrome_failed", async () => {
     await withDir(async (dir) => {
       const error = await failureOf(renderPngOf({ png: "error" }, dir));
       expect(error.code).toBe("chrome_failed");
     });
   });
 
-  it("产物不是 PNG 时报 render_empty", async () => {
+  it("should report render_empty when the artifact is not a PNG", async () => {
     await withDir(async (dir) => {
       const error = await failureOf(renderPngOf({ png: "not-png" }, dir));
       expect(error.code).toBe("render_empty");
     });
   });
 
-  it("倍率没乘上的半分辨率产物被当场拦下（宽与高各一道闸）", async () => {
+  it("should catch a half-resolution artifact where the scale was not applied (one gate each for width and height)", async () => {
     await withDir(async (dir) => {
       const wide = await failureOf(renderPngOf({ png: "half-width" }, dir));
       expect(wide.code).toBe("chrome_failed");
@@ -258,8 +261,8 @@ describe("renderPngOnBrowserOf · 失败归口", () => {
   });
 });
 
-describe("renderPngOnBrowserOf · 像素硬闸", () => {
-  it("单边像素越界在截图前就是 invalid_input", async () => {
+describe("renderPngOnBrowserOf · hard pixel gate", () => {
+  it("should be invalid_input for a single-edge overflow before any screenshot", async () => {
     await withDir(async (dir) => {
       const error = await failureOf(renderPngOf({ contentHeight: 40_000 }, dir, 40_000));
       expect(error.code).toBe("invalid_input");

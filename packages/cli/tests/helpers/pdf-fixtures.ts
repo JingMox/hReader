@@ -1,15 +1,15 @@
-// 这层管：手写的最小 PDF 字节（页树 + 大纲树），给 `pdf-scan.test.ts` 与 `pdf-bookmarks.test.ts` 当夹具；**仅测试用**。
+// This layer holds handwritten minimal PDF bytes (page tree + outline tree) as fixtures for `pdf-scan.test.ts` and `pdf-bookmarks.test.ts`; **test-only**.
 //
-// 不用真 Chrome 产物：真产物的字节会随 Chrome 版本漂，钉不住"页序/树/解码"这三件事；
-// 手写的几份各钉一件——单条目、三层嵌套、无 `/Outlines`、多层页树、`/Kids` 与对象号逆序。
+// No real Chrome artifacts: real bytes drift with Chrome versions, and the three facts — page order / tree /
+// decoding — cannot be pinned on them. Each handwritten piece pins one thing: single entry, three-level nesting, no `/Outlines`, a multi-level page tree, `/Kids` vs object numbers in reverse order.
 //
-// `OUTLINE_*` 那几份是大纲条数的陷阱夹具：根对象自报数与实际结构**刻意**不一致（或本就无结构），
-// 用来钉 "不许直接信 `/Count`、不许断链回退 0"；每份的口径见各自注释。
+// The `OUTLINE_*` pieces are trap fixtures for outline counts: the root's self-reported count **deliberately**
+// disagrees with the real structure (or there is no structure at all) — they pin "never trust `/Count` directly, never fall back to 0 on a broken chain"; each one's specifics are in its own comment.
 //
-// 夹具只服务扫描器：`/Size`、`startxref` 是为"形态像 PDF"凑的，**不保证与 xref 自洽**，
-// 也不带真正的内容流。别拿它们去喂 qpdf / pdftotext 这类严格校验器，会报错——那不是扫描器的 bug。
+// Fixtures only serve the scanner: `/Size` and `startxref` exist to look PDF-shaped and are **not guaranteed
+// consistent with the xref**, nor do they carry real content streams. Do not feed them to strict validators like qpdf / pdftotext — their complaints are not the scanner's bug.
 
-/** 三页骨架：Catalog(1) + Pages(2) + Page(3..)。引自页对象号从 3 起，`/Dest` 好对号。 */
+/** Three-page skeleton: Catalog(1) + Pages(2) + Page(3..). Referenced page object numbers start at 3 so `/Dest` matches up. */
 export const pagesOf = (count: number): string => {
   const pages = Array.from(
     { length: count },
@@ -27,19 +27,19 @@ export const pagesOf = (count: number): string => {
   );
 };
 
-/** 给 Catalog 挂上 `/Outlines 10 0 R`：大纲根对象与条目都从 10 起。 */
+/** Attach `/Outlines 10 0 R` to the Catalog: outline root and entries start at 10. */
 export const withOutlinesOf = (body: string): string =>
   body.replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Outlines 10 0 R");
 
-/** 经典 xref 的 trailer：`/Root` 只在这里出现，扫全文取第一个就是 Catalog。 */
+/** A classic xref trailer: `/Root` only appears here, so scanning the whole text for the first hit finds the Catalog. */
 export const trailerOf = (): string =>
   "trailer\n<< /Size 99 /Root 1 0 R >>\nstartxref\n0000\n%%EOF\n";
 
 export const bytesOf = (body: string): Uint8Array => Buffer.from(`${body}${trailerOf()}`, "latin1");
 
 /**
- * trailer 里也挂 `/Info 30 0 R`：真实 Chrome 产物里 `/Info` 字典自己有一条 `/Title`，
- * 所以"数 `/Title` 出现次数"会恒多 1；本夹具的对象 30 就是那个陷阱。
+ * The trailer also carries `/Info 30 0 R`: in real Chrome artifacts the `/Info` dictionary has its own `/Title`,
+ * so "count `/Title` occurrences" is always +1; object 30 in this fixture is that trap.
  */
 export const bytesWithInfoOf = (body: string): Uint8Array =>
   Buffer.from(
@@ -48,7 +48,7 @@ export const bytesWithInfoOf = (body: string): Uint8Array =>
     "latin1",
   );
 
-/** 完整产物字节：页树 + `count` 条同级大纲条目（`count` 为 0 时根本没有 `/Outlines` 键）。 */
+/** Full artifact bytes: page tree + `count` sibling outline entries (with `count` 0 there is no `/Outlines` key at all). */
 export const pdfWithBookmarksOf = (count: number): Uint8Array => {
   if (count === 0) return bytesOf(pagesOf(1));
   const refs = Array.from({ length: count }, (_unused: unknown, index: number) =>
@@ -70,14 +70,14 @@ export const pdfWithBookmarksOf = (count: number): Uint8Array => {
   return bytesOf(withOutlinesOf(pagesOf(1)) + root + items);
 };
 
-/** 单条目：根(10) → 条目(11)，指向第 2 页。 */
+/** Single entry: root(10) → entry(11), pointing at page 2. */
 export const SINGLE =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 11 0 R /Count 1 >>\nendobj\n" +
   "11 0 obj\n<< /Title (Chapter One) /Parent 10 0 R /Dest [4 0 R /XYZ 0 800 0] >>\nendobj\n";
 
 /**
- * 三层嵌套：根(10) → Part(11) → {Section A(12) → Sub A1(14)，第二层(13)}。
- * 兄弟顺序刻意与对象号顺序不同（12 → 13 靠 `/Next`，不是靠号大小）。
+ * Three-level nesting: root(10) → Part(11) → {Section A(12) → Sub A1(14), second level(13)}.
+ * Sibling order deliberately differs from object-number order (12 → 13 via `/Next`, not by number).
  */
 export const NESTED =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 11 0 R /Count 4 >>\nendobj\n" +
@@ -90,11 +90,12 @@ export const NESTED =
   "14 0 obj\n<< /Title (Sub A1) /Parent 12 0 R /Dest [5 0 R /XYZ 0 500 0] >>\nendobj\n";
 
 /**
- * 页树四层：Catalog(1) → Pages(2) → Pages(3) → Pages(6) → Page(4)、Page(5)。
- * 这两份页树夹具（本份与 `REVERSED_KIDS`）存在的**唯一理由**是钉住两个扫描器变异：
- * ① `/Kids` 只摊一层、或把中间 `/Pages` 也追加进页序（对象 3/6 一旦出现在 `pages` 里就是错的）；
- * ② 按对象号升序排（本份恰好与对象号同序，所以它只负责①，②交给 `REVERSED_KIDS`）。
- * 链路刻意做到四层：三层时\"只摊一层\"得到的仍是正确答案，够不着这个变异。
+ * Four-level page tree: Catalog(1) → Pages(2) → Pages(3) → Pages(6) → Page(4), Page(5).
+ * These two page-tree fixtures (this one and `REVERSED_KIDS`) exist for a **single reason**: pinning two
+ * scanner mutations — ① flattening only one `/Kids` level, or appending intermediate `/Pages` into the page
+ * order (objects 3/6 in `pages` is wrong); ② sorting by object number (this fixture happens to match object
+ * order, so it only covers ①; ② is `REVERSED_KIDS`' job). The chain is deliberately four levels: at three,
+ * "flatten one level" still yields the right answer and cannot reach the mutation.
  */
 export const CHAIN_PAGES =
   "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" +
@@ -105,8 +106,8 @@ export const CHAIN_PAGES =
   "5 0 obj\n<< /Type /Page /Parent 6 0 R /MediaBox [0 0 595 842] >>\nendobj\n";
 
 /**
- * `/Kids [7 0 R 5 0 R]`：页序与对象号顺序**相反**（对象 5 在前、对象 7 在后）。
- * 把 `pageOrderOf` 改成\"按对象号排\"时只有这一份会红，所以别把 `/Kids` 改回升序。
+ * `/Kids [7 0 R 5 0 R]`: page order is the **reverse** of object-number order (object 5 first, 7 last).
+ * This is the only fixture that goes red if `pageOrderOf` is changed to "sort by object number" — do not flip `/Kids` back to ascending.
  */
 export const REVERSED_KIDS =
   "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" +
@@ -114,47 +115,47 @@ export const REVERSED_KIDS =
   "5 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>\nendobj\n" +
   "7 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>\nendobj\n";
 
-/** 两条同级：11 → 12 靠 `/Next`；12 是链尾（没有 `/Next`）。不跟 `/Next` 只数得到 1。 */
+/** Two siblings: 11 → 12 via `/Next`; 12 is the chain tail (no `/Next`). Without following `/Next` you count 1. */
 export const OUTLINE_TWO_SIBLINGS =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 12 0 R /Count 2 >>\nendobj\n" +
   "11 0 obj\n<< /Title (One) /Parent 10 0 R /Next 12 0 R /Dest [3 0 R /XYZ 0 800 0] >>\nendobj\n" +
   "12 0 obj\n<< /Title (Two) /Parent 10 0 R /Prev 11 0 R /Dest [4 0 R /XYZ 0 700 0] >>\nendobj\n";
 
-/** 根自报 `/Count 3`、实际只有 2 条：产物自相矛盾，取任何一个都是在撒谎。 */
+/** The root self-reports `/Count 3` but really has 2: the artifact contradicts itself; picking either side is lying. */
 export const OUTLINE_COUNT_LIE =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 12 0 R /Count 3 >>\nendobj\n" +
   "11 0 obj\n<< /Title (One) /Parent 10 0 R /Next 12 0 R /Dest [3 0 R /XYZ 0 800 0] >>\nendobj\n" +
   "12 0 obj\n<< /Title (Two) /Parent 10 0 R /Prev 11 0 R /Dest [4 0 R /XYZ 0 700 0] >>\nendobj\n";
 
-/** 根不带 `/Count`（规范里它可选）：答案只能来自实走。 */
+/** The root carries no `/Count` (optional per spec): the answer can only come from a real walk. */
 export const OUTLINE_NO_COUNT =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 11 0 R >>\nendobj\n" +
   "11 0 obj\n<< /Title (Only) /Parent 10 0 R /Dest [3 0 R /XYZ 0 800 0] >>\nendobj\n";
 
-/** 根的 `/Count` 为负（折叠态写法）：与实走做核对时必须取绝对值。 */
+/** The root's `/Count` is negative (the collapsed-state spelling): cross-checks against a real walk must use its absolute value. */
 export const OUTLINE_FOLDED_COUNT =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 11 0 R /Count -1 >>\nendobj\n" +
   "11 0 obj\n<< /Title (Only) /Parent 10 0 R /Dest [3 0 R /XYZ 0 800 0] >>\nendobj\n";
 
-/** `/First` 指向不存在的对象 99：断链，必须报错而不是回退 0。 */
+/** `/First` points at nonexistent object 99: a broken chain must error, not fall back to 0. */
 export const OUTLINE_BROKEN_FIRST =
   "10 0 obj\n<< /Type /Outlines /First 99 0 R /Last 99 0 R /Count 1 >>\nendobj\n";
 
-/** `/First` 指向的对象体不是字典：同上，不许当\"空目录\"读过去。 */
+/** The object `/First` points to is not a dictionary: same — must not be read as an "empty outline". */
 export const OUTLINE_NOT_A_DICTIONARY =
   "10 0 obj\n<< /Type /Outlines /First 99 0 R /Last 99 0 R /Count 1 >>\nendobj\n" +
   "99 0 obj\n42\nendobj\n";
 
-/** 自环：11 的 `/Next` 指回自己。没有环检测就是死循环。 */
+/** Self-loop: 11's `/Next` points back at itself. Without cycle detection this loops forever. */
 export const OUTLINE_SELF_LOOP =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 11 0 R /Count 1 >>\nendobj\n" +
   "11 0 obj\n<< /Title (Loop) /Parent 10 0 R /Next 11 0 R /Dest [3 0 R /XYZ 0 800 0] >>\nendobj\n";
 
 /**
- * 标题字面量里就写着 PDF 结构：`(endobj)`、`(/First 99 0 R /Next 77 0 R /Count 999)`、
- * `(a \( b \) c (嵌套) 50% trailer << /Root 98 0 R >>)`。真 Chrome 会把用户标题原样写进
- * `/Title`，所以这不是恶意产物，是**合法文档**；在原文上 grep `/Next` 或按 `endobj` 切对象，
- * 这份产物就会报"`/Count` 自报 3 条，实走 1 条"甚至整份落不了盘。
+ * Title literals containing PDF structure: `(endobj)`, `(/First 99 0 R /Next 77 0 R /Count 999)`,
+ * `(a \( b \) c (嵌套) 50% trailer << /Root 98 0 R >>)`. Real Chrome writes user titles verbatim into
+ * `/Title`, so this is not a hostile artifact but a **legal document**; grep `/Next` on the raw text or split
+ * objects at `endobj`, and this artifact reports "`/Count` claims 3 but the walk found 1" or fails to write at all.
  */
 export const OUTLINE_HOSTILE_TITLES =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 13 0 R /Count 3 >>\nendobj\n" +
@@ -165,8 +166,9 @@ export const OUTLINE_HOSTILE_TITLES =
   "/Parent 10 0 R /Dest [5 0 R /XYZ 0 600 0] >>\nendobj\n";
 
 /**
- * 嵌套与同级**混着来**且 `/Count` 与实走一致（共 5 条：A{A1,A2} 与 B{B1}）。
- * 只摊一层、只走兄弟、或把 `/Next` 当子层，任一种变异都会在这里红，不必靠 `/Count` 报错来兜。
+ * Nesting and siblings **mixed**, with `/Count` agreeing with the walk (5 total: A{A1,A2} and B{B1}).
+ * Flattening one level, walking siblings only, or treating `/Next` as a child — every mutation goes red here
+ * without needing the `/Count` mismatch as a net.
  */
 export const OUTLINE_MIXED_NESTED_AND_SIBLINGS =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 14 0 R /Count 5 >>\nendobj\n" +
@@ -179,28 +181,30 @@ export const OUTLINE_MIXED_NESTED_AND_SIBLINGS =
   "15 0 obj\n<< /Title (B1) /Parent 14 0 R /Dest [5 0 R /XYZ 0 400 0] >>\nendobj\n";
 
 /**
- * 条目体带 `/Type /Page`：走进页树了。必须当场报错——页数与大头条数可能刚好相等，
- * 拿 `/Count` 核对兜底是兜不住的。
+ * An entry body carrying `/Type /Page`: the walk stepped into the page tree. It must error on the spot — page
+ * count and outline count may coincidentally match, so a `/Count` cross-check cannot catch this.
  */
 export const OUTLINE_PAGE_NODE =
   "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 11 0 R /Count 1 >>\nendobj\n" +
   "11 0 obj\n<< /Type /Page /Parent 10 0 R /Dest [3 0 R /XYZ 0 800 0] >>\nendobj\n";
 
-/** 真 trailer 之后再挂一行**注释**形态的假 trailer：注释里的 `trailer`/`/Root` 不许被当真。 */
+/** After the real trailer, append a fake trailer in **comment** form: `trailer`/`/Root` inside a comment must not be taken as real. */
 export const bytesWithTrailerCommentOf = (body: string): Uint8Array =>
   Buffer.from(`${body}${trailerOf()}% trailer << /Root 99 0 R >>\n`, "latin1");
 
 /**
- * 真 trailer（已含 `startxref`/`%%EOF`）之后**再写一个非注释的 trailer**：它不是注释，会被扫成第二个
- * `PdfTrailer`，只能靠“位置在最后一个 `startxref` 之前”这道过滤挡掉；少了过滤就会去认 `/Root 99 0 R`。
+ * After the real trailer (which already has `startxref`/`%%EOF`), write a **non-comment** trailer: it is not a
+ * comment, so it scans as a second `PdfTrailer` and can only be filtered out by "positioned before the last
+ * `startxref`"; without the filter it would pick up `/Root 99 0 R`.
  */
 export const bytesWithTrailingTrailerOf = (body: string): Uint8Array =>
   Buffer.from(`${body}${trailerOf()}trailer\n<< /Size 99 /Root 99 0 R >>\n`, "latin1");
 
 /**
- * 内容流里写着能误导解析器的字节：裸 `1 0 obj` 重生 Catalog（或指 `/Outlines 99 0 R`）、
- * `99 0 obj` 的大纲指向不存在的 98。`stream` 之后不跳到 `endstream`，扫描器就会把流内容当结构，
- * 报“找不到 大纲条目 对象 98”——所以这份夹具钉的是“跳过 stream”，不是“流里恰好有个 endobj 也无害”。
+ * A content stream containing bytes meant to mislead a parser: a bare `1 0 obj` rebirths the Catalog (or points
+ * `/Outlines` at 99), and `99 0 obj`'s outline points at nonexistent 98. If the scanner does not skip to
+ * `endstream` after `stream`, it reads stream contents as structure and reports "outline entry object 98 not
+ * found" — so this fixture pins "skip streams", not "an endobj inside a stream is harmless".
  */
 export const OUTLINE_STREAM_TRAP =
   "900 0 obj\n<< /Length 156 >>\nstream\n" +
@@ -208,7 +212,7 @@ export const OUTLINE_STREAM_TRAP =
   "99 0 obj\n<< /Type /Outlines /First 98 0 R /Last 98 0 R /Count 5 >>\nendobj\n" +
   "endstream\nendobj\n";
 
-/** 对象号 1 的 generation 是 5（不是 0）：引用写成 `1 5 R`，定位只认对象号。 */
+/** Object number 1 has generation 5 (not 0): the reference reads `1 5 R`; locating only honors the object number. */
 export const bytesWithGenerationOf = (body: string): Uint8Array =>
   Buffer.from(
     body.replace("1 0 obj", "1 5 obj") +

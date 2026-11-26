@@ -1,4 +1,4 @@
-// `renderPdfOf` / `renderPngOf` 共用的进程内装配：假进程 + 假浏览器，目录/进程组可观察。
+// In-process assembly shared by `renderPdfOf` / `renderPngOf`: fake process + fake browser, observable dirs/process groups.
 import type { renderPdfOf } from "../src/chrome/session";
 
 import {
@@ -12,7 +12,7 @@ import {
   type FakePageOptions,
 } from "./chrome-helpers";
 
-/** 进程内测试的停止口：永不 resolve，等价于"没人按 Ctrl-C"。 */
+/** The stop signal for in-process tests: never resolves, equivalent to "nobody pressed Ctrl-C". */
 export const NEVER: Promise<void> = new Promise<void>(() => undefined);
 
 export const DEVTOOLS_LINE = "DevTools listening on ws://127.0.0.1:9222/devtools/browser/fake\n";
@@ -46,7 +46,7 @@ export const renderSetupOf = (options: FakePageOptions = { pages: 2 }): SessionS
 
 type PdfInput = Parameters<typeof renderPdfOf>[0];
 
-/** `renderPdfOf` 的默认入参：只关心个别字段的用例靠 `overrides` 改（`outline` 缺省开）。 */
+/** Default inputs for `renderPdfOf`: cases that care about a few fields change them via `overrides` (`outline` defaults on). */
 export const inputOf = (deps: PdfInput["deps"], overrides: Partial<PdfInput> = {}): PdfInput => ({
   html: "x",
   pageSize: "a4",

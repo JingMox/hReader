@@ -18,24 +18,24 @@ import { fieldOf, MAIN } from "./harness.ts";
 
 const START_TIMEOUT_MS = 15_000;
 
-/** `stdio: ["ignore","pipe","pipe"]` 起的子进程：stdin 是 null，不能按 `WithoutNullStreams` 标。 */
+/** A subprocess started with `stdio: ["ignore","pipe","pipe"]`: stdin is null, so it cannot be typed `WithoutNullStreams`. */
 type ServeChild = ChildProcessByStdio<null, Readable, Readable>;
 
 export interface ServeHandle {
-  /** 打印出来的地址（人读行里那一串，带尾斜杠）。 */
+  /** The printed address (the string in the human line, with trailing slash). */
   readonly url: string;
   readonly port: number;
-  /** 仅 `--json` 模式可得：`{url,port,token,pid,workspace}` 里的 token。 */
+  /** Only available in `--json` mode: the token inside `{url,port,token,pid,workspace}`. */
   readonly token: string;
   readonly stop: () => Promise<void>;
 }
 
 interface ServeOptions {
-  /** `--json`：stdout 是 `{ok,data:{url,port,token,pid,workspace}}`；否则是人读的 `serving … on <url> (pid n)`。 */
+  /** `--json`: stdout is `{ok,data:{url,port,token,pid,workspace}}`; otherwise the human `serving … on <url> (pid n)`. */
   readonly json: boolean;
-  /** daemon.json 的父目录；必须已存在（CLI 会校验）。 */
+  /** daemon.json's parent directory; must already exist (the CLI checks). */
   readonly home: string;
-  /** 子进程工作目录；文档路径相对它解析。 */
+  /** The subprocess working directory; document paths resolve relative to it. */
   readonly cwd: string;
 }
 
@@ -43,7 +43,7 @@ const addressOf = (line: string): { url: string; port: number; token: string } =
   if (line.startsWith("{")) {
     const data = fieldOf(JSON.parse(line), "data");
     return {
-      // 读程序自己印出来的那串：`?token=` 丢了就该在这里暴露，而不是被测试重新拼一个。
+      // Read the string the program itself printed: a lost `?token=` should surface here, not be rebuilt by the test.
       url: String(fieldOf(data, "url")),
       port: Number(fieldOf(data, "port")),
       token: String(fieldOf(data, "token")),
@@ -78,7 +78,7 @@ export const stopOf =
     });
   };
 
-/** 等第一行 stdout 并解出地址；stderr 全量留着，超时或提前退出时拼进错误里。 */
+/** Wait for the first stdout line and parse the address; all of stderr is kept and folded into the error on timeout or early exit. */
 const firstLineOf = (child: ServeChild): Promise<{ url: string; port: number; token: string }> =>
   new Promise((resolve, reject) => {
     let buffered = "";
@@ -134,7 +134,7 @@ export const startServe = async (file: string, options: ServeOptions): Promise<S
   }
 };
 
-/** `serve --home` 指向的目录必须已存在；顺手建一个独立的 home，避免撞上本机真 daemon。 */
+/** The directory `serve --home` points at must exist; build a private home anyway so it never collides with a real daemon on this machine. */
 export const homeOf = (dir: string): string => {
   const home = join(dir, "home");
   mkdirSync(home, { recursive: true });

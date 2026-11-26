@@ -1,5 +1,5 @@
-// 这层管：`hr undo`（把文件恢复到最近一份历史快照）→ 文本/JSON；不解析参数、不读 stdin。
-// 用 `revertLast` 而不是 `undoPatch`：“没有历史”翻成对外的 `nothing_to_undo` 只有一份定义。
+// This layer: `hr undo` (restore the file to the latest history snapshot) -> text/JSON; no argument parsing, no stdin.
+// `revertLast` rather than `undoPatch`: "no history" maps to the outward `nothing_to_undo` in exactly one place.
 
 import { nodePatchDeps, revertLast } from "@hreader/core";
 
@@ -9,7 +9,7 @@ export interface UndoInput {
   readonly path: string;
   readonly workspace: string;
   readonly json: boolean;
-  /** 回执里印的路径（用户视角）：不给就印结果里的真实路径。 */
+  /** Path printed in the receipt (user's view): falls back to the result's real path when not given. */
   readonly displayPath?: string | undefined;
 }
 

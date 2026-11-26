@@ -1,5 +1,5 @@
-// 这层管：`hr style extract` 的 LLM 全链路（真 fixture 回放、判据、不泄漏、两条降级路径）与请求构造
-//（"确定性失败不花钱"：前置校验在模型调用之前）。网络用假 fetch 回放 `fixtures/llm/`，零真实调用。
+// This layer covers `hr style extract`'s full LLM chain (real fixture replay, judgments, no leakage, two
+// downgrade paths) and request construction ("deterministic failures cost nothing": pre-checks run before the model call). Fake fetch replays `fixtures/llm/`; zero real calls.
 
 import {
   existsSync,
@@ -51,7 +51,7 @@ interface Run {
   readonly err: string;
 }
 
-/** 假 fetch = 回放一份真响应的 body；`status` 用来造非 2xx。 */
+/** Fake fetch = replaying a real response's body; `status` makes non-2xx. */
 const replayOf =
   (body: string, status = 200): typeof globalThis.fetch =>
   () =>
@@ -90,7 +90,7 @@ const llmRun = async (
     fetch,
   });
 
-describe("style extract · 真 fixture 回放", () => {
+describe("style extract · real fixture replay", () => {
   it("should eat the recorded body end to end and write the merged yaml", async () => {
     const out = join(dir, "styles/replay.yaml");
 
@@ -126,7 +126,7 @@ describe("style extract · 真 fixture 回放", () => {
   });
 });
 
-describe("style extract · 围栏", () => {
+describe("style extract · fences", () => {
   it("should treat the ```json fence as pure formatting noise", async () => {
     const corpus: readonly CorpusText[] = [{ format: "markdown", text: CORPUS }];
     const input = { corpus, id: "fence", name: "围栏", inheritsVisual: "atelier-editorial" };
@@ -137,12 +137,12 @@ describe("style extract · 围栏", () => {
 
     expect(fenced.spec).toEqual(bare.spec);
     expect(fenced.dropped).toEqual(bare.dropped);
-    // 同一份 content，只有围栏那两行不同：`parseJsonOf` 若开始裁剪围栏内内容，这里立刻红。
+    // The same content, differing only in the two fence lines: if `parseJsonOf` starts trimming inside fences this goes red at once.
     expect(fenced.spec.language.persona).toBe(bare.spec.language.persona);
   });
 });
 
-describe("style extract · 零可用字段即失败", () => {
+describe("style extract · zero usable fields means failure", () => {
   it("should fail on zero usable fields and leave --out untouched", async () => {
     const file = corpusAt("r23.md");
     const out = join(dir, "styles/r23.yaml");
@@ -167,7 +167,7 @@ describe("style extract · 零可用字段即失败", () => {
   });
 });
 
-describe("style extract · 非 llm_failure 不加工", () => {
+describe("style extract · non-llm_failure untouched", () => {
   it("should let a statistic-layer failure through without the --no-llm hint", async () => {
     const result = await llmRun(
       [corpusAt("bad-id.md"), "--id", "a b"],
@@ -180,7 +180,7 @@ describe("style extract · 非 llm_failure 不加工", () => {
   });
 });
 
-describe("style extract · 两条降级路径", () => {
+describe("style extract · the two downgrade paths", () => {
   it("should produce the statistic-only yaml with --no-llm and without a key", async () => {
     const file = corpusAt("degrade.md");
     const byFlag = await capture(["style", "extract", file, "--id", "d", "--no-llm"], {
@@ -196,7 +196,7 @@ describe("style extract · 两条降级路径", () => {
   });
 });
 
-describe("style extract · 不泄漏", () => {
+describe("style extract · no leakage", () => {
   const bodies = ["", "<html>", '{"choices":[]}', '{"choices":[{"message":{"content":"{}"}}]}'];
 
   it("should keep the key out of every error surface", async () => {
@@ -209,7 +209,7 @@ describe("style extract · 不泄漏", () => {
   });
 });
 
-describe("style extract · --json 的 dropped", () => {
+describe("style extract · --json dropped", () => {
   it("should expose the dropped entries and omit the key without llm", async () => {
     const merged = await llmRun(
       [corpusAt("json-dropped.md"), "--json"],
@@ -219,14 +219,14 @@ describe("style extract · --json 的 dropped", () => {
 
     expect(merged.code).toBe(0);
     expect(merged.out).toContain('"dropped":[{"field":"forbidden","reason":"too_long"}]');
-    // 纯统计版没进过模型：凭空一个空数组会让用户以为模型看过但什么都没丢。
+    // The pure-stats version never went near the model: a phantom empty array would make the user think the model looked and kept nothing.
     expect(statOnly.out).not.toContain('"dropped"');
   });
 });
 
-describe("style extract · 失败时不动已有产物", () => {
+describe("style extract · existing artifacts untouched on failure", () => {
   it("should keep an existing --out byte for byte when the llm fails", async () => {
-    // `--force`：覆盖守卫已放行，这里钉的是"失败不截断"（写盘必须发生在拿到可用产物之后）。
+    // `--force`: the overwrite guard already passed; what is pinned here is "failure does not truncate" (the write must happen only after a usable artifact exists).
     const out = join(dir, "styles/keep.yaml");
     writeFileSync(out, 'id: "keep"\n');
 
@@ -258,7 +258,7 @@ describe("style extract · --model / --base-url", () => {
   });
 });
 
-describe("style extract · base url 归一", () => {
+describe("style extract · base url normalization", () => {
   it("should normalize the trailing slash of a flag base url", async () => {
     const urls: string[] = [];
     const fetch: typeof globalThis.fetch = (input) => {
@@ -302,7 +302,7 @@ const fetchCallsOf = (): { calls: () => number; fetch: typeof globalThis.fetch }
   return { calls: () => calls, fetch };
 };
 
-describe("style extract · --out 覆盖守卫不花钱", () => {
+describe("style extract · the --out overwrite guard costs nothing", () => {
   it("should refuse an existing --out before calling the model", async () => {
     const out = join(dir, "styles/exists.yaml");
     writeFileSync(out, 'id: "exists"\n');
@@ -330,7 +330,7 @@ describe("style extract · --out 覆盖守卫不花钱", () => {
   });
 });
 
-describe("style extract · 路径错误不花钱", () => {
+describe("style extract · path errors cost nothing", () => {
   it("should refuse a missing parent and an escaping path before calling the model", async () => {
     const missingParent = fetchCallsOf();
     const outside = fetchCallsOf();

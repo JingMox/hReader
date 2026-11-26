@@ -1,4 +1,4 @@
-// 这层管：`pdfCommand` 的进程内行为（键集 / 页数 / 落盘 / 错误归口）；渲染由假 render 注入，不起 Chrome。
+// This layer covers `pdfCommand`'s in-process behavior (key set / page count / disk write / error routing); rendering is a fake injected render, no Chrome.
 import {
   chmodSync,
   existsSync,
@@ -24,7 +24,7 @@ const withRealDir = async (run: (dir: string) => Promise<void>): Promise<void> =
     await run(realpathSync(raw));
   });
 
-/** 每个用例都要先有 `doc.html`：抽出来，用例体只剩断言。 */
+/** Every case needs `doc.html` first: factored out so case bodies are all assertions. */
 const withDocOf = async (run: (dir: string) => Promise<void>): Promise<void> =>
   withRealDir(async (dir) => {
     writeFileSync(join(dir, "doc.html"), DOC);
@@ -35,7 +35,7 @@ interface Overrides {
   readonly path?: string;
   readonly pageSize?: string;
   readonly timeoutMs?: number;
-  /** 默认跟 CLI 一致：`--outline` 缺省就是开。 */
+  /** Defaults follow the CLI: `--outline` defaults on. */
   readonly outline?: boolean;
   readonly outlineConflict?: boolean;
   readonly out?: string;
@@ -67,7 +67,7 @@ const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
     if (error instanceof HrError) return error;
     throw error;
   }
-  throw new Error("预期抛出 HrError");
+  throw new Error("expected an HrError to be thrown");
 };
 
 const fieldOfDataOf = (text: string): ((key: string) => unknown) => {
@@ -76,8 +76,8 @@ const fieldOfDataOf = (text: string): ((key: string) => unknown) => {
   return (key) => fieldOf(data, key);
 };
 
-describe("pdfCommand · --json 键集", () => {
-  it("只含 pdf/bytes/pages/outline/out 五个键", async () => {
+describe("pdfCommand · --json key set", () => {
+  it("should contain exactly the five keys pdf/bytes/pages/outline/out", async () => {
     await withDocOf(async (dir) => {
       const text = await pdfCommand(inputOf(dir, { json: true }));
       const envelope: unknown = JSON.parse(text);
@@ -92,7 +92,7 @@ describe("pdfCommand · --json 键集", () => {
     });
   });
 
-  it("页数按 /Type /Page 计数，bytes/out 与实际落盘一致", async () => {
+  it("should count pages by /Type /Page and match bytes/out to the real write", async () => {
     await withDocOf(async (dir) => {
       const out = join(dir, "out.pdf");
       const field = fieldOfDataOf(await pdfCommand(inputOf(dir, { json: true, out })));
@@ -104,17 +104,17 @@ describe("pdfCommand · --json 键集", () => {
   });
 });
 
-describe("pdfCommand · 人读行与渲染入参", () => {
-  it("人读行带 out、页数与书签数（书签数恒印，0 也印）", async () => {
+describe("pdfCommand · human line and render arguments", () => {
+  it("should carry out, page count and bookmark count in the human line (bookmark count always printed, 0 included)", async () => {
     await withDocOf(async (dir) => {
       const out = join(dir, "out.pdf");
       const text = await pdfCommand(inputOf(dir, { out }));
-      // 假产物没有 `/Outlines`：`3 页, 0 条书签` 就是"这一行一定带 M"的残疾证据。
+      // The fake artifact has no `/Outlines`: `3 页, 0 条书签` is concrete proof "this line always carries M".
       expect(text).toBe(`${out} (3 页, 0 条书签)\n`);
     });
   });
 
-  it("把 --page-size/--timeout 与打印稿 HTML 一起交给渲染层", async () => {
+  it("should hand --page-size/--timeout and the printout HTML to the render layer", async () => {
     await withDocOf(async (dir) => {
       const seen: { html: string; pageSize: string; timeoutMs: number }[] = [];
       await pdfCommand(
@@ -129,13 +129,13 @@ describe("pdfCommand · 人读行与渲染入参", () => {
       );
       expect(seen[0]?.pageSize).toBe("letter");
       expect(seen[0]?.timeoutMs).toBe(1500);
-      // 纸必须进 `@page`：只换 printToPDF 的纸不换版心。
+      // The paper must reach `@page`: swapping printToPDF's paper alone does not change the page frame.
       expect(seen[0]?.html).toContain("size: letter;");
       expect(seen[0]?.html).toContain("标题");
     });
   });
 
-  it("普通文档的 preferCSSPageSize 是 false（页框听 --page-size）", async () => {
+  it("should set preferCSSPageSize false for a normal document (the frame obeys --page-size)", async () => {
     await withDocOf(async (dir) => {
       const seen: boolean[] = [];
       await pdfCommand(
@@ -151,7 +151,7 @@ describe("pdfCommand · 人读行与渲染入参", () => {
   });
 });
 
-describe("pdfCommand · slides 打印稿", () => {
+describe("pdfCommand · slides printout", () => {
   const SLIDES_DOC =
     "<html><body>" +
     '<article data-hr-kind="slides">' +
@@ -160,7 +160,7 @@ describe("pdfCommand · slides 打印稿", () => {
     "</article>" +
     "</body></html>";
 
-  it("data-hr-kind=slides 时 preferCSSPageSize=true：页框听产物里的 @page", async () => {
+  it("should set preferCSSPageSize true for data-hr-kind=slides (the frame obeys the artifact's @page)", async () => {
     await withRealDir(async (dir) => {
       writeFileSync(join(dir, "doc.html"), SLIDES_DOC);
       const seen: { readonly flag: boolean; readonly html: string }[] = [];
@@ -173,14 +173,14 @@ describe("pdfCommand · slides 打印稿", () => {
         }),
       );
       expect(seen[0]?.flag).toBe(true);
-      // 横版页框在打印骨架里写死，不靠 --page-size 也不靠主题。
+      // The landscape page frame is hardcoded in the print skeleton — neither --page-size nor the theme.
       expect(seen[0]?.html).toContain("size: 13.333in 7.5in;");
     });
   });
 });
 
-describe("pdfCommand · 落盘闸门（已存在/--force）", () => {
-  it("已存在的 --out 不给 --force 就拒写，文件不动", async () => {
+describe("pdfCommand · write gate (exists/--force)", () => {
+  it("should refuse to write an existing --out without --force and leave the file alone", async () => {
     await withDocOf(async (dir) => {
       const out = join(dir, "out.pdf");
       writeFileSync(out, "old");
@@ -190,7 +190,7 @@ describe("pdfCommand · 落盘闸门（已存在/--force）", () => {
     });
   });
 
-  it("--force 覆盖已有文件", async () => {
+  it("should overwrite an existing file with --force", async () => {
     await withDocOf(async (dir) => {
       const out = join(dir, "out.pdf");
       writeFileSync(out, "old");
@@ -200,8 +200,8 @@ describe("pdfCommand · 落盘闸门（已存在/--force）", () => {
   });
 });
 
-describe("pdfCommand · 落盘闸门（workspace / 权限 / 纸张）", () => {
-  it("--out 在 workspace 外时拒写（复用 export 的越界判定）", async () => {
+describe("pdfCommand · write gate (workspace / permission / paper)", () => {
+  it("should refuse to write when --out is outside the workspace (reusing export's escape check)", async () => {
     await withDocOf(async (dir) => {
       const outside = "/tmp/hr-pdf-outside.pdf";
       const error = await failureOf(pdfCommand(inputOf(dir, { out: outside })));
@@ -210,7 +210,7 @@ describe("pdfCommand · 落盘闸门（workspace / 权限 / 纸张）", () => {
     });
   });
 
-  it("目录不可写时渲染都不开始", async () => {
+  it("should not even start rendering when the directory is unwritable", async () => {
     await withDocOf(async (dir) => {
       const roDir = join(dir, "ro");
       mkdirSync(roDir);
@@ -224,7 +224,7 @@ describe("pdfCommand · 落盘闸门（workspace / 权限 / 纸张）", () => {
     });
   });
 
-  it("非法 --page-size 在触碰文件系统之前就报 invalid_input", async () => {
+  it("should report invalid_input for an illegal --page-size before touching the filesystem", async () => {
     await withDocOf(async (dir) => {
       const error = await failureOf(pdfCommand(inputOf(dir, { pageSize: "b5" })));
       expect(error.code).toBe("invalid_input");
@@ -233,8 +233,8 @@ describe("pdfCommand · 落盘闸门（workspace / 权限 / 纸张）", () => {
   });
 });
 
-describe("pdfCommand · 产物校验", () => {
-  it("空字节报 render_empty", async () => {
+describe("pdfCommand · artifact validation", () => {
+  it("should report render_empty for empty bytes", async () => {
     await withDocOf(async (dir) => {
       const promise = pdfCommand(
         inputOf(dir, { render: () => Promise.resolve({ bytes: new Uint8Array() }) }),
@@ -245,7 +245,7 @@ describe("pdfCommand · 产物校验", () => {
     });
   });
 
-  it("不是 PDF 的字节报 render_empty", async () => {
+  it("should report render_empty for non-PDF bytes", async () => {
     await withDocOf(async (dir) => {
       const render = (): Promise<{ bytes: Uint8Array }> =>
         Promise.resolve({ bytes: Buffer.from("<html>") });
@@ -254,7 +254,7 @@ describe("pdfCommand · 产物校验", () => {
     });
   });
 
-  it("PDF 里没有页面报 render_empty", async () => {
+  it("should report render_empty for a PDF with no pages", async () => {
     await withDocOf(async (dir) => {
       const render = (): Promise<{ bytes: Uint8Array }> =>
         Promise.resolve({ bytes: Buffer.from(pdfOf(0)) });
@@ -263,7 +263,7 @@ describe("pdfCommand · 产物校验", () => {
     });
   });
 
-  it("结构解析不出的 PDF 字节报 render_empty", async () => {
+  it("should report render_empty for unparseable PDF bytes", async () => {
     await withDocOf(async (dir) => {
       const render = (): Promise<{ bytes: Uint8Array }> =>
         Promise.resolve({ bytes: Buffer.from("%PDF-1.4\n%%EOF\n") });

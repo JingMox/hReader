@@ -1,7 +1,7 @@
-// 一次性录制脚本：真跑一次模型，把**完整响应体**存进 `fixtures/llm/`（预算 ≤10 次真调用，录完即回放）。
-// 不进 `src`（不参与覆盖率），也不许被测试 import —— 用 `pnpm dlx tsx` 手工跑。
-// `pnpm verify` 永不执行它；模型换代或 prompt 改动导致 fixture 失真时手工重录（见 `fixtures/llm/README.md`）。
-// 用法：OPENCODE_API_KEY=… pnpm dlx tsx packages/cli/scripts/record-llm-fixture.ts fixtures/extract/*.md --out fixtures/llm/ok.json
+// One-shot recorder: hits the real model once and stores the **full response body** under `fixtures/llm/` (budget <= 10 real calls; replay afterwards).
+// Not under `src` (excluded from coverage) and tests must not import it — run it by hand with `pnpm dlx tsx`.
+// `pnpm verify` never runs it; re-record by hand when a model bump or prompt change makes the fixture stale (see `fixtures/llm/README.md`).
+// Usage: OPENCODE_API_KEY=… pnpm dlx tsx packages/cli/scripts/record-llm-fixture.ts fixtures/extract/*.md --out fixtures/llm/ok.json
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
@@ -32,7 +32,7 @@ if (out === undefined || files.length === 0 || apiKey === undefined) {
   process.stderr.write(`${USAGE}\n`);
   process.exitCode = 1;
 } else {
-  // 原样存盘：fixture 要能证明"真模型的原始响应"能被吃下，包括它的赘余与格式瑕疵。
+  // Stored verbatim: the fixture must prove the raw response of a real model is consumed, including its redundancy and format quirks.
   const recordingFetch: typeof globalThis.fetch = async (input, init) => {
     const response = await fetch(input, init);
     const text = await response.text();

@@ -1,34 +1,35 @@
-// 这层管：LLM 配置的取值口径（env → 值 + 默认值集中在文件头）；不读 `process.env`、不发请求。
+// This layer: how LLM config values resolve (env -> value + defaults collected at the top); never reads `process.env`, never sends requests.
 
 import { HrError } from "@hreader/core";
 
-/** OpenCode Zen 的兼容网关：默认值；`--base-url` / `HR_LLM_BASE_URL` 可指向自建或代理。 */
+/** OpenCode Zen's compatible gateway: the default; `--base-url` / `HR_LLM_BASE_URL` can point at self-hosted or a proxy. */
 const DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1";
 
 const DEFAULT_MODEL = "deepseek-v4.1-flash";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-/** 空白值等于没给：`KEY=""` 是常见的 shell 事故，不能当"有 key"用（降级会因此失效）。 */
+/** A blank value counts as unset: `KEY=""` is a common shell accident and must not count as "has key" (degradation would silently break). */
 const valueOf = (env: Env, key: string): string | undefined => {
   const text = env[key]?.trim();
   return text === undefined || text === "" ? undefined : text;
 };
 
-/** 会话头是 OpenCode Zen 的路由键；没指定就每次调用生成一个 UUID（无状态，跨进程不复用）。 */
+/** The session header is OpenCode Zen's routing key; unspecified, each call generates a fresh UUID (stateless, not reused across processes). */
 export const sessionIdOf = (env: Env): string =>
   valueOf(env, "HR_LLM_SESSION") ?? crypto.randomUUID();
 
 export const apiKeyOf = (env: Env): string | undefined => valueOf(env, "OPENCODE_API_KEY");
 
 /**
- * 请求 URL 由 `${baseUrl}/chat/completions` 拼出：尾部斜杠要去掉（`v1/` 会拼成 `v1//chat`），
- * 空值与非 http(s) 绝对地址要拒（否则 `fetch` 抛 TypeError，被误分类成 llm_failure）。
- * env 与 `--base-url` 共用这一处，免得两套裁剪规则。
+ * The request URL is built as `${baseUrl}/chat/completions`: trailing slashes are stripped (`v1/` would build
+ * `v1//chat`), and empty or non-http(s) absolute URLs are refused (otherwise `fetch` throws TypeError,
+ * misclassified as llm_failure).
+ * env and `--base-url` share this one place so there is only one set of trimming rules.
  */
 export const normalizeBaseUrl = (text: string): string => {
   const trimmed = text.trim().replace(/\/+$/u, "");
-  // 非绝对 http(s) 地址会让 `fetch` 抛 TypeError，最后被包成 llm_failure + "重跑一次"的误导文案。
+  // A non-absolute http(s) URL makes `fetch` throw TypeError, ending up wrapped as llm_failure plus misleading "just retry" text.
   const parsed = URL.canParse(trimmed) ? new URL(trimmed) : undefined;
   if (parsed === undefined || (parsed.protocol !== "http:" && parsed.protocol !== "https:")) {
     throw new HrError("invalid_input", `base url 必须是 http(s) 绝对地址：${text}`);

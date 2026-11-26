@@ -1,4 +1,4 @@
-// 这层管：`hr pdf` 的大纲语义（默认开 / 报告值 / 互斥）；渲染层用假 render 注入，不起 Chrome。
+// This layer covers `hr pdf` outline semantics (default on / reported value / exclusivity); the render layer is a fake injected render, no Chrome.
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -16,7 +16,7 @@ import {
 } from "./helpers/pdf-fixtures";
 import { fieldOf, withTempDir } from "./harness";
 
-/** 打印稿里的 heading 数（4）与产物书签数刻意不等：报告值只许来自产物。 */
+/** The printout's heading count (4) and the artifact's bookmark count deliberately differ: the reported value may only come from the artifact. */
 const HEADINGS =
   "<html><body><article><h1>一</h1><p>x</p><h2>二</h2><h5>五</h5>" +
   "<h6>六</h6></article></body></html>";
@@ -55,10 +55,10 @@ const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
     if (error instanceof HrError) return error;
     throw error;
   }
-  throw new Error("预期抛出 HrError");
+  throw new Error("expected an HrError to be thrown");
 };
 
-/** `--json` 的 `data` 里取一个键：键集本身由 `pdf-command.test.ts` 钉死。 */
+/** Read one key out of `--json`'s `data`: the key set itself is pinned by `pdf-command.test.ts`. */
 const fieldOfDataOf = (text: string): ((key: string) => unknown) => {
   const data = fieldOf(JSON.parse(text), "data");
   return (key) => fieldOf(data, key);
@@ -80,14 +80,14 @@ const outlineOf = async (html: string, overrides: Overrides = {}): Promise<unkno
   return seen;
 };
 
-describe("pdfCommand · outline 报告值", () => {
-  it("outline = 产物里的大纲条目数（不是打印稿的 heading 数）", async () => {
+describe("pdfCommand · reported outline value", () => {
+  it("should report outline as the artifact's outline entry count (not the printout's heading count)", async () => {
     const render = (): Promise<{ bytes: Uint8Array }> =>
       Promise.resolve({ bytes: pdfWithBookmarksOf(3) });
     expect(await outlineOf(HEADINGS, { render })).toBe(3);
   });
 
-  it('产物没有 /Outlines 时：outline 是数字 0（不省键，不是 null / "0"）', async () => {
+  it('should report outline as the number 0 (key kept, not null / "0") when the artifact has no /Outlines', async () => {
     expect(
       await outlineOf(HEADINGS, {
         render: () => Promise.resolve({ bytes: pdfWithBookmarksOf(0) }),
@@ -95,10 +95,10 @@ describe("pdfCommand · outline 报告值", () => {
     ).toStrictEqual(0);
   });
 
-  it("产物大纲结构自相矛盾：render_empty，且不落盘", () =>
+  it("should report render_empty and write nothing when the artifact's outline structure contradicts itself", () =>
     withDocOf(HEADINGS, async (dir) => {
       const out = join(dir, "out.pdf");
-      // `/Count 3` 但只有 2 条：走的是 `bookmarkCountOf` 的交叉核对，不是命令层的任何判断。
+      // `/Count 3` but really 2 entries: the `bookmarkCountOf` cross-check does the catching, not anything in the command layer.
       const bytes = bytesOf(withOutlinesOf(pagesOf(1)) + OUTLINE_COUNT_LIE);
       const error = await failureOf(
         pdfCommand(inputOf(dir, { out, render: () => Promise.resolve({ bytes }) })),
@@ -108,7 +108,7 @@ describe("pdfCommand · outline 报告值", () => {
     }));
 });
 
-describe("pdfCommand · 大纲开关进到渲染层", () => {
+describe("pdfCommand · the outline switch reaches the render layer", () => {
   const seenOf = async (outline: boolean): Promise<boolean[]> => {
     const seen: boolean[] = [];
     await withDocOf(HEADINGS, async (dir) => {
@@ -125,16 +125,16 @@ describe("pdfCommand · 大纲开关进到渲染层", () => {
     return seen;
   };
 
-  it("默认开：渲染层拿到的就是 outline: true", async () => {
+  it("should pass outline: true to the render layer by default", async () => {
     expect(await seenOf(true)).toEqual([true]);
   });
 
-  it("--no-outline：渲染层收到 false，且报告 outline 为 0", async () => {
+  it("should pass false to the render layer and report outline 0 with --no-outline", async () => {
     expect(await seenOf(false)).toEqual([false]);
     expect(await outlineOf(HEADINGS, { outline: false })).toStrictEqual(0);
   });
 
-  it("--no-outline --force：能覆盖已有文件，且报告 outline 仍为 0", async () => {
+  it("should overwrite an existing file and still report outline 0 with --no-outline --force", async () => {
     await withDocOf(HEADINGS, async (dir) => {
       const out = join(dir, "out.pdf");
       writeFileSync(out, "old");
@@ -145,33 +145,34 @@ describe("pdfCommand · 大纲开关进到渲染层", () => {
   });
 });
 
-describe("pdfCommand · 旗标互斥", () => {
-  it("--outline 与 --no-outline 同传报 invalid_input，渲染没被调、也没落盘", () =>
+describe("pdfCommand · flag exclusivity", () => {
+  it("should report invalid_input for --outline with --no-outline, without rendering or writing", () =>
     withDocOf(HEADINGS, async (dir) => {
       const out = join(dir, "out.pdf");
       const error = await failureOf(
         pdfCommand(
           inputOf(dir, {
             outlineConflict: true,
-            // 真去渲染会以这个错误收场：把互斥校验挪到渲染之后，这条就会变着红。
-            render: () => Promise.reject(new Error("--outline 与 --no-outline 不能同时使用")),
+            // Really rendering would end in this error: move the exclusivity check after rendering and this line goes red differently.
+            render: () =>
+              Promise.reject(new Error("--outline and --no-outline cannot be used together")),
           }),
         ),
       );
-      // 只钉错误码（exit 1 由「码 → 码表」一层决定），不钉人话文案。
+      // Only the error code is pinned (exit 1 is decided by the "code → table" layer), not the human copy.
       expect(error.code).toBe("invalid_input");
       expect(existsSync(out)).toBe(false);
     }));
 });
 
-describe("pdfCommand · 报告值只来自产物", () => {
-  it("`PLAIN` 文档配上带书签的产物：报的仍是产物数（打印稿不参与）", async () => {
+describe("pdfCommand · reported values only come from the artifact", () => {
+  it("should still report the artifact count for a `PLAIN` doc paired with a bookmarked artifact (the printout plays no part)", async () => {
     expect(await outlineOf(PLAIN)).toBe(2);
   });
 });
 
-describe("pdfCommand · 人读行", () => {
-  it("人读行是 `<path> (N 页, M 条书签)`，M 与 `--json.outline` 同值", () =>
+describe("pdfCommand · human line", () => {
+  it("should print `<path> (N 页, M 条书签)` where M equals `--json.outline`", () =>
     withDocOf(HEADINGS, async (dir) => {
       const out = join(dir, "out.pdf");
       const human = await pdfCommand(inputOf(dir, { out, force: true }));
@@ -180,7 +181,7 @@ describe("pdfCommand · 人读行", () => {
       expect(fieldOfDataOf(json)("outline")).toBe(2);
     }));
 
-  it("--no-outline 的人读行仍然印 `0 条书签`（M 不省）", () =>
+  it("should still print `0 条书签` in the human line with --no-outline (M is not omitted)", () =>
     withDocOf(HEADINGS, async (dir) => {
       const out = join(dir, "out.pdf");
       expect(await pdfCommand(inputOf(dir, { out, outline: false }))).toBe(

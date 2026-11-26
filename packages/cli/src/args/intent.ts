@@ -1,4 +1,4 @@
-// 这层管：argv 解析的公共类型与共享校验辅助函数；不含具体命令。
+// This layer: shared types and validation helpers for argv parsing; no concrete commands.
 
 import { resolve } from "node:path";
 import type { DocKind, PatchAction } from "@hreader/core";
@@ -11,7 +11,7 @@ export type HtmlSource =
   | { readonly kind: "file"; readonly path: string }
   | { readonly kind: "stdin" };
 
-/** `--strict` 的失败门槛：`error` = 有 error 级诊断才失败（裸 `--strict` 的默认）；`warning` = 任何诊断都失败。 */
+/** `--strict` failure threshold: `error` = fail only on error-level diagnostics (default for a bare `--strict`); `warning` = fail on any diagnostic. */
 export type StrictLevel = "error" | "warning";
 
 export type StyleMode =
@@ -30,7 +30,7 @@ export type Intent =
   | ({
       readonly kind: "normalize";
       readonly path: string;
-      /** 缺省 `false`：不写盘，只把规范化结果交给调用方。 */
+      /** Default `false`: do not write; just hand the normalized result to the caller. */
       readonly write: boolean;
     } & Common)
   | ({
@@ -50,22 +50,22 @@ export type Intent =
       readonly kind: "style";
       readonly path: string;
       readonly mode: StyleMode;
-      /** 只有 `--lint` 模式会带；其它模式给 `--strict` 在意图层就拦下。 */
+      /** Only `--lint` mode carries this; `--strict` in other modes is rejected at the intent layer. */
       readonly strict: StrictLevel | undefined;
     } & Common)
   | ({
       readonly kind: "styleExtract";
-      /** 语料文件（绝对路径）；顺序即 argv 顺序，统计层对顺序不敏感但报告里要能复现。 */
+      /** Corpus files (absolute paths); order follows argv order — the stats layer is order-insensitive but the report must reproduce it. */
       readonly files: readonly string[];
       readonly id: string;
       readonly name: string;
-      /** 是否由文件名 slug 兜底：`run.ts` 据此在 stderr 说明"用了默认值"。 */
+      /** Whether the id fell back to a filename slug: `run.ts` uses this to note "default used" on stderr. */
       readonly idGiven: boolean;
       readonly nameGiven: boolean;
       readonly out: string | undefined;
       readonly inheritsVisual: string;
       readonly noLlm: boolean;
-      /** `--model` / `--base-url`：显式覆盖 env 的默认值；`undefined` = 没给，交给 `llm/session`。 */
+      /** `--model` / `--base-url`: explicit overrides of the env defaults; `undefined` = not given, left to `llm/session`. */
       readonly model: string | undefined;
       readonly baseUrl: string | undefined;
       readonly force: boolean;
@@ -74,41 +74,41 @@ export type Intent =
       readonly kind: "export";
       readonly path: string;
       readonly visual: string;
-      /** 打印稿落盘位置（绝对路径）；`undefined` = 打 stdout。 */
+      /** Where the print sheet lands (absolute path); `undefined` = print to stdout. */
       readonly out: string | undefined;
-      /** `--out` 已存在时是否覆盖（缺省 `file_exists`）。 */
+      /** Whether to overwrite an existing `--out` (default refuses with `file_exists`). */
       readonly force: boolean;
     } & Common)
   | ({
       readonly kind: "pdf";
       readonly path: string;
-      /** 原样保留：合法性在命令层判（非法值是 `invalid_input` exit 1，不是用法错误 exit 2）。 */
+      /** Kept verbatim: validity is judged at the command layer (illegal value is `invalid_input` exit 1, not usage error exit 2). */
       readonly pageSize: string;
       readonly timeoutMs: number;
-      /** 大纲默认开（`--outline` 缺省即开），`--no-outline` 置 false。 */
+      /** Outline defaults on (bare `--outline` means on); `--no-outline` sets false. */
       readonly outline: boolean;
-      /** 两个大纲旗标同传：用法层只分得清"给没给"，互斥是语义错误（命令层报 `invalid_input`）。 */
+      /** Both outline flags given: the usage layer can only tell "was it given"; exclusivity is a semantic error (the command layer reports `invalid_input`). */
       readonly outlineConflict: boolean;
-      /** `undefined` = 用文档已嵌入的 `#hr-theme`；文档没有主题时命令层回落默认主题。 */
+      /** `undefined` = use the document's embedded `#hr-theme`; the command layer falls back to the default theme when the document has none. */
       readonly visual: string | undefined;
-      /** `--out` 必填（写文件是这条命令的唯一产物）。 */
+      /** `--out` required (the written file is this command's only product). */
       readonly out: string;
       readonly force: boolean;
     } & Common)
   | ({
       readonly kind: "png";
       readonly path: string;
-      /** 三处尺寸都是原样字符串：合法性在命令层判（`invalid_input` exit 1）。 */
+      /** All three sizes stay verbatim strings: validity is judged at the command layer (`invalid_input` exit 1). */
       readonly width: string;
       readonly scale: string;
-      /** CSS 像素上限：超出先裁（不缩），并在结果里置 `clipped`。 */
+      /** CSS-pixel cap: overflow is clipped (not scaled) and `clipped` is set in the result. */
       readonly maxHeight: string;
-      /** 用户是否显式传了 `--max-height`：没传就不拿默认值做最坏面积预检。 */
+      /** Whether the user explicitly passed `--max-height`: without it the default must not feed the worst-case area preflight. */
       readonly maxHeightExplicit: boolean;
-      /** 命中的大纲旗标原文（`--outline`/`--no-outline`）：PNG 没有大纲，命令层据此报 `invalid_input`。 */
+      /** The outline flag as given (`--outline`/`--no-outline`): PNG has no outline, so the command layer reports `invalid_input` from this. */
       readonly outlineFlag: string | undefined;
       readonly timeoutMs: number;
-      /** `undefined` = 用文档已嵌入的 `#hr-theme`；文档没有主题时命令层回落默认主题。 */
+      /** `undefined` = use the document's embedded `#hr-theme`; the command layer falls back to the default theme when the document has none. */
       readonly visual: string | undefined;
       readonly out: string;
       readonly force: boolean;
@@ -117,7 +117,7 @@ export type Intent =
   | ({
       readonly kind: "check";
       readonly path: string;
-      /** 未给 `--strict` 时保持既有的「发现问题也退出 0」。 */
+      /** Without `--strict`, keep the existing "exit 0 even with findings" behavior. */
       readonly strict: StrictLevel | undefined;
     } & Common)
   | ({
@@ -126,17 +126,17 @@ export type Intent =
       readonly docKind: DocKind;
       readonly title: string;
       readonly visual: string;
-      /** `<file>` 已存在时是否覆盖（缺省 `file_exists`）。 */
+      /** Whether to overwrite an existing `<file>` (default refuses with `file_exists`). */
       readonly force: boolean;
     } & Common)
   | ({
       readonly kind: "import";
-      /** 外来 HTML 源文件（绝对路径）。 */
+      /** Foreign HTML source file (absolute path). */
       readonly path: string;
-      /** 未给 `--kind` 时保持 `undefined`：默认形态归 core 兜底，这里不发明默认值。 */
+      /** Stays `undefined` without `--kind`: the default shape is core's call; this layer invents no default. */
       readonly docKind: DocKind | undefined;
       readonly title: string | undefined;
-      /** 落盘位置（绝对路径）：未给 `--out` 时意图层已换成 `<name>.hr.html`。 */
+      /** Destination (absolute path): the intent layer already substituted `<name>.hr.html` when `--out` was not given. */
       readonly out: string;
       readonly force: boolean;
     } & Common)
@@ -145,13 +145,13 @@ export type Intent =
       readonly path: string;
       readonly port: number;
       readonly allowHosts: readonly string[] | undefined;
-      /** 显式 `--app-dir` 的绝对路径；未给就是 `undefined`（由 core 兜底）。 */
+      /** Absolute path of an explicit `--app-dir`; `undefined` when not given (core provides the fallback). */
       readonly appDir: string | undefined;
-      /** 用户是否显式给了 `--app-dir`：`run.ts` 据此决定"目录不存在就 exit 2"。 */
+      /** Whether the user explicitly gave `--app-dir`: `run.ts` uses this to decide "missing directory -> exit 2". */
       readonly appDirGiven: boolean;
-      /** `--home` 的绝对路径；`undefined` = 走 `homedir()`（默认行为不变）。 */
+      /** Absolute path of `--home`; `undefined` = use `homedir()` (default behavior unchanged). */
       readonly home: string | undefined;
-      /** `--exit-with-parent`：父进程（壳）消失就退出；默认 false，用户自己起的 daemon 行为不变。 */
+      /** `--exit-with-parent`: exit when the parent (shell) disappears; default false so a user-started daemon is unaffected. */
       readonly exitWithParent: boolean;
     } & Common);
 
@@ -184,12 +184,12 @@ export const commonOf = (raw: Raw, cwd: string): Common => ({
   workspace: resolve(cwd, raw.values.get("--workspace") ?? cwd),
 });
 
-/** 路径一律先按 cwd 解成绝对路径；写命令到 workspace 的相对换算在 `run.ts`（那里能取真实路径）。 */
+/** Paths are always resolved to absolute against cwd first; converting write targets to workspace-relative happens in `run.ts` (which can realpath). */
 export const absoluteOf = (file: string, cwd: string): string => resolve(cwd, file);
 
 /**
- * `--strict` 的两态归一：裸旗标（switches）是 `error`，`=error|warning`（values）按值；
- * 其它取值回 `"invalid"`，由调用方套「未知的 --X」文案报用法错误。
+ * Two-way `--strict` normalization: a bare flag (switches) is `error`, `=error|warning` (values) maps by value;
+ * anything else returns `"invalid"`, and the caller turns it into the "unknown --X" usage error.
  */
 export const strictOf = (raw: Raw): StrictLevel | undefined | "invalid" => {
   const given = raw.values.get("--strict");
@@ -199,7 +199,7 @@ export const strictOf = (raw: Raw): StrictLevel | undefined | "invalid" => {
   return raw.switches.has("--strict") ? "error" : undefined;
 };
 
-/** 解析闭区间整数参数；未传返回 `undefined`，非法或越界返回 `"invalid"`。 */
+/** Parses a closed-range integer option; returns `undefined` when absent and `"invalid"` when malformed or out of range. */
 export const intInRange = (
   raw: Raw,
   flag: string,

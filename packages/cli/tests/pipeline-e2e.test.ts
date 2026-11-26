@@ -1,4 +1,4 @@
-// 这层管：端到端链路（一份真实文档跑完 outline/read/patch/style/lint/visual）；不 mock。
+// This layer covers the end-to-end chain (a real document through outline/read/patch/style/lint/visual); no mocks.
 
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
@@ -101,7 +101,7 @@ const initialDoc = (): string =>
     "</article></body></html>",
   ].join("\n");
 
-describe("端到端 · 断链即红", () => {
+describe("end-to-end · a broken link goes red", () => {
   it("should run the whole chain on one real document", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -114,7 +114,7 @@ describe("端到端 · 断链即红", () => {
       await readAndLintSteps(dir);
       await patchStep(dir);
 
-      // 整条链的终态：字节变了、可解析、幂等序列化
+      // The chain's end state: bytes changed, still parseable, serialization idempotent
       const after = readFileSync(doc, "utf8");
       expect(sha(readFileSync(doc))).not.toBe(before);
       expect(stable(stable(after))).toBe(stable(after));

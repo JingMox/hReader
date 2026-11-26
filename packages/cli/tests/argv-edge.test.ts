@@ -1,11 +1,11 @@
-// 这层管：argv 词法的对抗面——重复旗标、`=值` 与空格取值、`--` 终止、
-// 短选项、布尔带值、以 `-` 开头的文件名、unicode 路径。全部钉纯函数契约，不起子进程。
+// This layer covers the adversarial side of argv lexing — repeated flags, `=value` vs spaced values, `--`
+// termination, short options, booleans with values, filenames starting with `-`, unicode paths. All pin pure-function contracts, no subprocess.
 
 import { describe, expect, it } from "vitest";
 
 import { CWD, expectFailure, parse } from "./args-helpers";
 
-describe("argv · 重复旗标（后值赢）", () => {
+describe("argv · repeated flags (later value wins)", () => {
   it("should let the last occurrence win for string flags", () => {
     expect(parse(["import", "a.html", "--kind", "report", "--kind", "brief"])).toMatchObject({
       ok: true,
@@ -24,7 +24,7 @@ describe("argv · 重复旗标（后值赢）", () => {
   });
 });
 
-describe("argv · `--flag=value` 与 `--flag value` 同义", () => {
+describe("argv · `--flag=value` and `--flag value` are synonymous", () => {
   it("should treat the inline form identically", () => {
     expect(parse(["import", "a.html", "--kind=slides"])).toMatchObject({
       ok: true,
@@ -37,7 +37,7 @@ describe("argv · `--flag=value` 与 `--flag value` 同义", () => {
   });
 });
 
-describe("argv · 布尔旗标带值即用法错误", () => {
+describe("argv · a boolean flag with a value is a usage error", () => {
   it.each([
     ["--force=true", "参数 --force 不接受取值"],
     ["--json=1", "参数 --json 不接受取值"],
@@ -84,7 +84,7 @@ describe("argv · 布尔旗标带值即用法错误", () => {
   });
 });
 
-describe("argv · `--` 终止与短选项", () => {
+describe("argv · `--` termination and short options", () => {
   it("should let a dash-leading filename through after --", () => {
     expect(parse(["outline", "--", "-weird.html"])).toEqual({
       ok: true,
@@ -106,8 +106,8 @@ describe("argv · `--` 终止与短选项", () => {
   });
 
   it("should eat a flag-looking token as a string flag's value (documented quirk)", () => {
-    // strict:false 的词法行为：string 旗标把下一个 token 当值吃掉——`--kind --force`
-    // 不是"缺取值"，而是"--kind 的值是 --force"，再被枚举校验打回。
+    // strict:false lexical behavior: a string flag swallows the next token as its value — `--kind --force`
+    // is not "missing value" but "--kind's value is --force", which enum validation then rejects.
     expectFailure(
       ["import", "a.html", "--kind", "--force"],
       "未知的 --kind：--force（可选：note | report | minutes | brief | slides）",
@@ -116,7 +116,7 @@ describe("argv · `--` 终止与短选项", () => {
   });
 });
 
-describe("argv · 边界取值", () => {
+describe("argv · boundary values", () => {
   it("should resolve an empty --workspace to cwd (quirk, pinned)", () => {
     expect(parse(["outline", "a.html", "--workspace="])).toMatchObject({
       ok: true,

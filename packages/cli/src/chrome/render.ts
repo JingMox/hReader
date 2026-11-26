@@ -1,5 +1,5 @@
-// 这层管：页面级渲染序列（开页 → 导航 → 出 PDF / 量高 → 裁长图）与纸张/余白/截图像素口径；
-// 传输与进程都不认识，`PageLike`/`BrowserLike` 由 `browser.ts` 适配 puppeteer 提供。
+// This layer: page-level render sequences (open page -> navigate -> emit PDF / measure height -> clip tall image) and the page/margin/screenshot-pixel conventions;
+// it knows neither transport nor process; `PageLike`/`BrowserLike` come from `browser.ts`'s puppeteer adapter.
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,24 +15,24 @@ import { PAGE_SIZES, type LongImage, type PdfPageSize, type PngViewport } from "
 const MM = "mm";
 
 /**
- * 纸张与余白都带单位交给 puppeteer 换算（裸数字会被当成 px 而不是英寸）。
- * `generateDocumentOutline` 由调用方显式给（无默认值）：忘了传就编译不过，不靠"缺省 true"。
+ * Page size and margins carry units for puppeteer to convert (bare numbers would read as px, not inches).
+ * `generateDocumentOutline` is supplied explicitly by the caller (no default): forgetting it fails to compile rather than leaning on "default true".
  */
 export const printParamsOf = (pageSize: PdfPageSize, outline: boolean): PdfPrintOptions => ({
   printBackground: true,
-  // print-css.ts 的 `@page{size:A4}` 是硬编码的：`true` 会让 CSS 永远赢，`--page-size` 直接失效。
+  // print-css.ts hardcodes `@page{size:A4}`: `true` would let CSS always win and `--page-size` would stop working.
   preferCSSPageSize: false,
   width: `${String(PAGE_SIZES[pageSize].widthPt)}pt`,
   height: `${String(PAGE_SIZES[pageSize].heightPt)}pt`,
-  // 关掉 CSS 纸张后 0.4in 默认余白会压过 `@page{margin:20mm 18mm}`，必须显式给。
+  // With CSS page size off, the 0.4in default margins would override `@page{margin:20mm 18mm}`, so they must be given explicitly.
   margin: { top: `20${MM}`, bottom: `20${MM}`, left: `18${MM}`, right: `18${MM}` },
-  // 有 heading 才产出：`true` 且文档没有 h1–h6 时，Chrome 不写 `/Outlines` 也不报错。
+  // Headings are required for output: with `true` and no h1-h6 in the document, Chrome writes no `/Outlines` and reports no error.
   outline,
 });
 
 /**
- * slides 打印稿的报文：页框交给产物里的 `@page`（13.333in × 7.5in 由骨架写死）。
- * 宽高/余白仍按 puppeteer 的形状给全——产物 `@page` 缺失时 16:9 兜底也成立。
+ * Message for slides print sheets: the page box is delegated to the product's `@page` (13.333in x 7.5in, hardwired by the skeleton).
+ * Width/height/margins are still fully populated per puppeteer's shape — the 16:9 fallback holds if the product `@page` is missing.
  */
 export const cssPageParamsOf = (outline: boolean): PdfPrintOptions => ({
   printBackground: true,
@@ -43,12 +43,12 @@ export const cssPageParamsOf = (outline: boolean): PdfPrintOptions => ({
   outline,
 });
 
-/** 两条渲染命令共用的开场：newPage → 写临时 HTML → navigate 等 load。 */
+/** Shared opening for both render commands: newPage -> write temp HTML -> navigate and wait for load. */
 const openPageOf = async (browser: BrowserLike, html: string, dir: string): Promise<PageLike> => {
   const page = await browser.newPage();
   const htmlPath = join(dir, "input.html");
   writeFileSync(htmlPath, html);
-  // `pathToFileURL` 而不是手拼 `file://`：路径里有空格/中文/`#` 时手拼会被当成 host 或 fragment。
+  // `pathToFileURL` rather than hand-built `file://`: spaces, non-ASCII names, or `#` in a hand-built path get parsed as host or fragment.
   await page.goto(pathToFileURL(htmlPath).href);
   return page;
 };
@@ -59,7 +59,7 @@ interface PdfRenderInput {
   readonly dir: string;
   readonly pageSize: PdfPageSize;
   readonly outline: boolean;
-  /** `true` = 产物自带 `@page` 纸张（slides 打印稿），Chrome 听 CSS 而不是 `pageSize`。 */
+  /** `true` = the product carries its own `@page` size (slides print sheet); Chrome obeys CSS rather than `pageSize`. */
   readonly preferCSSPageSize: boolean;
 }
 
@@ -71,13 +71,13 @@ export const renderPdfOnBrowserOf = async (input: PdfRenderInput): Promise<Uint8
   return page.pdf(params);
 };
 
-/** 量高用的临时视口高：给一个远大于首屏的值，先让宽度落定，再量整页高。 */
+/** Temporary viewport height for measuring: a value far above the fold lets width settle first, then the full height is measured. */
 const MEASURE_HEIGHT = 1000;
 
-/** 短文档的复量视口高：`cssContentSize` 只有一屏高时会把几百像素的文档量成视口高，换小视口再量一次。 */
+/** Re-measure viewport height for short documents: when `cssContentSize` is capped at one screen, a few-hundred-pixel document reads as viewport height, so measure again with a smaller viewport. */
 const SHORT_MEASURE_HEIGHT = 100;
 
-/** `cssContentSize` 才是整页高度：`layoutViewport` 只有视口那一屏，长图会截断在首屏。 */
+/** `cssContentSize` is the true full-page height: `layoutViewport` is only the visible screen and would clip tall images to the fold. */
 const contentHeightOf = (metrics: unknown): number => {
   const size =
     typeof metrics === "object" && metrics !== null && "cssContentSize" in metrics
@@ -101,8 +101,9 @@ const measureHeightOf = async (
 };
 
 /**
- * 量整页高：先用 `MEASURE_HEIGHT` 落定宽度。文档比一屏矮时 `cssContentSize` 会跟着视口缩成 1000，
- * 所以结果不大于 `MEASURE_HEIGHT` 时再用 `SHORT_MEASURE_HEIGHT` 落一次视口复量，拿回真实内容高。
+ * Measure full-page height: settle width first with `MEASURE_HEIGHT`. When the document is shorter than one
+ * screen, `cssContentSize` shrinks with the viewport to 1000, so a result no larger than `MEASURE_HEIGHT` is
+ * re-measured at `SHORT_MEASURE_HEIGHT` to recover the real content height.
  */
 const contentHeightAtOf = async (page: PageLike, viewport: PngViewport): Promise<number> => {
   const first = await measureHeightOf(page, viewport, MEASURE_HEIGHT);
@@ -116,11 +117,11 @@ const shotParamsOf = (viewport: PngViewport, clipHeight: number): PngShotOptions
 });
 
 const capturePngOf = async (page: PageLike, viewport: PngViewport): Promise<LongImage> => {
-  // 先把宽度落定再量高：否则 `getLayoutMetrics` 读到的是上一轮视口的布局，`--width` 很窄时
-  // 报出来的高度会比真实内容矮一截。
+  // Settle width before measuring height: otherwise `getLayoutMetrics` reads the previous viewport's layout and, with a very narrow `--width`,
+  // the reported height comes out shorter than the real content.
   const cssHeight = await contentHeightAtOf(page, viewport);
   const clipHeight = Math.min(cssHeight, viewport.maxHeight);
-  // 真实内容高此时才知道：单边/总像素闸放在截图前，越界是 `invalid_input` 而不是 Chrome 崩。
+  // The real content height is only known now: edge/total pixel gates run before the screenshot so overflow is `invalid_input`, not a Chrome crash.
   assertPixelFrameOf({
     deviceWidth: viewport.width * viewport.scale,
     deviceHeight: clipHeight * viewport.scale,
@@ -131,7 +132,7 @@ const capturePngOf = async (page: PageLike, viewport: PngViewport): Promise<Long
     deviceScaleFactor: viewport.scale,
   });
   const bytes = await page.screenshot(shotParamsOf(viewport, clipHeight));
-  // 宽高一律反读 IHDR：Chrome 的返回值与自算的 `width × scale` 都可能偏差一像素，报告值必须与盘上字节一致。
+  // Width/height are always read back from IHDR: Chrome's return and the computed `width x scale` can both be off by a pixel, and the reported values must match the bytes on disk.
   const size = pngSizeOf(bytes);
   assertShotWidthOf({ viewport, deviceWidth: size.width });
   assertShotHeightOf({ viewport, clipHeight, deviceHeight: size.height });

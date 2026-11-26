@@ -1,10 +1,10 @@
-// 这层管：`parseArgs` 的 normalize 子表（argv → normalize Intent / 用法错误）；不跑子进程、不碰 fs。
+// This layer covers the normalize sub-table of `parseArgs` (argv → normalize Intent / usage errors); no subprocess, no fs.
 
 import { describe, expect, it } from "vitest";
 
 import { expectFailure, parse } from "./args-helpers";
 
-describe("parseArgs · normalize（只补 id）", () => {
+describe("parseArgs · normalize (id injection only)", () => {
   it("should parse the file plus --write into a normalize intent", () => {
     expect(parse(["normalize", "a.html", "--write", "--workspace", "w"])).toEqual({
       ok: true,
@@ -18,7 +18,7 @@ describe("parseArgs · normalize（只补 id）", () => {
     });
   });
 
-  it("should default --write to false (不给就只打 stdout，一个字节都不落盘)", () => {
+  it("should default --write to false (print to stdout only, not a single byte on disk)", () => {
     expect(parse(["normalize", "a.html"])).toMatchObject({ ok: true, intent: { write: false } });
   });
 
@@ -38,7 +38,7 @@ describe("parseArgs · normalize（只补 id）", () => {
     const parsed = parse(["normalize", "a.html", "--out", "x.html"]);
 
     expect(parsed).toMatchObject({ ok: false, topic: "normalize" });
-    // 报文必须点名那个多余的旗标：只说“参数不对”会让用户挨个试。
+    // The message must name the extra flag: just saying "wrong arguments" would make the user try them one by one.
     expect(String(Reflect.get(Object(parsed), "message"))).toContain("--out");
   });
 });

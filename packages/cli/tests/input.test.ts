@@ -1,4 +1,4 @@
-// 这层管：`input.ts` 的字节→文本（严格 UTF-8、BOM 保留）与片段来源；不跑子进程。
+// This layer covers `input.ts` bytes→text (strict UTF-8, BOM preserved) and fragment sources; no subprocess.
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

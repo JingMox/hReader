@@ -1,4 +1,4 @@
-// 这层管：`chromeDepsOf` 的真实现（真 spawn / 真进程组 kill）；一个真 Chrome 都不起。
+// This layer covers the real `chromeDepsOf` (real spawn / real process-group kill); not one real Chrome starts.
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +22,7 @@ const waitForOf = async (check: () => boolean): Promise<void> => {
     if (check()) return;
     await sleepOf(10);
   }
-  throw new Error("等待条件超时");
+  throw new Error("timed out waiting for condition");
 };
 
 const waitForErrorOf = (child: ChromeProcess): Promise<Error> =>
@@ -37,8 +37,8 @@ const waitForExitOf = (child: ChromeProcess): Promise<void> =>
     });
   });
 
-describe("chromeDepsOf · 文件系统与环境", () => {
-  it("env/exists/tempDir/remove 都直通真实文件系统", () => {
+describe("chromeDepsOf · filesystem and environment", () => {
+  it("should pass env/exists/tempDir/remove straight through to the real filesystem", () => {
     const deps = chromeDepsOf({ HREADER_CHROME: "/x" });
     expect(deps.env["HREADER_CHROME"]).toBe("/x");
     expect(deps.killGraceMs).toBe(2000);
@@ -51,8 +51,8 @@ describe("chromeDepsOf · 文件系统与环境", () => {
   });
 });
 
-describe("chromeDepsOf · spawn 与 stderr", () => {
-  it("spawn 出的进程能收到 stderr 与退出码", async () => {
+describe("chromeDepsOf · spawn and stderr", () => {
+  it("should receive stderr and an exit code from the spawned process", async () => {
     const deps = chromeDepsOf({});
     const child = deps.spawn(process.execPath, ["-e", "process.stderr.write('boot-ok')"], {
       detached: true,
@@ -68,7 +68,7 @@ describe("chromeDepsOf · spawn 与 stderr", () => {
     child.killGroup("SIGKILL");
   });
 
-  it("stdio 不给 stderr 管道时 onStderr 什么都不做", async () => {
+  it("should do nothing in onStderr when stdio gives no stderr pipe", async () => {
     const child = chromeProcessOf(
       spawn(process.execPath, ["-e", ""], { stdio: ["ignore", "ignore", "ignore"] }),
     );
@@ -80,7 +80,7 @@ describe("chromeDepsOf · spawn 与 stderr", () => {
 });
 
 describe("chromeDepsOf · killGroup", () => {
-  it("二进制不存在时 onError 报 ENOENT，pid 为空时 killGroup 是空操作", async () => {
+  it("should report ENOENT via onError when the binary is missing and make killGroup a no-op when pid is empty", async () => {
     const deps = chromeDepsOf({});
     const child = deps.spawn("/nonexistent/hr-chrome", [], {
       detached: true,
@@ -94,7 +94,7 @@ describe("chromeDepsOf · killGroup", () => {
     }).not.toThrow();
   });
 
-  it("killGroup 杀得到真进程组，对已退出的组不抛", async () => {
+  it("should kill a real process group with killGroup and not throw on an exited group", async () => {
     const deps = chromeDepsOf({});
     const child = deps.spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
       detached: true,
@@ -110,10 +110,10 @@ describe("chromeDepsOf · killGroup", () => {
   });
 });
 
-describe("chromeDepsOf · killGroup 与孙进程", () => {
-  // 判别点：`process.kill(pid)` 也能杀掉主进程，所以“主进程死了”不能证明杀的是进程组；
-  // 只有同组孙进程也停才说明 `-pid` 没被写成 `pid`。
-  it("killGroup 收的是整个进程组：孙进程跟着停", async () => {
+describe("chromeDepsOf · killGroup and grandchildren", () => {
+  // The discriminator: `process.kill(pid)` also kills the main process, so "main is dead" cannot prove the
+  // group was killed; only grandchildren in the same group stopping proves `-pid` was not written as `pid`.
+  it("should stop grandchildren too because killGroup takes the whole process group", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hr-group-"));
     const marker = join(dir, "tick");
     try {
@@ -128,16 +128,16 @@ describe("chromeDepsOf · killGroup 与孙进程", () => {
         },
       });
       await waitForOf(() => existsSync(marker));
-      // marker 是孙进程 appendFileSync 建出来的：文件在 = 至少已写过一字节，ticking>0 已定。
+      // The marker file is created by the grandchild's appendFileSync: file exists = at least one byte written, ticking>0 is settled.
       const ticking = readFileSync(marker, "utf8").length;
       const exited = waitForExitOf(child);
       child.killGroup("SIGTERM");
       await exited;
-      // 主进程已退出：剩下的字节数就是孙进程是否还活着的那一票。
+      // The main process has exited: the remaining byte count is the one vote on whether the grandchild is still alive.
       const frozen = readFileSync(marker, "utf8").length;
       expect(ticking).toBeGreaterThan(0);
-      // 负向窗口：证"孙进程不再写"必须留出静默期。40ms 一跳，300ms ≈ 7 个周期的余量；
-      // 文件没有其它可观察的"写者已死"信号，这段窗是计数静止本身。
+      // Negative window: proving "the grandchild writes no more" needs a silent period. 40ms per tick, 300ms ≈ 7
+      // cycles of headroom; the file has no other observable "writer is dead" signal — this window is the stillness itself.
       await sleepOf(300);
       expect(readFileSync(marker, "utf8").length).toBe(frozen);
     } finally {

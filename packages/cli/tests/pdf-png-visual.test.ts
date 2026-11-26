@@ -1,6 +1,6 @@
-// 这层管：`hr pdf`/`hr png` 的主题口径与 `hr export` 对齐——
-// 曾经两条命令把 `DEFAULT_STYLE_ID` 焊死在命令层，`hr new --visual X` 选的样式在打印产物里被静默换掉，
-// 用户没有任何办法让 pdf/png 用别的主题。契约：与 `hr export` 同一支 `--visual`。
+// This layer aligns `hr pdf`/`hr png` theme rules with `hr export` —
+// both commands once welded `DEFAULT_STYLE_ID` into the command layer, so a style picked via `hr new --visual X` was silently swapped in print artifacts,
+// and the user had no way to theme pdf/png. The contract: the same `--visual` as `hr export`.
 
 import { realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,10 +21,10 @@ const withDir = async (run: (dir: string) => Promise<void>): Promise<void> =>
     await run(dir);
   });
 
-describe("parseArgs · pdf/png 的 --visual", () => {
+describe("parseArgs · pdf/png --visual", () => {
   it("should leave visual undefined when --visual is not given (doc theme wins)", () => {
-    // 缺省不再在这里焊死 DEFAULT_STYLE_ID：命令层先取文档已嵌入的 `#hr-theme`，
-    // 文档没有主题时才回落默认主题。
+    // The default is no longer welded to DEFAULT_STYLE_ID here: the command layer first takes the doc's embedded `#hr-theme`,
+    // and only falls back to the default theme when the doc has none.
     expect(parse(["pdf", "a.html", "--out", "o.pdf"])).toMatchObject({
       ok: true,
       intent: { visual: undefined },
@@ -52,7 +52,7 @@ describe("parseArgs · pdf/png 的 --visual", () => {
   });
 });
 
-describe("pdfCommand · 主题透传", () => {
+describe("pdfCommand · theme passthrough", () => {
   const inputOf = (
     dir: string,
     visual: string | undefined,
@@ -133,7 +133,7 @@ describe("pdfCommand · 主题透传", () => {
   });
 });
 
-describe("pngCommand · 主题透传", () => {
+describe("pngCommand · theme passthrough", () => {
   it("should render the print product with the requested visual", async () => {
     await withDir(async (dir) => {
       let html = "";

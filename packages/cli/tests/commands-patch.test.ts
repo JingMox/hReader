@@ -1,4 +1,4 @@
-// 这层管：`patch` 命令的人读行与失败面（真 fs + 真 core，不跑子进程）；不碰别的命令。
+// This layer covers the `patch` command's human lines and failure surface (real fs + real core, no subprocess); no other commands.
 
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,12 +23,12 @@ const fileOf = (name: string, html: string): string => {
   return path;
 };
 
-describe("patchCommand · 人读行", () => {
+describe("patchCommand · human lines", () => {
   it("should print the new ids on a plain append (no id change to report)", async () => {
     fileOf("p6.html", DOC);
     const text = await patchCommand({
       path: "p6.html",
-      // 目标是容器 <article>：段落落在它的内容模型内（往 <p> 里 append 段落会被拒）。
+      // The target is the container <article>: a paragraph falls inside its content model (appending one to <p> is refused).
       nodeId: "hr-a",
       action: "append",
       html: "<p>新</p>",
@@ -36,7 +36,7 @@ describe("patchCommand · 人读行", () => {
       json: false,
     });
 
-    // append 不换 id：新 id 只能挂在 `ids:` 后面，否则用户拿不到刚插进去那块。
+    // append does not re-id: new ids may only hang after `ids:`, otherwise the user cannot reach the block just inserted.
     expect(text).toMatch(/^patched .*p6\.html \(\d+ bytes, \+1 ids: [\w-]+\)\n$/u);
   });
 
@@ -51,12 +51,12 @@ describe("patchCommand · 人读行", () => {
       json: false,
     });
 
-    // 删除既不加新 id 也不换 id：行尾必须是干净的 `+0)`，不能拖一个空的 `ids: `。
+    // delete neither adds nor reassigns ids: the line tail must be a clean `+0)`, not a trailing empty `ids: `.
     expect(text).toMatch(/^patched .*p8\.html \(\d+ bytes, \+0\)\n$/u);
   });
 });
 
-describe("patchCommand · replace 的人读行（id 不再变）", () => {
+describe("patchCommand · human lines for replace (ids no longer change)", () => {
   it("should keep the target id and print only the deeper new ids when replace adds nested blocks", async () => {
     fileOf("p7.html", DOC);
     const text = await patchCommand({
@@ -68,18 +68,18 @@ describe("patchCommand · replace 的人读行（id 不再变）", () => {
       json: false,
     });
 
-    // 新根继承 `hr-c`（不算新分配），片段里更深的三个块才是新 id——它们同样要能被后续 patch 引用。
+    // The new root inherits `hr-c` (not a new allocation); the three deeper blocks in the fragment are the new ids — they too must be addressable by later patches.
     expect(text).toMatch(/^patched .*p7\.html \(\d+ bytes, \+3 ids: [\w-]+, [\w-]+, [\w-]+\)\n$/u);
     expect(text).not.toContain("id 变更");
     expect(readFileSync(join(dir, "p7.html"), "utf8")).toContain('<section data-hr-id="hr-c">');
   });
 });
 
-describe("patchCommand · 失败面", () => {
+describe("patchCommand · failure surface", () => {
   it("should leave the workspace check to core for a path outside the workspace", async () => {
     fileOf("p5.html", DOC);
 
-    // 入口的前置判定不能自己先报 `not_a_file`：路径根本没落在 workspace 里，得报 `path_outside_workspace`。
+    // The entry's pre-check must not jump to `not_a_file` itself: the path never lands inside the workspace, so it must be `path_outside_workspace`.
     await expect(
       patchCommand({
         path: "../escape.html",

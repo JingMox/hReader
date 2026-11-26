@@ -1,4 +1,4 @@
-// 这层管：`hr serve` 的薄适配（起 core 的本地服务 → 打印端口/token 一行；关闭由 signal 驱动）。
+// This layer: thin adapter for `hr serve` (start core's local server -> print the port/token line; shutdown is signal-driven).
 
 import { HrError, nodePatchDeps, nodeStyleDeps, startServer } from "@hreader/core";
 
@@ -13,31 +13,31 @@ import {
 } from "../parent-guard";
 
 export interface ServeInput {
-  /** 已换算到 workspace 内的相对路径（与 patch/style 同一口径）。 */
+  /** Already converted to a workspace-relative path (same convention as patch/style). */
   readonly file: string;
   readonly workspace: string;
   readonly port: number;
-  /** `~/.hreader/daemon.json` 的父目录。 */
+  /** Parent directory of `~/.hreader/daemon.json`. */
   readonly home: string;
   readonly json: boolean;
-  /** 构建产物目录（`GET /`、`/assets/*` 的根）；`undefined` = 未配置（core 用 200 兜底首页）。 */
+  /** Build-artifact directory (root of `GET /`, `/assets/*`); `undefined` = unconfigured (core answers the index with a 200 fallback). */
   readonly appDir?: string;
-  /** `--allow-host`：整体替换默认的回环 Host 集合。 */
+  /** `--allow-host`: wholesale replacement of the default loopback Host set. */
   readonly allowHosts?: readonly string[] | undefined;
-  /** 由 `main.ts` 从 SIGTERM/SIGINT 解出的关闭信号。 */
+  /** Shutdown signal resolved from SIGTERM/SIGINT by `main.ts`. */
   readonly stop: Promise<void>;
-  /** `--exit-with-parent`：父进程（壳）消失就自己关；`false` = 不看父进程（默认，用户自己起的 daemon）。 */
+  /** `--exit-with-parent`: shut down when the parent (shell) disappears; `false` = do not watch the parent (default, for user-started daemons). */
   readonly exitWithParent?: boolean | undefined;
-  /** core 的诊断出口（`::` 上另有监听、清理陈旧 `daemon.json`）：没有它就等于把这两件事静默掉。 */
+  /** core's diagnostics outlet (something else listening on `::`, stale `daemon.json` cleanup): without it both events stay silent. */
   readonly diagnose?: ((message: string) => void) | undefined;
-  /** 回执里印的文档路径（用户视角）：不给就印 workspace 相对名。 */
+  /** Document path printed in the receipt (user's view): falls back to the workspace-relative name when not given. */
   readonly displayPath?: string | undefined;
-  /** `main.ts` 在首个 `await` 之前采集的父 pid；落在这里是为了让"采集时机"只有一个来源。 */
+  /** Parent pid captured by `main.ts` before the first `await`; kept here so "when it was captured" has a single source. */
   readonly launchParentPid: number;
 }
 
 export const serveCommand = async (input: ServeInput): Promise<string> => {
-  // 壳已经死了才轮到这里：不建服务、不写 `daemon.json`，直接按可读错误退出——否则就是一个没人收的孤儿。
+  // Reaching here means the shell is already dead: do not build the server or write `daemon.json` — exit with a readable error, or this becomes an orphan nobody reaps.
   if (shouldWatchParent(input.exitWithParent) && orphanedAtLaunch(input.launchParentPid)) {
     throw new HrError(
       "invalid_input",
@@ -59,13 +59,13 @@ export const serveCommand = async (input: ServeInput): Promise<string> => {
   ).catch((error: unknown): never => {
     throw withNormalizeAdvice(error, input.file);
   });
-  // 记下启动时的 ppid、之后每次轮询重读：壳被 kill -9 时 ppid 会变（re-parent 到 1 或 launchd），
-  // 这是 daemon 唯一能自己发现"壳没了"的信号。
+  // Record the launch-time ppid, then re-read it on each poll: when the shell is kill -9'd the ppid changes (re-parented to 1 or launchd) —
+  // that is the only way a daemon can notice the shell is gone.
   const disposeWatch = watchParent(
     shouldWatchParent(input.exitWithParent) ? parentWatchOf(input.launchParentPid) : undefined,
     running,
   );
-  // 先撤看门狗再关服务：定时器活过 `close()` 的话事件循环永远有活干，SIGTERM 之后进程就赖着不退。
+  // Drop the watchdog before closing the server: a timer surviving `close()` keeps the event loop busy and the process never exits after SIGTERM.
   void input.stop.then(async () => {
     disposeWatch();
     await running.close();
@@ -75,17 +75,17 @@ export const serveCommand = async (input: ServeInput): Promise<string> => {
     : humanServe(running.info, input.displayPath ?? input.file);
 };
 
-/** 只有壳显式要求时才看父进程：默认（用户自己起的 daemon）一个定时器都不许建。 */
+/** Only watch the parent when the shell explicitly asks: the default (user-started daemon) must not create a single timer. */
 export const shouldWatchParent = (exitWithParent: boolean | undefined): boolean =>
   exitWithParent === true;
 
-/** 没有看门狗时的 disposer：调用点不必判空。 */
+/** Disposer used when no watchdog exists: the call site needs no null check. */
 const nothingToDispose = (): void => undefined;
 
-/// 每秒看一次父进程：壳被 `kill -9` 时它没有机会发信号，daemon 只能自己发现被 re-parent 了。
-/// 返回 disposer：调用方（`serveCommand` 的 stop 路径）必须先撤掉定时器再关服务，否则 `close()` 跑完
-/// 事件循环里还挂着一只 1s 的定时器，进程就永远不退——这正是 `--exit-with-parent` 收 SIGTERM 后不自杀的原因。
-/// 导出只为单测（真实现要一个跑着的服务，假 `running` + 假时钟才能把三条分支都走到）。
+/// Poll the parent once a second: a shell killed with `kill -9` gets no chance to signal, so the daemon must notice the re-parenting itself.
+/// Returns a disposer: the caller (`serveCommand`'s stop path) must drop the timer before closing the server, or after `close()` finishes
+/// a 1s timer still hangs on the event loop and the process never exits — exactly why `--exit-with-parent` failed to die on SIGTERM.
+/// Exported only for unit tests (the real path needs a running server; a fake `running` plus fake clock covers all three branches).
 export const watchParent = (
   watch: ParentWatch | undefined,
   running: { readonly close: () => Promise<void> },
@@ -96,7 +96,7 @@ export const watchParent = (
     clearInterval(timer);
     void running.close();
   }, PARENT_POLL_MS);
-  // 与 core 的心跳（`server/hub.ts`）同口径：定时器不该成为"进程还活着"的唯一理由。
+  // Same convention as core's heartbeat (`server/hub.ts`): a timer must not be the only reason the process stays alive.
   timer.unref();
   return () => {
     clearInterval(timer);

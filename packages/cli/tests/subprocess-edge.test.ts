@@ -1,5 +1,5 @@
-// 这层管：真子进程层的对抗面——怪异文件名、import 的文件系统矩阵、退出码抽查。
-// 纯 argv 的词法在 `argv-edge.test.ts`；这里跑的是整条进程（含 io 与落盘）。
+// This layer covers the adversarial side at the real-subprocess level — weird filenames, import's filesystem matrix, spot-checked exit codes.
+// Pure argv lexing lives in `argv-edge.test.ts`; here the whole process runs (io and disk included).
 
 import { chmodSync, existsSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { checked, seed } from "./cli-support";
 import { runCli, withTempDir } from "./harness";
 
-describe("怪异文件名（真子进程）", () => {
+describe("weird filenames (real subprocess)", () => {
   it.each(["带 空格.html", "中文文档.html", "emoji 🚀.html"])("should outline %s", async (name) => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -36,7 +36,7 @@ describe("怪异文件名（真子进程）", () => {
   });
 });
 
-describe("hr import · 文件系统矩阵（真子进程）", () => {
+describe("hr import · filesystem matrix (real subprocess)", () => {
   const FOREIGN = "<body><main><p>外来</p></main></body>";
 
   it("should fail io_failure (exit 3) when the target directory is read-only", async () => {
@@ -44,7 +44,7 @@ describe("hr import · 文件系统矩阵（真子进程）", () => {
       const dir = realpathSync(raw);
       const locked = join(dir, "locked");
       writeFileSync(join(dir, "src.html"), FOREIGN);
-      // `locked/` 只读：`--out` 指进去，父目录不可写 → io_failure。
+      // `locked/` is read-only: `--out` pointed inside → unwritable parent → io_failure.
       const { mkdirSync } = await import("node:fs");
       mkdirSync(locked);
       chmodSync(locked, 0o555);
@@ -76,7 +76,7 @@ describe("hr import · 文件系统矩阵（真子进程）", () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
       writeFileSync(join(dir, "src.html"), FOREIGN);
-      // 悬空 symlink：lstat 看得见它，`file_exists` 必须先拒（不让 rename 踩上去）。
+      // A dangling symlink: lstat sees it, so `file_exists` must refuse first (rename must not step on it).
       symlinkSync(join(dir, "nowhere", "x.html"), join(dir, "o.hr.html"));
 
       const result = checked(
@@ -133,7 +133,7 @@ describe("hr import · 文件系统矩阵（真子进程）", () => {
   });
 });
 
-describe("退出码抽查（真子进程）", () => {
+describe("exit-code spot checks (real subprocess)", () => {
   it("should exit 2 with usage on stderr for an unknown subcommand", async () => {
     const result = checked(await runCli(["frobnicate"]));
 
@@ -153,7 +153,7 @@ describe("退出码抽查（真子进程）", () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
       seed(dir);
-      // stdin: ignore（harness 缺省）——不读 stdin 的命令必须照常完事。
+      // stdin: ignore (the harness default) — commands that never read stdin must finish normally.
       const result = checked(await runCli(["outline", "a.html"], { cwd: dir }));
       expect(result.code).toBe(0);
     });

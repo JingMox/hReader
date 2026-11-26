@@ -1,5 +1,5 @@
-// 这层管：`main.ts` 的进程壳（argv/env/stdin → run → process.exitCode），在进程内跑一次；
-// 真正的子进程行为在 cli-process.test.ts（这里只补覆盖率够不到的壳代码）。
+// This layer covers `main.ts`'s process shell (argv/env/stdin → run → process.exitCode), run in-process once;
+// real subprocess behavior lives in cli-process.test.ts (this only patches the shell code coverage cannot reach).
 
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +18,7 @@ const original = {
   debug: process.env["HR_DEBUG"],
 };
 
-/** 每个用例都要"首次求值" `main.ts`（它有顶层副作用），所以用查询串绕开模块缓存。 */
+/** Every case needs a "first evaluation" of `main.ts` (it has top-level side effects), so a query string defeats the module cache. */
 const loadMain = (caseName: string): Promise<unknown> =>
   import(/* @vite-ignore */ `../src/main.ts?case=${caseName}`);
 
@@ -40,7 +40,7 @@ const enterShell = (
   Object.defineProperty(process, "stdin", {
     configurable: true,
     value: {
-      // 只实现 async iterator：`main.ts` 用 `for await` 消费。
+      // Only the async iterator is implemented: `main.ts` consumes it with `for await`.
       [Symbol.asyncIterator]: () => ({
         next: (): Promise<IteratorResult<unknown>> => {
           const chunk = stdinChunks[index];
@@ -68,7 +68,7 @@ afterEach(() => {
   else process.env["HR_DEBUG"] = original.debug;
 });
 
-describe("main.ts · 进程壳", () => {
+describe("main.ts · process shell", () => {
   it("should run --help and set exitCode 0", async () => {
     const io = enterShell([]);
     process.argv = [process.execPath, "main.ts", "--help"];
@@ -82,7 +82,7 @@ describe("main.ts · 进程壳", () => {
   });
 });
 
-describe("main.ts · 管道与内部错误", () => {
+describe("main.ts · pipes and internal errors", () => {
   it("should read --html-stdin chunks through the async iterator", async () => {
     writeFileSync(join(dir, "m1.html"), DOC);
     const io = enterShell([Buffer.from('<p data-hr-id="hr-n">新</p>')]);
@@ -108,7 +108,7 @@ describe("main.ts · 管道与内部错误", () => {
   });
 });
 
-describe("main.ts · 非字节 stdin", () => {
+describe("main.ts · non-byte stdin", () => {
   it("should reject a non-byte stdin chunk as an internal error (70)", async () => {
     writeFileSync(join(dir, "m2.html"), DOC);
     const io = enterShell(["字符串不是字节"]);
@@ -159,7 +159,7 @@ describe("main.ts · HR_DEBUG", () => {
   });
 });
 
-describe("main.ts · 信号入口", () => {
+describe("main.ts · signal entry", () => {
   it("should resolve the stop promise on SIGTERM and SIGINT (in-process emit)", async () => {
     enterShell([]);
     process.argv = [process.execPath, "main.ts", "--help"];

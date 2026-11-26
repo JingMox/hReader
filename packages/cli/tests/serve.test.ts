@@ -1,4 +1,4 @@
-// 这层管：`hr serve` 的真子进程生命周期——输出形状、SIGTERM 收尾、daemon.json、端口释放、fd。
+// This layer covers `hr serve`'s real-subprocess lifecycle — output shape, SIGTERM teardown, daemon.json, port release, fds.
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -77,7 +77,7 @@ const firstLineOf = (child: ReturnType<typeof spawn>): Promise<string> =>
     let buffer = "";
     const out = child.stdout;
     if (out === null) {
-      reject(new Error("serve 没有 stdout 管道"));
+      reject(new Error("serve has no stdout pipe"));
       return;
     }
     out.setEncoding("utf8");
@@ -88,16 +88,16 @@ const firstLineOf = (child: ReturnType<typeof spawn>): Promise<string> =>
     });
     child.on("error", reject);
     setTimeout(() => {
-      reject(new Error("serve 未在 10s 内打印启动行"));
+      reject(new Error("serve did not print its startup line within 10s"));
     }, 10_000);
   });
 
 const servedOf = (line: string, pid: number): Served => {
   const envelope: unknown = JSON.parse(line);
   if (typeof envelope !== "object" || envelope === null || !("data" in envelope))
-    throw new Error("启动行形状不对");
+    throw new Error("startup line has the wrong shape");
   const data: unknown = envelope.data;
-  if (typeof data !== "object" || data === null) throw new Error("启动行没有 data");
+  if (typeof data !== "object" || data === null) throw new Error("startup line has no data");
   const port = "port" in data ? data.port : 0;
   const token = "token" in data ? data.token : "";
   return { port: typeof port === "number" ? port : 0, token: String(token), pid };
@@ -124,7 +124,7 @@ const startServe = async (): Promise<{
   }
 };
 
-describe("hr serve · 生命周期", () => {
+describe("hr serve · lifecycle", () => {
   it("should print the daemon envelope, then release port + daemon.json on SIGTERM", async () => {
     const before = fdCount();
     const { child, served, exit } = await startServe();
@@ -143,7 +143,7 @@ describe("hr serve · 生命周期", () => {
   });
 });
 
-describe("hr serve · 第二个信号入口", () => {
+describe("hr serve · the second signal entry", () => {
   it("should clean up identically on SIGINT", async () => {
     const { child, served, exit } = await startServe();
     const daemon = join(home, ".hreader", "daemon.json");
@@ -157,7 +157,7 @@ describe("hr serve · 第二个信号入口", () => {
   });
 });
 
-describe("hr serve · 生命周期（续）", () => {
+describe("hr serve · lifecycle (continued)", () => {
   it("should exit non-zero with a JSON error when the file does not exist", async () => {
     const child = spawn(
       process.execPath,

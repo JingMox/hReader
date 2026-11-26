@@ -1,5 +1,5 @@
-// 这层管：Chrome 进程监督——候选路径发现、spawn、DevTools 行、提前退出、进程组回收。
-// 报文与页面语义在 `render.ts`/`browser.ts`；渲染期限与中断在 `session.ts`。
+// This layer: Chrome process supervision — candidate-path discovery, spawn, the DevTools line, early exit, process-group reclamation.
+// Messaging and page semantics live in `render.ts`/`browser.ts`; render deadline and interruption in `session.ts`.
 
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { join } from "node:path";
@@ -17,7 +17,7 @@ const CHROME_CANDIDATES: readonly string[] = [
 
 const DEVTOOLS_LINE = /DevTools listening on (ws:\/\/\S+)/u;
 
-/** stderr 洪流只留前 64 KiB：DevTools 行在开头，错误首行在前 200 字，超出直接丢。 */
+/** stderr floods keep only the first 64 KiB: the DevTools line is at the front, error first lines within 200 chars; the rest is dropped. */
 const STDERR_LIMIT = 64 * 1024;
 
 export const stderrBufferOf = (buffer: string, text: string): string =>
@@ -48,19 +48,19 @@ export const chromeProcessOf = (child: ChildProcess): ChromeProcess => ({
   onError: (cb) => {
     child.on("error", cb);
   },
-  // `--headless=new` 的渲染子进程只挂在 `detached` 起的进程组里：杀主 pid 会留孤儿占住 profile。
+  // `--headless=new` renderer children only live in the process group `detached` creates: killing just the main pid leaves orphans holding the profile.
   killGroup: (signal) => {
     const pid = child.pid;
     if (pid === undefined) return;
     try {
       process.kill(-pid, signal);
     } catch {
-      // 进程已退出（ESRCH）是正常路径：SIGKILL 兜底经常落在它之后。
+      // Exited process (ESRCH) is a normal path: the SIGKILL backstop often lands after it.
     }
   },
 });
 
-/** 渲染命令共用的进程侧依赖；`connect` 是 puppeteer 握手，`spawn`/`tempDir`/`remove` 在测试里可注入。 */
+/** Process-side deps shared by render commands; `connect` is the puppeteer handshake, `spawn`/`tempDir`/`remove` are injectable in tests. */
 export interface ChromeDeps {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly exists: (path: string) => boolean;
@@ -68,7 +68,7 @@ export interface ChromeDeps {
   readonly connect: (url: string) => Promise<BrowserLike>;
   readonly tempDir: () => string;
   readonly remove: (path: string) => void;
-  /** SIGTERM 到 SIGKILL 的间隔：生产固定 2s，进程内测试调小以免拖慢套件。 */
+  /** SIGTERM -> SIGKILL grace period: fixed 2s in production, shortened in in-process tests to keep the suite fast. */
   readonly killGraceMs: number;
 }
 
@@ -78,7 +78,7 @@ const chromeMissingOf = (why: string): HrError =>
     `找不到 Chrome（${why}）；候选路径：${CHROME_CANDIDATES.join(" / ")}`,
   );
 
-/** `HREADER_CHROME` 一旦给了就是权威：写错要报错，不能悄悄退回系统装的 Chrome。 */
+/** `HREADER_CHROME` is authoritative once given: a bad path must error, never silently fall back to a system Chrome. */
 const chromeBinaryOf = (deps: ChromeDeps): string => {
   const override = deps.env["HREADER_CHROME"];
   if (override !== undefined) {
@@ -102,10 +102,10 @@ const chromeArgsOf = (dir: string): readonly string[] => [
 export interface ChromeRun {
   readonly dir: string;
   readonly process: ChromeProcess;
-  /** 组内主进程退出即 resolve：SIGTERM 生效后就不必再等满 2s 才升级 SIGKILL。 */
+  /** Resolves when the group's main process exits: once SIGTERM lands there is no need to wait the full 2s before escalating to SIGKILL. */
   readonly exited: Promise<void>;
   browser: BrowserLike | undefined;
-  /** 超时/中断已经赢：此后才绑上的 browser 必须当场 disconnect，否则 socket 挂住事件循环。 */
+  /** Timeout/interrupt already won: a browser attached after this point must disconnect at once, or the socket pins the event loop. */
   stopped: boolean;
 }
 
@@ -136,7 +136,7 @@ const sleepOf = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
-/** 杀的是进程组：`--headless=new` 的渲染子进程不挂在主 pid 上，只杀主 pid 会留孤儿占住 profile。 */
+/** Kills the process group: `--headless=new` renderer children do not hang off the main pid, so killing only that pid leaves orphans holding the profile. */
 export const stopChromeOf = async (run: ChromeRun, deps: ChromeDeps): Promise<void> => {
   run.stopped = true;
   run.browser?.disconnect();
@@ -146,7 +146,7 @@ export const stopChromeOf = async (run: ChromeRun, deps: ChromeDeps): Promise<vo
   deps.remove(run.dir);
 };
 
-/** DevTools 行自带浏览器级 ws 端点：`browserWSEndpoint` 直连，不再需要 `/json/version`。 */
+/** The DevTools line carries the browser-level ws endpoint: `browserWSEndpoint` connects directly; `/json/version` is no longer needed. */
 export const devtoolsUrlOf = (run: ChromeRun): Promise<string> =>
   new Promise((resolve, reject) => {
     let buffer = "";
@@ -158,7 +158,7 @@ export const devtoolsUrlOf = (run: ChromeRun): Promise<string> =>
         resolve(url);
       }
     });
-    // 结束/失败也要摘掉：监听器留在洪流上就是内存缺陷的另一半。
+    // Remove it on success/failure too: a listener left on the flood is the other half of the memory defect.
     run.process.onExit((code) => {
       detach();
       const detail = firstErrorLineOf(buffer);

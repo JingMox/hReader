@@ -1,11 +1,11 @@
-// 这层管：错误文本的收敛（取首行、unknown 归一到 string）与「先出报告再失败」的错误形态；零 I/O。
+// This layer: error-text normalization (first line, unknown -> string) and the "report first, then fail" error shapes; zero I/O.
 
 import { HrError } from "@hreader/core";
 
 /**
- * `--strict` 失败：报告已在 `report` 里排好（stdout 照常先出），错误本体按
- * `invalid_document` 落到退出码 1。`--json` 时报告 JSON 必须是 stdout 上唯一一行，
- * 所以错误消息统一走 stderr，不走 `reportFailure` 的「json 错误进 stdout」通道。
+ * `--strict` failure: the report is already staged in `report` (stdout goes first as usual), and the error
+ * itself maps to exit 1 as `invalid_document`. Under `--json` the report JSON must be the only stdout line,
+ * so the error message always goes to stderr — not through `reportFailure`'s "json errors go to stdout" channel.
  */
 export class StrictFailure extends HrError {
   readonly report: string;
@@ -18,8 +18,8 @@ export class StrictFailure extends HrError {
 }
 
 /**
- * 给已存在的错误「追加一行 stderr 指引」的包装：code / message / data 原样保留
- * （冻结契约不动），hint 由 `reportFailure` 在错误行之后补印。
+ * Wrapper that "appends one stderr guidance line" to an existing error: code / message / data are preserved
+ * verbatim (frozen contract untouched); `reportFailure` prints the hint after the error line.
  */
 export class HintedError extends HrError {
   readonly hint: string;
@@ -35,8 +35,8 @@ export class HintedError extends HrError {
 }
 
 /**
- * 只留首个非空行并截到 200 字：Chrome / puppeteer / pdf-lib 的报错常带整段栈与绝对路径，
- * 整段塞进 envelope 既泄路径又撑爆 `--json`。
+ * Keep only the first non-empty line, truncated to 200 chars: Chrome / puppeteer / pdf-lib errors often carry
+ * whole stacks and absolute paths — stuffing them into the envelope both leaks paths and blows up `--json`.
  */
 export const firstErrorLineOf = (text: string): string => {
   const line = text.split(/\r?\n/u).find((item) => item.trim() !== "") ?? "";

@@ -1,4 +1,4 @@
-// 这层管：渲染层共享的纯数据类型与纸张表；零 I/O、零第三方依赖。
+// This layer: pure data types and the page-size table shared by the render layer; zero I/O, zero third-party deps.
 
 export type PdfPageSize = "a4" | "letter" | "a5";
 
@@ -7,7 +7,7 @@ interface PaperSize {
   readonly heightPt: number;
 }
 
-/** 纸张表（pt）；Chrome 打印出来会舍入到 ±1.5pt，e2e 按这张表容差比。 */
+/** Page-size table (pt); Chrome's print output rounds to +/-1.5pt, and e2e compares with that tolerance. */
 export const PAGE_SIZES: Readonly<Record<PdfPageSize, PaperSize>> = {
   a4: { widthPt: 595.28, heightPt: 841.89 },
   letter: { widthPt: 612.0, heightPt: 792.0 },
@@ -17,7 +17,7 @@ export const PAGE_SIZES: Readonly<Record<PdfPageSize, PaperSize>> = {
 export const isPdfPageSize = (value: string): value is PdfPageSize =>
   value === "a4" || value === "letter" || value === "a5";
 
-/** 长图请求：`width`/`maxHeight` 是 CSS 像素，`scale` 是设备像素倍率（超出 `maxHeight` 先裁不缩）。 */
+/** Tall-image request: `width`/`maxHeight` are CSS pixels, `scale` the device-pixel factor (overflow past `maxHeight` is clipped, not scaled). */
 export interface PngViewport {
   readonly width: number;
   readonly scale: number;
@@ -26,7 +26,7 @@ export interface PngViewport {
 
 export interface LongImage {
   readonly bytes: Uint8Array;
-  /** 以下宽高都反读自 IHDR（设备像素）。 */
+  /** The width/height below are read back from IHDR (device pixels). */
   readonly width: number;
   readonly height: number;
   readonly clipped: boolean;

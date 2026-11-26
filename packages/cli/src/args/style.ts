@@ -1,4 +1,4 @@
-// 这层管：`hr style` 与 `hr style extract` 的 argv 切片 → intent；不读盘、不判风格是否存在。
+// This layer: argv slicing for `hr style` and `hr style extract` -> intent; never reads disk or checks whether the style exists.
 
 import { basename, extname } from "node:path";
 
@@ -28,7 +28,7 @@ const EXTRACT_FLAGS = [
   "--workspace",
 ];
 
-/** 文件名 → 风格 id：只留小写字母数字与连字符；中文文件名常见，空结果回落 `style`。 */
+/** Filename -> style id: keeps only lowercase alphanumerics and hyphens; non-ASCII filenames are common, so an empty result falls back to `style`. */
 const slugOf = (path: string): string => {
   const slug = basename(path, extname(path))
     .toLowerCase()
@@ -37,7 +37,7 @@ const slugOf = (path: string): string => {
   return slug === "" ? "style" : slug;
 };
 
-/** `--id` 的合法性留给 `parseStyleText`（一处正则、一处报错口径），这里只负责默认值。 */
+/** `--id` validity is left to `parseStyleText` (one regex, one error wording); this layer only supplies the default. */
 const extractIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
   const first = rest[0];
   if (first === undefined)

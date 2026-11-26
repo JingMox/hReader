@@ -1,5 +1,5 @@
-// 这层管：PNG 字节的 IHDR 直读——产物 `width`/`height` 的唯一真源。
-// Chrome 的截图返回值与命令层自算都可能陈旧（视口没落定前量到的高度就偏小），只有磁盘上那 24 字节可信。
+// This layer: direct IHDR reads from PNG bytes — the single source of truth for product `width`/`height`.
+// Both Chrome's screenshot return and the command layer's own math can be stale (a height measured before the viewport settled reads low); only the 24 bytes on disk are trustworthy.
 
 import { HrError } from "@hreader/core";
 
@@ -8,7 +8,7 @@ interface PngSize {
   readonly height: number;
 }
 
-/** PNG 签名 8 字节；后面紧跟 IHDR（长 13、类型 `IHDR`），宽高在 byte 16–23。 */
+/** The PNG signature is 8 bytes; IHDR follows (length 13, type `IHDR`), with width/height at bytes 16-23. */
 const PNG_MAGIC: readonly number[] = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 const IHDR_END = 24;

@@ -1,7 +1,7 @@
-// 这层管：`inspectPdfOf` 的口径（产物真值 / `/Count` 交叉核对 / 断链报错）；手写字节，不跑 Chrome。
+// This layer covers `inspectPdfOf` rules (artifact truth / `/Count` cross-check / broken-chain errors); handwritten bytes, no Chrome.
 //
-// 与 `helpers/pdf-scan.ts` 的关系是**两份独立实现**：这里走 pdf-lib 严格解析，
-// oracle 那套是自己的字节级扫描器；"src 读错"与"oracle 读错"不会一起绿。
+// Its relation to `helpers/pdf-scan.ts` is **two independent implementations**: this one parses strictly via
+// pdf-lib, the oracle is its own byte-level scanner; "src misreads" and "oracle misreads" can never be green together.
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
@@ -30,7 +30,7 @@ import {
   withOutlinesOf,
 } from "./helpers/pdf-fixtures";
 
-/** 三页骨架 + `/Outlines 10 0 R` + 大纲体：条数口径与页数无关，页数固定才看得清断链。 */
+/** Three-page skeleton + `/Outlines 10 0 R` + an outline body: the count rule is unrelated to page count, but a fixed page count keeps broken chains visible. */
 const outlineOf = (outline: string): Promise<number> =>
   inspectPdfOf(bytesOf(withOutlinesOf(pagesOf(3)) + outline)).then((facts) => facts.outline);
 
@@ -41,7 +41,7 @@ const failureOf = async (bytes: Uint8Array): Promise<HrError> => {
     if (error instanceof HrError) return error;
     throw error;
   }
-  throw new Error("预期抛出 HrError");
+  throw new Error("expected an HrError to be thrown");
 };
 
 const expectParseFailureOf = async (bytes: Uint8Array, pattern: RegExp): Promise<void> => {
@@ -50,70 +50,70 @@ const expectParseFailureOf = async (bytes: Uint8Array, pattern: RegExp): Promise
   expect(error.message).toMatch(pattern);
 };
 
-describe("inspectPdfOf · 正常路径", () => {
-  it("页数与大纲一起报：三页骨架无大纲是 { pages: 3, outline: 0 }", async () => {
+describe("inspectPdfOf · happy path", () => {
+  it("should report pages and outline together: a three-page skeleton without outline is { pages: 3, outline: 0 }", async () => {
     expect(await inspectPdfOf(bytesOf(pagesOf(3)))).toEqual({ pages: 3, outline: 0 });
   });
 
-  it("Catalog 没有 /Outlines 键时是 0（没开大纲，不是错误）", async () => {
+  it("should report 0 when the Catalog has no /Outlines key (outline off, not an error)", async () => {
     expect(await inspectPdfOf(bytesOf(pagesOf(2)))).toEqual({ pages: 2, outline: 0 });
   });
 
-  it("单条目：根 → `/First` → 1 条", async () => {
+  it("should walk root → `/First` → 1 entry for a single entry", async () => {
     expect(await outlineOf(SINGLE)).toBe(1);
   });
 
-  it("三层嵌套：`/First` 进子层、`/Next` 走兄弟，共 4 条", async () => {
+  it("should enter children via `/First` and siblings via `/Next` for three-level nesting: 4 entries", async () => {
     expect(await outlineOf(NESTED)).toBe(4);
   });
 
-  it("链尾没有 `/Next` 不算断链：两条同级就是 2", async () => {
+  it("should not treat a missing `/Next` at the chain tail as broken: two siblings count as 2", async () => {
     expect(await outlineOf(OUTLINE_TWO_SIBLINGS)).toBe(2);
   });
 
-  it("根不带 `/Count` 时报实走数（不拿缺省的 0 顶替）", async () => {
+  it("should report the walked count when the root has no `/Count` (not substitute a default 0)", async () => {
     expect(await outlineOf(OUTLINE_NO_COUNT)).toBe(1);
   });
 
-  it("根的 `/Count` 为负（折叠态）时按绝对值核对：仍是实走数", async () => {
+  it("should cross-check a negative root `/Count` (collapsed) by absolute value: still the walked count", async () => {
     expect(await outlineOf(OUTLINE_FOLDED_COUNT)).toBe(1);
   });
 
-  it("`/Info` 字典里的 `/Title` 不算书签（证明是从 `/Outlines` 根进树，不是数 `/Title`）", async () => {
+  it("should not count an `/Info` dictionary's `/Title` as a bookmark (proves the walk enters via the `/Outlines` root, not by counting `/Title`)", async () => {
     const facts = await inspectPdfOf(bytesWithInfoOf(withOutlinesOf(pagesOf(3)) + SINGLE));
     expect(facts.outline).toBe(1);
   });
 });
 
-describe("inspectPdfOf · 标题里的 PDF 结构不被误当结构", () => {
-  it("标题里写着 `endobj`、`/First 99 0 R`、`/Next 77 0 R`、`\\)`、嵌套 `(`、`%`：仍是 3 条", async () => {
+describe("inspectPdfOf · PDF structure inside titles is not mistaken for structure", () => {
+  it("should still count 3 when titles contain `endobj`, `/First 99 0 R`, `/Next 77 0 R`, `\\)`, nested `(`, `%`", async () => {
     expect(await outlineOf(OUTLINE_HOSTILE_TITLES)).toBe(3);
   });
 
-  it("嵌套与同级混合且 `/Count` 正确：5 条（不只摊一层、不只走兄弟）", async () => {
+  it("should count 5 with nesting and siblings mixed and `/Count` correct (not one-level-flat, not siblings-only)", async () => {
     expect(await outlineOf(OUTLINE_MIXED_NESTED_AND_SIBLINGS)).toBe(5);
   });
 
-  it("真 trailer 后面的 `% trailer << /Root 99 0 R >>` 注释不算 trailer", async () => {
+  it("should not treat a `% trailer << /Root 99 0 R >>` comment after the real trailer as a trailer", async () => {
     const facts = await inspectPdfOf(
       bytesWithTrailerCommentOf(withOutlinesOf(pagesOf(3)) + SINGLE),
     );
     expect(facts.outline).toBe(1);
   });
 
-  it("对象的 generation 不是 0（`1 5 obj` 配 `1 5 R`）：按对象号定位，照样数得出", async () => {
+  it("should still count when an object's generation is not 0 (`1 5 obj` paired with `1 5 R`): locate by object number", async () => {
     const facts = await inspectPdfOf(bytesWithGenerationOf(withOutlinesOf(pagesOf(3)) + SINGLE));
     expect(facts.outline).toBe(1);
   });
 
-  it("startxref 之后再写一个非注释 trailer：仍取真 trailer 那份", async () => {
+  it("should still take the real trailer when a non-comment trailer is written after startxref", async () => {
     const facts = await inspectPdfOf(
       bytesWithTrailingTrailerOf(withOutlinesOf(pagesOf(3)) + SINGLE),
     );
     expect(facts.outline).toBe(1);
   });
 
-  it("内容流里写着冒名 Catalog 的字节：流内容不算结构，仍按正文走 1 条", async () => {
+  it("should not treat content-stream bytes impersonating a Catalog as structure: still 1 entry via the real body", async () => {
     const facts = await inspectPdfOf(
       Buffer.from(
         `${withOutlinesOf(pagesOf(1))}${SINGLE}${OUTLINE_STREAM_TRAP}\n${trailerOf()}`,
@@ -124,36 +124,36 @@ describe("inspectPdfOf · 标题里的 PDF 结构不被误当结构", () => {
   });
 });
 
-describe("inspectPdfOf · 产物自相矛盾与断链", () => {
-  it("/Count 自报 3、实走 2：render_empty，且 message 同时给出两个数", async () => {
+describe("inspectPdfOf · self-contradicting artifacts and broken chains", () => {
+  it("should report render_empty with both numbers in the message when /Count claims 3 but the walk finds 2", async () => {
     await expectParseFailureOf(
       bytesOf(withOutlinesOf(pagesOf(3)) + OUTLINE_COUNT_LIE),
       /\/Count 自报 3 条，实走 2 条/u,
     );
   });
 
-  it("/First 断链（指向不存在的对象）：render_empty，不回退 0", async () => {
+  it("should report render_empty for a /First broken chain (points to a nonexistent object), not fall back to 0", async () => {
     await expectParseFailureOf(
       bytesOf(withOutlinesOf(pagesOf(3)) + OUTLINE_BROKEN_FIRST),
       /找不到 大纲条目 对象 99/u,
     );
   });
 
-  it("/First 指向的对象不是字典：render_empty", async () => {
+  it("should report render_empty when the object /First points to is not a dictionary", async () => {
     await expectParseFailureOf(
       bytesOf(withOutlinesOf(pagesOf(3)) + OUTLINE_NOT_A_DICTIONARY),
       /大纲条目 对象 99 不是字典/u,
     );
   });
 
-  it("条目体带 `/Type /Page`（走错进页树）：render_empty，不等 `/Count` 兜底", async () => {
+  it("should report render_empty when an entry body carries `/Type /Page` (walked into the page tree), not wait on the /Count net", async () => {
     await expectParseFailureOf(
       bytesOf(withOutlinesOf(pagesOf(3)) + OUTLINE_PAGE_NODE),
       /大纲条目 11 是页树节点/u,
     );
   });
 
-  it("条目成环：render_empty，不停在死循环里", async () => {
+  it("should report render_empty on an entry cycle, not hang in a loop", async () => {
     await expectParseFailureOf(
       bytesOf(withOutlinesOf(pagesOf(3)) + OUTLINE_SELF_LOOP),
       /条目 11 被重复引用/u,
@@ -161,13 +161,13 @@ describe("inspectPdfOf · 产物自相矛盾与断链", () => {
   });
 });
 
-describe("inspectPdfOf · 进树失败与坏字节", () => {
-  it("Catalog 的 /Outlines 指向不存在的对象：render_empty", async () => {
+describe("inspectPdfOf · tree-entry failures and bad bytes", () => {
+  it("should report render_empty when the Catalog's /Outlines points to a nonexistent object", async () => {
     const body = withOutlinesOf(pagesOf(1)).replace("/Outlines 10 0 R", "/Outlines 98 0 R");
     await expectParseFailureOf(bytesOf(body + SINGLE), /找不到 \/Outlines 对象 98/u);
   });
 
-  it("/Outlines 指向的对象不是字典：render_empty", async () => {
+  it("should report render_empty when the object /Outlines points to is not a dictionary", async () => {
     const body = withOutlinesOf(pagesOf(1)).replace("/Outlines 10 0 R", "/Outlines 98 0 R");
     await expectParseFailureOf(
       Buffer.from(`${body}98 0 obj\n42\nendobj\n${trailerOf()}`, "latin1"),
@@ -175,18 +175,18 @@ describe("inspectPdfOf · 进树失败与坏字节", () => {
     );
   });
 
-  it("根本不是 PDF：render_empty，报的是结构层失败", async () => {
+  it("should report render_empty for something not a PDF at all: a structure-level failure", async () => {
     await expectParseFailureOf(Buffer.from("hello world", "latin1"), /PDF 结构解析不出/u);
   });
 
-  it("没有 trailer：页树都立不起来，render_empty", async () => {
+  it("should report render_empty with no trailer: the page tree cannot even stand", async () => {
     await expectParseFailureOf(
       Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n", "latin1"),
       /PDF 结构解析不出/u,
     );
   });
 
-  it("trailer 里没有 /Root：render_empty", async () => {
+  it("should report render_empty with no /Root in the trailer", async () => {
     await expectParseFailureOf(
       Buffer.from(
         "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" +

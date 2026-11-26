@@ -1,9 +1,9 @@
-// 这层管：`needs_normalize` 的**所有入口**。
+// This layer covers **every entry** of `needs_normalize`.
 //
-// 判据来自用户症状，不是实现形状：手写文档（无 `data-hr-id`）交给任何一条读命令，
-// 都必须**报同一个码、给同一句可执行的下一步**，不许一个入口静默空转、另一个换一句措辞。
-// 入口 = outline / read / patch；serve 不再拒绝未 normalize 的文档（外来文档能开能看），
-// HTTP 侧的 409 收缩到 `model`/`outline` 这类托管读面。
+// The criterion comes from user symptoms, not implementation shape: a handwritten doc (no `data-hr-id`) handed
+// to any read command must **report the same code and give the same executable next step** — no entry may idle silently while another rephrases.
+// Entries = outline / read / patch; serve no longer refuses unnormalized docs (foreign docs open and read fine),
+// so the HTTP-side 409 shrinks to managed read surfaces like `model`/`outline`.
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -14,7 +14,7 @@ import { checked } from "./cli-support";
 import { fieldOf, parseJsonLine, runCli, textOf, withTempDir, type CliResult } from "./harness";
 import { homeOf, startServe } from "./serve-harness";
 
-/** 手写文档：结构完整、语言合法，唯独没有任何 `data-hr-id`。 */
+/** A handwritten document: complete structure, legal language, but no `data-hr-id` anywhere. */
 const HANDWRITTEN = [
   "<!doctype html><html><head><title>手写</title></head><body><article>",
   "<h1>第一章</h1><p>正文一。</p>",
@@ -31,7 +31,7 @@ const seed = (dir: string): void => {
   writeFileSync(join(dir, "ok.html"), NORMALIZED);
 };
 
-/** 跑一条命令并收敛成"退出码 + 信封"：`--json` 与码要一起看才判得出是哪种拒绝。 */
+/** Run a command and collapse it to "exit code + envelope": `--json` and the code together decide which refusal this is. */
 const refusalOf = async (
   dir: string,
   args: readonly string[],
@@ -48,7 +48,7 @@ const REFUSALS: readonly (readonly string[])[] = [
   ["patch", "draft.html", "hr-x", "--action", "delete", "--json"],
 ];
 
-describe("needs_normalize · 三条读改入口报同一个码", () => {
+describe("needs_normalize · all three read/patch entries report the same code", () => {
   it("should refuse outline, read and patch with the same code and the same next step", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -58,9 +58,9 @@ describe("needs_normalize · 三条读改入口报同一个码", () => {
         const message = textOf(fieldOf(envelope, "message"));
 
         expect(fieldOf(envelope, "code")).toBe("needs_normalize");
-        // 退出码 2 = "前置条件不满足，按提示改一次即可"（不是 IO 失败 3）。
+        // Exit code 2 = "precondition unmet, fix once per the hint" (not IO failure 3).
         expect(code).toBe(2);
-        // 三条都指向**同一条**命令：`hr normalize <file> --write`。
+        // All three point at **the same** command: `hr normalize <file> --write`.
         expect(message).toContain("hr normalize");
         expect(message).toContain("--write");
         expect(message).toContain("draft.html");
@@ -76,7 +76,7 @@ describe("needs_normalize · 三条读改入口报同一个码", () => {
 
       expect(before.code).toBe(2);
       expect(before.stderr).toMatch(/hr normalize \S*draft\.html --write/u);
-      // 拒绝时不许顺手把文件改了。
+      // A refusal must not quietly modify the file.
       expect(after.stderr).toBe(before.stderr);
       expect(after.code).toBe(2);
     });
@@ -88,9 +88,9 @@ interface SiblingAnswer {
   body: unknown;
 }
 
-// 同一 workspace 下再点开一份手写文档：托管读面（model）仍与 CLI 同码，阅读器才能给出"先 normalize"的提示。
+// Open another handwritten doc in the same workspace: the managed read surface (model) still returns the CLI's code, so the reader can hint "normalize first".
 const askSiblingModel = async (serve: { url: string; token: string }): Promise<SiblingAnswer> => {
-  // `serve.url` 是程序自己印的带 `?token=` 的那串：用 URL 解析拼兄弟路径，不能字符串直接接。
+  // `serve.url` is the `?token=`-carrying string the program itself printed: use URL resolution for sibling paths, never string concatenation.
   const response = await fetch(new URL("api/doc/draft.html/model", serve.url), {
     headers: { cookie: `hr=${serve.token}` },
   });
@@ -98,7 +98,7 @@ const askSiblingModel = async (serve: { url: string; token: string }): Promise<S
   return { status: response.status, body };
 };
 
-describe("needs_normalize · serve 的 CLI 与 HTTP 两面", () => {
+describe("needs_normalize · serve's CLI and HTTP faces", () => {
   it("should serve a handwritten document as viewable HTML instead of refusing", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -114,7 +114,7 @@ describe("needs_normalize · serve 的 CLI 与 HTTP 两面", () => {
         });
         const body = await response.text();
 
-        // 未 normalize 的文档按外来 HTML 原样展示：能开能看，但不是按块编辑的承诺。
+        // An unnormalized doc is shown as foreign HTML as-is: it opens and reads, but block editing is not promised.
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toContain("text/html");
         expect(body).toContain("第一章");

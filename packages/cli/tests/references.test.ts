@@ -1,7 +1,7 @@
-// 这层管：references 的"复制即用"承诺与组件 id 的文档/代码交叉校验。
+// This layer covers references' "copy and run" promise plus the doc/code cross-check of component ids.
 //
-// 为什么读源码文本而不是 import：`COMPONENT_WHITELIST` 不在 `@hreader/core` 的公开面上，
-// 交叉校验要的是"文档里写的 id 与代码里的字面量逐字一致"，读文本比绕过导出面更贴近承诺。
+// Why read source text instead of importing: `COMPONENT_WHITELIST` is not on `@hreader/core`'s public surface,
+// and the cross-check wants "the ids written in the doc are byte-identical to the code literals" — reading text stays closer to the promise than routing around the export surface.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -28,7 +28,7 @@ const DOC = [
 
 const stable = (html: string): string => serializeHtml(parseHtml(html));
 
-describe("components-spec.md · 每个片段都能原样通过 hr patch", () => {
+describe("components-spec.md · every fragment passes hr patch verbatim", () => {
   const blocks = htmlBlocks(readFileSync(SPEC, "utf8"));
 
   it("should extract at least the eight component snippets", () => {
@@ -68,8 +68,8 @@ const patchSnippet = async (index: number, block: string): Promise<void> =>
     expect(result.stdout).not.toContain("\u001B");
 
     const after = readFileSync(doc, "utf8");
-    // 片段根元素会被 core 补上 data-hr-id，所以不能比字面文本：
-    // 断"组件 id 进了文档" + "文档仍能 parse/serialize 往返稳定"。
+    // The fragment's root element gets a data-hr-id from core, so literal text cannot be compared:
+    // assert "the component id entered the doc" + "the doc still round-trips parse/serialize stable".
     const component = /data-hr-component="([a-z-]+)"/u.exec(block)?.[1] ?? "";
     expect(after).toContain(`data-hr-component="${component}"`);
     expect(after).toContain("hr-c");
@@ -90,14 +90,14 @@ const sourceIds: ReadonlySet<string> = new Set(
   ].map((match) => match[1] ?? ""),
 );
 
-describe("组件 id · 文档与代码双向一致", () => {
+describe("component ids · doc and code agree both ways", () => {
   it("should declare exactly eight ids on both sides", () => {
     expect(docIds.size).toBe(8);
     expect(sourceIds.size).toBe(8);
   });
 });
 
-describe("组件 id · 不允许多或少", () => {
+describe("component ids · neither more nor fewer allowed", () => {
   it("should be a superset-free bijection", () => {
     expect([...docIds].sort()).toEqual([...sourceIds].sort());
   });

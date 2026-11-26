@@ -1,5 +1,5 @@
-// 这层管：进程壳（解析钩子 + 真实 io + 退出码）；不做解析、不做格式化，逻辑全在 `run.ts`。
-// 不读 `HR_DEBUG` 以外的东西：cwd / argv / stdin 只在这里从 `process` 取出后作为参数下传。
+// This layer: the process shell (resolve hook + real io + exit codes); no parsing, no formatting — all logic lives in `run.ts`.
+// Reads nothing beyond `HR_DEBUG`: cwd / argv / stdin are taken from `process` only here and passed down as parameters.
 
 import { registerHooks } from "node:module";
 
@@ -8,8 +8,8 @@ import { resolveFallback } from "./resolve-hook.ts";
 
 registerHooks({ resolve: resolveFallback });
 
-// 必须在任何 `await` 之前读：壳可能在 spawn 之后立刻死掉，一旦被 re-parent 到 1 再读，
-// "原来的父进程"和"init"就分不出来了（`--exit-with-parent` 曾经就漏在这里）。
+// Must be read before any `await`: the shell may die right after spawn, and once it is re-parented to 1 a later read
+// cannot tell "the original parent" from "init" (`--exit-with-parent` once leaked exactly here).
 const launchParentPid = process.ppid;
 
 const { run } = await import("./run");
@@ -23,7 +23,7 @@ const readStdin = async () => {
   return Buffer.concat(chunks);
 };
 
-/** 两个信号任一来一次就关：第二次不处理，让运行时按默认行为兜底。 */
+/** Either signal once shuts down; a second is left unhandled so the runtime's default behavior takes over. */
 const stop = new Promise<void>((resolve) => {
   process.once("SIGTERM", () => {
     resolve();
@@ -33,7 +33,7 @@ const stop = new Promise<void>((resolve) => {
   });
 });
 
-// 挂 EPIPE 守卫必须在 `run` 之前：第一次写 stdout 就可能撞下游早关。
+// The EPIPE guard must be attached before `run`: the first stdout write can already hit an early-closed downstream.
 epipeGuard(process.stdout);
 epipeGuard(process.stderr);
 

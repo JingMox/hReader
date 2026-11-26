@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// 假 Chrome（测试专用）：不实现 CDP，只提供 `/json/version` 与 stderr 的 DevTools 行，
-// 另带三个故障模式（崩溃 / 静默挂住 / stderr 洪流）供超时、进程卫生与缓冲上限用例使用。
+// Fake Chrome (tests only): no CDP — just `/json/version` and the DevTools stderr line,
+// plus three failure modes (crash / silent hang / stderr flood) for the timeout, process-hygiene, and buffer-cap cases.
 import { createServer } from "node:http";
 import { writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -8,8 +8,8 @@ import { spawn } from "node:child_process";
 const pidFile = process.env.FAKE_CHROME_PID_FILE;
 if (pidFile !== undefined) writeFileSync(pidFile, String(process.pid));
 
-// `FAKE_CHROME_GRANDCHILD=1`：再 fork 一个孙进程（同一进程组），每 40ms 往标记文件追加一个字节。
-// 杀进程组会连它一起收；只杀主 pid 会留它继续 tick —— 判别点就在这里。
+// `FAKE_CHROME_GRANDCHILD=1`: forks one grandchild (same process group) that appends a byte to a marker file every 40 ms.
+// Killing the process group takes it down too; killing only the main pid leaves it ticking — that is the distinguishing check.
 const markerFile = process.env.FAKE_CHROME_MARKER_FILE;
 if (process.env.FAKE_CHROME_GRANDCHILD === "1" && markerFile !== undefined) {
   const script = `setInterval(() => require("node:fs").appendFileSync(${JSON.stringify(markerFile)}, "x"), 40)`;
@@ -38,7 +38,7 @@ if (process.env.FAKE_CHROME_SLEEP === "1") {
     port = typeof address === "object" && address !== null ? address.port : 0;
     const listening = `DevTools listening on ws://127.0.0.1:${String(port)}/devtools/browser/fake\n`;
     process.stderr.write(listening);
-    // `FAKE_MODE=flood` 只在 DevTools 行之后喷 5 MB：行必须仍能从前缀里解析出来。
+    // `FAKE_MODE=flood` sprays 5 MB after the DevTools line: the line must still parse from the prefix.
     if (process.env.FAKE_MODE === "flood") process.stderr.write("x".repeat(5 * 1024 * 1024));
   });
 }

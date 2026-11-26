@@ -1,4 +1,4 @@
-// 这层管：`hr new`——按形态起稿、套主题、原子写，以及落盘规矩（已存在 / 越界 / 父目录不存在 / 未知主题）。
+// This layer covers `hr new` — drafting by shape, applying a theme, atomic write, and the write rules (exists / out of bounds / missing parent dir / unknown theme).
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +9,7 @@ import { newDocCommand } from "../src/commands/new";
 import { fieldOf, keysOf, parseJsonLine, withTempDir } from "./harness";
 import { runIn } from "./support/capture";
 
-describe("hr new · 起稿", () => {
+describe("hr new · drafting", () => {
   it("should write a themed report skeleton that passes hr check", async () => {
     await withTempDir(async (dir) => {
       const created = await runIn(dir, ["new", "q4.html", "--kind", "report", "--title", "Q4"]);
@@ -50,7 +50,7 @@ describe("hr new · 起稿", () => {
   });
 });
 
-describe("hr new · 落盘规矩", () => {
+describe("hr new · write rules", () => {
   it("should refuse to overwrite without --force and overwrite with it", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(join(dir, "a.html"), "原文");
@@ -77,7 +77,7 @@ describe("hr new · 落盘规矩", () => {
   });
 });
 
-describe("hr new · 写不进去的落点", () => {
+describe("hr new · unwritable targets", () => {
   it("should report io_failure when the parent directory does not exist", async () => {
     await withTempDir(async (dir) => {
       const result = await runIn(dir, ["new", "missing/a.html", "--json"]);
@@ -98,7 +98,7 @@ describe("hr new · 写不进去的落点", () => {
   });
 });
 
-describe("newDocCommand · 直调", () => {
+describe("newDocCommand · direct calls", () => {
   it("should fall back to the real path in the receipt when no display path is given", async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, "a.html");

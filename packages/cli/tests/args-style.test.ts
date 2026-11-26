@@ -1,4 +1,4 @@
-// 这层管：`parseArgs` 的 style 子命令（模式互斥与位置参数）；不跑子进程、不碰 fs。
+// This layer covers the `parseArgs` style subcommand (mode exclusivity and positional args); no subprocess, no fs.
 
 import { describe, it } from "vitest";
 

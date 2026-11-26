@@ -1,4 +1,4 @@
-// 这层管：`parseArgs` 的 `style extract`（语料切片、默认 id/name、旗标白名单）；不跑子进程、不碰 fs。
+// This layer covers `parseArgs` for `style extract` (corpus slices, default id/name, flag whitelist); no subprocess, no fs.
 
 import { describe, expect, it } from "vitest";
 
@@ -7,7 +7,7 @@ import { CWD, expectFailure, parse } from "./args-helpers";
 const EXTRACT = (extra: readonly string[] = []) =>
   parse(["style", "extract", "a.md", "b.html", ...extra]);
 
-describe("parseArgs · style extract 形状", () => {
+describe("parseArgs · style extract shapes", () => {
   it("should take every positional as corpus and default id from the first file", () => {
     expect(EXTRACT()).toMatchObject({
       ok: true,
@@ -45,7 +45,7 @@ describe("parseArgs · style extract 形状", () => {
   });
 });
 
-describe("parseArgs · style extract 默认 id", () => {
+describe("parseArgs · style extract default ids", () => {
   it("should fall back to slug 'style' for a CJK file name", () => {
     expect(parse(["style", "extract", "三篇语料.md"])).toMatchObject({
       ok: true,
@@ -61,7 +61,7 @@ describe("parseArgs · style extract 默认 id", () => {
   });
 });
 
-describe("parseArgs · style extract 拒绝", () => {
+describe("parseArgs · style extract rejections", () => {
   it("should reject an empty corpus", () => {
     expectFailure(["style", "extract"], "style extract 至少需要 1 篇语料（.md / .html）", "style");
   });

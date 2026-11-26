@@ -1,4 +1,4 @@
-// 这层管：cli 测试共享的真文档与断言前置（无状态）；不做断言决策。
+// This layer holds real documents and assertion preludes shared by cli tests (stateless); no assertion decisions.
 
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -27,8 +27,9 @@ export const seed = (dir: string, name = "a.html", html = DOC): string => {
 };
 
 /**
- * 取文档里第一个 `<tag>` 的 `data-hr-id`：id 只在**规范化之后**才存在，所以一律从文件里读，
- * 用例里不硬编码——硬编码的 id 会让「内容寻址」这件事退化成金样比对。
+ * Take the first `<tag>`'s `data-hr-id` in the doc: ids only exist **after normalization**, so always read
+ * them from the file and never hardcode them in cases — a hardcoded id degrades "content addressing" into
+ * golden comparison.
  */
 export const idOfTag = (html: string, tag: string): string => {
   const id = new RegExp(`<${tag} data-hr-id="(hr-[0-9a-f]{8})"`, "u").exec(html)?.[1];
@@ -36,7 +37,7 @@ export const idOfTag = (html: string, tag: string): string => {
   return id;
 };
 
-/** 所有子进程结果都过一遍：无 ANSI、无 signal。 */
+/** Every subprocess result passes through this: no ANSI, no signal. */
 export const checked = (result: CliResult): CliResult => {
   expectNoAnsi(result);
   expect(result.signal).toBeNull();

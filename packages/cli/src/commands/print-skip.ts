@@ -1,4 +1,4 @@
-// 这层管：`test:e2e` 要不要跳过、为什么、以及那行提示的文本；不探测 fs、不退出进程。
+// This layer: whether `test:e2e` skips, why, and the text of that notice line; no fs probing, no process exit.
 
 export type ChromeEnv = Readonly<Record<string, string | undefined>>;
 
@@ -6,9 +6,9 @@ const SKIP_ENV = "HREADER_SKIP_CHROME";
 const CHROME_VAR = "CHROME_BIN";
 
 /**
- * `null` = 可以真跑。三态：显式跳过 / 没有可用的 Chrome / 正常。
- * 探测 Chrome 存在与否是调用方的事（脚本有 fs，这层没有），结果经 `CHROME_BIN` 传进来：
- * 空串与缺席同义，都表示"探测过了，没有"。
+ * `null` = run for real. Three states: explicitly skipped / no usable Chrome / normal.
+ * Probing Chrome's existence is the caller's job (the script has fs, this layer does not); the result arrives
+ * via `CHROME_BIN`: empty string and absent both mean "probed, nothing found".
  */
 export const skipReasonOf = (env: ChromeEnv): string | null => {
   if (env[SKIP_ENV] === "1") return `${SKIP_ENV}=1（显式跳过）`;
@@ -17,5 +17,5 @@ export const skipReasonOf = (env: ChromeEnv): string | null => {
   return null;
 };
 
-/** 跳过必须以非 0 信息出门：静默跳过等于假装跑过，所以这行不许省掉原因。 */
+/** A skip must leave with a non-zero signal: silently skipping looks like passing, so this line must state the reason. */
 export const skipLineOf = (reason: string): string => `SKIPPED: ${reason}\n`;

@@ -1,5 +1,5 @@
-// 这层管：`run(["serve", …])` 不带 `--home` 时的落点。
-// 为什么单独成文件：这条用例要真起一次服务，和 `run.test.ts` 的假 io 用例不同源（同 `run-paths.test.ts` 的分法）。
+// This layer covers where `run(["serve", …])` lands without `--home`.
+// Why its own file: this case really starts one server — a different source from `run.test.ts`'s fake-io cases (same split as `run-paths.test.ts`).
 
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -8,10 +8,10 @@ import { afterAll, expect, it } from "vitest";
 
 import { run, type CliIo } from "../src/run";
 
-// 模块顶层先把 `HOME` 指到沙箱：`run()` 的落点是 `io.home ?? homedir()`，接线一断就会落回
-// `homedir()`；不重定向的话，这条文件会先写掉真实 `~/.hreader/daemon.json` 再断言失败（真实事故）。
-// 模块顶层改写 `process.env` 必须自己还原：`afterAll` 会删掉沙箱，不还原的话同 worker 里后续
-// 测试文件的 `homedir()` 会指向一个已删除的目录（同一 worker 会复用跑多个文件，见 vitest.shared.ts）。
+// At module top, `HOME` is pointed at a sandbox first: `run()`'s landing is `io.home ?? homedir()` — break that
+// wiring and it falls back to `homedir()`; without the redirect this file would write the real `~/.hreader/daemon.json` before the assertion fails (a real incident).
+// Module-top `process.env` rewrites must be self-restored: `afterAll` deletes the sandbox, and unrestored the
+// next test file in the same worker would see `homedir()` pointing at a deleted directory (a worker runs several files, see vitest.shared.ts).
 const previousHome = process.env["HOME"];
 const sandbox = realpathSync(mkdtempSync(join(tmpdir(), "hr-run-home-env-")));
 process.env["HOME"] = sandbox;
@@ -23,7 +23,7 @@ writeFileSync(
   '<article data-hr-id="hr-a"><h2 data-hr-id="hr-b">标题</h2><p data-hr-id="hr-c">正文</p></article>',
 );
 afterAll(() => {
-  // 先还原 `HOME`，再删沙箱：顺序反了就会把 `HOME` 留在一个不存在的目录上。
+  // Restore `HOME` first, then delete the sandbox: reversed, `HOME` is left pointing at a nonexistent directory.
   if (previousHome === undefined) delete process.env["HOME"];
   else process.env["HOME"] = previousHome;
   rmSync(dir, { recursive: true, force: true });
@@ -52,8 +52,8 @@ const waitForOf = async (check: () => boolean): Promise<boolean> => {
   return false;
 };
 
-// 守卫：`homedir()` 必须已被重定向到沙箱。否则接线一断，回落路径会写真实 `~/.hreader`，
-// 表现为"生产数据被动过"而不是"这条用例红"。
+// Guard: `homedir()` must already be redirected to the sandbox. Otherwise a broken wire falls back to writing
+// the real `~/.hreader` — presenting as "production data was touched" instead of "this case went red".
 it("should have redirected HOME to a temp dir, so a broken wiring cannot touch the real one", () => {
   expect(homedir().startsWith(sandbox)).toBe(true);
 });

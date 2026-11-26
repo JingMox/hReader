@@ -1,4 +1,4 @@
-// 这层管：`importDocCommand` 的进程内行为（落盘、--out 守卫、--json 键集、人读摘要、错误归口）；不起子进程。
+// This layer covers `importDocCommand`'s in-process behavior (disk write, --out guards, --json key set, human summary, error routing); no subprocess.
 
 import { existsSync, realpathSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +9,7 @@ import { HrError } from "@hreader/core";
 import { importDocCommand, type ImportDocInput } from "../src/commands/import";
 import { fieldOf, keysOf, listOf, parseJsonLine, withTempDir } from "./harness";
 
-/** 演示稿式外来 HTML：脚本、事件属性、装饰 div、无 `<article>`——import 的全部路径都要走一遍。 */
+/** Slideshow-style foreign HTML: scripts, event attributes, decorative divs, no `<article>` — every import path gets exercised. */
 const FOREIGN = [
   "<!doctype html><html><head><title>外来演示</title>",
   "<script>window.boot()</script></head>",
@@ -26,10 +26,10 @@ const codeOf = async (run: () => Promise<string>): Promise<string> => {
     if (error instanceof HrError) return error.code;
     throw error;
   }
-  throw new Error("应抛 HrError");
+  throw new Error("expected an HrError to be thrown");
 };
 
-/** workspace 用真实路径：`run.ts` 在调命令前已把两侧真实化，命令层拿到的就该是 realpath。 */
+/** The workspace uses a real path: `run.ts` realpath'd both sides before the command, so the command layer should receive a realpath. */
 const withRealDir = async (run: (dir: string) => Promise<void>): Promise<void> =>
   withTempDir(async (raw) => {
     await run(realpathSync(raw));
@@ -53,7 +53,7 @@ const inputOf = (dir: string, overrides: Partial<ImportDocInput> = {}): ImportDo
   ...overrides,
 });
 
-describe("importDocCommand · 落盘与人读摘要", () => {
+describe("importDocCommand · disk write and human summary", () => {
   it("should write a managed document and print the report summary", async () => {
     await withRealDir(async (dir) => {
       seedForeign(dir);
@@ -67,7 +67,7 @@ describe("importDocCommand · 落盘与人读摘要", () => {
       expect(text).toContain("标题「外来演示」（<title>）");
       expect(text).toContain("主干：<main>");
       expect(text).toContain("丢弃明细：");
-      // head（装 script）与 body 里 <main> 的兄弟 nav 都计入"主干之外"。
+      // The head (holding script) and the nav sibling of <main> in body both count as "outside the trunk".
       expect(text).toContain("head ×1");
       expect(text).toContain("nav ×1");
       expect(text).toContain("on* ×1");
@@ -88,7 +88,7 @@ describe("importDocCommand · 落盘与人读摘要", () => {
 
   it("should label the h1 title source and the body trunk when nothing better exists", async () => {
     await withRealDir(async (dir) => {
-      // 无 <main>、两棵子树文本量相等（谁都不是多数）→ body 兜底；无 <title> → 首个 <h1> 供标题。
+      // No <main>, and the two subtrees have equal text mass (neither is a majority) → body fallback; no <title> → first <h1> supplies the title.
       writeFileSync(
         join(dir, "deck.html"),
         "<body><section><h1>文档名</h1><p>内容</p></section><section><h1>其它页</h1><p>内容</p></section></body>",
@@ -101,7 +101,7 @@ describe("importDocCommand · 落盘与人读摘要", () => {
     });
   });
 
-  it("should label the largest trunk and fall back to 未命名 when no title exists", async () => {
+  it("should label the largest trunk and fall back to the default title when none exists", async () => {
     await withRealDir(async (dir) => {
       writeFileSync(
         join(dir, "deck.html"),
@@ -159,7 +159,7 @@ describe("importDocCommand · --json", () => {
   });
 });
 
-describe("importDocCommand · --out 守卫与错误归口", () => {
+describe("importDocCommand · --out guards and error routing", () => {
   it("should refuse an existing target without --force", async () => {
     await withRealDir(async (dir) => {
       seedForeign(dir);
@@ -167,7 +167,7 @@ describe("importDocCommand · --out 守卫与错误归口", () => {
       const code = await codeOf(() => importDocCommand(inputOf(dir)));
 
       expect(code).toBe("file_exists");
-      // 原目标一个字节都没动。
+      // Not one byte of the original target was touched.
       expect(readFileSync(join(dir, "deck.hr.html"), "utf8")).toBe("已占用");
     });
   });

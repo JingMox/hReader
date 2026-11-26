@@ -1,18 +1,18 @@
-// 这层管：`LlmPort` 的 HTTP 实现（`src/` 里唯一发网络请求的地方）；不含提示词、不重试、不落盘。
+// This layer: the HTTP implementation of `LlmPort` (the only place in `src/` that makes network requests); no prompts, no retries, no disk.
 
 import { HrError } from "@hreader/core";
 import type { ExtractStyleLlmInput } from "@hreader/core";
 
-/** 传输层接口不单独公开：cli 只取 `ExtractStyleLlmInput` 上那个字段的形状，不复制 core 的接口。 */
+/** The transport interface is not exported on its own: cli only needs the shape of that field on `ExtractStyleLlmInput`, not a copy of core's interface. */
 export type LlmPort = ExtractStyleLlmInput["llm"];
 
-/** 单次请求的硬上限，且**不自动重试**（写盘非幂等 + 费用不可控）。 */
+/** Hard cap for a single request, with **no automatic retry** (writes are not idempotent and spend real money). */
 export const LLM_TIMEOUT_MS = 30_000;
 
-/** 错误消息里只留这么长的响应片段：够定位，又不至于把整份响应灌进日志与 `--json`。 */
+/** Only this much of the response is kept in error messages: enough to locate the problem without dumping the whole response into logs and `--json`. */
 const SNIPPET_CHARS = 200;
 
-/** 与 `PROMPT_MAX_CORPUS_BYTES`（64 KiB）同一量级，防止一次调用撑成天价。 */
+/** Same order as `PROMPT_MAX_CORPUS_BYTES` (64 KiB), so one call cannot grow into an unbounded bill. */
 const MAX_TOKENS = 2048;
 
 export interface LlmClientConfig {
@@ -21,7 +21,7 @@ export interface LlmClientConfig {
   readonly model: string;
   readonly sessionId: string;
   readonly timeoutMs: number;
-  /** 用全局 `fetch` 的类型而不是另立签名：测试注入的假 fetch 因此仍是"真 fetch 的子集"。 */
+  /** Typed as global `fetch` rather than a bespoke signature: a fake fetch injected by tests stays a "subset of real fetch". */
   readonly fetch: typeof globalThis.fetch;
 }
 
@@ -34,7 +34,7 @@ interface Exchange {
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** 压成一行再截断：响应体里的换行会让一条错误在 stderr 上散成好几行。 */
+/** Collapse to one line, then truncate: newlines in a response body would scatter one error across several stderr lines. */
 const snippetOf = (text: string): string => text.replace(/\s+/gu, " ").slice(0, SNIPPET_CHARS);
 
 const jsonOf = (text: string): unknown => {
@@ -45,8 +45,8 @@ const jsonOf = (text: string): unknown => {
   }
 };
 
-/** 只认 `choices[0].message.content` 且必须是非空字符串：空补全等于没有补全。
- * 这里先看形状是为了"提前失败"（错误里能带 HTTP 状态），不是替 core 解析 body。 */
+/** Only `choices[0].message.content` counts, and only as a non-empty string: an empty completion is no completion.
+ * The shape check comes first to "fail early" (the error can carry the HTTP status), not to parse the body for core. */
 const contentOf = (body: unknown): string | undefined => {
   const choices = isRecord(body) ? body["choices"] : undefined;
   const choice: unknown = Array.isArray(choices) ? choices[0] : undefined;
@@ -59,11 +59,11 @@ const contentOf = (body: unknown): string | undefined => {
 const headersOf = (config: LlmClientConfig): Readonly<Record<string, string>> => ({
   authorization: `Bearer ${config.apiKey}`,
   "content-type": "application/json",
-  // OpenCode Zen 的路由要求：缺了这个头直接 400，不是可选的遥测字段。
+  // An OpenCode Zen routing requirement: the request 400s without this header — it is not optional telemetry.
   "x-opencode-session": config.sessionId,
 });
 
-/** 网络层失败（含超时、body 读取中断）统一成 `llm_failure`：用户只看得到"没拿到响应"。 */
+/** Network-layer failures (timeout, truncated body reads) all fold into `llm_failure`: from the user's view it is just "no response". */
 const exchangeOf = async (config: LlmClientConfig, prompt: string): Promise<Exchange> => {
   try {
     const response = await config.fetch(`${config.baseUrl}/chat/completions`, {
@@ -92,7 +92,7 @@ export const createLlmClient = (config: LlmClientConfig): LlmPort => ({
     if (contentOf(jsonOf(exchange.text)) === undefined) {
       throw new HrError("llm_failure", `LLM 响应里没有 choices[0].message.content（${detail}）`);
     }
-    // 交回整份 body（不是 content）：`suggestionsOf` 的解析入口就是 OpenAI 形状，port 不解释它。
+    // Hand back the whole body (not just content): `suggestionsOf` parses the OpenAI shape itself — the port does not interpret it.
     return exchange.text;
   },
 });

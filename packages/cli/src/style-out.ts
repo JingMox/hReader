@@ -1,4 +1,4 @@
-// 这层管：`--out` 的落点是否落在风格发现链里（纯路径比较，不碰 fs）；提示而非报错——写别处是合法用法。
+// This layer: whether an `--out` destination lies on the style-discovery chain (pure path comparison, no fs); a hint, not an error — writing elsewhere is legitimate.
 
 import { join } from "node:path";
 
@@ -9,9 +9,9 @@ import { realpathThroughAncestors } from "./canonical";
 import { term } from "./output";
 
 /**
- * 发现链只有两条（`packages/core/src/style/load.ts` 的 `resolveStyle`）：项目级
- * `<projectRoot>/.hreader/style.yaml` 与用户级 `<home>/.hreader/styles/<id>/style.yaml`。
- * 路径常量从 core 借用：抄一份字面量迟早与解析链分叉。
+ * The discovery chain has exactly two links (`resolveStyle` in `packages/core/src/style/load.ts`): the
+ * project-level `<projectRoot>/.hreader/style.yaml` and the user-level `<home>/.hreader/styles/<id>/style.yaml`.
+ * The path constants are borrowed from core: a copied literal would drift from the resolution chain sooner or later.
  */
 export const isDiscoveredStylePath = (path: string, id: string, deps: StyleDeps): boolean => {
   const target = realpathThroughAncestors(path);
@@ -21,7 +21,7 @@ export const isDiscoveredStylePath = (path: string, id: string, deps: StyleDeps)
   );
 };
 
-/** 提示文案：不报错，只把"怎么写才接得上"说清楚。 */
+/** Hint text: not an error — it only explains how to write the path so discovery picks it up. */
 export const undiscoveredHint = (path: string, id: string, deps: StyleDeps): string =>
   term(
     `提示：${path} 不在风格发现路径里；要让 --tone ${id} 找到它，请写到 ${projectStylePath(deps)} 或 ${join(userStyleDir(id, deps), STYLE_FILE)}\n`,

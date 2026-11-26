@@ -1,4 +1,4 @@
-// 这层管：真子进程的 CLI 契约（退出码、JSON、管道、编码、无 ANSI）；不 mock 进程。
+// This layer covers the real-subprocess CLI contract (exit codes, JSON, pipes, encoding, no ANSI); no process mocking.
 
 import { closeSync, existsSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { runCli, withTempDir } from "./harness";
 import { checked, seed, sha } from "./cli-support";
 
-describe("退出码 0 · 成功", () => {
+describe("exit code 0 · success", () => {
   it("should outline a document", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -28,7 +28,7 @@ describe("退出码 0 · 成功", () => {
   });
 });
 
-describe("退出码 1 · 业务失败", () => {
+describe("exit code 1 · business failures", () => {
   it("should fail node_not_found without touching the file", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -40,14 +40,14 @@ describe("退出码 1 · 业务失败", () => {
 
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      // 报文只有一句：`hr-nope` 是合规 id 形态、文档里没有，报 node_not_found 那一句。
+      // One sentence in the message: `hr-nope` is a legal id shape, absent from the doc — the node_not_found sentence.
       expect(result.stderr).toContain('文档里没有 id 为 "hr-nope" 的节点。');
       expect(sha(path)).toBe(before);
     });
   });
 });
 
-describe("退出码 1 · 禁用内容", () => {
+describe("exit code 1 · forbidden content", () => {
   it("should fail forbidden_content for a script fragment", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -79,7 +79,7 @@ describe("退出码 1 · 禁用内容", () => {
   });
 });
 
-describe("退出码 1 · 片段校验", () => {
+describe("exit code 1 · fragment validation", () => {
   it("should fail invalid_fragment for a fragment with two roots", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -93,8 +93,8 @@ describe("退出码 1 · 片段校验", () => {
         ),
       );
 
-      // 片段层先拦（`invalid_fragment`，退出码 1）：两个根不可能落进任何容器的一个位置。
-      // 这里不再拿"未闭合的 `<div>`"当非法样本——单根片段现在按容错解析收下，落到内容模型那层才算错。
+      // The fragment layer refuses first (`invalid_fragment`, exit 1): two roots can never fit one position in any container.
+      // No more "unclosed `<div>`" as the illegal sample — a single-root fragment is now accepted by tolerant parsing and only fails at the content-model layer.
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("片段");
       expect(result.stderr).toContain("根元素");
@@ -102,7 +102,7 @@ describe("退出码 1 · 片段校验", () => {
   });
 });
 
-describe("退出码 1 · 风格缺失", () => {
+describe("exit code 1 · missing styles", () => {
   it("should fail unknown_style for a theme that does not exist", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -117,7 +117,7 @@ describe("退出码 1 · 风格缺失", () => {
   });
 });
 
-describe("退出码 2 · 用法错误", () => {
+describe("exit code 2 · usage errors", () => {
   it("should exit 2 with the usage when no command is given", async () => {
     const result = checked(await runCli([]));
 
@@ -151,7 +151,7 @@ describe("退出码 2 · 用法错误", () => {
   });
 });
 
-describe("退出码 3 · IO 与路径", () => {
+describe("exit code 3 · IO and paths", () => {
   it("should exit 3 for a missing file", async () => {
     const result = checked(await runCli(["outline", "missing.html"]));
     expect(result.code).toBe(3);
@@ -162,7 +162,7 @@ describe("退出码 3 · IO 与路径", () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
       seed(dir);
-      // 唯一名：`escape.html` 是多个测试文件共用的固定名，别的用例写歪一次就会把这条带红。
+      // Uniqueness: `escape.html` is a fixed name shared by several test files; one sloppy write elsewhere turns this red.
       const name = `hr-escape-patch-${String(process.pid)}-${String(Date.now())}.html`;
       const outside = join(dir, "..", name);
       try {
@@ -181,7 +181,7 @@ describe("退出码 3 · IO 与路径", () => {
   });
 });
 
-describe("退出码 3 · 坏编码", () => {
+describe("exit code 3 · bad encoding", () => {
   it("should exit 3 + invalid_utf8 for a bad document and keep the bytes", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -199,7 +199,7 @@ describe("退出码 3 · 坏编码", () => {
   });
 });
 
-describe("退出码 70 · 内部错误（真触发）", () => {
+describe("exit code 70 · internal errors (really triggered)", () => {
   it("should exit 70 when stdin cannot be read at all (write-only fd)", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -225,7 +225,7 @@ describe("退出码 70 · 内部错误（真触发）", () => {
   });
 });
 
-describe("退出码 70 · HR_DEBUG 栈", () => {
+describe("exit code 70 · HR_DEBUG stacks", () => {
   it("should print the stack only with HR_DEBUG=1", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -241,7 +241,7 @@ describe("退出码 70 · HR_DEBUG 栈", () => {
         );
 
         expect(result.code).toBe(70);
-        // 流错误的 stack 只有首行（无 `at` 帧），但 `--debug` 仍会追加它。
+        // A stream error's stack is only its first line (no `at` frames), but `--debug` still appends it.
         expect(result.stderr).toContain("EBADF: bad file descriptor, read\nError: EBADF");
       } finally {
         closeSync(fd);

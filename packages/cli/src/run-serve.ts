@@ -1,5 +1,5 @@
-// 这层管：把 serve 意图装配成 `ServeInput`（别的命令的装配留在 `run.ts`）。
-// 单独成文件只为职责边界：`run.ts` 只做分发，而 serve 是唯一要凑齐 `--app-dir` / `--allow-host` / 看门狗三项的命令。
+// This layer: assembles a serve intent into `ServeInput` (other commands' assembly stays in `run.ts`).
+// A separate file purely for responsibility boundaries: `run.ts` only dispatches, and serve is the only command needing all three of `--app-dir` / `--allow-host` / the watchdog.
 
 import { existsSync } from "node:fs";
 
@@ -9,18 +9,18 @@ import type { Intent } from "./args";
 import { serveCommand } from "./commands/serve";
 import { displayedPathOf } from "./output";
 
-/** 分发层已经归一好的三样东西：`--home` 的落点、停止口、以及"父 pid 只采集一次"的那次采集。 */
+/** The three things the dispatch layer already normalized: `--home`'s location, the stop handle, and the single "capture parent pid once" capture. */
 interface ServeWiring {
-  /** `--home` 缺省时的落点（`run` 已把 `homedir()` 归到这里）。 */
+  /** Where `--home` lands when omitted (`run` already normalized `homedir()` into this). */
   readonly home: string;
-  /** 当前工作目录：报错里的路径按用户视角（相对 cwd）回显，与回执同一口径。缺省取进程 cwd。 */
+  /** Current working directory: error paths echo from the user's view (relative to cwd), same convention as receipts. Defaults to the process cwd. */
   readonly cwd?: string | undefined;
   readonly stop: Promise<void>;
-  /** 进程壳在首个 `await` 之前采集的父 pid；这里没有兜底——晚读 `process.ppid` 会漏掉"启动前父进程已死"。 */
+  /** Parent pid the process shell captured before the first `await`; no fallback here — reading `process.ppid` late would miss "parent already dead at launch". */
   readonly launchParentPid: number;
-  /** core 的诊断出口；不接上就等于把"`::` 上另有监听"与"清理陈旧 daemon.json"静默掉。 */
+  /** core's diagnostics outlet; leaving it unwired silences "something else listening on `::`" and "stale daemon.json cleanup". */
   readonly diagnose: (message: string) => void;
-  /** 回执里印的文档路径（用户视角，由 `run.ts` 按 cwd 换算）；不给 = 印 workspace 相对名。 */
+  /** Document path printed in the receipt (user's view, converted by `run.ts` against cwd); unset = print the workspace-relative name. */
   readonly displayPath?: string | undefined;
 }
 
@@ -29,14 +29,14 @@ export const serveCommandOf = (
   paths: { readonly workspace: string; readonly file: string },
   wiring: ServeWiring,
 ): Promise<string> => {
-  // 显式 `--app-dir` 必须真实存在（exit 2）：depcruise 禁止 commands/* 碰 fs，缺省值仍由 core 兜底。
+  // An explicit `--app-dir` must really exist (exit 2): depcruise bars commands/* from fs, and the default still comes from core.
   if (intent.appDirGiven && intent.appDir !== undefined && !existsSync(intent.appDir)) {
     throw new HrError(
       "invalid_input",
       `--app-dir 目录不存在：${displayedPathOf(intent.appDir, wiring.cwd ?? process.cwd())}`,
     );
   }
-  // core 的 `diagnose` 是"一句一说"、不带换行；CLI 的 stderr 是行通道，这一层补上。
+  // core's `diagnose` emits one message with no newline; the CLI's stderr is a line channel, so this layer adds it.
   const diagnose = (message: string): void => {
     wiring.diagnose(`${message}\n`);
   };

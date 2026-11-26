@@ -1,6 +1,6 @@
-// 这层管：`browser.ts` 适配层——`pageLikeOf`/`browserLikeOf` 把调用一一映射到 puppeteer
-// 的方法面、报错统一折成 `chrome_failed`（ProtocolError 取 `originalMessage`），
-// `browserOf` 负责握手失败时的文案。全程注入假对象，不起真 Chrome。
+// This layer covers the `browser.ts` adapter — `pageLikeOf`/`browserLikeOf` map calls one-to-one onto
+// puppeteer's method surface, errors uniformly fold into `chrome_failed` (ProtocolError takes `originalMessage`),
+// and `browserOf` owns the handshake-failure copy. Fake objects injected throughout; no real Chrome.
 import { ProtocolError, type ConnectOptions } from "puppeteer-core";
 
 import { HrError } from "@hreader/core";
@@ -62,7 +62,7 @@ const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
     if (error instanceof HrError) return error;
     throw error;
   }
-  throw new Error("预期抛出 HrError");
+  throw new Error("expected an HrError to be thrown");
 };
 
 const protocolErrorOf = (original: string): ProtocolError => {
@@ -71,8 +71,8 @@ const protocolErrorOf = (original: string): ProtocolError => {
   return error;
 };
 
-describe("pageLikeOf · 方法映射", () => {
-  it("goto 等 load、关掉 puppeteer 自带超时", async () => {
+describe("pageLikeOf · method mapping", () => {
+  it("should wait for load in goto and disable puppeteer's own timeout", async () => {
     const calls = callsOf();
     const page = pageLikeOf(puppeteerPageOf(calls));
     await page.goto("file:///x.html");
@@ -81,7 +81,7 @@ describe("pageLikeOf · 方法映射", () => {
     ]);
   });
 
-  it("pdf/screenshot/setViewport 的参数原样透传（screenshot 固定 type: png）", async () => {
+  it("should pass pdf/screenshot/setViewport arguments through verbatim (screenshot is fixed type: png)", async () => {
     const calls = callsOf();
     const page = pageLikeOf(puppeteerPageOf(calls));
     const pdfOptions = printOf(true);
@@ -98,7 +98,7 @@ describe("pageLikeOf · 方法映射", () => {
     expect(calls.setViewport).toEqual([viewport]);
   });
 
-  it("metrics 走一次性 CDP session，回包原文上交", async () => {
+  it("should run metrics through a one-shot CDP session and hand back the raw reply", async () => {
     const calls = callsOf();
     const page = pageLikeOf(puppeteerPageOf(calls));
     const first = await page.metrics();
@@ -109,8 +109,8 @@ describe("pageLikeOf · 方法映射", () => {
   });
 });
 
-describe("pageLikeOf · 报错折叠", () => {
-  it("普通错误取首行折成 chrome_failed", async () => {
+describe("pageLikeOf · error folding", () => {
+  it("should fold a plain error's first line into chrome_failed", async () => {
     const calls = callsOf();
     const page = pageLikeOf(puppeteerPageOf(calls, { goto: new Error("navigate boom\nsecond") }));
     const error = await failureOf(page.goto("file:///x"));
@@ -118,7 +118,7 @@ describe("pageLikeOf · 报错折叠", () => {
     expect(error.message).toBe("Page.navigate 失败：navigate boom");
   });
 
-  it("ProtocolError 用 originalMessage 去掉协议前缀", async () => {
+  it("should use originalMessage for a ProtocolError to drop the protocol prefix", async () => {
     const calls = callsOf();
     const page = pageLikeOf(puppeteerPageOf(calls, { pdf: protocolErrorOf("Print job failed") }));
     const error = await failureOf(page.pdf(printOf(false)));
@@ -126,14 +126,14 @@ describe("pageLikeOf · 报错折叠", () => {
   });
 });
 
-describe("pageLikeOf · 各方法的错误协议名", () => {
-  it("setViewport 失败带协议名 Emulation.setDeviceMetricsOverride", async () => {
+describe("pageLikeOf · protocol names per method", () => {
+  it("should carry the protocol name Emulation.setDeviceMetricsOverride when setViewport fails", async () => {
     const page = pageLikeOf(puppeteerPageOf(callsOf(), { setViewport: new Error("vp") }));
     const error = await failureOf(page.setViewport({ width: 1, height: 1, deviceScaleFactor: 1 }));
     expect(error.message).toBe("Emulation.setDeviceMetricsOverride 失败：vp");
   });
 
-  it("screenshot / metrics 失败各自带协议名", async () => {
+  it("should carry each protocol name when screenshot / metrics fail", async () => {
     const page = pageLikeOf(
       puppeteerPageOf(callsOf(), {
         screenshot: new Error("shot"),
@@ -152,7 +152,7 @@ describe("pageLikeOf · 各方法的错误协议名", () => {
 });
 
 describe("browserLikeOf", () => {
-  it("newPage 成功后是 PageLike；失败折成 Target.createTarget 的 chrome_failed", async () => {
+  it("should return a PageLike on newPage success and fold a failure into Target.createTarget's chrome_failed", async () => {
     const calls = callsOf();
     let disconnects = 0;
     const browser = browserLikeOf({
@@ -179,7 +179,7 @@ describe("browserLikeOf", () => {
 });
 
 describe("browserOf", () => {
-  it("握手参数固定：ws 端点 + protocolTimeout 0", async () => {
+  it("should fix the handshake parameters: ws endpoint + protocolTimeout 0", async () => {
     const calls = callsOf();
     let seen: ConnectOptions | undefined;
     const browser = await browserOf("ws://127.0.0.1:9/devtools/browser/x", (options) => {
@@ -196,7 +196,7 @@ describe("browserOf", () => {
     expect(typeof browser.newPage).toBe("function");
   });
 
-  it("握手失败折成 chrome_failed + 首行", async () => {
+  it("should fold a handshake failure into chrome_failed + first line", async () => {
     const error = await failureOf(
       browserOf("ws://127.0.0.1:9/x", () =>
         Promise.reject(new Error("connect ECONNREFUSED\nmore")),

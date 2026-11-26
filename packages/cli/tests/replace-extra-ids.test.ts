@@ -1,9 +1,9 @@
-// `replace` 的片段自带 `data-hr-id` 时，那是"片段带来的 id 被忽略"，报成
-// `replacedIds: [{from: 片段的 id, to: 继承到的目标 id}]`；片段**内部**其它可寻址节点由产品重新分配，
-// 落在 `newIds` 里。两件事同时发生，人读回执就必须把两段提示都印出来——
-// 只印 "id 变更" 会让用户不知道文档里凭空多了两个 id，只印 "+N ids" 又看不出锚点被换了。
+// When `replace`'s fragment carries its own `data-hr-id`, that is a "fragment id ignored", reported as
+// `replacedIds: [{from: the fragment's id, to: the inherited target id}]`; other addressable nodes **inside**
+// the fragment are reassigned by the product and land in `newIds`. Both happen at once, so the human receipt
+// must print both hints — printing only "id change" hides two ids appearing from nowhere; printing only "+N ids" hides that the anchor was swapped.
 //
-// 这层管 CLI 落盘 + 人读输出；`replacedIds` 的语义本身在 `patch-id-inherit.test.ts`。
+// This layer covers the CLI write + human output; `replacedIds` semantics itself lives in `patch-id-inherit.test.ts`.
 
 import { readFileSync } from "node:fs";
 
@@ -24,13 +24,13 @@ const DOC = [
 
 const FRAGMENT = `<div data-hr-id="${FRAGMENT_ID}"><p>内一</p><p>内二</p></div>`;
 
-/** 片段里除了它自己的 `data-hr-id` 之外**没有**可寻址节点（`newIds` 因此为空）。 */
+/** The fragment holds **no** addressable node besides its own `data-hr-id` (`newIds` therefore empty). */
 const TEXT_ONLY_FRAGMENT = '<div data-hr-id="hr-zz">纯文本</div>';
 
 const idsIn = (html: string): readonly string[] =>
   [...html.matchAll(/data-hr-id="([^"]*)"/gu)].map((match) => String(match[1]));
 
-describe("patch · 片段带 id 且片段内还要分新 id", () => {
+describe("patch · a fragment with an id that also allocates new ids inside", () => {
   it("should print both the id mapping and the extra new ids in the human receipt", async () => {
     await withTempDir(async (dir) => {
       seed(dir, "a.html", DOC);
@@ -42,7 +42,7 @@ describe("patch · 片段带 id 且片段内还要分新 id", () => {
       );
       expect(result.code).toBe(0);
 
-      // 两段提示都在同一条回执里：先给"片段 id → 目标 id"的映射，再补片段内部新分配的两个 id。
+      // Both hints live in one receipt: first the "fragment id → target id" mapping, then the two new ids allocated inside the fragment.
       const [receipt] = result.stdout.split("\n");
       expect(receipt).toMatch(
         new RegExp(
@@ -50,27 +50,27 @@ describe("patch · 片段带 id 且片段内还要分新 id", () => {
           "u",
         ),
       );
-      // 映射来自一次“片段 id 被忽略”：warning 带着片段原来的 id，用户能对上号。
+      // The mapping comes from one "fragment id ignored": the warning carries the fragment's original id so the user can reconcile it.
       expect(result.stdout).toContain(
         `fragment_ids_ignored — 片段里的 data-hr-id="${FRAGMENT_ID}" 已忽略`,
       );
 
-      // 落盘结果是这条回执的真相：目标 id 保留、片段自带的 id 没上盘、内部两段各自拿到新 id。
+      // The on-disk result is this receipt's ground truth: target id kept, the fragment's own id absent, the two inner segments each get a new id.
       const html = readFileSync(`${dir}/a.html`, "utf8");
       expect(idsIn(html)).toContain(TARGET_ID);
       expect(idsIn(html)).not.toContain(FRAGMENT_ID);
       expect(idsIn(html).filter((id) => id === TARGET_ID)).toHaveLength(1);
-      // `<article>` + `<h2>` + 目标 `<div>` + 内部两个 `<p>`：5 个 id，互不相同。
+      // `<article>` + `<h2>` + target `<div>` + two inner `<p>`s: 5 ids, pairwise distinct.
       expect(idsIn(html)).toHaveLength(5);
       expect(new Set(idsIn(html)).size).toBe(5);
     });
   });
 });
 
-describe("patch · 片段不带内部节点", () => {
+describe("patch · a fragment without inner nodes", () => {
   it("should not print an empty '+0 ids' tail when the fragment brings no inner ids", async () => {
-    // `humanPatch` 的另一半：`newIds` 全被映射吃掉时那截补充提示必须整段消失——
-    // 留下 ", +0 ids: " 会让用户以为丢了东西。
+    // humanPatch's other half: when `newIds` is entirely consumed by the mapping, that extra hint must vanish whole —
+    // a leftover ", +0 ids: " would make the user think something was lost.
     await withTempDir(async (dir) => {
       seed(dir, "a.html", DOC);
 
@@ -89,7 +89,7 @@ describe("patch · 片段不带内部节点", () => {
         ),
       );
       expect(receipt).not.toContain("ids:");
-      // 落盘：目标 id 保留、片段自带的 id 不进文档、内部没有别人的 id。
+      // On disk: target id kept, the fragment's own id never enters the doc, and nothing inside carries anyone else's id.
       const html = readFileSync(`${dir}/a.html`, "utf8");
       expect(idsIn(html)).toContain(TARGET_ID);
       expect(idsIn(html)).not.toContain(FRAGMENT_ID);

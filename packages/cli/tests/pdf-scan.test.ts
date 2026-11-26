@@ -1,7 +1,7 @@
-// 这层管：`pdf-scan` 自己的用例（页序 + 大纲树 + 文本串解码）；手写最小 PDF，不跑 Chrome。
+// This layer covers `pdf-scan`'s own cases (page order + outline tree + text-string decoding); handwritten minimal PDFs, no Chrome.
 //
-// 夹具各钉一件事：单条目（对象号定页）、三层嵌套（`/First`/`/Next`/`/Parent` 成树）、
-// 无 `/Outlines`（无 heading 的文档）、**四层页树**与 **`/Kids` 与对象号逆序**（页序口径）。
+// Each fixture pins one thing: single entry (object number fixes the page), three-level nesting
+// (`/First`/`/Next`/`/Parent` as a tree), no `/Outlines` (a heading-less document), a **four-level page tree**, and **`/Kids` vs object numbers reversed** (the page-order rule).
 import { describe, expect, it } from "vitest";
 
 import {
@@ -18,16 +18,16 @@ import { pdfScanOf } from "./helpers/pdf-scan";
 const scanOf = (count: number, outline: string): ReturnType<typeof pdfScanOf> =>
   pdfScanOf(bytesOf(withOutlinesOf(pagesOf(count)) + outline));
 
-describe("pdfScanOf · 单条目", () => {
-  it("页序 = /Kids 数组顺序", () => {
+describe("pdfScanOf · single entry", () => {
+  it("should set page order to /Kids array order", () => {
     expect(pdfScanOf(bytesOf(pagesOf(2))).pages).toEqual([3, 4]);
   });
 
-  it("一条大纲：标题原样、页序换算到第 2 页、无子项", () => {
+  it("should return one outline entry: title verbatim, page order resolved to page 2, no children", () => {
     expect(scanOf(2, SINGLE).outline).toEqual([{ title: "Chapter One", page: 2, children: [] }]);
   });
 
-  it("大纲根对象的类型名是 `/Type /Outlines`，条目本身没有 /Type：树上只认 /First 链", () => {
+  it("should only honor the /First chain on the tree: the outline root's type name is `/Type /Outlines` while entries have no /Type", () => {
     const root = /10 0 obj\n<<([\s\S]*?)>>/u.exec(SINGLE)?.[1] ?? "";
     expect(root).toContain("/Type /Outlines");
     expect(SINGLE.split("11 0 obj")[1]).not.toContain("/Type");
@@ -35,8 +35,8 @@ describe("pdfScanOf · 单条目", () => {
   });
 });
 
-describe("pdfScanOf · 三层嵌套", () => {
-  it("沿 /First 与 /Next 还原三层树，页序按 /Dest 换算", () => {
+describe("pdfScanOf · three-level nesting", () => {
+  it("should rebuild the three-level tree along /First and /Next with page order resolved via /Dest", () => {
     expect(scanOf(3, NESTED).outline).toEqual([
       {
         title: "Part",
@@ -49,12 +49,12 @@ describe("pdfScanOf · 三层嵌套", () => {
     ]);
   });
 
-  it("兄弟靠 /Next 串起来，不靠对象号大小", () => {
+  it("should chain siblings via /Next, not by object-number order", () => {
     const top = scanOf(3, NESTED).outline?.[0];
     expect(top?.children.map((node) => node.title)).toEqual(["Section A", "第二层"]);
   });
 
-  it("/Parent 指错时报错（证明它真在读这一项）", () => {
+  it("should error when /Parent points wrong (proves it really reads that field)", () => {
     const broken = NESTED.replace(
       "/Title (Sub A1) /Parent 12 0 R",
       "/Title (Sub A1) /Parent 11 0 R",
@@ -63,7 +63,7 @@ describe("pdfScanOf · 三层嵌套", () => {
   });
 });
 
-describe("pdfScanOf · 目的地不合形态就报错（A10）", () => {
+describe("pdfScanOf · destinations that break shape error out (A10)", () => {
   const scanWithOf = (item: string): ReturnType<typeof pdfScanOf> =>
     pdfScanOf(
       bytesOf(
@@ -73,7 +73,7 @@ describe("pdfScanOf · 目的地不合形态就报错（A10）", () => {
       ),
     );
 
-  it("/Dest 首元素不是页对象引用：直接抛，不猜", () => {
+  it("should throw directly when /Dest's first element is not a page object reference, no guessing", () => {
     expect(() => scanWithOf("/Title (x) /Dest [1 0 R /XYZ 0 0 0]")).toThrow(
       /\/Dest 指向的 1 0 R 不在 \/Kids 页序里/u,
     );
@@ -82,13 +82,13 @@ describe("pdfScanOf · 目的地不合形态就报错（A10）", () => {
     );
   });
 
-  it("既没 /Dest 也没 /A << /D [...] >>：直接抛", () => {
+  it("should throw directly with neither /Dest nor /A << /D [...] >>", () => {
     expect(() => scanWithOf("/Title (x)")).toThrow(/没有 \/Dest/u);
   });
 });
 
-describe("pdfScanOf · 无 /Outlines", () => {
-  it("Catalog 没有 /Outlines 键时 outline 是 undefined（不是空数组）", () => {
+describe("pdfScanOf · no /Outlines", () => {
+  it("should return outline as undefined (not an empty array) when the Catalog has no /Outlines key", () => {
     const scan = pdfScanOf(bytesOf(pagesOf(1)));
     expect(scan.pages).toEqual([3]);
     expect(scan.outline).toBeUndefined();
@@ -96,15 +96,15 @@ describe("pdfScanOf · 无 /Outlines", () => {
   });
 });
 
-describe("pdfScanOf · /Count 报告（供 e2e 三方对照）", () => {
-  it("根对象自报的 /Count 原样报出（可为负，不做绝对值）", () => {
+describe("pdfScanOf · /Count reporting (for the e2e three-way check)", () => {
+  it("should report the root's self-reported /Count verbatim (may be negative, no absolute value)", () => {
     expect(scanOf(2, SINGLE).outlineCount).toBe(1);
     expect(scanOf(3, NESTED).outlineCount).toBe(4);
     const folded = SINGLE.replace("/Count 1", "/Count -1");
     expect(scanOf(2, folded).outlineCount).toBe(-1);
   });
 
-  it("根不带 /Count 时是 undefined（与实走数分开报，两边才能对帐）", () => {
+  it("should return undefined when the root has no /Count (reported apart from the walked count so the two can be reconciled)", () => {
     const naked = SINGLE.replace(" /Count 1", "");
     const scan = scanOf(2, naked);
     expect(scan.outlineCount).toBeUndefined();
@@ -112,7 +112,7 @@ describe("pdfScanOf · /Count 报告（供 e2e 三方对照）", () => {
   });
 });
 
-describe("pdfScanOf · 文本串与目的地解码", () => {
+describe("pdfScanOf · text strings and destination decoding", () => {
   const scanWithOf = (item: string): ReturnType<typeof pdfScanOf> =>
     pdfScanOf(
       bytesOf(
@@ -122,7 +122,7 @@ describe("pdfScanOf · 文本串与目的地解码", () => {
       ),
     );
 
-  it("字面串按 PDF 规则还原转义与八进制", () => {
+  it("should restore escapes and octal in literal strings per PDF rules", () => {
     expect(scanWithOf("/Title (a\\(b\\)c\\\\d) /Dest [3 0 R /XYZ 0 0 0]").outline?.[0]?.title).toBe(
       "a(b)c\\d",
     );
@@ -131,33 +131,33 @@ describe("pdfScanOf · 文本串与目的地解码", () => {
     );
   });
 
-  it("`<FEFF…>` 按 UTF-16BE 解码（中文与全角）", () => {
+  it("should decode `<FEFF…>` as UTF-16BE (CJK and full-width)", () => {
     expect(
       scanWithOf("/Title <FEFF7B2C4E007AE00020FF08FF09> /Dest [3 0 R /XYZ 0 0 0]").outline?.[0]
         ?.title,
     ).toBe("第一章 （）");
   });
 
-  it("/A << /D [...] >> 形式的目的地也能算页序", () => {
+  it("should resolve page order for a destination in /A << /D [...] >> form", () => {
     expect(
       scanWithOf("/Title (x) /A << /S /GoTo /D [4 0 R /XYZ 0 0 0] >>").outline?.[0]?.page,
     ).toBe(2);
   });
 });
 
-describe("pdfScanOf · 页序只认 /Kids 顺序", () => {
-  it("四层页树：递归摊平，中间 `/Pages` 不进页序（只摊一层、中间节点追加到页序末尾都是错的）", () => {
+describe("pdfScanOf · page order only honors /Kids order", () => {
+  it("should flatten a four-level page tree recursively without intermediate `/Pages` entering page order (both one-level flattening and appending intermediate nodes are wrong)", () => {
     const scan = pdfScanOf(bytesOf(CHAIN_PAGES));
     expect(scan.pages).toEqual([4, 5]);
     expect(scan.pages).not.toContain(3);
     expect(scan.pages).not.toContain(6);
   });
 
-  it("`/Kids` 与对象号逆序时按 `/Kids` 数组顺序，不按对象号排", () => {
+  it("should follow /Kids array order when /Kids and object numbers disagree, not sort by object number", () => {
     expect(pdfScanOf(bytesOf(REVERSED_KIDS)).pages).toEqual([7, 5]);
   });
 
-  it("页序就是 `/Dest` 的换算表：指向对象 5 的条目落在第 2 页", () => {
+  it("should treat page order as the /Dest lookup table: an entry pointing to object 5 lands on page 2", () => {
     const reversed =
       "10 0 obj\n<< /Type /Outlines /First 11 0 R /Last 11 0 R /Count 1 >>\nendobj\n" +
       "11 0 obj\n<< /Title (Last) /Parent 10 0 R /Dest [5 0 R /XYZ 0 800 0] >>\nendobj\n";

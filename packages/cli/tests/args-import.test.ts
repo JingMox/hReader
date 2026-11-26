@@ -1,4 +1,4 @@
-// 这层管：`hr import` 的 argv → intent（默认 out、--kind/--title/--out、用法错误）；不碰盘。
+// This layer covers `hr import` argv → intent (default out, --kind/--title/--out, usage errors); no disk.
 
 import { describe, expect, it } from "vitest";
 
@@ -22,7 +22,7 @@ describe("parseArgs · import", () => {
   });
 
   it("should derive the default out for nested paths and extension-less names", () => {
-    // 同目录、同名 + .hr 中缀：`sub/a.html` → `sub/a.hr.html`，`notes` → `notes.hr.html`。
+    // Same directory, same name + .hr infix: `sub/a.html` → `sub/a.hr.html`, `notes` → `notes.hr.html`.
     for (const [file, out] of [
       ["sub/a.html", `${CWD}/sub/a.hr.html`],
       ["notes", `${CWD}/notes.hr.html`],
@@ -65,7 +65,7 @@ describe("parseArgs · import", () => {
   });
 });
 
-describe("parseArgs · import 的用法错误", () => {
+describe("parseArgs · import usage errors", () => {
   it("should reject a missing <file>", () => {
     expectFailure(["import"], "import 缺少 <file>", "import");
   });
@@ -96,7 +96,7 @@ describe("parseArgs · import 的用法错误", () => {
   });
 
   it("should refuse --out pointing at the source itself", () => {
-    // `./a.html` 与 `a.html` 解到同一路径：覆盖输入本身是用法错误（exit 2），不走到写盘守卫。
+    // `./a.html` and `a.html` resolve to the same path: overwriting the input itself is a usage error (exit 2), never reaching the write guard.
     expectFailure(["import", "a.html", "--out", "./a.html"], "--out 不能指向源文件自身", "import");
     expectFailure(
       ["import", "sub/../a.html", "--out", "a.html"],

@@ -1,6 +1,6 @@
-// 这层管：选择器方言——文法错一律 `invalid_selector` + `reason:"syntax"`、裸 id 走回退链成功、
-// 文法合法但查无此 id 的裸 id 才报 `node_not_found`；文档里合法的 `data-hr-id` 可以带大写与下划线，
-// id 必须逐字匹配（不做大小写归一）。
+// This layer covers the selector dialect — grammar errors are always `invalid_selector` + `reason:"syntax"`, bare
+// ids succeed through the fallback chain, and only a grammar-legal bare id that matches nothing reports
+// `node_not_found`; legal `data-hr-id`s may carry uppercase and underscores, and ids match byte-exactly (no case folding).
 
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -16,7 +16,7 @@ const DOC = [
   "</article></body></html>",
 ].join("\n");
 
-/** 五个"看起来像选择器、文法却不合法"的字面，外加一个以 `"` 开头的字面。 */
+/** Five literals that "look like selectors but fail the grammar", plus one literal starting with `"`. */
 const SYNTAX_SELECTORS = ["p[", "p[0]", "a b", "*", "div>p", '"hr-a1"'] as const;
 
 const seed = (dir: string): string => {
@@ -40,7 +40,7 @@ const codeOf = (parsed: unknown): unknown => fieldOf(parsed, "code");
 
 const messageOf = (parsed: unknown): string => String(fieldOf(parsed, "message"));
 
-/** "只有一句"的可检查形态：单行、且没有把两次跳转的结论拼在一起。 */
+/** The checkable shape of "only one sentence": a single line that does not glue two hops' conclusions together. */
 const expectOneHopMessage = (message: string): void => {
   expect(message.includes("\n")).toBe(false);
   expect(message).not.toContain("按选择器");
@@ -48,7 +48,7 @@ const expectOneHopMessage = (message: string): void => {
   expect(message).not.toContain("只会命中第一个");
 };
 
-describe("文法错的选择器在 read 时一律 invalid_selector + reason:syntax", () => {
+describe("grammatically bad selectors always get invalid_selector + reason:syntax on read", () => {
   it.each(SYNTAX_SELECTORS)(
     "should refuse read target %s as invalid_selector/syntax",
     async (target) => {
@@ -61,7 +61,7 @@ describe("文法错的选择器在 read 时一律 invalid_selector + reason:synt
         expect(fieldOf(fieldOf(parsed, "data"), "reason")).toBe("syntax");
         const message = messageOf(parsed);
         expect(message).toContain("无法解析");
-        // 报文按 JSON 字面回显目标：带 `"` 的目标在那里是转义形态。
+        // The message echoes the target as a JSON literal: a `"`-carrying target appears in escaped form there.
         expect(message).toContain(target.replaceAll('"', '\\"'));
         expectOneHopMessage(message);
       });
@@ -69,7 +69,7 @@ describe("文法错的选择器在 read 时一律 invalid_selector + reason:synt
   );
 });
 
-describe("文法错的选择器在 patch 时一律 invalid_selector + reason:syntax", () => {
+describe("grammatically bad selectors always get invalid_selector + reason:syntax on patch", () => {
   it.each(SYNTAX_SELECTORS)(
     "should refuse patch target %s as invalid_selector/syntax",
     async (target) => {
@@ -88,14 +88,14 @@ describe("文法错的选择器在 patch 时一律 invalid_selector + reason:syn
         expect(codeOf(parsed)).toBe("invalid_selector");
         expect(fieldOf(fieldOf(parsed, "data"), "reason")).toBe("syntax");
         expectOneHopMessage(messageOf(parsed));
-        // 拒绝发生在写盘之前：原字节必须一字不动（含 backup/history）。
+        // The refusal happens before any write: the original bytes must not move at all (backup/history included).
         expect(sha(file)).toBe(before);
       });
     },
   );
 });
 
-describe("裸 id 不被新逻辑误伤：存在的裸 id 仍可 read 与 patch", () => {
+describe("bare ids are unharmed by the new logic: an existing bare id still reads and patches", () => {
   it("should still read a bare id that is itself a parseSelector syntax error", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -127,7 +127,7 @@ describe("裸 id 不被新逻辑误伤：存在的裸 id 仍可 read 与 patch",
   });
 });
 
-describe("文法合法但查无此 id 的裸 id 才报 node_not_found", () => {
+describe("only a grammar-legal bare id that matches nothing reports node_not_found", () => {
   it("should report an absent bare id as node_not_found without a data key", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -142,7 +142,7 @@ describe("文法合法但查无此 id 的裸 id 才报 node_not_found", () => {
   });
 });
 
-describe("人读报文是单跳（不拼两套解释）", () => {
+describe("the human message is single-hop (no two explanations glued together)", () => {
   it("should print one hop for a syntax error in human mode", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -168,7 +168,7 @@ describe("人读报文是单跳（不拼两套解释）", () => {
   });
 });
 
-describe("空 <article> 仍走两条路（不因没内容而改码）", () => {
+describe("an empty <article> still walks both paths (the code does not change just because there is no content)", () => {
   const EMPTY = [
     "<!doctype html>",
     '<html data-hr-id="hr-h"><head data-hr-id="hr-head"><title data-hr-id="hr-title">t</title></head>',
@@ -215,7 +215,7 @@ const htmlOf = async (dir: string, target: string): Promise<string> => {
   return String(fieldOf(fieldOf(parseJsonLine(result.stdout), "data"), "html"));
 };
 
-describe("id 逐字匹配（大写/下划线）", () => {
+describe("ids match verbatim (uppercase/underscore)", () => {
   it("should resolve #hr-Ab12 to the uppercase id", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, DIALECT_DOC);

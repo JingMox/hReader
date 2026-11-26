@@ -1,19 +1,19 @@
-// 这层管：从 PDF 字节里读页序与大纲树（**仅测试用**，不进 `src`）；不写 PDF、不导出运行时依赖。
+// This layer reads page order and the outline tree out of PDF bytes (**test-only**, never enters `src`); it writes no PDF and exports no runtime dependency.
 //
-// 它是 `src/pdf/bookmarks.ts` 的**独立 oracle**：两处刻意不共用代码，否则"src 读错"与"oracle 读错"
-// 会一起错、一起绿；任何一边改动都不许把另一边抄过去。
+// It is an **independent oracle** for `src/pdf/bookmarks.ts`: the two deliberately share no code, otherwise
+// "src misreads" and "oracle misreads" would be wrong together and green together; neither side may copy the other when it changes.
 //
-// 只应付 Chrome 的产物形态：经典 xref 表 + trailer（`/Size … /Root … 0 R`）、页对象直接可寻、
-// 无 ObjStm / 无 XRef 流。扫法是"找 `N 0 obj … endobj` 字典 + 跟 `/Kids`"，不是通用 PDF 解析器。
+// It only handles Chrome's artifact shape: classic xref table + trailer (`/Size … /Root … 0 R`), page objects
+// directly addressable, no ObjStm / no XRef streams. The method is "find `N 0 obj … endobj` dictionaries + follow `/Kids`", not a general PDF parser.
 //
-// 已知盲点（**刻意不跟 `src` 一起修**，否则两边会一起错）：这里是按 `endobj` 正则切对象、在对象体
-// 原文上 grep `/Key`，所以标题字面量里出现 `endobj` / `/Next` 的产物（`OUTLINE_HOSTILE_TITLES`）
-// 这份 oracle 读不动。那类产物只由 `pdf-bookmarks.test.ts` 与真机 e2e 钉，不拿本文件交叉。
+// Known blind spot (**deliberately not fixed alongside `src`**, or both sides would be wrong together): objects
+// are split at an `endobj` regex and `/Key`s grepped in object bodies, so artifacts with `endobj` / `/Next` inside
+// title literals (`OUTLINE_HOSTILE_TITLES`) defeat this oracle. Those are pinned only by `pdf-bookmarks.test.ts` and the real-machine e2e — do not cross-check against this file.
 
-/** 一个对象号的全部字节（`endobj` 之前的字典/流原文），latin1 解码：PDF 结构层是单字节的。 */
+/** All bytes of one object number (the dictionary/stream raw text before `endobj`), latin1-decoded: the PDF structure layer is single-byte. */
 type PdfObjects = ReadonlyMap<number, string>;
 
-/** 大纲条目：`page` 是 1 起的页序（`/Kids` 数组位置 + 1），不是对象号。 */
+/** An outline entry: `page` is the 1-based page order (`/Kids` array position + 1), not an object number. */
 export interface PdfOutlineNode {
   readonly title: string;
   readonly page: number;
@@ -21,11 +21,11 @@ export interface PdfOutlineNode {
 }
 
 export interface PdfScan {
-  /** `/Pages` → `/Kids` 摊平后的页对象顺序（数组下标 + 1 就是页序）。 */
+  /** `/Pages` → `/Kids` flattened into page-object order (array index + 1 is the page order). */
   readonly pages: readonly number[];
-  /** Catalog 里没有 `/Outlines` 键时是 `undefined`（无 heading 的文档就是这样）。 */
+  /** `undefined` when the Catalog has no `/Outlines` key (that is what a heading-less document looks like). */
   readonly outline: readonly PdfOutlineNode[] | undefined;
-  /** 大纲根对象自报的 `/Count`（可为负）：供 e2e 做"实走 == `/Count` == 打印稿 heading 数"三方对照。 */
+  /** The outline root's self-reported `/Count` (may be negative): lets the e2e triangulate "walk == `/Count` == printout heading count". */
   readonly outlineCount: number | undefined;
 }
 
@@ -36,7 +36,7 @@ const REF = (body: string, key: string): number | undefined => {
   return match?.[1] === undefined ? undefined : Number(match[1]);
 };
 
-/** 对象号 → 原文；`trailer` 不在任何 `obj…endobj` 里，由 `catalogOf` 单独读。 */
+/** Object number → raw text; `trailer` lives outside any `obj…endobj` and is read separately by `catalogOf`. */
 const objectsFromTextOf = (text: string): PdfObjects => {
   const objects = new Map<number, string>();
   for (const match of text.matchAll(OBJECT)) {
@@ -53,14 +53,14 @@ const requireOf = (objects: PdfObjects, id: number, what: string): string => {
   return body;
 };
 
-/** `/Root` 写在 trailer 里（不在任何对象体里）：直接扫全文取第一个。 */
+/** `/Root` is written in the trailer (inside no object body): scan the whole text and take the first hit. */
 const catalogOf = (text: string, objects: PdfObjects): string => {
   const rootId = /\/Root\s+(\d+) 0 R/u.exec(text)?.[1];
-  if (rootId === undefined) throw new Error("PDF 的 trailer 里没有 /Root");
+  if (rootId === undefined) throw new Error("no /Root in the PDF trailer");
   return requireOf(objects, Number(rootId), "/Root");
 };
 
-/** `/Kids` 递归摊平：页树节点自己带 `/Kids`，叶子页对象带 `/Type /Page`。 */
+/** `/Kids` flattened recursively: page-tree nodes carry `/Kids`; leaf page objects carry `/Type /Page`. */
 const pageOrderOf = (objects: PdfObjects, id: number): readonly number[] => {
   const body = requireOf(objects, id, "/Kids");
   const kids = /\/Kids\s*\[([^\]]*)\]/u.exec(body);
@@ -70,14 +70,14 @@ const pageOrderOf = (objects: PdfObjects, id: number): readonly number[] => {
   );
 };
 
-/** `/Title` 的文本串：Chrome 对非 ASCII 标题写 `<FEFF…>`（UTF-16BE），其余写 `(…)` 字面串。 */
+/** The `/Title` text string: Chrome writes `<FEFF…>` (UTF-16BE) for non-ASCII titles, `(…)` literals otherwise. */
 const decodeHexOf = (hex: string): string => {
   const digits = hex.replaceAll(/\s/gu, "");
   const bytes: number[] = [];
   for (let index = 0; index + 1 < digits.length; index += 2) {
     bytes.push(Number.parseInt(digits.slice(index, index + 2), 16));
   }
-  // `<FEFF…>`：BOM 之后是 UTF-16BE 的双字节序列（高位在前）。
+  // `<FEFF…>`: after the BOM comes a UTF-16BE two-byte sequence (high byte first).
   const start = bytes[0] === 0xfe && bytes[1] === 0xff ? 2 : 0;
   let text = "";
   for (let index = start; index + 1 < bytes.length; index += 2) {
@@ -97,7 +97,7 @@ const LITERAL_ESCAPES: Readonly<Record<string, string>> = {
   "\\": "\\",
 };
 
-/** 字面串的转义：`\(` `\)` `\\` 与 `\ddd` 八进制；其余 `\x` 按规范原样给 `x`。 */
+/** Literal-string escapes: `\(` `\)` `\\` and `\ddd` octal; any other `\x` yields `x` per spec. */
 const decodeLiteralOf = (literal: string): string =>
   literal.replaceAll(/\\(\d{1,3}|[\s\S])/gu, (_whole: string, escape: string) =>
     /^\d+$/u.test(escape)
@@ -110,10 +110,10 @@ const titleOf = (body: string): string => {
   if (hex !== null) return decodeHexOf(hex[1] ?? "");
   const literal = /\/Title\s*\(((?:\\.|[^()\\])*)\)/su.exec(body);
   if (literal !== null) return decodeLiteralOf(literal[1] ?? "");
-  throw new Error("大纲条目没有 /Title");
+  throw new Error("outline entry has no /Title");
 };
 
-/** 目的地第一项就是页对象引用；`/Dest` 也可能挂在 `/A << /D [...] >>` 里。不是这形态就报错——回退分支会变死代码。 */
+/** The destination's first element is the page object reference; `/Dest` may also live inside `/A << /D [...] >>`. Any other shape errors — a fallback branch would be dead code. */
 const pageRefOf = (body: string): number => {
   const dest = /\/Dest\s*\[([^\]]*)\]/u.exec(body) ?? /\/D\s*\[([^\]]*)\]/u.exec(body);
   if (dest?.[1] === undefined) throw new Error("大纲条目没有 /Dest（或 /A << /D [...] >>）");
@@ -128,8 +128,9 @@ interface ItemContext {
 }
 
 /**
- * 沿 `/First` → `/Next` 走同级链，每级递归走子链；`/Parent` 用来核对"孩子真的指回这个父"。
- * 大纲根对象与条目都是普通字典（条目没有 `/Type`），所以只认引用，不认类型名。
+ * Walk the sibling chain along `/First` → `/Next`, recursing into each level's child chain; `/Parent` is used
+ * to verify "children really point back to this parent". The outline root and entries are plain dictionaries
+ * (entries have no `/Type`), so only references are honored, never type names.
  */
 const itemsOf = (
   context: ItemContext,
@@ -159,19 +160,19 @@ const itemsOf = (
   return nodes;
 };
 
-/** 大纲根对象自报的 `/Count`：没有这个键时 `undefined`（root 上它是可选的）。 */
+/** The outline root's self-reported `/Count`: `undefined` when the key is absent (it is optional on the root). */
 const countOf = (body: string): number | undefined => {
   const match = /\/Count\s+(-?\d+)/u.exec(body);
   return match?.[1] === undefined ? undefined : Number(match[1]);
 };
 
-/** 从产物字节读出页序与大纲树；无 `/Outlines` 键时 `outline` 与 `outlineCount` 都是 `undefined`。 */
+/** Read page order and the outline tree out of artifact bytes; with no `/Outlines` key both `outline` and `outlineCount` are `undefined`. */
 export const pdfScanOf = (bytes: Uint8Array): PdfScan => {
   const text = textOf(bytes);
   const objects = objectsFromTextOf(text);
   const catalog = catalogOf(text, objects);
   const pagesId = REF(catalog, "Pages");
-  if (pagesId === undefined) throw new Error("PDF 的 Catalog 里没有 /Pages");
+  if (pagesId === undefined) throw new Error("no /Pages in the PDF Catalog");
   const pages = pageOrderOf(objects, pagesId);
   const outlineId = REF(catalog, "Outlines");
   if (outlineId === undefined) return { pages, outline: undefined, outlineCount: undefined };

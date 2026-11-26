@@ -1,4 +1,4 @@
-// 这层管：`hr style extract` 的进程内编排（真 fs + 真 core）：命令函数、run() 的降级与报错、输出形状。
+// This layer covers `hr style extract`'s in-process orchestration (real fs + real core): the command function, run()'s downgrade and errors, output shapes.
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -77,10 +77,10 @@ const rejectionOf = async (promise: Promise<unknown>): Promise<string> => {
   } catch (error: unknown) {
     return error instanceof Error ? error.message : "not-an-error";
   }
-  throw new Error("期望抛错，但调用成功了");
+  throw new Error("expected a throw, but the call succeeded");
 };
 
-describe("styleExtractCommand · 打印", () => {
+describe("styleExtractCommand · printing", () => {
   it("should return the yaml itself when not writing and not json", async () => {
     const text = await styleExtractCommand(inputOf([corpusAt("a.md"), corpusAt("b.md")]));
 
@@ -99,7 +99,7 @@ describe("styleExtractCommand · 打印", () => {
   });
 });
 
-describe("styleExtractCommand · 写盘", () => {
+describe("styleExtractCommand · writing to disk", () => {
   it("should print the human summary when writing", async () => {
     const text = await styleExtractCommand(
       inputOf([corpusAt("d.md")], { out: "styles/unit.yaml", json: false }),
@@ -121,7 +121,7 @@ describe("styleExtractCommand · 写盘", () => {
   });
 });
 
-describe("styleExtractCommand · 语料守卫", () => {
+describe("styleExtractCommand · corpus guards", () => {
   it("should refuse an unsupported suffix before reading the file", async () => {
     const message = await rejectionOf(styleExtractCommand(inputOf([join(dir, "gone.txt")])));
 
@@ -147,7 +147,7 @@ describe("styleExtractCommand · 语料守卫", () => {
   });
 });
 
-describe("run · style extract 的降级与报错", () => {
+describe("run · style extract downgrade and errors", () => {
   it("should warn once about the missing key and still print the yaml", async () => {
     const { io, out, err } = capture({});
 
@@ -182,11 +182,11 @@ describe("run · style extract 的降级与报错", () => {
   });
 });
 
-describe("run · style extract 的 fetch 兜底", () => {
+describe("run · style extract fetch fallback", () => {
   it("should default to an empty env and the global fetch when neither is injected", async () => {
     const out: string[] = [];
     const err: string[] = [];
-    // 不传 `env`：无 key → 纯统计版；这一条钉住 `io.env ?? {}` 的兜底。
+    // No `env` passed: no key → pure-stats version; this pins the `io.env ?? {}` fallback.
     const code = await run(["style", "extract", corpusAt("r2-nofetch.md"), "--json"], {
       cwd: dir,
       stdout: (text) => out.push(text),
@@ -201,7 +201,7 @@ describe("run · style extract 的 fetch 兜底", () => {
   });
 
   it("should fall back to the global fetch when the io has no injection point", async () => {
-    // 有 key 又不给 `io.fetch`：走真 `fetch`，但把地址指到必然拒绝的本机端口，不出网。
+    // A key but no `io.fetch`: real `fetch` runs, pointed at a localhost port that must refuse — never off-machine.
     const { io, out } = capture({
       OPENCODE_API_KEY: "sk-unit-test",
       HR_LLM_BASE_URL: "http://127.0.0.1:9",
@@ -214,7 +214,7 @@ describe("run · style extract 的 fetch 兜底", () => {
   });
 });
 
-describe("run · style extract 的默认值提醒", () => {
+describe("run · style extract default-value reminder", () => {
   it("should warn about the defaults it filled in", async () => {
     const { io, err } = capture({});
 
@@ -250,7 +250,7 @@ describe("run · style extract 的默认值提醒", () => {
   });
 });
 
-describe("输出与读取的小工具", () => {
+describe("output and reading helpers", () => {
   it("should stat the byte size without decoding the file", async () => {
     const path = corpusAt("sized.md", "一二。");
 
@@ -270,14 +270,14 @@ describe("输出与读取的小工具", () => {
   });
 
   it.skipIf(process.platform === "win32")("should refuse a character device", async () => {
-    // `/dev/zero` 的 `size` 是 0：只比上限的实现会放行，然后无界读。
-    // 这里只测 `stat` 分支：若 `fileSizeOf` 改成先读再量长度，本进程会 OOM 而非断言红——设备路径的主证据是子进程用例。
+    // `/dev/zero`'s `size` is 0: an implementation comparing only the cap would allow it, then read unboundedly.
+    // Only the `stat` branch is tested here: if `fileSizeOf` changed to read-then-measure, this process would OOM instead of asserting — the device path's main evidence is the subprocess case.
     await expect(fileSizeOf("/dev/zero")).rejects.toThrow(/是.?非普通文件/u);
   });
 });
 
-describe("输出的两种渲染", () => {
-  /** `ExtractStyleResult` 由 core 产出：这里只需要一个形状真实的对象来断言两种渲染。 */
+describe("the two output renderings", () => {
+  /** `ExtractStyleResult` is produced by core: a realistically shaped object is enough to assert the two renderings. */
   const RESULT: ExtractStyleResult = extractStyle({
     corpus: [{ format: "markdown", text: "一。二。" }],
     id: "unit-style",

@@ -1,4 +1,4 @@
-// 这层管：`hr export --out` 的越界判定（四种逃逸形状 + "不落盘" + 已存在目标仍报 3）；不起 Chrome。
+// This layer covers `hr export --out` escape judgments (four escape shapes + "nothing lands" + existing target still reports 3); no Chrome.
 
 import {
   existsSync,
@@ -19,8 +19,8 @@ import { ARTICLE } from "./export-print-fixtures";
 import { fieldOf, parseJsonLine, runCli, withTempDir } from "./harness";
 
 /**
- * 越界落点必须**唯一**：`$TMPDIR/escape.html` 是几个测试文件共用的固定名，
- * 谁真写出去一次就会把别人"应不存在"的用例带红。用例自己也不留脏文件。
+ * The escape landing spot must be **unique**: `$TMPDIR/escape.html` is a fixed name shared by several test
+ * files — one real write turns another file's "should not exist" case red. Cases leave no dirty files either.
  */
 const escapeNameOf = (stem: string): string =>
   `hr-escape-${stem}-${String(process.pid)}-${String(Date.now())}.html`;
@@ -30,7 +30,7 @@ const runOutOf = (dir: string, out: string, extra: readonly string[] = []) =>
     cwd: dir,
   });
 
-/** 两件事一起断：退出码/错误码对了，且**一个字节都没落盘**。 */
+/** Two assertions together: exit code/error code correct, and **not one byte landed on disk**. */
 const expectEscapedOf = (
   result: { readonly code: number | null; readonly stdout: string },
   target: string,
@@ -41,7 +41,7 @@ const expectEscapedOf = (
   expect(() => readFileSync(target)).toThrow(/ENOENT/u);
 };
 
-/** workspace 外的兄弟目录：越界落点都放这儿，用完连目录一起删。 */
+/** A sibling directory outside the workspace: all escape targets live here; deleted wholesale after use. */
 const withSibling = async (run: (sibling: string) => Promise<void>): Promise<void> => {
   const sibling = mkdtempSync(join(tmpdir(), "hr-escape-sib-"));
   try {
@@ -56,8 +56,9 @@ const seed = (dir: string): void => {
 };
 
 /**
- * `isInside` 用路径段边界，`startsWith` 用字符前缀：只有"兄弟目录共享前缀"（`w` vs `w-evil`）
- * 能把两者分开。`..` 已经被 Node 归一，前缀比较在那些输入上与 `isInside` 等价。
+ * `isInside` uses path-segment boundaries while `startsWith` uses string prefixes: only a "sibling sharing a
+ * prefix" (`w` vs `w-evil`) separates them. `..` is already normalized by Node, so a prefix comparison is
+ * equivalent to `isInside` on those inputs.
  */
 const withPrefixPair = async (
   run: (workspace: string, evil: string) => Promise<void>,
@@ -75,7 +76,7 @@ const withPrefixPair = async (
   }
 };
 
-describe("hr export · --out 相对逃逸", () => {
+describe("hr export · --out relative escapes", () => {
   it("should refuse `../x.html` and never create it", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -88,7 +89,7 @@ describe("hr export · --out 相对逃逸", () => {
     });
   });
 
-  // 目标**先存在**：越界判定必须抢在 `file_exists`（exit 1）前面，否则错误码与退出码都是错的。
+  // The target **already exists**: the escape check must run before `file_exists` (exit 1), or both code and exit code are wrong.
   it("should still say path_outside_workspace when the outside target exists", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -99,7 +100,7 @@ describe("hr export · --out 相对逃逸", () => {
         const result = await runOutOf(dir, `../${name}`);
         expect(result.code).toBe(3);
         expect(fieldOf(parseJsonLine(result.stdout), "code")).toBe("path_outside_workspace");
-        // 没被覆盖：越界判定没走成"允许写"，也没把外面那份当成自家目标。
+        // Not overwritten: the escape check neither passed as "write allowed" nor treated the outside file as its own target.
         expect(readFileSync(target, "utf8")).toBe("旧");
       } finally {
         rmSync(target, { force: true });
@@ -108,13 +109,13 @@ describe("hr export · --out 相对逃逸", () => {
   });
 });
 
-describe("hr export · --out 绝对路径", () => {
+describe("hr export · --out absolute paths", () => {
   it("should refuse an absolute --out outside the default workspace", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
       const target = join(tmpdir(), escapeNameOf("abs"));
       try {
-        // 不传 `--workspace`：默认取 cwd，`$TMPDIR` 下另一个临时目录仍在它外面。
+        // No `--workspace` passed: it defaults to cwd, and another temp dir under `$TMPDIR` is still outside it.
         expectEscapedOf(await runOutOf(dir, target), target);
       } finally {
         rmSync(target, { force: true });
@@ -123,7 +124,7 @@ describe("hr export · --out 绝对路径", () => {
   });
 });
 
-describe("hr export · --out 遍历归一", () => {
+describe("hr export · --out traversal normalization", () => {
   it("should refuse `dir/../sibling/x.html`", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -135,7 +136,7 @@ describe("hr export · --out 遍历归一", () => {
     });
   });
 
-  // 判定看的是归一后的落点，不是字符串前缀：`..` 又走回来就该放行。
+  // The judgment looks at the normalized landing spot, not the string prefix: `..` walking back inside must pass.
   it("should allow escaping and coming back into the workspace", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -148,7 +149,7 @@ describe("hr export · --out 遍历归一", () => {
   });
 });
 
-describe("hr export · --out 共享前缀兄弟目录", () => {
+describe("hr export · --out shared-prefix sibling dir", () => {
   it("should refuse `<base>/w-evil/x.html` and leave the existing file untouched", async () => {
     await withPrefixPair(async (workspace, evil) => {
       const target = join(evil, "x.html");
@@ -156,7 +157,7 @@ describe("hr export · --out 共享前缀兄弟目录", () => {
       const result = await runOutOf(workspace, join(evil, "x.html"));
       expect(result.code).toBe(3);
       expect(fieldOf(parseJsonLine(result.stdout), "code")).toBe("path_outside_workspace");
-      // 未被探、未被覆写：共享前缀不能让越界判定把外面那份当成自家目标。
+      // Untouched, unprobed, unoverwritten: a shared prefix must not make the escape check treat the outside file as its own.
       expect(readFileSync(target, "utf8")).toBe("旧");
     });
   });
@@ -170,7 +171,7 @@ describe("hr export · --out 共享前缀兄弟目录", () => {
   });
 });
 
-describe("hr export · --out 符号链接", () => {
+describe("hr export · --out symlink", () => {
   it("should refuse a workspace-internal symlink that points outside", async () => {
     await withTempDir(async (dir) => {
       seed(dir);

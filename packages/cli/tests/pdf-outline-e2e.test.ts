@@ -1,9 +1,9 @@
-// 这层管：三条硬不变量在**真 Chrome** 上成立——①大纲条目数 = 打印稿 heading 数、
-// ②每条 `/Dest` 经 `/Kids` 换算的页序与 heading 所在页一致、③同输入两次渲染的标题序列与页序相等。
+// This layer covers three hard invariants on **real Chrome** — ① outline entry count = printout heading count,
+// ② each `/Dest`'s page order via `/Kids` matches the page its heading is on, ③ two renders of the same input give equal title sequences and page orders.
 //
-// 规矩（与 `scripts/print-e2e.ts` 一致）：Chrome 缺失或 `HREADER_SKIP_CHROME=1` 时**打印** SKIPPED + 原因
-// 再跳过——静默跳过等于假装跑过，所以这里不用 `describe.skip` 的裸形式。
-// oracle 一律走 `normalizeWhitespace`：夹具标题里刻意埋了换行与连续空格，退化成 `trim()` 就会红。
+// The rule (same as `scripts/print-e2e.ts`): with Chrome missing or `HREADER_SKIP_CHROME=1`, **print** SKIPPED +
+// the reason, then skip — a silent skip fakes a run, so no bare `describe.skip` here.
+// The oracle always goes through `normalizeWhitespace`: fixture titles deliberately bury newlines and runs of spaces — degrade to `trim()` and it goes red.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { parseHtml } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-// `normalizeWhitespace` 不在 `@hreader/core` 的公开导出面里（不为了一个测试 oracle 去扩它）：
-// 跨包相对导入是仓里 `scripts/` 已有的做法，这里只用它的语义，不碰它的实现。
+// `normalizeWhitespace` is not on `@hreader/core`'s public export surface (no widening it for one test oracle):
+// cross-package relative import is what `scripts/` already does in this repo; only its semantics are used, its implementation untouched.
 import { normalizeWhitespace } from "../../core/src/html/text.ts";
 import { skipLineOf, skipReasonOf } from "../src/commands/print-skip";
 import { pdfScanOf, type PdfOutlineNode, type PdfScan } from "./helpers/pdf-scan";
@@ -29,8 +29,8 @@ const SYSTEM_CHROME = [
 ];
 
 /**
- * 判定口径沿用 `print-skip.ts`：`CHROME_BIN` 传"探测结果"（`HREADER_CHROME` 是 CLI 的权威覆盖，
- * 给了就得存在，否则 CLI 会报 `chrome_missing`，这里跟着跳过没有意义）。
+ * The judgment follows `print-skip.ts`: `CHROME_BIN` carries "the probe result" (`HREADER_CHROME` is the CLI's
+ * authoritative override — given, it must exist, or the CLI reports `chrome_missing` and skipping here is pointless).
  */
 const chromeFoundOf = (): string | undefined => {
   const override = process.env["HREADER_CHROME"];
@@ -43,7 +43,7 @@ const chromeFoundOf = (): string | undefined => {
 const SKIP_REASON = skipReasonOf({ ...process.env, CHROME_BIN: chromeFoundOf() ?? "" });
 if (SKIP_REASON !== null) process.stdout.write(skipLineOf(SKIP_REASON));
 
-/** 三章各占一页（`break-before: page`）：页序期望才定得死。标题里的空白是给归一用的。 */
+/** Three chapters, one page each (`break-before: page`): page-order expectations must be pinned. Whitespace in titles feeds normalization. */
 const CHAPTERS: readonly string[] = ["第一章\n  晨读", "第二章   早餐", "第三章\n 复盘"];
 
 const PARAGRAPHS: readonly string[] = Array.from(
@@ -77,14 +77,14 @@ const textOfNode = (node: HtmlNode): string => {
   return "";
 };
 
-/** `span.secnum` 是打印层亲生的编号：要剔掉，不然产物标题里就双重编号。 */
+/** `span.secnum` is the print layer's own numbering: strip it or artifact titles end up double-numbered. */
 const isSecnumOf = (node: HtmlNode): boolean =>
   node.kind === "element" &&
   node.tag === "span" &&
   node.attrs.some(([name, value]) => name === "class" && value.includes("secnum"));
 
 /**
- * 打印稿里 `h1–h6` 的文本，**按文档顺序**。
+ * The printout's `h1–h6` texts, **in document order**.
  */
 const headingTextsOf = (html: string): readonly string[] => {
   const texts: string[] = [];
@@ -107,17 +107,18 @@ const headingTextsOf = (html: string): readonly string[] => {
 const flattenOf = (nodes: readonly PdfOutlineNode[]): readonly PdfOutlineNode[] =>
   nodes.flatMap((node) => [node, ...flattenOf(node.children)]);
 
-/** 标题 + 页序的比对形态：只比语义（归一后的标题、页序），不比字节。 */
+/** The comparison shape of title + page order: only semantics (normalized titles, page order), never bytes. */
 const pairsOf = (nodes: readonly PdfOutlineNode[]): readonly string[] =>
   flattenOf(nodes).map((node) => `${normalizeWhitespace(node.title)} @${String(node.page)}`);
 
-/** `--json` 的 `data` 里取一个键：口径同 `pdf-command-outline.test.ts`，只取一个值。 */
+/** Read one key out of `--json`'s `data`: same rule as `pdf-command-outline.test.ts`, one value only. */
 const reportedOutlineOf = (text: string): unknown =>
   fieldOf(fieldOf(JSON.parse(text), "data"), "outline");
 
 /**
- * ① 条数四方对照：`--json.outline`（= `src/pdf/bookmarks.ts` 的返回值）、产物内实走条目数、
- * 大纲根自报的 `/Count`、打印稿 `h1–h6` 元素数；后三者是测试侧的独立 oracle。
+ * ① Four-way count check: `--json.outline` (= `src/pdf/bookmarks.ts`'s return), the walked entry count inside
+ * the artifact, the outline root's self-reported `/Count`, and the printout `h1–h6` element count; the last
+ * three are independent test-side oracles.
  */
 const expectCountOf = (reported: unknown, scan: PdfScan, headings: readonly string[]): void => {
   const walked = flattenOf(scan.outline ?? []).length;
@@ -125,29 +126,30 @@ const expectCountOf = (reported: unknown, scan: PdfScan, headings: readonly stri
   expect(scan.outline).toBeDefined();
   expect(walked).toBe(headings.length);
   expect(reported).toBe(walked);
-  // 根对象没有 `/Count` 时 `outlineCount` 是 `undefined`：`?? 0` 会让"缺键"悄悄变成"0 条也通过"。
+  // With no `/Count` on the root, `outlineCount` is `undefined`: `?? 0` would quietly turn "missing key" into "0 entries also pass".
   expect(scan.outlineCount).toBeDefined();
-  if (scan.outlineCount === undefined) throw new Error("大纲根对象没有 /Count");
+  if (scan.outlineCount === undefined) throw new Error("the outline root has no /Count");
   expect(Math.abs(scan.outlineCount)).toBe(walked);
 };
 
-/** `--json.outline` 是条目数（数字），不是树：树只在 oracle 与 `--json` 的另一路里。 */
+/** `--json.outline` is the entry count (a number), not the tree: the tree only lives in the oracle and another `--json` route. */
 const reportedCountOf = (text: string): number => {
   const outline = reportedOutlineOf(text);
-  if (typeof outline !== "number") throw new Error("--json 的 data.outline 不是数字");
+  if (typeof outline !== "number") throw new Error("--json data.outline is not a number");
   return outline;
 };
 
 /**
- * ② 标题与页序：产物标题 = 编号 + 打印稿标题文本（两边都归一后再比）。首章之前是打印层自己的
- * 前置页（目录），所以首章不一定是第 1 页；但 `break-before: page` 让每章各起一页，页序必须逐章 +1。
+ * ② Titles and page order: artifact title = numbering + printout heading text (both sides normalized before
+ * comparing). Ahead of chapter one sits the print layer's own front matter (TOC), so the first chapter is not
+ * necessarily page 1; but `break-before: page` gives each chapter its own page — page order must step +1 per chapter.
  */
 const expectHeadingsOf = (nodes: readonly PdfOutlineNode[], headings: readonly string[]): void => {
   const flattened = flattenOf(nodes);
   expect(flattened).toHaveLength(headings.length);
   flattened.forEach((node, index) => {
     const tail = normalizeWhitespace(headings[index] ?? "");
-    // 退化成 `trim()` 时标题里的换行/连空格留着：`endsWith` 与“更长”两条会一起红。
+    // Degraded to `trim()`, newlines/space-runs inside titles survive: `endsWith` and "is longer" both go red.
     expect(normalizeWhitespace(node.title).endsWith(tail)).toBe(true);
     expect(normalizeWhitespace(node.title).length).toBeGreaterThan(tail.length);
   });
@@ -174,8 +176,8 @@ const REPRO_HTML = [
 ].join("\n");
 
 /**
- * 标题字面量里写满 PDF 结构（`endobj`、`/First 99 0 R`、`/Next 77 0 R`、`%`、括号嵌套、`\\)`）：
- * Chrome 会把标题原样写进 `/Title`，结构扫描必须在字面串里止步。`<<` 用实体，免得被当成标签。
+ * Title literals full of PDF structure (`endobj`, `/First 99 0 R`, `/Next 77 0 R`, `%`, nested parens, `\)`):
+ * Chrome writes titles verbatim into `/Title`, so structure scanning must stop inside literal strings. `<<` uses entities so it is not mistaken for a tag.
  */
 const HOSTILE_HTML = [
   "<!doctype html>",
@@ -187,7 +189,7 @@ const HOSTILE_HTML = [
   "</article></body></html>",
 ].join("\n");
 
-/** 渲染一份文档并读出 `--json.outline` 的条目数：`pdf` 失败（含 `render_empty`）这里就会抛。 */
+/** Render one document and read `--json.outline`'s entry count: a `pdf` failure (`render_empty` included) throws right here. */
 const writtenCountOf = async (html: string, name: string): Promise<number> => {
   let count = -1;
   await withTempDir(async (dir) => {
@@ -199,7 +201,7 @@ const writtenCountOf = async (html: string, name: string): Promise<number> => {
   return count;
 };
 
-describe.skipIf(SKIP_REASON !== null)("真 Chrome 的大纲不变量", () => {
+describe.skipIf(SKIP_REASON !== null)("outline invariants on real Chrome", () => {
   it("should keep outline count, heading pages and repeat runs in step with the real PDF", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(join(dir, "source.html"), docOf());
@@ -215,7 +217,7 @@ describe.skipIf(SKIP_REASON !== null)("真 Chrome 的大纲不变量", () => {
       expectCountOf(reportedOutlineOf(oneText), one, headings);
       expectHeadingsOf(one.outline ?? [], headings);
 
-      // ③ 稳定性：同输入两次渲染，标题序列与页序相等（不断字节：PDF 里有时间戳/对象号）。
+      // ③ Stability: two renders of the same input give equal title sequences and page orders (not bytes — PDFs carry timestamps/object numbers).
       expect(pairsOf(two.outline ?? [])).toEqual(pairsOf(one.outline ?? []));
     }, 120_000);
   }, 120_000);

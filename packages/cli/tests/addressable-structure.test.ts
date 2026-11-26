@@ -1,7 +1,7 @@
-// 这组用例要证明：`div` 与表格内部（`tbody`/`tr`/`td`）在 `normalize` 之后**都可寻址、可作 patch 目标**，
-// 并且「整表 replace」不会给没被改动的老行换 id —— 用户手里那批 id 在改动之后仍然有效。
+// These cases prove: `div` and table internals (`tbody`/`tr`/`td`) are all addressable and usable as
+// patch targets after `normalize`, and a whole-table replace must not re-id untouched old rows — ids the user holds stay valid after the change.
 //
-// 断言落在磁盘字节与真实进程输出上；id 一律从文件里读出来比（`idOfTag`），不硬编码。
+// Assertions land on disk bytes and real process output; ids are read out of the file (`idOfTag`), never hardcoded.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,7 +29,7 @@ const MIXED_DOC = [
 
 const fileOf = (dir: string): string => join(dir, "doc.html");
 
-/** 把文档写进沙箱并补 id（`--write`）：可寻址性本来就是 `normalize` 的产物。 */
+/** Write the doc into the sandbox and inject ids (`--write`): addressability is a `normalize` product. */
 const seedNormalized = async (dir: string, html: string): Promise<string> => {
   writeFileSync(fileOf(dir), html);
   expect(checked(await runCli(["normalize", "doc.html", "--write"], { cwd: dir })).code).toBe(0);
@@ -45,7 +45,7 @@ const readOf = async (dir: string, nodeId: string): Promise<CliResult> =>
 const htmlOf = (result: CliResult): string =>
   textOf(fieldOf(fieldOf(parseJsonLine(result.stdout), "data"), "html"));
 
-describe("div 可寻址、可作目标", () => {
+describe("div is addressable and usable as a patch target", () => {
   it("should give the div an id on normalize and accept it as a patch target", async () => {
     await withTempDir(async (dir) => {
       const file = await seedNormalized(dir, MIXED_DOC);
@@ -60,20 +60,20 @@ describe("div 可寻址、可作目标", () => {
         "<p>new</p>",
       ]);
 
-      // `div` 曾经不是可寻址元素：那时这里会因为拿不到 id 而红。
+      // `div` used to be non-addressable: back then this went red for lack of an id.
       expect(result.code).toBe(0);
       expect(readFileSync(file, "utf8")).toMatch(/<p data-hr-id="hr-[0-9a-f]{8}">new<\/p>/u);
     });
   });
 });
 
-/** 往 `tbody` 追加一行：rc=0，盘上有两行两格，且新行/新格的 id 是写盘时分配的。 */
+/** Append a row to `tbody`: rc=0, two rows and two cells on disk, and the new row/cell ids are assigned on write. */
 const appendRowIntoTbody = async (dir: string): Promise<void> => {
   const file = await seedNormalized(dir, TABLE_DOC);
   const written = readFileSync(file, "utf8");
   const tbodyId = idOfTag(written, "tbody");
 
-  // 三层都得有 id：只补到 `tr` 的话 `td` 仍然 read 不到。
+  // All three levels need ids: patching only up to `tr` still leaves `td` unreadable.
   expect(idOfTag(written, "tr")).toMatch(/^hr-[0-9a-f]{8}$/u);
   expect(idOfTag(written, "td")).toMatch(/^hr-[0-9a-f]{8}$/u);
 
@@ -88,12 +88,12 @@ const appendRowIntoTbody = async (dir: string): Promise<void> => {
 
   expect(result.code).toBe(0);
   const after = readFileSync(file, "utf8");
-  // 新行、新单元格都带 id：表格内部的 id 不是在原文件里"抄"来的，是写盘时分配的。
+  // New row and new cell both carry ids: table-internal ids are not "copied" from the original file — they are assigned on write.
   expect(after.match(/<tr data-hr-id="hr-[0-9a-f]{8}"/gu) ?? []).toHaveLength(2);
   expect(after).toMatch(/<td data-hr-id="hr-[0-9a-f]{8}">b<\/td>/u);
 };
 
-describe("表格内部可寻址", () => {
+describe("table internals are addressable", () => {
   it("should give tbody/tr/td ids and append a row into the tbody", async () => {
     await withTempDir(appendRowIntoTbody);
   });
@@ -105,14 +105,14 @@ describe("表格内部可寻址", () => {
 
       const result = await readOf(dir, cellId);
 
-      // `read` 必须能停在单元格上：返回的就是那一个 `<td>`，不是它的父行。
+      // `read` must stop on the cell: it returns that one `<td>`, not its parent row.
       expect(result.code).toBe(0);
       expect(htmlOf(result)).toBe(`<td data-hr-id="${cellId}">a</td>`);
     });
   });
 });
 
-/** 整表 replace 成两行：老行/老格的 id 必须原样留在盘上，新行拿新 id。 */
+/** Replace the whole table with two rows: old row/cell ids must stay literal on disk; new rows get new ids. */
 const replaceTableWithTwoRows = async (dir: string): Promise<void> => {
   const file = await seedNormalized(dir, TABLE_DOC);
   const before = readFileSync(file, "utf8");
@@ -131,23 +131,23 @@ const replaceTableWithTwoRows = async (dir: string): Promise<void> => {
 
   expect(result.code).toBe(0);
   const after = readFileSync(file, "utf8");
-  // 最关键的一条：没被改动的老行/老单元格，id 字面值必须还在盘上。
-  // 谁把注入器改成"整棵新子树一律重发 id"，这两行就红（用户手里的 id 会全部失效）。
+  // The key assertion: untouched old rows/cells keep their literal ids on disk.
+  // Anyone who changes the injector to "re-id every new subtree" makes these two lines red (all user-held ids die).
   expect(after).toContain(`data-hr-id="${rowId}"`);
   expect(after).toContain(`data-hr-id="${cellId}"`);
-  // 新加的那一行是新 id，共有两行两格。
+  // The added row is a new id; two rows and two cells in total.
   expect(after.match(/<tr data-hr-id="hr-[0-9a-f]{8}"/gu) ?? []).toHaveLength(2);
   expect(after.match(/<td data-hr-id="hr-[0-9a-f]{8}"/gu) ?? []).toHaveLength(2);
   expect(after).toMatch(/<td data-hr-id="hr-[0-9a-f]{8}">b<\/td>/u);
 };
 
-describe("整表 replace 保住老行 id", () => {
+describe("whole-table replace keeps old row ids", () => {
   it("should keep the old tr and td ids while new rows get fresh ones", async () => {
     await withTempDir(replaceTableWithTwoRows);
   });
 });
 
-/** 往 `<p>` 里塞 `<p>`：rc=2、内容模型冲突、报文说得出"段落"和能装的容器、字节不动。 */
+/** Nest a `<p>` inside `<p>`: rc=2, content-model conflict, the message names "paragraph" and containers that can hold it; bytes unchanged. */
 const appendParagraphIntoParagraph = async (dir: string): Promise<void> => {
   const file = await seedNormalized(dir, MIXED_DOC);
   const before = sha(file);
@@ -164,13 +164,13 @@ const appendParagraphIntoParagraph = async (dir: string): Promise<void> => {
 
   expect(result.code).toBe(2);
   expect(result.stdout).toContain('"code":"content_model_conflict"');
-  // 报文只断"点出段落 + 给出能装的容器"，不断全文。
+  // The message only asserts "names paragraph + lists eligible containers", not the full text.
   expect(result.stdout).toContain("段落");
   expect(result.stdout).toContain("article/section/div");
   expect(sha(file)).toBe(before);
 };
 
-/** 往 `<li>` 里塞 `<li>`：解析器会改结构，所以写盘前拒，字节不动。 */
+/** Nest a `<li>` inside `<li>`: the parser would restructure, so it is refused before write; bytes unchanged. */
 const appendListItemIntoListItem = async (dir: string): Promise<void> => {
   const file = await seedNormalized(dir, MIXED_DOC);
   const before = sha(file);
@@ -191,7 +191,7 @@ const appendListItemIntoListItem = async (dir: string): Promise<void> => {
   expect(sha(file)).toBe(before);
 };
 
-/** 反面对照：`td` 装 flow，块级片段合法。 */
+/** Negative control: `td` holds flow, so a block-level fragment is legal. */
 const appendDivIntoCell = async (dir: string): Promise<void> => {
   const file = await seedNormalized(dir, TABLE_DOC);
   const cellId = idOfTag(readFileSync(file, "utf8"), "td");
@@ -205,12 +205,12 @@ const appendDivIntoCell = async (dir: string): Promise<void> => {
     "<div>块</div>",
   ]);
 
-  // 判严成"单元格只装行内"会在这里红。
+  // A stricter rule of "cells hold only inline" goes red here.
   expect(result.code).toBe(0);
   expect(readFileSync(file, "utf8")).toMatch(/<div data-hr-id="hr-[0-9a-f]{8}">块<\/div>/u);
 };
 
-describe("内容模型报文指得出下一步", () => {
+describe("content-model message points out the next step", () => {
   it("should tell the user a <p> is a paragraph and name a container that holds one", async () => {
     await withTempDir(appendParagraphIntoParagraph);
   });
@@ -224,7 +224,7 @@ describe("内容模型报文指得出下一步", () => {
   });
 });
 
-describe("normalize 幂等", () => {
+describe("normalize is idempotent", () => {
   it("should report unchanged on a document that already carries every id", async () => {
     await withTempDir(async (dir) => {
       const file = await seedNormalized(dir, TABLE_DOC);
@@ -233,7 +233,7 @@ describe("normalize 幂等", () => {
       const second = checked(await runCli(["normalize", "doc.html", "--write"], { cwd: dir }));
 
       expect(second.code).toBe(0);
-      // 人读行明说"已带齐"：再跑一次不该换 id，也不该悄悄重写字节。
+      // The human line says "all present": a second run must not re-id, nor silently rewrite bytes.
       expect(second.stdout).toContain("unchanged doc.html");
       expect(second.stdout).toContain("已带齐 data-hr-id");
       expect(sha(file)).toBe(before);

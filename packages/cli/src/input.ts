@@ -1,4 +1,4 @@
-// 这层管：CLI 自己的字节 → 文本（严格 UTF-8、保留 BOM）与片段来源读取；不做 HTML/CSS/YAML 语义。
+// This layer: the CLI's own bytes -> text (strict UTF-8, BOM preserved) and fragment-source reads; no HTML/CSS/YAML semantics.
 
 import { readFile, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
@@ -7,7 +7,7 @@ import { HrError } from "@hreader/core";
 
 import type { HtmlSource } from "./args";
 
-/** 与 core 的判定一致：BOM 是文档内容的一部分，不能被默认解码器静默吞掉。 */
+/** Same rule as core: the BOM is part of the document content and must not be silently eaten by the default decoder. */
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 const codeOf = (error: unknown): unknown => Reflect.get(Object(error), "code");
@@ -46,14 +46,15 @@ const notRegularFileOf = (path: string, stats: Stats): HrError => {
 };
 
 /**
- * 上限按字节算：`stat` 只读目录项，超限文件连一次解码器都不进（500 MiB 也不会被读成字符串）。
- * 尺寸是无符号整数，与 `readFile` 读到的 `byteLength` 同一个量。
+ * The cap is in bytes: `stat` only reads the directory entry, so an over-limit file never reaches the decoder
+ * (a 500 MiB file is never read into a string). The size is an unsigned integer, the same quantity as the
+ * `byteLength` `readFile` would report.
  *
- * 先确认是普通文件：目录、字符设备（`/dev/zero` 报 size 0）与 FIFO（同样 size 0）会让上限
- * 检查直接放行，随后 `readFile` 要么无界读、要么永远等不到写入方。
+ * Confirm it is a regular file first: directories, character devices (`/dev/zero` reports size 0), and FIFOs
+ * (also size 0) would pass the cap check, after which `readFile` either reads unbounded or waits forever on a writer.
  *
- * `stat` 会跟随符号链接：指向普通文件的链接按普通文件处理（与 `--out` 的守卫同一语义），
- * 只有解析后仍不是普通文件才拒。
+ * `stat` follows symlinks: a link to a regular file counts as a regular file (same semantics as the `--out`
+ * guard); only a resolved path that is still not a regular file is refused.
  */
 export const fileSizeOf = async (path: string): Promise<number> => {
   let stats: Stats;
@@ -66,7 +67,7 @@ export const fileSizeOf = async (path: string): Promise<number> => {
   return stats.size;
 };
 
-/** `--out` 预检用：不存在是常态，「写盘时再报错」也能兜住——这里只为不花钱地提前判定。 */
+/** For `--out` preflight: not existing is the common case and "fail at write time" covers it anyway — this only answers early and cheaply. */
 export const existsOf = async (path: string): Promise<boolean> => {
   try {
     await stat(path);
