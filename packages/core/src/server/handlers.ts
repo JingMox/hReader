@@ -11,7 +11,19 @@ import type { ResolvedTarget } from "../io/paths";
 import { resolveTarget } from "../io/paths";
 import type { PatchDeps } from "../io/ports";
 import { patchFile } from "../io/patch-file";
-import { readTrust, writeTrust, type TrustLevel } from "../io/trust";
+import {
+  effectiveOf,
+  grantOfLevel,
+  levelOfScripts,
+  readDocGrant,
+  readGlobalModes,
+  writeDocGrant,
+  writeGlobalModes,
+  type DocGrant,
+  type EffectivePermissions,
+  type GlobalModes,
+  type TrustLevel,
+} from "../io/permissions";
 import { parseHtml } from "../html/parse";
 import { hasExecutableContent } from "../html/sanitize";
 import { attributeOf } from "../model/attrs";
@@ -36,6 +48,8 @@ export interface HandlerContext {
   readonly workspace: string;
   /** 构建产物目录（`index.html` + `assets/`），由 `ServerOptions.appDir` 传入。 */
   readonly appDir: string;
+  /** 用户级配置根（`~/.hreader` 的父目录）：全局权限模式写在它的 `.hreader/permissions.json`。 */
+  readonly home: string;
   readonly deps: PatchDeps;
   readonly styleDeps: StyleDeps;
 }
@@ -69,19 +83,69 @@ const HTML_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /**
- * 外来文档按信任档下发的 CSP。`sandbox` 指令是关键防线：即使有人在浏览器标签页里
- * 直接打开 `/s/<docId>`（顶层、不在 iframe 里），文档也被强制成 opaque origin——
- * 脚本读不到 cookie，也碰不到同源的写接口。**`sandbox` 后绝不能加 `allow-same-origin`**。
- * `local` 档的 `script-src 'unsafe-inline'` 能安全使用，正是因为 opaque origin +
- * `connect-src 'none'`：脚本跑得起来，但出不了源、也发不出请求。不要"修"它。
+ * 外来文档按生效权限（脚本 × 联网，2×2）下发的 CSP。`sandbox` 指令是关键防线：即使
+ * 有人在浏览器标签页里直接打开 `/s/<docId>`（顶层、不在 iframe 里），文档也被强制成
+ * opaque origin——脚本读不到 cookie，也碰不到同源的写接口。**`sandbox` 后绝不能加
+ * `allow-same-origin`**。
+ *
+ * 「联网」是一个全包开关：网络资源加载（CDN 脚本/样式/图片/字体/媒体）与页面主动请求
+ * （fetch/XHR/WebSocket/EventSource）共用同一组 `http: https:` 放宽 + `ws: wss:`。
+ * 联网档访问不到 hReader 本机 API 的论证，三层独立兜底，缺一不可：
+ *  1. CSP 不写 `'self'`：沙箱内页面是 opaque origin，对 CSP 而言 `'self'` 是
+ *     `null` 源——就算写了也匹配不到真实 URL；而不写时 `http://127.0.0.1:<port>`
+ *     与 `http:` scheme 匹配（同源不同端口算同一 scheme），fetch 能发出——
+ *  2. 于是靠凭据兜底：页面带着 opaque origin，浏览器不给它发 `Cookie`（沙箱源的
+ *     cookie 是隔离的，本地 API 要的会话 cookie 永远不在请求里）；
+ *  3. 最后靠服务自身的 host/origin/CSRF 门槛：就算凭据泄露，`x-hr-csrf` 头不存在
+ *     时写接口照旧拒绝，读接口被 `originAllowed` 与 host 白名单再挡一道。
+ * `script-src`、`form-action`、`base-uri`、`frame-src`、`frame-ancestors` 与联网无关，
+ * 四种组合里都保持收紧（`<base>` 改写与 meta-CSP 覆写对 HTTP 头下发的 CSP 无效——
+ * 后下发的更严策略只会叠加，不会替换）。
  */
-const FOREIGN_CSP: Readonly<Record<TrustLevel, string>> = {
-  off: "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
-  local:
-    "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; " +
-    "style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; " +
-    "connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; " +
-    "sandbox allow-scripts",
+// 外键 = 脚本、内键 = 联网；两维都只有 on/off，查表完备——漏一档是编译期错误，不是运行期回落。
+const FOREIGN_CSP: Readonly<Record<"off" | "on", Readonly<Record<"off" | "on", string>>>> = {
+  off: {
+    off:
+      "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; " +
+      "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox",
+    on:
+      "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' http: https:; " +
+      "img-src http: https: data: blob:; media-src http: https: data: blob:; " +
+      "font-src http: https: data:; connect-src http: https: ws: wss:; " +
+      "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox",
+  },
+  on: {
+    off:
+      "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; " +
+      "img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; " +
+      "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts",
+    on:
+      "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' http: https:; " +
+      "style-src 'unsafe-inline' http: https:; img-src http: https: data: blob:; " +
+      "media-src http: https: data: blob:; font-src http: https: data:; " +
+      "connect-src http: https: ws: wss:; frame-src 'none'; form-action 'none'; " +
+      "base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts",
+  },
+};
+
+const foreignCspOf = (effective: EffectivePermissions): string =>
+  FOREIGN_CSP[effective.scripts ? "on" : "off"][effective.network ? "on" : "off"];
+
+/** 单文档授权 + 全局模式一次读齐；`info`/`/s/`/三个写处理器共用同一个出口。 */
+const permissionsOf = async (
+  ctx: HandlerContext,
+  target: ResolvedTarget,
+  bytes: Uint8Array,
+): Promise<{
+  readonly grant: DocGrant;
+  readonly modes: GlobalModes;
+  readonly effective: EffectivePermissions;
+}> => {
+  const [modes, grant] = await Promise.all([
+    readGlobalModes(ctx.home, ctx.deps),
+    readDocGrant({ target, bytes }, ctx.deps),
+  ]);
+  return { grant, modes, effective: effectiveOf(modes, grant) };
 };
 
 const JSON_HEADERS: Readonly<Record<string, string>> = {
@@ -160,14 +224,14 @@ export const outlineReply = async (ctx: HandlerContext, docId: string): Promise<
 export const documentReply = async (ctx: HandlerContext, docId: string): Promise<DocumentServe> => {
   const doc = await loadDocument(ctx, docId);
   const parsed = parseHtml(decodeUtf8(doc.bytes, doc.target.realPath));
-  // 托管/可归一文档的响应头逐字节不动；外来文档才按信任档换 CSP。
+  // 托管/可归一文档的响应头逐字节不动；外来文档才按生效权限换 CSP。
   if (classifyDocument(parsed).cls !== "foreign") return { ...doc, reply: htmlReply(doc.bytes) };
-  const trust = await readTrust({ target: doc.target, bytes: doc.bytes }, ctx.deps);
+  const { effective } = await permissionsOf(ctx, doc.target, doc.bytes);
   return {
     ...doc,
     reply: {
       status: 200,
-      headers: { ...HTML_HEADERS, "content-security-policy": FOREIGN_CSP[trust] },
+      headers: { ...HTML_HEADERS, "content-security-policy": foreignCspOf(effective) },
       body: doc.bytes,
     },
   };
@@ -188,22 +252,38 @@ export const docInfoReply = async (ctx: HandlerContext, docId: string): Promise<
   const parsed = parseHtml(decodeUtf8(bytes, target.realPath));
   const classification = classifyDocument(parsed);
   const kind = docKindOf(classification.articles === 1 ? firstArticleOf(parsed.root) : undefined);
-  // 信任档只对外来文档有意义：managed/normalizable 永不执行文档脚本，恒报 "off"，
-  // 也免得"先当外来授权、后被改成托管"的陈旧记录漏出来。
-  const trust =
-    // Stryker disable next-line ConditionalExpression: readTrust 按字节寻记录，非外来文档的查找必然未中、落回 "off"——恒真变异无可见差异。
-    classification.cls === "foreign" ? await readTrust({ target, bytes }, ctx.deps) : "off";
+  // 权限只对外来文档有意义：managed/normalizable 永不执行文档脚本，不读授权、不携
+  // `permissions` 字段，也免得"先当外来授权、后被改成托管"的陈旧记录漏出来。
+  const perms =
+    // Stryker disable next-line ConditionalExpression: 非外来文档不读授权库，字段缺失是契约的一部分。
+    classification.cls === "foreign" ? await permissionsOf(ctx, target, bytes) : undefined;
   return jsonReply(200, {
     revision: revisionOf(bytes),
     cls: classification.cls,
-    trust,
+    // 冻结契约：`trust` 字段映射为"脚本是否生效"，老客户端语义不变。
+    // Stryker disable next-line ConditionalExpression: perms===undefined 时 trust 恒 "off"，与分支同义。
+    ...(perms === undefined ? { trust: "off" as TrustLevel } : { trust: levelOfScripts(perms.effective.scripts) }),
     scripts: hasExecutableContent(parsed.root),
+    // Stryker disable next-line ConditionalExpression: { permissions: undefined } 被 JSON.stringify 丢键，与 {} 同输出。
+    ...(perms === undefined ? {} : { permissions: permissionInfo(perms) }),
     // Stryker disable next-line ConditionalExpression: { reason: undefined } 被 JSON.stringify 丢键，与 {} 同输出。
     ...(classification.reason === undefined ? {} : { reason: classification.reason }),
     // Stryker disable next-line ConditionalExpression: 同上，{ kind: undefined } 序列化后消失。
     ...(kind === undefined ? {} : { kind }),
   });
 };
+
+/** `info`/`permissions` 响应里共用的一坨：生效值 + 出处 + 当前全局模式。 */
+const permissionInfo = (perms: {
+  readonly effective: EffectivePermissions;
+  readonly modes: GlobalModes;
+}): Readonly<Record<string, unknown>> => ({
+  scripts: perms.effective.scripts,
+  network: perms.effective.network,
+  scriptsSource: perms.effective.scriptsSource,
+  networkSource: perms.effective.networkSource,
+  modes: { scripts: perms.modes.scripts, network: perms.modes.network },
+});
 
 /**
  * 一切内容写先派生再放行：`modelOf(before)` 在写调用之前执行——外来/不可派生文档
@@ -366,6 +446,28 @@ export const annotationReply = async (
 
 const trustBody = z.object({ level: z.enum(["off", "local"]) });
 
+/**
+ * 对外来文档写授权都要先过同一道闸：托管/可归一文档不执行文档脚本，授权对它们没有
+ * 适用对象；顺带把 target/bytes 读好给调用方。`trust` 与 `permissions` 两个写入口共用。
+ */
+const foreignDocOf = async (
+  ctx: HandlerContext,
+  docId: string,
+): Promise<{ readonly target: ResolvedTarget; readonly bytes: Uint8Array }> => {
+  const target = await targetOf(ctx, docId);
+  const bytes = await bytesOf(ctx, target);
+  const classification = classifyDocument(parseHtml(decodeUtf8(bytes, target.realPath)));
+  if (classification.cls !== "foreign") {
+    // 409 码表里没有"文档分档与操作不符"的专码：`needs_normalize` 是唯一
+    // "文档状态不适用此操作"的 409 语义（其余 409 全是锁/快照/端口类）。
+    throw new HrError(
+      "needs_normalize",
+      `权限授权只对外来文档开放：该文档归作 ${classification.cls}，不执行脚本`,
+    );
+  }
+  return { target, bytes };
+};
+
 export const trustReply = async (
   ctx: HandlerContext,
   docId: string,
@@ -373,29 +475,83 @@ export const trustReply = async (
   lockMs: number,
 ): Promise<Written> => {
   const { level } = parseBody(trustBody, body);
-  const target = await targetOf(ctx, docId);
-  const bytes = await bytesOf(ctx, target);
-  const parsed = parseHtml(decodeUtf8(bytes, target.realPath));
-  const classification = classifyDocument(parsed);
-  if (classification.cls !== "foreign") {
-    // 409 码表里没有"文档分档与操作不符"的专码：`needs_normalize` 是唯一
-    // "文档状态不适用此操作"的 409 语义（其余 409 全是锁/快照/端口类）。
-    // managed/normalizable 都不执行文档脚本，信任档对它们没有适用对象。
-    throw new HrError(
-      "needs_normalize",
-      `信任档只对外来文档开放：该文档归作 ${classification.cls}，不执行脚本`,
-    );
-  }
-  // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
-  await busy(() => writeTrust({ target, bytes, level }, ctx.deps, { lockTimeoutMs: lockMs }));
+  const doc = await foreignDocOf(ctx, docId);
+  // 旧式档位映成整档授权：local = 脚本开 + 联网关（老客户端不关心联网维）。
+  const grant = grantOfLevel(level);
+  await busy(() =>
+    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
+    writeDocGrant({ target: doc.target, grant }, ctx.deps, { lockTimeoutMs: lockMs }),
+  );
+  // 响应里的 trust 报"脚本是否生效"：全局 deny 时就算单文档开了，生效的仍是关。
+  const { effective } = await permissionsOf(ctx, doc.target, doc.bytes);
   return {
-    reply: jsonReply(200, { trust: level }),
-    target,
-    revision: revisionOf(bytes),
+    reply: jsonReply(200, { trust: levelOfScripts(effective.scripts) }),
+    target: doc.target,
+    revision: revisionOf(doc.bytes),
     // 文档字节没变，但下发头变了：阅读器必须重载 iframe，`changed` 就是"推 doc.changed"的扳机。
     changed: true,
     changedNodes: [],
   };
+};
+
+const docPermissionsBody = z
+  .object({ scripts: z.boolean().optional(), network: z.boolean().optional() })
+  .refine((v) => v.scripts !== undefined || v.network !== undefined, {
+    message: "至少要给 scripts 或 network 其中一个",
+  });
+
+export const docPermissionsReply = async (
+  ctx: HandlerContext,
+  docId: string,
+  body: Readonly<Record<string, unknown>>,
+  lockMs: number,
+): Promise<Written> => {
+  const patch = parseBody(docPermissionsBody, body);
+  const doc = await foreignDocOf(ctx, docId);
+  const before = await permissionsOf(ctx, doc.target, doc.bytes);
+  const grant: DocGrant = {
+    scripts: patch.scripts ?? before.grant.scripts,
+    network: patch.network ?? before.grant.network,
+  };
+  await busy(() =>
+    writeDocGrant({ target: doc.target, grant }, ctx.deps, { lockTimeoutMs: lockMs }),
+  );
+  const after = await permissionsOf(ctx, doc.target, doc.bytes);
+  return {
+    reply: jsonReply(200, { permissions: permissionInfo(after) }),
+    target: doc.target,
+    revision: revisionOf(doc.bytes),
+    changed: true,
+    changedNodes: [],
+  };
+};
+
+const globalModesBody = z
+  .object({
+    scripts: z.enum(["allow", "deny", "per-doc"]).optional(),
+    network: z.enum(["allow", "deny", "per-doc"]).optional(),
+  })
+  .refine((v) => v.scripts !== undefined || v.network !== undefined, {
+    message: "至少要给 scripts 或 network 其中一个",
+  });
+
+export const globalModesReply = async (ctx: HandlerContext): Promise<Reply> =>
+  jsonReply(200, { modes: await readGlobalModes(ctx.home, ctx.deps) });
+
+/**
+ * 全局模式写。只返回 `{reply, modes}`，让 runtime 决定怎么广播：`permissions.changed`
+ * 事件不是文档写事件，不能走 doc.changed 的 changed/revision 契约。
+ */
+export const globalModesSetReply = async (
+  ctx: HandlerContext,
+  body: Readonly<Record<string, unknown>>,
+  lockMs: number,
+): Promise<{ readonly reply: Reply; readonly modes: GlobalModes }> => {
+  const patch = parseBody(globalModesBody, body);
+  const modes = await busy(() =>
+    writeGlobalModes({ home: ctx.home, modes: patch }, ctx.deps, { lockTimeoutMs: lockMs }),
+  );
+  return { reply: jsonReply(200, { modes }), modes };
 };
 
 export const normalizeReply = async (
