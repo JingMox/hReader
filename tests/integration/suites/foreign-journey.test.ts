@@ -91,7 +91,7 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
   afterAll(async () => {
     await browser.close();
     await daemon.stop();
-    killAllTracked();
+    await killAllTracked();
     home.cleanup();
   });
 

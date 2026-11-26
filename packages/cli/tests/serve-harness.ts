@@ -13,7 +13,8 @@ import type { Readable } from "node:stream";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { fieldOf, MAIN } from "./harness";
+import { killPid, registerChild } from "../../../tests/leak-guard/registry.ts";
+import { fieldOf, MAIN } from "./harness.ts";
 
 const START_TIMEOUT_MS = 15_000;
 
@@ -56,8 +57,11 @@ const addressOf = (line: string): { url: string; port: number; token: string } =
 
 const STOP_GRACE_MS = 3_000;
 
-/** SIGTERM 后最多等 `STOP_GRACE_MS`，再 SIGKILL：不能让一个忽略信号的 serve 挂住整棵套件。 */
-const stopOf =
+const childGroup = (child: ServeChild): boolean =>
+  process.platform !== "win32" && child.pid !== undefined;
+
+/** SIGTERM the group, wait at most `STOP_GRACE_MS`, then SIGKILL the group: a signal-ignoring serve must not hang the suite. */
+export const stopOf =
   (child: ServeChild): (() => Promise<void>) =>
   async () => {
     if (child.exitCode !== null || child.signalCode !== null) return;
@@ -65,9 +69,11 @@ const stopOf =
       child.once("close", () => {
         resolve();
       });
-      child.kill("SIGTERM");
+      killPid(child.pid ?? -1, childGroup(child), "SIGTERM");
       setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+        if (child.exitCode === null && child.signalCode === null) {
+          killPid(child.pid ?? -1, childGroup(child), "SIGKILL");
+        }
       }, STOP_GRACE_MS);
     });
   };
@@ -107,13 +113,25 @@ const firstLineOf = (child: ServeChild): Promise<{ url: string; port: number; to
 export const startServe = async (file: string, options: ServeOptions): Promise<ServeHandle> => {
   const args = ["serve", file, "--port", "0", "--home", options.home];
   if (options.json) args.push("--json");
+  // When the spawning process dies (worker killed, crashed, interrupted) the
+  // daemon must reap itself via --exit-with-parent — no relying on an afterAll
+  // that may never run.
+  args.push("--exit-with-parent");
   const child = spawn(process.execPath, ["--experimental-strip-types", MAIN, ...args], {
     cwd: options.cwd,
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
+  registerChild(child, { group: process.platform !== "win32" });
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
-  return { ...(await firstLineOf(child)), stop: stopOf(child) };
+  try {
+    return { ...(await firstLineOf(child)), stop: stopOf(child) };
+  } catch (error: unknown) {
+    // Failed start-up (timeout / early exit / malformed receipt) must reap the spawned process before rethrowing.
+    killPid(child.pid ?? -1, childGroup(child), "SIGKILL");
+    throw error;
+  }
 };
 
 /** `serve --home` 指向的目录必须已存在；顺手建一个独立的 home，避免撞上本机真 daemon。 */

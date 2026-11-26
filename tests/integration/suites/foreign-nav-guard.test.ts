@@ -215,7 +215,7 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
     await browser.close();
     await daemon.stop();
     ext.server.close();
-    killAllTracked();
+    await killAllTracked();
     home.cleanup();
   });
 

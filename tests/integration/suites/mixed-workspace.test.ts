@@ -72,7 +72,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await daemon.stop();
-  killAllTracked();
+  await killAllTracked();
   home.cleanup();
 });
 

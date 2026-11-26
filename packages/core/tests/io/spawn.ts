@@ -3,6 +3,8 @@
 import { fork, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 
+import { registerChild } from "../../../../tests/leak-guard/registry.ts";
+
 const FIXTURES = join(import.meta.dirname, "..", "..", "fixtures");
 const MESSAGE_TIMEOUT_MS = 20_000;
 
@@ -53,6 +55,7 @@ export const spawnFixture = (name: string, args: readonly string[]): FixtureWork
   const child = fork(join(FIXTURES, name), [...args], {
     stdio: ["ignore", "ignore", "pipe", "ipc"],
   });
+  registerChild(child);
   let stderr = "";
   child.stderr?.setEncoding("utf8");
   child.stderr?.on("data", (chunk: string) => {

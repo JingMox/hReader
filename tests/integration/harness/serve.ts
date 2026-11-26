@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { assert, parseJson } from "./check.ts";
 import type { JsonObject } from "./cli.ts";
 import { APP_DIR, CLI_BIN } from "./env.ts";
-import { live, type LiveProc } from "./proc.ts";
+import { live, stopProc, type LiveProc } from "./proc.ts";
 
 export interface Daemon {
   readonly port: number;
@@ -50,36 +50,43 @@ export const startServe = async (options: ServeOptions): Promise<Daemon> => {
       "--port",
       "0",
       "--json",
+      // When the spawning process dies (worker SIGKILLed, crashed, interrupted)
+      // the daemon must reap itself: afterAll never gets to run on that path.
+      "--exit-with-parent",
       ...(options.extraArgs ?? []),
     ],
     { cwd: options.workspace },
   );
-  const line = await proc.nextLine(20_000);
-  assert(line !== undefined, `hr serve 没有打出回执（stderr：${proc.out.err().slice(0, 400)}）`);
-  const parsed = parseJson(line, "hr serve 回执");
-  assert(typeof parsed === "object" && parsed !== null, `hr serve 回执不是对象：${line}`);
-  assert(Reflect.get(parsed, "ok") === true, `hr serve 回执不是 ok：${line}`);
-  const dataRaw: unknown = Reflect.get(parsed, "data");
-  assert(typeof dataRaw === "object" && dataRaw !== null, `hr serve 回执缺 data：${line}`);
-  const data = dataRaw as JsonObject;
-  const port = data["port"];
-  const token = data["token"];
-  const url = data["url"];
-  const pid = data["pid"];
-  assert(
-    typeof port === "number" && typeof token === "string" && typeof url === "string",
-    `hr serve 回执字段不全：${line}`,
-  );
-  return {
-    port,
-    token,
-    url,
-    pid: typeof pid === "number" ? pid : proc.pid,
-    proc,
-    home: options.home,
-    stop: async () => {
-      proc.kill("SIGTERM");
-      return await proc.exited;
-    },
-  };
+  // Failed start-up (no receipt / malformed receipt) must reap the spawned
+  // process before rethrowing: an escaping error plus a live daemon is the leak.
+  try {
+    const line = await proc.nextLine(20_000);
+    assert(line !== undefined, `hr serve 没有打出回执（stderr：${proc.out.err().slice(0, 400)}）`);
+    const parsed = parseJson(line, "hr serve 回执");
+    assert(typeof parsed === "object" && parsed !== null, `hr serve 回执不是对象：${line}`);
+    assert(Reflect.get(parsed, "ok") === true, `hr serve 回执不是 ok：${line}`);
+    const dataRaw: unknown = Reflect.get(parsed, "data");
+    assert(typeof dataRaw === "object" && dataRaw !== null, `hr serve 回执缺 data：${line}`);
+    const data = dataRaw as JsonObject;
+    const port = data["port"];
+    const token = data["token"];
+    const url = data["url"];
+    const pid = data["pid"];
+    assert(
+      typeof port === "number" && typeof token === "string" && typeof url === "string",
+      `hr serve 回执字段不全：${line}`,
+    );
+    return {
+      port,
+      token,
+      url,
+      pid: typeof pid === "number" ? pid : proc.pid,
+      proc,
+      home: options.home,
+      stop: async () => await stopProc(proc),
+    };
+  } catch (error: unknown) {
+    await stopProc(proc);
+    throw error;
+  }
 };

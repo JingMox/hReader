@@ -38,6 +38,9 @@ export const packageTest = {
   include: ["tests/**/*.test.ts"],
   maxWorkers: MAX_WORKERS,
   testTimeout: TEST_TIMEOUT_MS,
+  // Leak gate: every run registers its spawned children per-run; teardown fails the
+  // run if any of them is still alive at the end (tests/leak-guard/global-setup.ts).
+  globalSetup: [fromRepoRoot("./tests/leak-guard/global-setup.ts")],
 };
 
 export const definePackageConfig = () =>

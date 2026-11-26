@@ -5,6 +5,10 @@ import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  setup as leakGateSetup,
+  teardown as leakGateTeardown,
+} from "../leak-guard/global-setup.ts";
 import { APP_DIR, CLI_BIN, MCP_BIN } from "./harness/env.ts";
 
 /** 套件真正用到的产物：CLI/MCP 的真二进制 + 阅读器静态面（daemon 的 --app-dir）。 */
@@ -19,6 +23,9 @@ const SANDBOX_PREFIX = "hr-it-";
 const started = Date.now();
 
 export const setup = (): void => {
+  // Create this run's leak registry + sweep orphans of dead earlier runs, then
+  // do the artifact check.
+  leakGateSetup();
   const missing = REQUIRED_ARTIFACTS.filter(({ path }) => !existsSync(path));
   if (missing.length > 0) {
     throw new Error(
@@ -39,4 +46,7 @@ export const teardown = (): void => {
       // 目录在扫描与删除之间被别的进程收走：不是失败。
     }
   }
+  // Final verdict: a registered test child that is still alive is a leak —
+  // kill it and fail the run.
+  leakGateTeardown();
 };

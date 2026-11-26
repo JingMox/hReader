@@ -4,7 +4,7 @@
 import { assert, parseJson } from "./check.ts";
 import type { JsonObject } from "./cli.ts";
 import { MCP_BIN } from "./env.ts";
-import { live, type LiveProc } from "./proc.ts";
+import { live, stopProc, type LiveProc } from "./proc.ts";
 
 export interface McpClient {
   readonly proc: LiveProc;
@@ -68,12 +68,23 @@ export const startMcp = async (workspace: string): Promise<McpClient> => {
   };
   void pump();
 
-  const init = await request("initialize", {
-    protocolVersion: "2025-06-18",
-    capabilities: {},
-    clientInfo: { name: "hr-integration-test", version: "0.0.0" },
-  });
-  assert(Reflect.get(init, "result") !== undefined, `MCP initialize 被拒：${JSON.stringify(init)}`);
+  // A failed handshake must reap the spawned mcp-server before rethrowing:
+  // an escaping error plus a live process is a leak.
+  let init: JsonObject;
+  try {
+    init = await request("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "hr-integration-test", version: "0.0.0" },
+    });
+    assert(
+      Reflect.get(init, "result") !== undefined,
+      `MCP initialize 被拒：${JSON.stringify(init)}`,
+    );
+  } catch (error: unknown) {
+    await stopProc(proc);
+    throw error;
+  }
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
   const call = async (tool: string, args: JsonObject): Promise<McpResult> => {
@@ -94,10 +105,7 @@ export const startMcp = async (workspace: string): Promise<McpClient> => {
   return {
     proc,
     call,
-    close: async () => {
-      proc.kill("SIGTERM");
-      return await proc.exited;
-    },
+    close: async () => await stopProc(proc),
   };
 };
 

@@ -56,7 +56,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await mcp.close();
   await daemon.stop();
-  killAllTracked();
+  await killAllTracked();
   home.cleanup();
 });
 
