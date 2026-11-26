@@ -12,7 +12,7 @@
     "@types/node": "catalog:",
     "@types/write-file-atomic": "4.0.3",
     "eslint": "catalog:",
-    "fast-check": "^4.11.0",
+    "fast-check": "catalog:",
     "vitest": "catalog:"
   },
   "dependencies": {
