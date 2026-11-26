@@ -518,3 +518,86 @@ describe("doc permissions · 旧 sha 键迁移（HTTP 级）", () => {
     }, foreignSeed());
   });
 });
+
+describe("doc permissions · opaque-origin and hostile-key adversarial", () => {
+  // An opaque-origin (sandboxed) page always sends `Origin: null`. The gate
+  // must kill the request before route matching and before cookie/CSRF, so
+  // even a request carrying a stolen cookie and the CSRF header dies with 403
+  // on every route — including otherwise public ones (/healthz, /s/, SSE).
+  it.each([
+    ["GET", "/s/doc.html"],
+    ["GET", "/api/doc/doc.html/info"],
+    ["GET", "/api/permissions"],
+    ["POST", "/api/doc/doc.html/permissions"],
+    ["POST", "/api/permissions"],
+    ["GET", "/api/events"],
+    ["GET", "/healthz"],
+    ["GET", "/"],
+  ])(
+    "should answer 403 forbidden_origin to Origin:null with full credentials on %s %s",
+    async (method, path) => {
+      await withServer(async (ctx) => {
+        const response = await httpCall(ctx.port, {
+          method,
+          path,
+          headers: {
+            cookie: cookieOf(ctx.token),
+            "x-hr-csrf": "1",
+            "content-type": "application/json",
+            origin: "null",
+          },
+          ...(method === "POST" ? { body: JSON.stringify({ scripts: true }) } : {}),
+        });
+
+        expect(response.status).toBe(403);
+        expect(jsonBodyOf(response)).toMatchObject({ code: "forbidden_origin" });
+      }, foreignSeed());
+    },
+  );
+
+  it("should run the full grant flow for a doc literally named __proto__", async () => {
+    // A foreign doc named `__proto__` is legal on disk and as a trust.json
+    // key: it must work end to end without leaking into other docs' reads.
+    await withServer(async (ctx) => {
+      const { status } = await postDocPermissions(
+        ctx.port,
+        ctx.token,
+        { scripts: true },
+        "__proto__",
+      );
+      expect(status).toBe(200);
+      expect(await cspOf(ctx.port, ctx.token, "__proto__")).toBe(CSP["on|off"]);
+
+      const table: unknown = JSON.parse(
+        readFileSync(join(ctx.workspace, ".hreader", "trust.json"), "utf8"),
+      );
+      expect(Object.hasOwn(table as object, "__proto__")).toBe(true);
+      // A doc without a grant still reads denied: no prototype-slot leakage.
+      expect(await cspOf(ctx.port, ctx.token, "other.html")).toBe(CSP["off|off"]);
+      // An object-literal `__proto__:` key sets the prototype instead of
+      // seeding the file, so the seed map is built via fromEntries.
+    }, foreignSeed(
+      Object.fromEntries([
+        ["doc.html", FOREIGN],
+        ["other.html", FOREIGN],
+        ["__proto__", FOREIGN],
+      ]),
+    ));
+  });
+
+  it("should keep grants for two different docs written in parallel on the shared table", async () => {
+    // Both docs share one trust.json; the lock must serialize the merges so
+    // neither grant is lost.
+    await withServer(async (ctx) => {
+      const [a, b] = await Promise.all([
+        postDocPermissions(ctx.port, ctx.token, { scripts: true }, "doc.html"),
+        postDocPermissions(ctx.port, ctx.token, { network: true }, "other.html"),
+      ]);
+
+      expect(a.status).toBe(200);
+      expect(b.status).toBe(200);
+      expect(await cspOf(ctx.port, ctx.token, "doc.html")).toBe(CSP["on|off"]);
+      expect(await cspOf(ctx.port, ctx.token, "other.html")).toBe(CSP["off|on"]);
+    }, foreignSeed({ "doc.html": FOREIGN, "other.html": FOREIGN }));
+  });
+});

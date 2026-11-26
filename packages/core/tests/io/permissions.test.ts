@@ -506,6 +506,57 @@ describe("patchDocGrant · in-lock partial merge", () => {
   });
 });
 
+describe("permissions · 迁移与怪异但合法的路径", () => {
+  it("should migrate each path independently when two docs share one legacy sha grant", async () => {
+    // Two identical files share one legacy sha key: each read migrates only its
+    // own path, and the shared sha stays for any doc that has not migrated yet.
+    const world = worldOf(
+      { [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "local" }) },
+      ["a.html", "b.html"],
+    );
+
+    expect(await world.read(DOC_BYTES, "a.html")).toEqual({ scripts: true, network: false });
+    expect(await world.read(DOC_BYTES, "b.html")).toEqual({ scripts: true, network: false });
+
+    const table: unknown = JSON.parse(world.fs.textAt(TRUST_PATH));
+    expect(table).toMatchObject({
+      "a.html": { scripts: true, network: false },
+      "b.html": { scripts: true, network: false },
+      [sha256Of(DOC_BYTES)]: "local",
+    });
+  });
+
+  it("should treat docs named after prototype members as ordinary path keys", async () => {
+    // `constructor`/`toString` collide with Object.prototype members but are
+    // legal file names: the grant must be an own property, and an ungranted
+    // prototype-member name must still read denied rather than inherit a slot.
+    const world = worldOf({}, ["constructor", "toString"]);
+
+    await world.write({ scripts: true, network: false }, "constructor");
+
+    expect(await world.read(DOC_BYTES, "constructor")).toEqual({
+      scripts: true,
+      network: false,
+    });
+    expect(await world.read(DOC_BYTES, "toString")).toEqual(DENIED);
+  });
+});
+
+describe("readGlobalModes · 对抗形状", () => {
+  it("should ignore a __proto__ payload in the settings file", async () => {
+    // Same attack as the trust table: a shipped `{ "__proto__": {...} }` entry
+    // must not surface through the prototype chain as a mode.
+    const { deps } = homeWorldOf({
+      [SETTINGS_PATH]: '{"__proto__":{"scripts":"deny","network":"deny"},"network":"deny"}',
+    });
+
+    expect(await readGlobalModes(HOME, deps)).toEqual({
+      scripts: "per-doc",
+      network: "deny",
+    });
+  });
+});
+
 describe("effectiveOf · 3×3×2×2 合成矩阵", () => {
   const modes: readonly PermissionMode[] = ["allow", "deny", "per-doc"];
   const grants: readonly DocGrant[] = [
