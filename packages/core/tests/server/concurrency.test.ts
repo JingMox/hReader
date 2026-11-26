@@ -78,6 +78,21 @@ describe("concurrency · 同文档", () => {
 });
 
 describe("concurrency · 跨文档", () => {
+  it("should patch another document while a doc lock is held (locks are per-document)", async () => {
+    await withServer(async (ctx) => {
+      const lockDir = join(ctx.workspace, ".hreader", "locks");
+      mkdirSync(lockDir, { recursive: true });
+      const lock = join(lockDir, `${createHash("sha1").update("doc.html").digest("hex")}.lock`);
+      writeFileSync(lock, JSON.stringify({ pid: process.pid, nonce: "held", at: Date.now() }));
+
+      // A global/single lock would answer 503 busy here; per-document locking answers 200.
+      const other = await post(ctx.port, ctx.token, "other.html", "b");
+
+      expect(other.status).toBe(200);
+      expect(readFileSync(join(ctx.workspace, "other.html"), "utf8")).toContain(">b<");
+    });
+  });
+
   it("should run two documents in parallel without blocking each other", async () => {
     await withServer(async (ctx) => {
       const started = Date.now();
