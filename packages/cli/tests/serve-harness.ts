@@ -61,7 +61,7 @@ const childGroup = (child: ServeChild): boolean =>
   process.platform !== "win32" && child.pid !== undefined;
 
 /** SIGTERM the group, wait at most `STOP_GRACE_MS`, then SIGKILL the group: a signal-ignoring serve must not hang the suite. */
-const stopOf =
+export const stopOf =
   (child: ServeChild): (() => Promise<void>) =>
   async () => {
     if (child.exitCode !== null || child.signalCode !== null) return;
