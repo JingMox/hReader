@@ -632,3 +632,74 @@ describe("foreign · destroy", () => {
     expect(lastText(fake, ERROR)).toBe("");
   });
 });
+
+describe("foreign · 自导航拦截", () => {
+  it("should reset the frame to /s/ and flag the banner on an unmarked load with network off", () => {
+    const fake = createFakeHost();
+    mountForeign(depsOf(fake));
+    const docSrc = "/s/%E5%A4%96%20%E6%96%87%E6%A1%A3.html";
+
+    // 首个 load 核销挂载时那次导航；再到的 load 就是文档自导航（meta refresh / target=_self / location=）。
+    fake.fire(FRAME, "load", {});
+    fake.fire(FRAME, "load", {});
+
+    expect(attrsOf(fake, FRAME, "src")).toEqual([docSrc, docSrc]);
+    expect(lastText(fake, ERROR)).toBe(COPY.foreignNavBlocked);
+    expect(attrsOf(fake, BANNER, "hidden").at(-1)).toBe("<removed>");
+  });
+
+  it("should reset on every hostile load, not only the first", () => {
+    const fake = createFakeHost();
+    mountForeign(depsOf(fake));
+    const docSrc = "/s/%E5%A4%96%20%E6%96%87%E6%A1%A3.html";
+
+    fake.fire(FRAME, "load", {});
+    fake.fire(FRAME, "load", {});
+    fake.fire(FRAME, "load", {});
+    fake.fire(FRAME, "load", {});
+
+    // 复位写出的 src 也是自写导航：第二个 load 拦一次、第三个 load 核销复位、第四个再拦。
+    expect(attrsOf(fake, FRAME, "src")).toEqual([docSrc, docSrc, docSrc]);
+  });
+
+  it("should let an unmarked load pass when the network dimension is on", () => {
+    const fake = createFakeHost();
+    mountForeign(
+      depsOf(fake, {
+        info: { cls: "foreign", scripts: true, permissions: permsOf({ network: true }) },
+      }),
+    );
+
+    fake.fire(FRAME, "load", {});
+    fake.fire(FRAME, "load", {});
+
+    // 联网是全包：框架内导航是授权语义的一部分，不回写 src、不报错。
+    expect(attrsOf(fake, FRAME, "src")).toEqual(["/s/%E5%A4%96%20%E6%96%87%E6%A1%A3.html"]);
+    expect(lastText(fake, ERROR)).toBeUndefined();
+  });
+
+  it("should consume our own refresh without flagging it", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(depsOf(fake));
+    const docSrc = "/s/%E5%A4%96%20%E6%96%87%E6%A1%A3.html";
+
+    fake.fire(FRAME, "load", {});
+    handle.refresh("rev9");
+    fake.fire(FRAME, "load", {});
+
+    // refresh 的 load 是自己发起的：核销后无复位、无提示。
+    expect(attrsOf(fake, FRAME, "src")).toEqual([docSrc, `${docSrc}?r=rev9`]);
+    expect(lastText(fake, ERROR)).toBeUndefined();
+  });
+
+  it("should ignore a load that lands after destroy", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(depsOf(fake));
+
+    handle.destroy();
+    fake.fire(FRAME, "load", {});
+
+    expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
+    expect(lastText(fake, ERROR)).toBeUndefined();
+  });
+});

@@ -21,6 +21,7 @@ export const COPY = {
   foreignScriptsOff: "它包含脚本，已禁用",
   foreignScriptsOn: "脚本已允许",
   foreignNetworkOn: "联网已允许",
+  foreignNavBlocked: "页面尝试跳转到外部网址，已阻止",
   foreignAllow: "允许运行脚本",
   foreignDisallow: "禁用脚本",
   foreignFrameTitle: "外来文档预览",
