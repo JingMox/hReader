@@ -109,6 +109,48 @@ describe("GET /f/<cap>/<path>", () => {
       expect(json.headers["content-type"]).toBe("application/json; charset=utf-8");
     }, seed));
 
+  it("should set the exact content type of every whitelisted extension", () =>
+    withServer(async ({ port, token, workspace }) => {
+      // One file per extension: the table is the contract, so every value is
+      // pinned verbatim (svg is covered separately because it also carries CSP).
+      const cases: readonly (readonly [string, string])[] = [
+        ["a.css", "text/css; charset=utf-8"],
+        ["a.js", "text/javascript; charset=utf-8"],
+        ["a.mjs", "text/javascript; charset=utf-8"],
+        ["a.json", "application/json; charset=utf-8"],
+        ["a.png", "image/png"],
+        ["a.jpg", "image/jpeg"],
+        ["a.jpeg", "image/jpeg"],
+        ["a.gif", "image/gif"],
+        ["a.webp", "image/webp"],
+        ["a.avif", "image/avif"],
+        ["a.ico", "image/x-icon"],
+        ["a.woff", "font/woff"],
+        ["a.woff2", "font/woff2"],
+        ["a.ttf", "font/ttf"],
+        ["a.otf", "font/otf"],
+        ["a.mp3", "audio/mpeg"],
+        ["a.mp4", "video/mp4"],
+        ["a.webm", "video/webm"],
+        ["a.ogg", "audio/ogg"],
+        ["a.wav", "audio/wav"],
+        ["a.m4a", "audio/mp4"],
+        ["a.wasm", "application/wasm"],
+        ["a.txt", "text/plain; charset=utf-8"],
+      ];
+      for (const [name] of cases) writeFileSync(join(workspace, "page", name), "x");
+      const frame = await frameUrlOf(port, token, "page/index.html");
+      const base = frame.slice(0, frame.lastIndexOf("/"));
+      for (const [name, type] of cases) {
+        const res = await httpCall(port, { path: `${base}/${name}` });
+        expect(res.status, name).toBe(200);
+        expect(res.headers["content-type"], name).toBe(type);
+        expect(res.headers["cache-control"], name).toBe("no-store");
+        // The inert-document CSP is an svg-only header.
+        expect(res.headers["content-security-policy"], name).toBeUndefined();
+      }
+    }, seed));
+
   it("should answer SVG with the inert-document CSP", () =>
     withServer(async ({ port, token }) => {
       const frame = await frameUrlOf(port, token, "page/index.html");
@@ -207,16 +249,37 @@ describe("GET /f/<cap>/<path>", () => {
       expect((await httpCall(port, { path: `${base}/${longSegment}` })).status).toBe(404);
     }, seed));
 
-  it("should refuse files above the single-file ceiling", () =>
+  it("should accept paths and segments exactly at the grammar limits", () =>
     withServer(async ({ port, token, workspace }) => {
-      // Sparse file: no real disk cost, still an honest 50MiB+1 read.
-      const big = join(workspace, "page", "big.txt");
-      writeFileSync(big, "");
-      truncateSync(big, 50 * 1024 * 1024 + 1);
+      // Boundary pins: 512 total chars and a 255-char segment are allowed.
+      mkdirSync(join(workspace, "page", "a".repeat(250), "b".repeat(255)), {
+        recursive: true,
+      });
+      writeFileSync(join(workspace, "page", "a".repeat(250), "b".repeat(255), "f.css"), CSS);
+      const longestName = `${"n".repeat(251)}.css`;
+      writeFileSync(join(workspace, "page", longestName), CSS);
       const frame = await frameUrlOf(port, token, "page/index.html");
       const base = frame.slice(0, frame.lastIndexOf("/"));
-      const res = await httpCall(port, { path: `${base}/big.txt` });
-      expect(res.status).toBe(404);
+      const deep = `${"a".repeat(250)}/${"b".repeat(255)}/f.css`;
+      expect(deep).toHaveLength(512);
+      expect((await httpCall(port, { path: `${base}/${deep}` })).status).toBe(200);
+      expect(longestName).toHaveLength(255);
+      expect((await httpCall(port, { path: `${base}/${longestName}` })).status).toBe(200);
+    }, seed));
+
+  it("should refuse files above the single-file ceiling and serve at it", () =>
+    withServer(async ({ port, token, workspace }) => {
+      // Sparse files: no real disk cost, still honest 50MiB reads.
+      const big = join(workspace, "page", "big.txt");
+      writeFileSync(big, "");
+      truncateSync(big, MAX_DOC_ASSET_BYTES + 1);
+      const exact = join(workspace, "page", "exact.txt");
+      writeFileSync(exact, "");
+      truncateSync(exact, MAX_DOC_ASSET_BYTES);
+      const frame = await frameUrlOf(port, token, "page/index.html");
+      const base = frame.slice(0, frame.lastIndexOf("/"));
+      expect((await httpCall(port, { path: `${base}/big.txt` })).status).toBe(404);
+      expect((await httpCall(port, { path: `${base}/exact.txt` })).status).toBe(200);
     }, seed));
 
   it("should scope every path to the cap's own directory", () =>
@@ -328,6 +391,7 @@ describe("GET /f/<cap>/<path>", () => {
         expect(res.status, path).toBe(404);
         expect(res.headers["access-control-allow-origin"], path).toBe("null");
         expect(res.headers["x-content-type-options"], path).toBe("nosniff");
+        expect(res.headers["content-type"], path).toBe("application/json; charset=utf-8");
         bodies.add(res.body);
       }
       expect(bodies.size).toBe(1);
@@ -345,13 +409,21 @@ describe("GET /f/<cap>/<path>", () => {
 describe("docAssetReply · late-IO failures (direct calls)", () => {
   // These branches are TOCTOU windows — realpath/lstat/readFile disagreeing —
   // unreachable without steering the FileSystem port (same seam static-app uses).
+  const PAGE = join(tmpdir(), "hr-da-unit");
+  const FILE_STAT = { isFile: () => true, isSymbolicLink: () => false, mtimeMs: 0 };
+  // A FileSystem that would happily serve anything handed to it: used to prove
+  // the verdict is lexical — a grammar miss can never reach the serving arms.
+  const SERVING_FS = {
+    realpath: () => Promise.resolve(join(PAGE, "ok.css")),
+    lstat: () => Promise.resolve(FILE_STAT),
+    readFile: () => Promise.resolve(new TextEncoder().encode("ok")),
+  };
   const ctxWith = (
     fs: Partial<typeof nodePatchDeps.fs>,
   ): { readonly ctx: HandlerContext; readonly cap: string } => {
     const caps = createCapabilityBook();
-    const page = join(tmpdir(), "hr-da-unit");
     const target: ResolvedTarget = {
-      realPath: join(page, "index.html"),
+      realPath: join(PAGE, "index.html"),
       relative: "page/index.html",
       workspace: tmpdir(),
       storeDir: join(tmpdir(), ".hreader"),
@@ -397,5 +469,49 @@ describe("docAssetReply · late-IO failures (direct calls)", () => {
     });
     const reply = await docAssetReply(ctx, cap, "x.css");
     expect(reply.status).toBe(404);
+  });
+
+  it("should serve a body exactly at the byte ceiling", async () => {
+    const { ctx, cap } = ctxWith({
+      ...SERVING_FS,
+      readFile: () => Promise.resolve(new Uint8Array(MAX_DOC_ASSET_BYTES)),
+    });
+    expect((await docAssetReply(ctx, cap, "x.css")).status).toBe(200);
+  });
+
+  it("should 404 every grammar violation even when IO would succeed", async () => {
+    const { ctx, cap } = ctxWith(SERVING_FS);
+    // Each probe trips a different arm of the verdict; if that arm ever
+    // weakened, the steered FileSystem would hand back a 200.
+    for (const probe of [
+      "a\0b.css",
+      "a\\b.css",
+      "a//b.css",
+      "a/../x.css",
+      `${"n".repeat(256)}.css`,
+      `${"a".repeat(250)}/${"b".repeat(255)}/longer.css`,
+      "x.xyz",
+      ".hidden.css",
+    ]) {
+      expect((await docAssetReply(ctx, cap, probe)).status, probe).toBe(404);
+    }
+  });
+
+  it("should 404 when the resolved name fails the grammar a request could not", async () => {
+    // A symlink can land on a dot-bearing name the raw path could never spell.
+    const { ctx, cap } = ctxWith({
+      ...SERVING_FS,
+      realpath: () => Promise.resolve(join(PAGE, "a", ".h", "b.css")),
+    });
+    expect((await docAssetReply(ctx, cap, "link.css")).status).toBe(404);
+  });
+
+  it("should 404 when the resolved path is not a regular file", async () => {
+    const { ctx, cap } = ctxWith({
+      ...SERVING_FS,
+      lstat: () =>
+        Promise.resolve({ isFile: () => false, isSymbolicLink: () => false, mtimeMs: 0 }),
+    });
+    expect((await docAssetReply(ctx, cap, "x.css")).status).toBe(404);
   });
 });

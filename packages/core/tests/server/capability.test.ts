@@ -58,6 +58,15 @@ describe("createCapabilityBook", () => {
     expect([...second.docs.keys()].sort()).toEqual(["index.html", "other.html"]);
   });
 
+  it("should mint each cap from the directory path, never the file name", () => {
+    const key = new Uint8Array(32).fill(5);
+    const book = createCapabilityBook(key);
+    expect(book.register(targetOf("page/index.html")).cap).toBe(capabilityOf(key, "page"));
+    expect(book.register(targetOf("page/sub/doc.html")).cap).toBe(capabilityOf(key, "page/sub"));
+    // A document at the workspace root mints over "".
+    expect(book.register(targetOf("index.html")).cap).toBe(capabilityOf(key, ""));
+  });
+
   it("should hand different caps to different directories", () => {
     const book = createCapabilityBook();
     const a = book.register(targetOf("a/index.html"));
