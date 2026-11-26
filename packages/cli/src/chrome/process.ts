@@ -27,6 +27,9 @@ export interface ChromeProcess {
   readonly pid: number | undefined;
   onStderr(cb: (text: string) => void): () => void;
   onExit(cb: (code: number | null) => void): void;
+  /** 'close' fires once the process has exited AND its stdio streams have closed: 'exit' alone can still
+   * precede the final stderr chunk, so output-dependent logic must wait for close. */
+  onClose(cb: (code: number | null) => void): void;
   onError(cb: (error: Error) => void): void;
   killGroup(signal: "SIGTERM" | "SIGKILL"): void;
 }
@@ -44,6 +47,9 @@ export const chromeProcessOf = (child: ChildProcess): ChromeProcess => ({
   },
   onExit: (cb) => {
     child.on("exit", cb);
+  },
+  onClose: (cb) => {
+    child.on("close", cb);
   },
   onError: (cb) => {
     child.on("error", cb);
@@ -159,7 +165,9 @@ export const devtoolsUrlOf = (run: ChromeRun): Promise<string> =>
       }
     });
     // Remove it on success/failure too: a listener left on the flood is the other half of the memory defect.
-    run.process.onExit((code) => {
+    // Aggregate on 'close', not 'exit': the last stderr chunk can still be in flight at 'exit', and only
+    // 'close' guarantees the stream is drained — otherwise the early-exit detail comes out empty.
+    run.process.onClose((code) => {
       detach();
       const detail = firstErrorLineOf(buffer);
       reject(new HrError("chrome_failed", `Chrome 提前退出（code ${String(code)}）：${detail}`));

@@ -61,10 +61,17 @@ export const term = (text: string): string =>
  * diagnostics channel — stdout is a byte contract (reports, envelopes, document products) and nothing is ever truncated. */
 const STDERR_MAX_CHARS = 8 * 1024;
 
-export const bounded = (text: string): string =>
-  text.length <= STDERR_MAX_CHARS
-    ? text
-    : `${text.slice(0, STDERR_MAX_CHARS)}…[truncated ${String(text.length - STDERR_MAX_CHARS)} chars]`;
+/** Back off one code unit when the cut at `max` splits a surrogate pair: `Array.from` counts code
+ * points, so one point across the two boundary units means a kept lone half-surrogate — a worse defect
+ * than one fewer char (an already-lone surrogate in the input stays untouched). */
+const codePointCutOf = (text: string, max: number): number =>
+  Array.from(text.slice(max - 1, max + 1)).length === 1 ? max - 1 : max;
+
+export const bounded = (text: string): string => {
+  if (text.length <= STDERR_MAX_CHARS) return text;
+  const kept = codePointCutOf(text, STDERR_MAX_CHARS);
+  return `${text.slice(0, kept)}…[truncated ${String(text.length - kept)} chars]`;
+};
 
 /**
  * Receipt paths always echo from the user's view: a document inside cwd prints relative to cwd (that is how
