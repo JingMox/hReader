@@ -13,7 +13,6 @@ import type { PatchDeps } from "../io/ports";
 import { patchFile } from "../io/patch-file";
 import {
   effectiveOf,
-  grantOfLevel,
   levelOfScripts,
   patchDocGrant,
   readDocGrant,
@@ -479,11 +478,15 @@ export const trustReply = async (
 ): Promise<Written> => {
   const { level } = parseBody(trustBody, body);
   const doc = await foreignDocOf(ctx, docId);
-  // 旧式档位映成整档授权：local = 脚本开 + 联网关（老客户端不关心联网维）。
-  const grant = grantOfLevel(level);
+  // 旧式档位只映脚本这一维：local = 脚本开、off = 脚本关，联网保持原值——
+  // 老客户端不知道联网维度，不能把已开的联网一并收回。合并必须在信任锁内做
+  // （patchDocGrant）：锁外读改写会被别名 docId 的并发写丢档。
   await busy(() =>
-    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
-    writeDocGrant({ target: doc.target, grant }, ctx.deps, { lockTimeoutMs: lockMs }),
+    patchDocGrant(
+      { target: doc.target, patch: { scripts: level === "local" }, bytes: doc.bytes },
+      ctx.deps,
+      { lockTimeoutMs: lockMs },
+    ),
   );
   // 响应里的 trust 报"脚本是否生效"：全局 deny 时就算单文档开了，生效的仍是关。
   const { effective } = await permissionsOf(ctx, doc.target, doc.bytes);
