@@ -97,8 +97,15 @@ async function hydratePermissionSelects(m) {
     if (!res.ok || typeof modes !== "object" || modes === null) {
       throw new Error(`HTTP ${res.status}`);
     }
-    if (typeof modes.scripts === "string") scripts.value = modes.scripts;
-    if (typeof modes.network === "string") network.value = modes.network;
+    // Any string would "pass" a typeof check but leave the select with no
+    // matching option; an out-of-range mode must take the same lock-up path
+    // as a malformed payload rather than POST "" back to the server.
+    const VALID = new Set(["per-doc", "allow", "deny"]);
+    if (!VALID.has(modes.scripts) || !VALID.has(modes.network)) {
+      throw new Error("unexpected modes payload");
+    }
+    scripts.value = modes.scripts;
+    network.value = modes.network;
     scripts.disabled = false;
     network.disabled = false;
   } catch (err) {
