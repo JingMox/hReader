@@ -299,4 +299,28 @@ describe("boot · 沉浸模式", () => {
     expect(texts).toEqual([COPY.immersive]);
     expect(titles).toEqual([COPY.immersiveHint]);
   });
+
+  // 兜底出口：iframe 吃掉 Esc/i 时（焦点在 iframe 里，壳收不到 keydown），
+  // 顶边热区浮出的按钮是唯一的退出通道——它必须发出同一个 immersiveToggled。
+  it("should exit immersive through the edge button when the frame ate the keys", () => {
+    const h = harnessOf(true);
+    boot(h.deps);
+    h.type("i");
+    expect(h.store.get().immersive).toBe(true);
+    expect(immersiveAttrs(h).at(-1)).toBe("");
+
+    h.fake.fire(`${ROOT} #hr-immersive-exit`, "click", {});
+    expect(h.store.get().immersive).toBe(false);
+    expect(immersiveAttrs(h).at(-1)).toBe("<removed>");
+  });
+
+  it("should paint the edge exit button with its own copy at mount", () => {
+    const h = harnessOf(true);
+    boot(h.deps);
+
+    const texts = h.fake.calls
+      .filter((call) => call.op === "text" && call.args[0] === `${ROOT} #hr-immersive-exit`)
+      .map((call) => call.args[1]);
+    expect(texts).toEqual([COPY.immersiveExit]);
+  });
 });

@@ -170,6 +170,20 @@ describe("bootDocument · 三类分流", () => {
     expect(h.store.get().immersive).toBe(false);
     expect(attrs()).toBe("<removed>");
   });
+
+  // 外来壳的兜底出口：iframe 拿焦时 Esc/i 全被页面吃掉，壳收不到 keydown。
+  // 顶边热区浮出的"退出沉浸"按钮必须走同一个 immersiveToggled 意图。
+  it("should exit immersive through the edge button in the foreign shell", async () => {
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo);
+    await bootDocument(deps);
+
+    h.type("i");
+    expect(h.store.get().immersive).toBe(true);
+
+    h.fake.fire(`${ROOT} #hr-immersive-exit`, "click", {});
+    expect(h.store.get().immersive).toBe(false);
+  });
 });
 
 describe("bootDocument · 桌面桥门栏上报", () => {
