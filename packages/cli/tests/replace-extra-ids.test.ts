@@ -30,7 +30,7 @@ const TEXT_ONLY_FRAGMENT = '<div data-hr-id="hr-zz">纯文本</div>';
 const idsIn = (html: string): readonly string[] =>
   [...html.matchAll(/data-hr-id="([^"]*)"/gu)].map((match) => String(match[1]));
 
-describe("patch · 片段带 id 且片段内还要分新 id（docs/05:57）", () => {
+describe("patch · 片段带 id 且片段内还要分新 id", () => {
   it("should print both the id mapping and the extra new ids in the human receipt", async () => {
     await withTempDir(async (dir) => {
       seed(dir, "a.html", DOC);
@@ -67,7 +67,7 @@ describe("patch · 片段带 id 且片段内还要分新 id（docs/05:57）", ()
   });
 });
 
-describe("patch · 片段不带内部节点（docs/05:57 的反面）", () => {
+describe("patch · 片段不带内部节点", () => {
   it("should not print an empty '+0 ids' tail when the fragment brings no inner ids", async () => {
     // `humanPatch` 的另一半：`newIds` 全被映射吃掉时那截补充提示必须整段消失——
     // 留下 ", +0 ids: " 会让用户以为丢了东西。

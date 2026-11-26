@@ -16,7 +16,7 @@ import { textContentOf } from "../../html/text";
 import type { PendingAnnotation } from "../outline";
 import { attributeOf } from "./attrs";
 
-/** `docs/02` 的正典形态：`{version, style, annotations}`；只校验顶层键名，不校验值形状。 */
+/** `hr-meta` 的正典形态：`{version, style, annotations}`；只校验顶层键名，不校验值形状。 */
 const KNOWN_FIELDS: ReadonlySet<string> = new Set(["version", "style", "annotations"]);
 
 const diagnosticOf = (code: DiagnosticCode, message: string): Diagnostic => ({

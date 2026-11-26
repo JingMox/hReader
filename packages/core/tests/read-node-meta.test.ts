@@ -1,28 +1,21 @@
-// 这层管：`hr-meta` 顶层字段表——用 `docs/02` 的正典样本锁住“真实文档零无效诊断”；
+// 这层管：`hr-meta` 顶层字段表——用正典样本 `tests/fixtures/hr-meta-canonical.json` 锁住“真实文档零无效诊断”；
 // 不测批注状态过滤与排序（见 read-node.test.ts）。
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 import { parseHtml, readNode } from "../src/index";
 
 /**
- * 逐字取自 `docs/02-architecture-and-roadmap.md`。
+ * 正典 `hr-meta` 载荷：`version` / `style` / `annotations` 三字段齐全。
  * 教训：禁止简化成 `{"annotations":[]}`——那会把“每份真实文档多 2 条 warning”锁成正确行为。
  */
-const CANONICAL_META = `{
-    "version": "1.0",
-    "style": { "visual": "atelier-editorial", "tone": "feynman-tech" },
-    "annotations": [
-      {
-        "id": "ann-01",
-        "targetId": "p-problem-1",
-        "selectedText": "假设网络发生分区",
-        "comment": "这里请用银行跨行转账的例子具象化解释一下脑裂问题",
-        "status": "pending_ai",
-        "createdAt": "2026-11-12T14:30:00Z"
-      }
-    ]
-  }`;
+const CANONICAL_META = readFileSync(
+  fileURLToPath(new URL("fixtures/hr-meta-canonical.json", import.meta.url)),
+  "utf8",
+);
 
 const docWith = (payload: string): string =>
   '<article data-hr-id="post"><script id="hr-meta" type="application/json">' +
@@ -34,7 +27,7 @@ const readAt = (payload: string, target: string): ReturnType<typeof readNode> =>
 const codesOf = (payload: string): readonly string[] =>
   readAt(payload, "article").diagnostics.map((diagnostic) => diagnostic.code);
 
-describe("meta · the canonical payload from docs/02", () => {
+describe("meta · the canonical hr-meta payload", () => {
   it("should treat version / style / annotations as known fields", () => {
     expect(codesOf(CANONICAL_META)).not.toContain("invalid_meta");
   });

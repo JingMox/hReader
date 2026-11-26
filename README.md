@@ -10,7 +10,7 @@
   </p>
   <p>
     <a href="https://jingmox.github.io/hReader/">Live gallery</a> ·
-    <a href="./docs/launch/why-html.en.md">Why HTML</a> ·
+    <a href="https://jingmox.github.io/hReader/examples/why-html.html">Why HTML</a> (Chinese) ·
     <a href="https://github.com/JingMox/hReader/releases">Download</a> ·
     <a href="./README.zh-CN.md">简体中文</a>
   </p>
@@ -75,7 +75,7 @@ Left: Markdown — audio is a bare link or a naked player. Middle: free-form AI 
 - **Patch, don't regenerate.** Every block has a stable `data-hr-id`. Agents read the outline (`hr_outline`), read one block (`hr_read_node`), and patch one block (`hr_patch_node`) with atomic writes and undo (`hr_undo`).
 - **The file is yours.** Local `.html`, no vendor lock-in; works with Claude Code, Cursor, Codex, DeepSeek, or any agent that speaks MCP or Skills.
 
-Full argument: [In the AI era, your notes should be HTML, not Markdown](./docs/launch/why-html.en.md).
+Full argument: [In the AI era, your notes should be HTML, not Markdown](https://jingmox.github.io/hReader/examples/why-html.html) (Chinese page).
 
 ## Status
 
@@ -308,10 +308,8 @@ pnpm smoke:pi
 - [Changelog](./CHANGELOG.md)
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Security Policy](./SECURITY.md)
-- [Architecture & Roadmap](./docs/02-architecture-and-roadmap.md)
-- [Engineering Standards](./docs/04-engineering-standards.md)
 - [Desktop Shell Internals](./packages/desktop/README.md)
-- [Known Defects Ledger](./docs/known-defects.md)
+- [CLI Exit Codes](./packages/cli/README.md#exit-codes)
 
 ---
 

@@ -1,9 +1,12 @@
-// 这层管：后台起一个 `hr serve` 子进程并等它打印出地址（测试专用）；不做断言。
+// This layer: spawn a background `hr serve` subprocess and wait for it to print its
+// address (test-only); makes no assertions.
 //
-// 两条硬规矩（上一个编写员为此卡死过两次）：
-//   1. **绝不在前台跑 `serve`** —— 它不退出，bash/父进程会一直等；这里一律 spawn + finally kill。
-//   2. 端口一律 `--port 0`（系统分配），由 serve 自己把真端口印出来；测试从输出里读，
-//      不与任何既有用例抢固定端口，也不会撞上本机残留的 daemon。
+// Two hard rules — each has deadlocked a run before:
+//   1. **Never run `serve` in the foreground** — it never exits and the parent waits
+//      forever; always spawn and kill in a finally.
+//   2. Always pass `--port 0` (OS-assigned) and let serve print the real port; the test
+//      reads it from the output, never races other cases on a fixed port, and never hits
+//      a stale daemon left on the machine.
 
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";

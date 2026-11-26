@@ -42,8 +42,9 @@ const yamlDocOf = (spec: StyleSpec): string =>
   });
 
 /**
- * 谁是赢家（project → user → builtin）与未知 id 的报错都交 `resolveStyle` 裁定，
- * 这里只补"文本从哪来"：路径约定仍只在 `resource.ts` 里那一份。
+ * `resolveStyle` decides the winner (project → user → builtin) and reports unknown ids;
+ * this layer only adds "where the text comes from": the path convention still lives in
+ * exactly one place, `resource.ts`.
  */
 export const readStyleSource = async (id: string, deps: StyleDeps): Promise<StyleSourceText> => {
   const loaded = await resolveStyle({ id }, deps);

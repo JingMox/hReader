@@ -49,10 +49,16 @@ pnpm format          # Prettier 修复
 pnpm desktop:check   # 桌面壳门禁：rustfmt + clippy -D warnings + cargo test
 ```
 
-可选的端到端检查（CI 不跑，本地按需）：
+端到端与集成检查（CI 的 `checks` job 会跑这两条；`test:e2e` 与 `test:integration` 本地都需要 Chrome/Edge/Chromium，桌面冒烟在无桌面环境自动 SKIP）：
 
 ```bash
-pnpm test:e2e        # 需要本机 Chrome/Edge/Chromium
+pnpm test:e2e          # 打印稿分页 + 外来文档沙箱（真 Chrome）
+pnpm test:integration  # 跨包集成/用户旅程（真 dist 产物 + 真 Chrome）
+```
+
+仍属本地按需（CI 不跑）：
+
+```bash
 pnpm smoke:pi        # Pi 扩展冒烟
 pnpm desktop:build   # 本地打出桌面安装包
 ```
@@ -70,10 +76,11 @@ CI 把上面这些 package scripts 拆成并行的 `lint` / `test` / `e2e` job�
 
 ## 代码规范要点
 
-详见 [docs/04-engineering-standards.md](docs/04-engineering-standards.md)。几条最常碰到的：
+最常碰到的几条：
 
-- 注释只写签名表达不了的东西（契约、取舍、格式、反直觉处）；不写复述代码的注释。
-- 对外 API 用裸类型（原始类型、字面量联合、纯数据接口、判别联合）；不造包装类/brand 类型。
+- 注释只写签名表达不了的东西（契约、取舍、格式、反直觉处）；不写复述代码的注释，过时注释随代码一起改。无主 TODO 不允许——`TODO(name, issue#): ...` 才可以存在。
+- 对外 API 用裸类型（原始类型、字面量联合、纯数据接口、判别联合）；不造包装类/brand 类型、不用 boolean 控制参数（参数多了收 plain-object options）、`null`/`undefined` 不混用（统一 `undefined` 表缺失）。
+- 外部输入（文件、argv、HTTP/MCP 参数、`hr-meta` JSON）在边界处校验（类型守卫或 zod），向内传裸类型，内部不重复校验。
 - 错误用 `HrError` 或 `{ ok: false, code, message }` 判别联合，不静默 catch。
 - 纯逻辑层（`app` 的 state/keys/store 等）不碰 DOM 与浏览器全局；依赖靠参数注入。
 
@@ -90,6 +97,8 @@ CI 把上面这些 package scripts 拆成并行的 `lint` / `test` / `e2e` job�
 - 断言具体值与错误 `code`，不只断言"抛了错"。
 - 不 mock 被测单元本体；fs/网络/时间等外部依赖通过注入的替身控制。
 - 临时目录用 `mkdtemp` 并在 `finally` 里清理。
+- 禁止 `test.only`、注释掉的测试、无种子随机、直读 `Date.now()`、真实网络、`setTimeout` 轮询。
+- 交付物测试对**构建产物**跑真子进程（`cli` 的 `dist/cli.mjs`、`mcp-server` 的 `dist/main.js`），不是只测 src。
 
 ## 变异测试
 
@@ -104,4 +113,4 @@ pnpm test:mutation --mutate "packages/core/src/io/paths.ts"   # 只跑一个/几
 - 读报告：`killed`/`timeout` 是测试逮住的变异体；`survived` 是测试漏掉的——要么补行为级测试，要么确认是等价变异后用 `// Stryker disable next-line <Mutator>: <理由>` 标记并写明理由。
 - `thresholds.break` 是防退化棘轮：低于它命令退出非零。新补的测试杀死变异体后，分数只能升不能降。
 - CI 的 `mutation.yml` 每周定期跑 + 支持 `workflow_dispatch` 手动触发（可传 `mutate` 缩小范围），不阻塞 PR。
-- 注意：Stryker 用 inPlace 模式跑，运行中会临时覆写被变异文件（结束后恢复）；跑的时候不要编辑源码。
+- 注意：Stryker 用 sandbox 模式跑——把工作树拷到 `.stryker-tmp/`（`node_modules` 走符号链接），每个沙箱在初始测试前先执行一次 `scripts/stryker-prep.mjs`（补可执行位、关掉 pnpm 的 verify-deps-before-run 自动 install）。源码不会被就地覆写；但开跑之后再改的源码也不会进本次运行。

@@ -1,4 +1,4 @@
-// docs/05 的「错误码表」是退出码契约的**唯一文字版**，代码侧的真源是 `packages/cli/src/exit-codes.ts`。
+// `packages/cli/README.md` 的「Exit codes」一节是退出码契约的**唯一文字版**，代码侧的真源是 `src/exit-codes.ts`。
 // 这层把两半当文本对账：文档里加/删/改一行，或代码里改一个数，必须立刻红。
 // 用文本而不是 import：`EXIT_CODES` 是私有符号（只导出 `exitCodeOf`），而 41 个码各跑一次子进程
 // 拿 `--json` 信封成本过高、且多数码没有便宜的触发路径——文本对账是能达到判据的最轻做法。
@@ -8,16 +8,15 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const repoPath = (path: string): string =>
-  fileURLToPath(new URL(`../../../${path}`, import.meta.url));
+const pkgPath = (path: string): string => fileURLToPath(new URL(`../${path}`, import.meta.url));
 
-const DOCS = repoPath("docs/05-feature-cards.md");
-const EXIT_CODES_SRC = repoPath("packages/cli/src/exit-codes.ts");
+const README = pkgPath("README.md");
+const EXIT_CODES_SRC = pkgPath("src/exit-codes.ts");
 
-/** 只取「错误码表」那一节：从 `## 错误码表` 起，到下一个 `## ` 标题止。 */
+/** 只取「Exit codes」那一节：从 `## Exit codes` 起，到下一个 `## ` 标题止。 */
 const exitTableSectionOf = (markdown: string): string => {
-  const start = markdown.indexOf("## 错误码表");
-  if (start < 0) throw new Error("docs/05 里找不到「## 错误码表」这一节");
+  const start = markdown.indexOf("## Exit codes");
+  if (start < 0) throw new Error("packages/cli/README.md 里找不到「## Exit codes」这一节");
   const rest = markdown.slice(start);
   const end = rest.indexOf("\n## ", 1);
   return end < 0 ? rest : rest.slice(0, end);
@@ -77,10 +76,10 @@ const differencesOf = (
   return lines;
 };
 
-const documented = docTableOf(exitTableSectionOf(readFileSync(DOCS, "utf8")));
+const documented = docTableOf(exitTableSectionOf(readFileSync(README, "utf8")));
 const inCode = codeTableOf(readFileSync(EXIT_CODES_SRC, "utf8"));
 
-describe("错误码表对账 · docs/05 ↔ exit-codes.ts", () => {
+describe("错误码表对账 · CLI README ↔ exit-codes.ts", () => {
   it("should parse a non-trivial table on both sides (guards the parser itself)", () => {
     // 解析器退化（比如标题改名、表格改成列表）会让下面的 `toEqual([])` 变成永远绿的假证。
     expect(documented.size).toBeGreaterThanOrEqual(30);

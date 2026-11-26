@@ -1,7 +1,8 @@
-// 这层管：M2.1 服务器变异测试（真改 src → 跑指定用例文件 → 逐字节还原）；不做断言。
+// Mutation harness for the server: applies real edits to src, runs the named test files,
+// then restores byte-for-byte. Makes no assertions itself.
 //
-// 用法：node packages/core/fixtures/server-mutants.mjs（仓库根）
-// 退出码：全部被杀 + 还原一致 = 0；有存活/还原失败 = 1。
+// Usage: node packages/core/fixtures/server-mutants.mjs (repo root)
+// Exit code: 0 = every mutant killed and every restore identical; 1 = a survivor or a failed restore.
 
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

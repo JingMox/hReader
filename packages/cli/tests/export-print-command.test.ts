@@ -42,7 +42,7 @@ const withRealDir = async (
   }, timeoutMs);
 
 describe("exportPrintCommand · --json 键集精确", () => {
-  // 键集是**精确**契约（docs/05）：不多不少这四个，`out:null` / `droppedImages:0` 都不省键。
+  // 键集是**精确**契约：不多不少这四个，`out:null` / `droppedImages:0` 都不省键。
   it("should emit exactly ok/data with the four contract data keys", async () => {
     await withRealDir(async (dir) => {
       const path = join(dir, "doc.html");

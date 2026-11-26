@@ -34,14 +34,15 @@ module.exports = {
       name: "renderer-html-src-stays-pure",
       severity: "error",
       comment:
-        "@hreader/renderer-html 的 src 是纯函数层（D3）：不得碰 node: 内置模块，也不得反向依赖宿主包（cli/mcp-server）。",
+        "@hreader/renderer-html src is the pure-function layer: it must not touch node: builtins or depend back on the host packages (cli/mcp-server).",
       from: { path: "^packages/renderer-html/src" },
       to: { path: "^(node:|packages/(cli|mcp-server)/)" },
     },
     {
       name: "cli-is-a-thin-adapter",
       severity: "error",
-      comment: "CLI 是薄适配层（M1.8 §0）：HTML/CSS/YAML 逻辑只能在 core，CLI 不得引入处理库。",
+      comment:
+        "The CLI is a thin adapter: HTML/CSS/YAML logic lives in core only, so the CLI must not pull in processing libraries.",
       from: { path: "^packages/cli/src" },
       to: { path: "node_modules/(parse5|yaml|cheerio|jsdom|postcss|css-tree|htmlparser2)" },
     },
@@ -75,7 +76,7 @@ module.exports = {
       name: "widgets-use-host-interface",
       severity: "error",
       comment:
-        "widgets/** 只依赖 Host 接口与纯状态；不许直接 import dom.ts 的实现（M2.2 裁定 #4）。",
+        "widgets/** may only depend on the Host interface and pure state; importing the dom.ts implementation directly is forbidden.",
       from: { path: "^packages/app/src/widgets/" },
       to: { path: "^packages/app/src/dom\\.ts$", dependencyTypesNot: ["type-only"] },
     },
@@ -83,7 +84,7 @@ module.exports = {
       name: "no-dev-dependency-from-src",
       severity: "error",
       comment:
-        "运行时代码不得依赖 devDependencies，否则发布后必然崩；type-only 边不算运行时依赖（M3.3 D4：`@deepseek-ai/*` 只作 devDeps，源码里只 `import type`，否则两份 cordis 实例会让 Events 合并静默失效）。",
+        "Runtime code must not depend on devDependencies, or the published package crashes on import; type-only edges are not runtime dependencies (`@deepseek-ai/*` is dev-only and imported via `import type`, because a second cordis instance would silently break the Events merge).",
       from: { path: "^packages/[^/]+/src" },
       to: { dependencyTypes: ["npm-dev"], dependencyTypesNot: ["type-only"] },
     },
@@ -94,7 +95,7 @@ module.exports = {
     // 只排除顶层的产物目录：仓库根的 dist|coverage，以及 packages/<pkg>/dist|coverage。
     // 不能写成 (^|/)(dist|coverage)/：它匹配任意层级的 dist，连 node_modules 里的也算；
     // 而把 node_modules 塞进 exclude 会让 npm 边彻底消失，
-    // no-undeclared-external-dep / no-dev-dependency-from-src 重新变成死规则（见 impl-M1.0.md P0-3）。
+    // no-undeclared-external-dep / no-dev-dependency-from-src 重新变成死规则。
     // 也不用 ^(packages/[^/]+/)?(dist|coverage)/：嵌套量词会让 depcruise 的 safe-regex 拒跑（star height 2），
     // 因此拆成两条锚定分支。
     exclude: { path: "^(dist|coverage)/|^packages/[^/]+/(dist|coverage)/" },

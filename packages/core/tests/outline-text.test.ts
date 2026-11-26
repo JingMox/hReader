@@ -19,7 +19,8 @@ interface WordCase {
   readonly why: string;
 }
 
-// 卡片 3：CJK（含扩展 A/B、假名、全角字母）每字符 1；连续拉丁/数字串每串 1；标点/空白 0。
+// Counting rule: CJK (incl. ext A/B, kana, fullwidth letters) — 1 per char; contiguous
+// latin/digit runs — 1 per run; punctuation/whitespace — 0.
 const WORD_CASES: readonly WordCase[] = [
   { name: "纯中文", text: "分布式一致性", expected: 6, why: "每个汉字独立计 1" },
   { name: "纯英文", text: "distributed consensus protocol", expected: 3, why: "空格断串，3 串" },
@@ -41,8 +42,9 @@ const WORD_CASES: readonly WordCase[] = [
   { name: "单码点 emoji", text: "😀", expected: 0, why: "emoji 不是 L/N，也不属 CJK" },
   { name: "ZWJ 家庭 emoji", text: "👨‍👩‍👧‍👦", expected: 0, why: "连接符与 emoji 都不计字" },
   { name: "CJK 扩展 B", text: "𠀀𠀁", expected: 2, why: "astral 汉字按 1 个码点计" },
-  // 只有 CJK（Han/假名/谚文）逐字符计 1，其余字母（含全角 Ａ = Script=Latin、
-  // 希腊、西里尔、带变音符字母）一律"整串 1"。所以这条不再是缺陷（D6 已由 v2 关闭）。
+  // Only CJK (Han/kana/Hangul) counts 1 per char; every other letter (incl. fullwidth Ａ =
+  // Script=Latin, Greek, Cyrillic, accented letters) counts as "one whole run". So this
+  // case is not a defect.
   {
     name: "全角字母",
     text: "ＡＢＣ",
@@ -85,7 +87,7 @@ describe("hr_outline · 字数规则", () => {
   // 同一缺陷的现状钉子：将来实现修好后这条会红，提醒把上一条 `it.fails` 一起翻牌。
 });
 describe("hr_outline · 字数规则 · 续 1", () => {
-  it("should expose the current double-count of a markup-split latin run (D2 pin)", () => {
+  it("should expose the current double-count of a markup-split latin run (KD-03 pin)", () => {
     expect(wordsOf("<p>distri<b>buted</b></p>")).toBe(2);
   });
 
@@ -110,8 +112,9 @@ describe("hr_outline · 字数规则 · 续 1", () => {
     expect(wordsOf("<noscript>需要启用脚本</noscript><p>正文</p>")).toBe(8);
   });
 
-  // D7（已登记）：`<title>` 不在 `NON_VISIBLE_TEXT_TAGS` 里，它的文本会被计入字数。
-  // 在 `hr_outline` 场景下 article 里出现 `<title>` 很罕见，故只钉现状、不判缺陷。
+  // `<title>` is not in `NON_VISIBLE_TEXT_TAGS`, so its text is counted. A `<title>` inside
+  // an article is rare for `hr_outline`, so this pins the current behavior rather than
+  // calling it a defect.
   it("should count <title> text as visible content (pin)", () => {
     expect(wordsOf("<title>t</title><p>正文</p>")).toBe(3);
   });
