@@ -133,6 +133,9 @@ const exportOf = async (dir: string): Promise<{ printed: string; bytes: number }
 
 describe("首用路径 · 手写稿先补齐结构再读", () => {
   it("should let a handwritten draft be normalized, outlined and read", async () => {
+    // Four sequential CLI spawns fit the default deadline idle, but not under
+    // CPU contention — the deadline only guards a real hang (each spawn has
+    // its own runCli kill timer), so it gets the headroom the serve case uses.
     await withTempDir(async (dir) => {
       expect(await normalizeDraft(dir)).toBeGreaterThan(0);
 
@@ -147,7 +150,7 @@ describe("首用路径 · 手写稿先补齐结构再读", () => {
       expect(read.all).toContain("下一季度只做三件事。");
       expect(read.all).toContain("data-hr-id=");
       expect(read.chapter).toContain("第二章 评审");
-    });
+    }, 30_000);
   });
 });
 
@@ -171,7 +174,7 @@ describe("首用路径 · 改一章、换风格、出打印稿", () => {
       expect(exported.printed).toMatch(/<h1[^>]*>[\s\S]*?第一章 发布节奏/u);
       expect(exported.printed).toMatch(/<h1[^>]*>[\s\S]*?第三章 下一季度/u);
       expect(exported.printed).toContain("下一季度只做三件事。");
-    });
+    }, 30_000);
   });
 });
 
