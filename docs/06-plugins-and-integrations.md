@@ -29,6 +29,7 @@ pnpm -C packages/mcp-server build
 | `hr_outline`            | Inspect compact heading/node IDs, word counts & annotations |
 | `hr_read_node`          | Read a single subtree by CSS selector or `data-hr-id`       |
 | `hr_create_doc`         | Create a new semantic HTML document inside `--workspace`; optional `kind` (`note` / `report` / `minutes` / `brief` / `slides`) starts from that kind's skeleton |
+| `hr_import_doc`         | Convert foreign HTML (saved pages, scripted decks) into a managed `*.hr.html` document; the report lists what was stripped |
 | `hr_patch_node`         | Atomic `replace`, `insert_before`, `insert_after`, `append`, or `delete`; layout problems in the fragment come back as `warnings` |
 | `hr_apply_style`        | Apply visual theme CSS or check tone / forbidden words      |
 | `hr_resolve_annotation` | Mark reader annotations resolved / replied                  |
