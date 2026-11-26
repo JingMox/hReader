@@ -6,9 +6,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isErrorResultOf, sessionOf, textOf } from "./harness";
+import { isErrorResultOf, longestLineOf, sessionOf, stderrText, textOf } from "./harness";
 
 const call = async (
   name: string,
@@ -33,6 +33,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   process.chdir(tmpdir());
   await rm(workspace, { recursive: true, force: true });
 });
@@ -69,18 +70,23 @@ describe("schema 边界 · 类型与缺字段", () => {
 
 describe("schema 边界 · 巨型与畸形输入", () => {
   it("should answer a 2MiB nodeId with a coded error, not a crash", async () => {
+    // stderr 收进内存：入参原样回显的失败日志是 MB 级单行，漏出去会把 runner 卡死。
+    const stderr = stderrText();
     const result = await call("hr_read_node", {
       filePath: "doc.html",
       nodeId: "x".repeat(2 * 1024 * 1024),
     });
 
     expect(result.isError).toBe(true);
+    expect(longestLineOf(stderr.read())).toBeLessThan(10_000);
   });
 
   it("should answer a 2MiB filePath with a coded error, not a crash", async () => {
+    const stderr = stderrText();
     const result = await call("hr_outline", { filePath: "y".repeat(2 * 1024 * 1024) });
 
     expect(result.isError).toBe(true);
+    expect(longestLineOf(stderr.read())).toBeLessThan(10_000);
   });
 
   it("should answer non-object arguments with a JSON-RPC error instead of a tool result", async () => {

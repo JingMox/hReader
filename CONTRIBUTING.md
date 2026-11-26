@@ -59,7 +59,7 @@ pnpm desktop:build   # 本地打出桌面安装包
 
 ## 门禁策略
 
-CI 的 `checks` job 逐步调用上面这些 package scripts，`pnpm verify` 与它们同序——本地绿了 CI 才会绿。
+CI 把上面这些 package scripts 拆成并行的 `lint` / `test` / `e2e` job（desktop 是独立 job），检查集合与 `pnpm verify` 一致、顺序可不同——本地绿了 CI 才会绿。
 
 - **Lint**：`typescript-eslint` 的 `strictTypeChecked` + `stylisticTypeChecked`，另加跨包深层导入禁令（跨包只能走 `@hreader/<name>` 公开入口）。不设行数/复杂度硬上限——复杂度由 review 把关。
 - **豁免注释**：`eslint-disable` 允许但必须有界、带说明（`@eslint-community/eslint-comments` 强制）；`@ts-ignore`/`@ts-nocheck` 禁止，`@ts-expect-error` 必须带一行理由。

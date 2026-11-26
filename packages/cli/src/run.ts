@@ -27,7 +27,7 @@ import { EXIT_FAILURE, EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./
 import { sourceText } from "./input";
 import { LLM_TIMEOUT_MS, createLlmClient, type LlmPort } from "./llm/client";
 import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./llm/session";
-import { displayedPathOf, jsonError, term } from "./output";
+import { bounded, displayedPathOf, jsonError, term } from "./output";
 import { serveCommandOf } from "./run-serve";
 import { isDiscoveredStylePath, undiscoveredHint } from "./style-out";
 import { usageText, type CommandName } from "./usage";
@@ -357,6 +357,14 @@ const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
 };
 
 export const run = async (argv: readonly string[], io: CliIo): Promise<number> => {
+  // stderr 是纯诊断通道：所有写先过一道长度收敛，巨型入参的回显不能把终端/日志管线卡死。
+  const stderr = io.stderr;
+  io = {
+    ...io,
+    stderr: (text) => {
+      stderr(bounded(text));
+    },
+  };
   const parsed = parseArgs(argv, io.cwd);
   if (!parsed.ok) return usageFailure(parsed.message, parsed.topic, io);
   if (parsed.intent.kind === "help") {
