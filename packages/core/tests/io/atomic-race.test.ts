@@ -1,4 +1,4 @@
-// 这层管：原子写两道父目录复核之间的竞态窗口与 writeTrust 的并发合表；
+// 这层管：原子写两道父目录复核之间的竞态窗口与 writeDocGrant 的并发合表；
 // 换链用假 fs 的 lstat 钩子注入，锁排他只信真 fs 的 open(wx)。
 
 import { readFile, writeFile } from "node:fs/promises";
@@ -10,7 +10,7 @@ import { TMP_PREFIX, writeAtomic } from "../../src/io/atomic";
 import { encodeUtf8 } from "../../src/io/bytes";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import { resolveTarget } from "../../src/io/paths";
-import { readTrust, writeTrust } from "../../src/io/trust";
+import { readDocGrant, writeDocGrant } from "../../src/io/permissions";
 import {
   codeOfAsync,
   depsOf,
@@ -18,7 +18,6 @@ import {
   fixedClock,
   realDirOf,
   recordingSleep,
-  sha256Of,
   withWorkspace,
 } from "./harness";
 
@@ -77,29 +76,36 @@ describe("writeAtomic · 两次父目录复核之间的换链", () => {
   });
 });
 
-describe("writeTrust · 并发合表", () => {
-  it("should keep both grants when two writeTrust calls race on the shared table", async () => {
+describe("writeDocGrant · 并发合表", () => {
+  it("should keep both grants when two writeDocGrant calls race on the shared table", async () => {
     await withWorkspace(async (dir) => {
       const workspace = await realDirOf(dir);
-      // resolveTarget 要目标存在：先落一个外来文档。
-      await writeFile(join(workspace, "doc.html"), "seed");
-      const target = await resolveTarget({ workspace, file: "doc.html" }, nodePatchDeps.fs);
-      const bytesA = encodeUtf8("<div>foreign a</div>");
-      const bytesB = encodeUtf8("<div>foreign b</div>");
+      // resolveTarget 要目标存在：先落两个外来文档——授权按路径记，两篇各一条。
+      await writeFile(join(workspace, "a.html"), "seed");
+      await writeFile(join(workspace, "b.html"), "seed");
+      const targetA = await resolveTarget({ workspace, file: "a.html" }, nodePatchDeps.fs);
+      const targetB = await resolveTarget({ workspace, file: "b.html" }, nodePatchDeps.fs);
+      const bytes = encodeUtf8("irrelevant");
 
       // trust.lock 串行化读-改-写：两份授权都要落盘，而不是后者把整表覆盖回 {}。
       await Promise.all([
-        writeTrust({ target, bytes: bytesA, level: "local" }, nodePatchDeps),
-        writeTrust({ target, bytes: bytesB, level: "local" }, nodePatchDeps),
+        writeDocGrant({ target: targetA, grant: { scripts: true, network: false } }, nodePatchDeps),
+        writeDocGrant({ target: targetB, grant: { scripts: false, network: true } }, nodePatchDeps),
       ]);
 
-      expect(await readTrust({ target, bytes: bytesA }, nodePatchDeps)).toBe("local");
-      expect(await readTrust({ target, bytes: bytesB }, nodePatchDeps)).toBe("local");
+      expect(await readDocGrant({ target: targetA, bytes }, nodePatchDeps)).toEqual({
+        scripts: true,
+        network: false,
+      });
+      expect(await readDocGrant({ target: targetB, bytes }, nodePatchDeps)).toEqual({
+        scripts: false,
+        network: true,
+      });
       const table: unknown = JSON.parse(
         await readFile(join(workspace, ".hreader", "trust.json"), "utf8"),
       );
       expect(Object.keys(table as Record<string, unknown>).sort()).toEqual(
-        [sha256Of(bytesA), sha256Of(bytesB)].sort(),
+        ["a.html", "b.html"].sort(),
       );
     });
   });

@@ -36,7 +36,8 @@ describe("foreign doc · 启动", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers["content-security-policy"]).toBe(
-        "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+        "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; " +
+          "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox",
       );
       expect(response.body).toContain("外来内容");
     }, foreignSeed);

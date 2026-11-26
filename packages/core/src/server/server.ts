@@ -232,6 +232,7 @@ const assemble = (options: ServerOptions, deps: ServerDeps): Assembled => {
       docId: options.docId,
       bodyMs: timeoutsOf(options).bodyMs,
       appDir: options.appDir ?? "",
+      home: options.home,
     },
     {
       patch: deps.patch,

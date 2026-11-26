@@ -56,11 +56,68 @@ function buildSettingsBodyHtml(themeOpts) {
       <button type="button" class="hrd-btn" id="hrd-set-pick-ws">更改根目录…</button>
     </div>
     <div style="font-size:11.5px;color:var(--hr-muted);word-break:break-all;">${hrd.escapeHtmlText(ctx.workspace || "")}</div>
+    <div class="hrd-menu-hdr" style="margin-top:14px;">外来 HTML 权限（对所有文档生效）</div>
+    <div class="hrd-field">
+      <span>运行脚本</span>
+      <select id="hrd-set-perm-scripts" disabled>${buildModeOptionsHtml("per-doc")}</select>
+    </div>
+    <div class="hrd-field" style="border-bottom:none;">
+      <span>联网加载资源</span>
+      <select id="hrd-set-perm-network" disabled>${buildModeOptionsHtml("per-doc")}</select>
+    </div>
   `;
+}
+
+// 三选一与 core 的 PermissionMode 一一对应；先禁用渲染，GET 回来再放开，避免把
+// 占位值当真值误存。
+function buildModeOptionsHtml(current) {
+  const opts = [
+    ["per-doc", "逐个文档开关（默认）"],
+    ["allow", "全部允许"],
+    ["deny", "全部禁止"],
+  ];
+  return opts
+    .map(
+      ([v, label]) => `<option value="${v}" ${v === current ? "selected" : ""}>${label}</option>`,
+    )
+    .join("");
+}
+
+async function hydratePermissionSelects(m) {
+  const scripts = m.querySelector("#hrd-set-perm-scripts");
+  const network = m.querySelector("#hrd-set-perm-network");
+  if (!scripts || !network) return;
+  try {
+    const res = await fetch("/api/permissions", {
+      credentials: "same-origin",
+      headers: { accept: "application/json" },
+    });
+    const json = JSON.parse(await res.text());
+    const modes = json && typeof json === "object" ? json.modes : undefined;
+    if (!res.ok || typeof modes !== "object" || modes === null) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    // Any string would "pass" a typeof check but leave the select with no
+    // matching option; an out-of-range mode must take the same lock-up path
+    // as a malformed payload rather than POST "" back to the server.
+    const VALID = new Set(["per-doc", "allow", "deny"]);
+    if (!VALID.has(modes.scripts) || !VALID.has(modes.network)) {
+      throw new Error("unexpected modes payload");
+    }
+    scripts.value = modes.scripts;
+    network.value = modes.network;
+    scripts.disabled = false;
+    network.disabled = false;
+  } catch (err) {
+    // 读不到就锁死在禁用态：宁可这一栏不可用，也不能把"逐个文档"假值写回去。
+    hrd.showToast("读取外来文档权限设置失败：" + (err && err.message ? err.message : err), true);
+  }
 }
 
 async function applySettingsFromModal(m) {
   const visual = m.querySelector("#hrd-set-visual").value;
+  const permScripts = m.querySelector("#hrd-set-perm-scripts");
+  const permNetwork = m.querySelector("#hrd-set-perm-network");
   hrd.savePrefs({
     uiTheme: m.querySelector("#hrd-set-uitheme").value || "light",
     bottomBarStyle: m.querySelector("#hrd-set-barstyle").value,
@@ -71,6 +128,18 @@ async function applySettingsFromModal(m) {
     showBlockIds: m.querySelector("#hrd-set-ids").checked,
     defaultVisual: visual,
   });
+  // 全局权限不落本地 prefs：服务端是唯一真相源，这里直接写 daemon。
+  // GET 没回来时两个框仍是禁用态——只写"放开过"的值，不把占位写回去。
+  if (permScripts && permNetwork && !permScripts.disabled && !permNetwork.disabled) {
+    try {
+      await hrd.apiPost("/api/permissions", {
+        scripts: permScripts.value,
+        network: permNetwork.value,
+      });
+    } catch (err) {
+      hrd.showToast("外来文档权限保存失败：" + err.message, true);
+    }
+  }
   hrd.applyPrefs();
   hrd.closeModal();
   const sel = document.getElementById("hr-theme-select");
@@ -119,9 +188,14 @@ function openSettingsModal() {
     hrd.savePrefs({ ...hrd.DEFAULT_PREFS });
     hrd.applyPrefs();
     hrd.closeModal();
-    hrd.showToast("已恢复默认设置");
+    // 服务端的两个全局档也要跟着回"逐个文档"，否则本地清了远端还在接管开关。
+    hrd
+      .apiPost("/api/permissions", { scripts: "per-doc", network: "per-doc" })
+      .then(() => hrd.showToast("已恢复默认设置"))
+      .catch((err) => hrd.showToast("权限设置复位失败：" + err.message, true));
   });
   m.querySelector("#hrd-set-done").addEventListener("click", () => applySettingsFromModal(m));
+  hydratePermissionSelects(m);
 }
 
 function openNewDocModal() {
@@ -257,6 +331,7 @@ function openHelpModal() {
       <div class="hrd-field"><span>切换 HTML 源码模式 / 专注模式</span><code>⌘/ / ⌘⇧F</code></div>
       <div class="hrd-field"><span>插入组件 / 编辑块完整 HTML</span><code>⌘⇧K / ⌘E</code></div>
       <div class="hrd-field"><span>快速切换文档 / 新建文档 / 偏好设置</span><code>⌘O / ⌘N / ⌘,</code></div>
+      <div class="hrd-field"><span>沉浸模式（隐藏外壳）/ 原生全屏</span><code>⌘⇧I 或 i · Esc / ^⌘F</code></div>
       <div class="hrd-field" style="border-bottom:none;"><span>过滤大纲 / 整段批注 / 改动 Diff</span><code>/ · c · Shift+D</code></div>
     `,
     `

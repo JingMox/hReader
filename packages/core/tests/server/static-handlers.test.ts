@@ -51,6 +51,7 @@ afterAll(() => {
 const ctxOf = (appDir: string): HandlerContext => ({
   workspace: fx.workspace,
   appDir,
+  home: fx.home,
   deps: nodeStyleDeps(fx.workspace),
   styleDeps: { ...nodeStyleDeps(fx.workspace), home: fx.home, stylesRoot: fx.stylesRoot },
 });

@@ -19,12 +19,14 @@ const FOREIGN = [
   '<html><body><div class="app"><script>alert(1)</script>外来</div></body></html>',
 ].join("\r\n");
 
-const OFF_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
+const OFF_CSP =
+  "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; " +
+  "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox";
 const LOCAL_CSP =
   "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; " +
   "style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; " +
   "connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; " +
-  "sandbox allow-scripts";
+  "frame-ancestors 'self'; sandbox allow-scripts";
 const MANAGED_CSP = "default-src 'none'; style-src 'unsafe-inline'";
 
 const foreignSeed = (workspace: string): void => {

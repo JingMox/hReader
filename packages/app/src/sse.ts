@@ -24,8 +24,9 @@ export interface SseEvent {
   readonly payload: Readonly<Record<string, unknown>>;
 }
 
-/** 服务端会用的具名事件；`message` 作为兜底（无 `event:` 行的实现）。 */
-const NAMED = ["doc.changed", "doc.reloaded", "library.changed"] as const;
+/** 服务端会用的具名事件；`message` 作为兜底（无 `event:` 行的实现）。
+ *  `permissions.changed` 在此登记才算"听到"：EventSource 只派发已监听的具名事件。 */
+const NAMED = ["doc.changed", "doc.reloaded", "library.changed", "permissions.changed"] as const;
 
 interface SseDeps {
   readonly open: (url: string) => SourceLike;

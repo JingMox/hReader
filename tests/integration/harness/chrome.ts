@@ -26,6 +26,8 @@ export interface Page {
   readonly wait: (expression: string, timeoutMs?: number) => Promise<unknown>;
   readonly key: (key: string, code: string, windowsKeyCode: number) => Promise<void>;
   readonly click: (selector: string) => Promise<void>;
+  /** 每次新文档创建时先跑这段脚本（早于页面与 iframe 的一切脚本）：免竞态的安装通道。 */
+  readonly onNewDocument: (source: string) => Promise<void>;
   readonly navigate: (url: string) => Promise<void>;
   readonly reload: () => Promise<void>;
 }
@@ -108,6 +110,9 @@ const wrapPage = (inner: PuppeteerPage, session: CDPSession): Page => {
         `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`,
         false,
       );
+    },
+    onNewDocument: async (source) => {
+      await inner.evaluateOnNewDocument(source);
     },
     // goto 等 domcontentloaded：旧 Page.navigate 火后即忘，调用方随后都要 wait 状态；
     // 等到可解析 DOM 再回来，语义只增不减。
