@@ -427,3 +427,546 @@ pub fn is_html_file(path: &Path) -> bool {
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn temp_ws(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("hr-wb-tree-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn write(path: &Path) {
+        fs::write(path, "<p>x</p>").expect("write file");
+    }
+
+    fn tree_names(nodes: &[TreeNode]) -> Vec<&str> {
+        nodes.iter().map(|n| n.name.as_str()).collect()
+    }
+
+    #[test]
+    fn list_html_files_filters_hidden_and_sorts() {
+        let dir = temp_ws("files");
+        fs::create_dir_all(dir.join(".hreader")).expect("dot dir");
+        fs::create_dir_all(dir.join("notes")).expect("notes dir");
+        fs::write(dir.join(".hreader/internal.html"), "").expect("write dot");
+        fs::write(dir.join("b.html"), "").expect("write b");
+        fs::write(dir.join("a.htm"), "").expect("write a");
+        fs::write(dir.join("ignore.txt"), "").expect("write txt");
+        fs::write(dir.join("notes/sub.html"), "").expect("write sub");
+
+        let found = list_html_files(&dir);
+        assert_eq!(found, vec!["a.htm", "b.html", "notes/sub.html"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// D10 rule 2: a directory with a single HTML file folds every other entry
+    /// (HTML-free subdirectories included) into that page's assets.
+    #[test]
+    fn single_html_dir_folds_siblings_into_page_assets() {
+        let dir = temp_ws("tree");
+        fs::create_dir_all(dir.join("system/paper/deep")).expect("deep dir");
+        fs::create_dir_all(dir.join("empty_folder")).expect("empty dir");
+        fs::create_dir_all(dir.join(".hidden_dir")).expect("hidden dir");
+        fs::create_dir_all(dir.join("node_modules/pkg")).expect("node_modules dir");
+        fs::write(dir.join("root.html"), "").expect("root html");
+        fs::write(dir.join("readme.txt"), "").expect("txt");
+        fs::write(dir.join("system/paper/deep/note.html"), "").expect("deep note");
+        fs::write(dir.join("node_modules/pkg/skip.html"), "").expect("skip nm");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["system", "root.html"]);
+        // `system` still holds an HTML page -> normal directory child.
+        assert_eq!(tree[0].kind, TreeEntryKind::Dir);
+        assert_eq!(tree[0].children[0].name, "paper");
+        assert_eq!(tree[0].children[0].children[0].name, "deep");
+        assert_eq!(
+            tree[0].children[0].children[0].children[0].path,
+            "system/paper/deep/note.html"
+        );
+        // `empty_folder` and `readme.txt` are HTML-free -> page assets.
+        assert_eq!(tree[1].kind, TreeEntryKind::File);
+        assert_eq!(
+            tree_names(&tree[1].assets),
+            vec!["empty_folder", "readme.txt"]
+        );
+        assert_eq!(tree[1].assets[0].kind, TreeEntryKind::Dir);
+        assert!(tree[1].assets[1].hidden);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn browser_save_as_dir_folds_into_matching_page() {
+        let dir = temp_ws("save-as");
+        write(&dir.join("a.html"));
+        write(&dir.join("b.html"));
+        fs::create_dir_all(dir.join("a_files/img")).expect("a_files");
+        fs::write(dir.join("a_files/style.css"), "css").expect("css");
+        fs::write(dir.join("a_files/img/logo.png"), "png").expect("png");
+        fs::create_dir_all(dir.join("b_files")).expect("b_files");
+        fs::write(dir.join("b_files/x.css"), "css").expect("b css");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["a.html", "b.html"]);
+        let (a, b) = (&tree[0], &tree[1]);
+        assert_eq!(tree_names(&a.assets), vec!["a_files"]);
+        assert_eq!(a.assets[0].kind, TreeEntryKind::Dir);
+        assert_eq!(tree_names(&a.assets[0].children), vec!["img", "style.css"]);
+        assert!(a.assets[0].children[1].hidden);
+        assert_eq!(tree_names(&b.assets), vec!["b_files"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dot_assets_dir_folds_into_matching_page() {
+        let dir = temp_ws("dot-assets");
+        write(&dir.join("a.html"));
+        write(&dir.join("b.html"));
+        fs::create_dir_all(dir.join("a.assets")).expect("a.assets");
+        fs::write(dir.join("a.assets/app.js"), "js").expect("js");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["a.html", "b.html"]);
+        assert_eq!(tree_names(&tree[0].assets), vec!["a.assets"]);
+        assert!(tree[1].assets.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unclaimed_named_dir_stays_a_normal_child() {
+        let dir = temp_ws("unclaimed");
+        write(&dir.join("a.html"));
+        write(&dir.join("b.html"));
+        // `c_files` belongs to no page; it remains a visible directory.
+        fs::create_dir_all(dir.join("c_files")).expect("c_files");
+        fs::write(dir.join("c_files/x.css"), "css").expect("css");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["c_files", "a.html", "b.html"]);
+        assert_eq!(tree[0].kind, TreeEntryKind::Dir);
+        assert!(tree[1].assets.is_empty());
+        assert!(tree[2].assets.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A directory whose only document is `index.html` collapses to one
+    /// page-folder entry titled by `<title>`; the rest are its assets.
+    #[test]
+    fn index_only_dir_collapses_into_page_folder() {
+        let dir = temp_ws("page-folder");
+        fs::create_dir_all(dir.join("site/assets/css")).expect("nested assets");
+        fs::write(
+            dir.join("site/index.html"),
+            "<html><head><title>  My&nbsp;Page &amp; More </title></head></html>",
+        )
+        .expect("index");
+        fs::write(dir.join("site/assets/css/main.css"), "css").expect("css");
+        fs::write(dir.join("site/pic.png"), "png").expect("png");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree.len(), 1);
+        let node = &tree[0];
+        assert_eq!(node.kind, TreeEntryKind::PageFolder);
+        assert_eq!(node.name, "site");
+        assert_eq!(node.path, "site");
+        assert_eq!(node.title.as_deref(), Some("My Page & More"));
+        assert_eq!(node.entry.as_deref(), Some("site/index.html"));
+        assert_eq!(tree_names(&node.assets), vec!["assets", "pic.png"]);
+        assert_eq!(node.children.len(), 1);
+        assert_eq!(node.children[0].path, "site/index.html");
+        assert_eq!(list_html_files(&dir), vec!["site/index.html"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn index_htm_also_collapses_and_missing_title_falls_back() {
+        let dir = temp_ws("index-htm");
+        fs::create_dir_all(dir.join("bare")).expect("bare");
+        // No <title> in the file -> the page-folder label is the directory name.
+        fs::write(dir.join("bare/INDEX.HTM"), "<p>no title</p>").expect("index");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].kind, TreeEntryKind::PageFolder);
+        assert_eq!(tree[0].name, "bare");
+        assert_eq!(tree[0].title, None);
+        assert_eq!(tree[0].entry.as_deref(), Some("bare/INDEX.HTM"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dir_with_single_non_index_html_does_not_collapse() {
+        let dir = temp_ws("no-fold");
+        fs::create_dir_all(dir.join("doc/img")).expect("img dir");
+        fs::write(dir.join("doc/note.html"), "<title>T</title>").expect("note");
+        fs::write(dir.join("doc/img/p.png"), "png").expect("png");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["doc"]);
+        let doc = &tree[0];
+        assert_eq!(doc.kind, TreeEntryKind::Dir);
+        assert_eq!(doc.children.len(), 1);
+        let page = &doc.children[0];
+        assert_eq!(page.kind, TreeEntryKind::File);
+        assert_eq!(page.path, "doc/note.html");
+        assert_eq!(tree_names(&page.assets), vec!["img"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A subdirectory that itself contains HTML blocks folding: the parent can
+    /// no longer prove "everything else is resources", so it stays a directory.
+    #[test]
+    fn index_dir_with_html_bearing_subdir_stays_expanded() {
+        let dir = temp_ws("mixed");
+        fs::create_dir_all(dir.join("d/sub")).expect("sub");
+        fs::write(dir.join("d/index.html"), "<title>T</title>").expect("index");
+        fs::write(dir.join("d/sub/other.html"), "").expect("other");
+        fs::write(dir.join("d/logo.png"), "png").expect("png");
+
+        let tree = scan_workspace_tree(&dir);
+        let d = &tree[0];
+        assert_eq!(d.kind, TreeEntryKind::Dir);
+        assert_eq!(tree_names(&d.children), vec!["sub", "index.html"]);
+        let index = &d.children[1];
+        // `logo.png` still folds into the page's own assets.
+        assert_eq!(tree_names(&index.assets), vec!["logo.png"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A `_files` directory containing HTML is not an asset dir: its document
+    /// stays reachable in the tree.
+    #[test]
+    fn files_dir_containing_html_is_not_folded_as_asset() {
+        let dir = temp_ws("files-html");
+        write(&dir.join("a.html"));
+        write(&dir.join("b.html"));
+        fs::create_dir_all(dir.join("a_files")).expect("a_files");
+        fs::write(dir.join("a_files/inner.html"), "<title>I</title>").expect("inner");
+
+        let tree = scan_workspace_tree(&dir);
+        // Directories sort before files: a_files, then the two pages.
+        assert_eq!(tree_names(&tree), vec!["a_files", "a.html", "b.html"]);
+        assert!(tree[1].assets.is_empty());
+        // `a_files` holds only inner.html (non-index) -> normal directory.
+        assert_eq!(tree[0].kind, TreeEntryKind::Dir);
+        assert_eq!(tree_names(&tree[0].children), vec!["inner.html"]);
+        assert_eq!(
+            list_html_files(&dir),
+            vec!["a.html", "a_files/inner.html", "b.html"]
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Case-insensitive matching covers macOS's case-insensitive filesystem:
+    /// `Report_Files` belongs to `report.html`, `A.ASSETS` to `a.html`.
+    #[test]
+    fn asset_dir_matching_is_case_insensitive() {
+        let dir = temp_ws("case");
+        write(&dir.join("a.html"));
+        write(&dir.join("report.html"));
+        fs::create_dir_all(dir.join("Report_Files")).expect("Report_Files");
+        fs::write(dir.join("Report_Files/x.png"), "png").expect("png");
+        fs::create_dir_all(dir.join("A.ASSETS")).expect("A.ASSETS");
+        fs::write(dir.join("A.ASSETS/y.css"), "css").expect("css");
+
+        let tree = scan_workspace_tree(&dir);
+        let by_name = |n: &str| tree.iter().find(|t| t.name == n).expect(n);
+        assert_eq!(
+            tree_names(&by_name("report.html").assets),
+            vec!["Report_Files"]
+        );
+        assert_eq!(tree_names(&by_name("a.html").assets), vec!["A.ASSETS"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unicode_and_spaced_names_fold_normally() {
+        let dir = temp_ws("unicode");
+        fs::write(dir.join("中文 页面 🚀.html"), "").expect("page");
+        fs::write(dir.join("另一页.html"), "").expect("other");
+        fs::create_dir_all(dir.join("中文 页面 🚀_files")).expect("assets dir");
+        fs::write(dir.join("中文 页面 🚀_files/图片 📷.png"), "png").expect("png");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["中文 页面 🚀.html", "另一页.html"]);
+        let page = &tree[0];
+        assert_eq!(tree_names(&page.assets), vec!["中文 页面 🚀_files"]);
+        assert_eq!(page.assets[0].children[0].name, "图片 📷.png");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn empty_directories_and_empty_workspace_scan_cleanly() {
+        let dir = temp_ws("empty");
+        fs::create_dir_all(dir.join("empty_folder")).expect("empty");
+        fs::create_dir_all(dir.join("pages")).expect("pages");
+        fs::write(dir.join("pages/a.html"), "").expect("a");
+        fs::write(dir.join("pages/b.html"), "").expect("b");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["empty_folder", "pages"]);
+        assert_eq!(tree[0].kind, TreeEntryKind::Dir);
+        assert!(tree[0].children.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+
+        let bare = temp_ws("bare");
+        assert!(scan_workspace_tree(&bare).is_empty());
+        let _ = fs::remove_dir_all(&bare);
+    }
+
+    #[test]
+    fn depth_cap_truncates_deep_directories() {
+        let dir = temp_ws("depth");
+        // 10-level chain; an HTML file at level 7 (visible) and 9 (beyond cap).
+        let mut p = dir.clone();
+        for i in 1..=10 {
+            p = p.join(format!("d{i}"));
+        }
+        fs::create_dir_all(&p).expect("deep chain");
+        fs::write(dir.join("d1/d2/d3/d4/d5/d6/d7/visible.html"), "").expect("visible");
+        fs::write(dir.join("d1/d2/d3/d4/d5/d6/d7/d8/d9/too_deep.html"), "").expect("deep");
+
+        let tree = scan_workspace_tree(&dir);
+        let mut node = &tree[0];
+        assert_eq!(node.name, "d1");
+        for expected in ["d2", "d3", "d4", "d5", "d6", "d7"] {
+            let next = node
+                .children
+                .iter()
+                .find(|n| n.kind == TreeEntryKind::Dir)
+                .expect("next level");
+            assert_eq!(next.name, expected);
+            node = next;
+        }
+        // d7 carries the visible page plus the capped d8 directory.
+        assert_eq!(tree_names(&node.children), vec!["d8", "visible.html"]);
+        assert!(node.children[0].children.is_empty());
+        assert_eq!(
+            list_html_files(&dir),
+            vec!["d1/d2/d3/d4/d5/d6/d7/visible.html"]
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn node_budget_truncates_flat_file_lists() {
+        let dir = temp_ws("budget");
+        for i in 0..2100 {
+            fs::write(dir.join(format!("f{i:04}.html")), "").expect("html");
+        }
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree.len(), MAX_TREE_NODES);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_pointing_outside_workspace_is_followed_like_a_dir() {
+        let dir = temp_ws("symlink-out");
+        let outside = std::env::temp_dir().join(format!("hr-wb-out-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&outside);
+        fs::create_dir_all(&outside).expect("outside");
+        fs::write(outside.join("external.html"), "").expect("external");
+        fs::write(outside.join("res.png"), "png").expect("png");
+        write(&dir.join("a.html"));
+        write(&dir.join("b.html"));
+        std::os::unix::fs::symlink(&outside, dir.join("linked")).expect("symlink");
+
+        // The symlinked directory scans like a real one (existing semantics);
+        // inside it the single HTML page claims the other file as its asset.
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["linked", "a.html", "b.html"]);
+        let linked = &tree[0];
+        assert_eq!(tree_names(&linked.children), vec!["external.html"]);
+        assert_eq!(tree_names(&linked.children[0].assets), vec!["res.png"]);
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_cycle_terminates_at_the_depth_cap() {
+        let dir = temp_ws("symlink-loop");
+        write(&dir.join("a.html"));
+        write(&dir.join("b.html"));
+        std::os::unix::fs::symlink(".", dir.join("loop")).expect("symlink loop");
+
+        // A looped directory contains HTML -> never asset-clean; recursion is
+        // bounded by MAX_TREE_DEPTH so the scan returns a finite tree.
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["loop", "a.html", "b.html"]);
+        let mut node = &tree[0];
+        let mut depth = 0usize;
+        while let Some(next) = node.children.iter().find(|n| n.kind == TreeEntryKind::Dir) {
+            node = next;
+            depth += 1;
+            assert!(
+                depth <= MAX_TREE_DEPTH,
+                "symlink loop escaped the depth cap"
+            );
+        }
+        assert!(
+            depth > 0,
+            "the looped directory should recurse a few levels"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn every_directory_is_scanned_exactly_once() {
+        let dir = temp_ws("linear");
+        // Three foldable page-folders plus a plain multi-HTML directory.
+        for i in 0..3 {
+            let site = dir.join(format!("site{i}"));
+            fs::create_dir_all(site.join("assets")).expect("assets");
+            fs::write(site.join("index.html"), "<title>T</title>").expect("index");
+            fs::write(site.join("assets/a.css"), "css").expect("css");
+        }
+        fs::create_dir_all(dir.join("multi")).expect("multi");
+        fs::write(dir.join("multi/a.html"), "").expect("a");
+        fs::write(dir.join("multi/b.html"), "").expect("b");
+        write(&dir.join("root1.html"));
+        write(&dir.join("root2.html"));
+
+        let (tree, stats) = scan_workspace_tree_stats(&dir);
+        // dirs read: root + 3 page dirs + 3 asset dirs + multi = 8.
+        assert_eq!(stats.dirs_read, 8);
+        // entries: root(6) + 3*2 + 3*1 + multi(2) = 17.
+        assert_eq!(stats.entries_seen, 17);
+        assert_eq!(
+            tree_names(&tree),
+            vec![
+                "multi",
+                "root1.html",
+                "root2.html",
+                "site0",
+                "site1",
+                "site2"
+            ]
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Scale test: ~3000 files across 100 dirs plus a 30-level chain.
+    /// Node output stays capped and traversal counters prove linearity —
+    /// every directory is read at most once, never revisited.
+    #[test]
+    fn large_workspace_stays_capped_and_scans_each_dir_once() {
+        let dir = temp_ws("large");
+        for i in 0..90 {
+            let d = dir.join(format!("pack{i:02}"));
+            fs::create_dir_all(&d).expect("pack dir");
+            for j in 0..15 {
+                let name = if j == 0 {
+                    format!("p{i:02}-doc{j}.html")
+                } else {
+                    format!("f{i:02}-{j}.dat")
+                };
+                fs::write(d.join(name), "x").expect("file");
+            }
+        }
+        for i in 0..10 {
+            let site = dir.join(format!("site{i:02}"));
+            fs::create_dir_all(site.join("res")).expect("site res");
+            fs::write(site.join("index.html"), "<title>x</title>").expect("index");
+            for j in 0..14 {
+                fs::write(site.join(format!("res/r{j}.png")), "png").expect("png");
+            }
+        }
+        // 30-level chain; only levels within the depth cap are scanned.
+        let mut chain = dir.clone();
+        for i in 1..=30 {
+            chain = chain.join(format!("l{i}"));
+        }
+        fs::create_dir_all(&chain).expect("chain");
+        fs::write(dir.join("l1/l2/l3/l4/l5/l6/l7/deep.html"), "").expect("deep");
+
+        let (tree, stats) = scan_workspace_tree_stats(&dir);
+        fn count_nodes(nodes: &[TreeNode]) -> usize {
+            nodes
+                .iter()
+                .map(|n| 1 + count_nodes(&n.children) + count_nodes(&n.assets))
+                .sum()
+        }
+        let total = count_nodes(&tree);
+        assert!(total <= MAX_TREE_NODES, "node cap exceeded: {total}");
+        // Linearity: a directory is read at most once; entries are counted per
+        // single visit, so both counters stay below the created filesystem size.
+        //   dirs:  root 1 + packs 90 + sites/res 20 + chain 30 = 141 max
+        //   items: root 101 + packs 1350 + sites 20 + res 140 + chain 8 = 1619
+        assert!(stats.dirs_read <= 141, "dirs_read={}", stats.dirs_read);
+        assert!(
+            stats.entries_seen <= 1619,
+            "entries_seen={}",
+            stats.entries_seen
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn medium_tree_reads_each_dir_and_entry_exactly_once() {
+        let dir = temp_ws("medium");
+        // 100 dirs x 15 files = 1600 nodes: everything fits the budget, so the
+        // counters must equal the created filesystem shape exactly.
+        for i in 0..100 {
+            let d = dir.join(format!("g{i:03}"));
+            fs::create_dir_all(&d).expect("group dir");
+            for j in 0..15 {
+                fs::write(d.join(format!("f{j}.dat")), "x").expect("dat");
+            }
+        }
+        let (tree, stats) = scan_workspace_tree_stats(&dir);
+        assert_eq!(tree.len(), 100);
+        // 100 group dirs + root.
+        assert_eq!(stats.dirs_read, 101);
+        // root sees 100 entries; each group sees 15.
+        assert_eq!(stats.entries_seen, 100 + 100 * 15);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn html_title_extraction_handles_variants() {
+        let dir = temp_ws("title");
+        let cases: [(&str, &str, Option<&str>); 10] = [
+            ("plain", "<title>Hello</title>", Some("Hello")),
+            ("attrs", "<title lang=\"en\">Hi</title>", Some("Hi")),
+            ("upper", "<TITLE>UP</TITLE>", Some("UP")),
+            ("entity", "<title>a &amp; b</title>", Some("a & b")),
+            ("nbsp", "<title>x&nbsp;y</title>", Some("x y")),
+            ("ws", "<title>  a\n  b\t c  </title>", Some("a b c")),
+            ("empty", "<title>   </title>", None),
+            ("none", "<p>no title</p>", None),
+            ("unclosed", "<title>never", None),
+            (
+                "prefix",
+                "<titlex>not</titlex><title>ok</title>",
+                Some("ok"),
+            ),
+        ];
+        for (name, html, expected) in cases {
+            let p = dir.join(format!("{name}.html"));
+            fs::write(&p, html).expect("write");
+            assert_eq!(html_page_title(&p).as_deref(), expected, "{name}");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn html_title_handles_non_utf8_and_skips_late_titles() {
+        let dir = temp_ws("title-edge");
+        let bad = dir.join("bad.html");
+        fs::write(&bad, b"<title>caf\xE9</title>").expect("latin1");
+        // Invalid UTF-8 degrades to a replacement char but still yields a title.
+        assert!(html_page_title(&bad).is_some());
+
+        // A title beyond the 64 KiB scan window falls back to the dir name.
+        let late = dir.join("late.html");
+        let pad = " ".repeat((TITLE_SCAN_LIMIT + 16) as usize);
+        fs::write(&late, format!("{pad}<title>too late</title>")).expect("late");
+        assert_eq!(html_page_title(&late), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
