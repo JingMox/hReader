@@ -38,8 +38,7 @@ const prefetchSpansOf = (root: HtmlNode): readonly { start: number; end: number 
     if (node.kind === "element" || node.kind === "document") {
       if (node.kind === "element" && hasPrefetchRel(node)) {
         const span = spanOf(node);
-        if (span !== null && span.end > span.start)
-          spans.push({ start: span.start, end: span.end });
+        if (span.end > span.start) spans.push({ start: span.start, end: span.end });
         // <link> 是 void 元素不会有子树，但删掉后其子节点位置已失效，不必再下去。
         continue;
       }
