@@ -100,7 +100,7 @@ v1.0 刚刚开源，还很早期：组件目前 8 个、主题 1 套；排版约
 
 - **Node.js `>= 22`**：需要安装在 `PATH`（或 nvm / fnm / Volta / Homebrew / Program Files 默认路径）中，用于运行内置本地服务与 CLI（`cli.mjs`）。
 - **Google Chrome / Microsoft Edge / Chromium**（可选）：仅在使用 **导出 PDF**（`hr pdf`）与 **导出 PNG**（`hr png`）时需要。
-- **未签名安装包首次打开方式**（`v1.0.0` 暂未购买 Apple / EV 签名证书）：
+- **未签名安装包首次打开方式**（`v1.1.0` 暂未购买 Apple / EV 签名证书）：
   - **macOS**：右键 `hReader.app` -> **打开**，或在终端运行 `xattr -dr com.apple.quarantine /Applications/hReader.app`。
   - **Windows**：在 SmartScreen 提示中点击 **更多信息 -> 仍要运行**。
   - **Linux**：运行 `.AppImage` 前先执行 `chmod +x *.AppImage`，或直接安装 `.deb` 包。

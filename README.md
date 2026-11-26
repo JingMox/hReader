@@ -100,7 +100,7 @@ Built with **Tauri v2** + TypeScript/Rust, bundling the standalone CLI (`cli.mjs
 
 - **Node.js `>= 22`** is required on `PATH` (or standard nvm / fnm / Volta / Homebrew / Program Files locations) to run the bundled daemon/CLI (`cli.mjs`).
 - **Google Chrome / Microsoft Edge / Chromium** _(optional)_ is required only for **Export PDF** (`hr pdf`) and **Export PNG** (`hr png`).
-- **Unsigned Binaries**: `v1.0.0` installers are not Apple-notarized or EV-signed yet:
+- **Unsigned Binaries**: `v1.1.0` installers are not Apple-notarized or EV-signed yet:
   - **macOS**: Right-click `hReader.app` -> **Open**, or run `xattr -dr com.apple.quarantine /Applications/hReader.app`.
   - **Windows**: Click **More info -> Run anyway** on the SmartScreen prompt.
   - **Linux**: `chmod +x *.AppImage` before launching, or install the `.deb` package.
