@@ -19,7 +19,7 @@ export const CAP_LENGTH = 22;
  * restart voids every previously issued cap.
  */
 export const capabilityOf = (key: Uint8Array, dirRelative: string): string =>
-  createHmac("sha256", key).update(dirRelative, "utf8").digest("base64url").slice(0, CAP_LENGTH);
+  createHmac("sha256", key).update(dirRelative).digest("base64url").slice(0, CAP_LENGTH);
 
 /**
  * One directory covered by a cap. `docs` is the `/f/` ".html exception" set:

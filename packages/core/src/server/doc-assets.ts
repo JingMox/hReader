@@ -98,7 +98,7 @@ const withCors = (reply: Reply): Reply => ({
  * appear in the accepted form; the traversal verdict is lexical, before any IO.
  */
 const segmentsOf = (rawPath: string): readonly string[] | undefined => {
-  if (rawPath.length === 0 || rawPath.length > MAX_PATH_LEN) return undefined;
+  if (rawPath.length > MAX_PATH_LEN) return undefined;
   if (rawPath.includes("\0") || rawPath.includes("\\")) return undefined;
   const segments = rawPath.split("/");
   const bad = segments.some(
