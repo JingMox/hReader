@@ -75,6 +75,25 @@ afterAll(() => {
 
 const withCode = (error: Error, code: string): Error => Object.assign(error, { code });
 
+/**
+ * A port that is guaranteed closed: take one from the OS, then release it.
+ * Tests must not assume a fixed port (80, 81, ...) is free on this machine.
+ */
+const closedPort = async (): Promise<number> => {
+  const probe = createServer();
+  await new Promise<void>((resolve) => {
+    probe.listen(0, "127.0.0.1", resolve);
+  });
+  const address = probe.address();
+  const port = typeof address === "object" && address !== null ? address.port : 0;
+  await new Promise<void>((resolve) => {
+    probe.close(() => {
+      resolve();
+    });
+  });
+  return port;
+};
+
 /** 写入时间戳由调用方从注入时钟取；纯函数层只透传，测试里用固定值保证字节级可比。 */
 const CREATED_AT = "2026-01-01T00:00:00.000Z";
 
@@ -498,7 +517,7 @@ describe("hub · createServerHub 的两个 arity", () => {
 });
 
 describe("server · bind 的非 EADDRINUSE 分支", () => {
-  it("should surface the OS error unchanged when binding a privileged port", async () => {
+  it("should surface the OS error unchanged when binding an out-of-range port", async () => {
     const workspace = tmp("hr-bind2-ws-");
     writeFileSync(
       join(workspace, "doc.html"),
@@ -506,12 +525,15 @@ describe("server · bind 的非 EADDRINUSE 分支", () => {
       "utf8",
     );
 
+    // Port 65536 makes listen() throw ERR_SOCKET_BAD_PORT synchronously —
+    // deterministic on every OS and user, unlike the old privileged-port-80
+    // version which needed both a non-root user and port 80 actually free.
     await expect(
       startServer(
-        { workspace, port: 80, home: tmp("hr-bind2-home-"), docId: "doc.html" },
+        { workspace, port: 65_536, home: tmp("hr-bind2-home-"), docId: "doc.html" },
         { patch: nodePatchDeps, style: nodeStyleDeps(workspace), now: Date.now },
       ),
-    ).rejects.toMatchObject({ code: "EACCES" });
+    ).rejects.toMatchObject({ code: "ERR_SOCKET_BAD_PORT" });
   });
 });
 
@@ -583,7 +605,7 @@ describe("watcher · 重复 add 同一目录", () => {
 
 describe("daemon · portOpen 的计时器臂", () => {
   it("should resolve false when the timeout fires before connect", async () => {
-    await expect(portOpen(80, 0)).resolves.toBe(false);
+    await expect(portOpen(await closedPort(), 0)).resolves.toBe(false);
   });
 });
 
@@ -777,9 +799,10 @@ describe("http-io · TE+CL 到底谁拒", () => {
 
 describe("daemon · portOpen 的超时臂（假时钟）", () => {
   it("should give up after timeoutMs when neither connect nor error arrives", async () => {
+    const port = await closedPort();
     vi.useFakeTimers();
     try {
-      const pending = portOpen(9, 25_000);
+      const pending = portOpen(port, 25_000);
       vi.advanceTimersByTime(25_000);
       await expect(pending).resolves.toBe(false);
     } finally {
@@ -840,10 +863,11 @@ describe("event-ring · 负数 id 落在 newest 之前", () => {
   });
 });
 
-describe("daemon · portOpen 的计时器臂", () => {
-  it("should resolve false when the connect never completes before the timer", async () => {
-    // TEST-NET-1（RFC 5737）不该有主机：SYN 被丢，connect 一直挂到我们的计时器。
-    await expect(portOpen(81, 120)).resolves.toBe(false);
+describe("daemon · portOpen 的连接失败臂", () => {
+  it("should resolve false when the port refuses the connect", async () => {
+    // A just-released ephemeral port refuses the connect (ECONNREFUSED):
+    // the error arm resolves false long before the 120ms timer.
+    await expect(portOpen(await closedPort(), 120)).resolves.toBe(false);
   }, 5_000);
 });
 
