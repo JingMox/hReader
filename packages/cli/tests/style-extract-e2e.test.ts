@@ -15,26 +15,22 @@ import { run, type CliIo } from "../src/run";
 const REPO = join(import.meta.dirname, "../../..");
 
 /** 三篇 fixture 是统计层的真值来源，端到端必须用同一份语料，否则"能消费"只是对合成输入成立。 */
-const CORPUS = ["docs-03-section11.md", "docs-05-m33.md", "style-authoring.md"].map((name) =>
-  join(REPO, "fixtures/extract", name),
+const CORPUS = ["engineering-playbook.md", "plugin-usage-notes.md", "style-authoring.md"].map(
+  (name) => join(REPO, "fixtures/extract", name),
 );
 
 /** 每篇语料的**篇首独有串**：按 argv 顺序出现才证明"三篇都进了 prompt 且顺序没被打乱"。 */
-const ANCHORS = ["## 十一、实战手册", "### M3.3 `@hreader/dsh-bundle`", "# 访谈式自定义风格"];
+const ANCHORS = ["## 工程实践手册", "### 宿主插件使用说明", "# 访谈式自定义风格"];
 
 /**
  * 逆字典序传同一批语料：按路径排序后再拼 prompt 的实现在升序 `CORPUS` 下也能过，
  * 只有"顺序与路径序相反"这一例能证伪，所以两套锚点各钉一份。
  */
-const REVERSED = ["style-authoring.md", "docs-05-m33.md", "docs-03-section11.md"].map((name) =>
-  join(REPO, "fixtures/extract", name),
+const REVERSED = ["style-authoring.md", "plugin-usage-notes.md", "engineering-playbook.md"].map(
+  (name) => join(REPO, "fixtures/extract", name),
 );
 
-const REVERSED_ANCHORS = [
-  "# 访谈式自定义风格",
-  "### M3.3 `@hreader/dsh-bundle`",
-  "## 十一、实战手册",
-];
+const REVERSED_ANCHORS = ["# 访谈式自定义风格", "### 宿主插件使用说明", "## 工程实践手册"];
 
 const RECORDED = readFileSync(join(REPO, "fixtures/llm/ok.json"), "utf8");
 

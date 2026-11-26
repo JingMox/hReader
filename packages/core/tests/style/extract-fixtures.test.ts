@@ -13,13 +13,17 @@ const REPO_ROOT = decodeURIComponent(new URL("../../../../", import.meta.url).pa
 
 const pathOf = (name: string): string => `${REPO_ROOT}fixtures/extract/${name}`;
 
-/** 语料是源文档的副本，改 `docs/` 不许让这里的用例红——所以这里钉的是副本自己的字节。 */
-const CORPUS_FILES = ["docs-03-section11.md", "docs-05-m33.md", "style-authoring.md"] as const;
+/** 语料是独立的中立文本，不依赖任何仓库文档——所以这里钉的是语料自己的字节。 */
+const CORPUS_FILES = [
+  "engineering-playbook.md",
+  "plugin-usage-notes.md",
+  "style-authoring.md",
+] as const;
 
 /** 真值钉在字节上：语料一改，统计量就没有"真值"可言了。 */
 const SHA256: Readonly<Record<string, string>> = {
-  "docs-03-section11.md": "d03b0ef233cfb1eed1598735e4aae59b261e68c34b84ae56234fb524753ff622",
-  "docs-05-m33.md": "4b421ca7177f48ff3a92e7311930295bb329b3575e81f5324fd8d89ccb075b6f",
+  "engineering-playbook.md": "8e6d460ff52fb1114f77978f761e4c74f34d76fcdf3568cb878e902be40dc930",
+  "plugin-usage-notes.md": "0ba0b4209b5ca58b39178e6f4fb5d74b0bb37b9af36c98df4e30282767b98eff",
   "style-authoring.md": "9a45eac503e9bc96cf155593aad46fcc95f203311e3157cbbc7d54f231348690",
 };
 
@@ -51,9 +55,9 @@ describe("fixtures/extract · 语料字节", () => {
 describe("extractStyle · 真语料的统计量", () => {
   it("should report exactly the pinned stats", () => {
     expect(EXTRACTED.stats).toEqual({
-      paragraphs: 148,
-      sentences: 223,
-      averageSentenceChars: 79,
+      paragraphs: 145,
+      sentences: 209,
+      averageSentenceChars: 51,
       maxParagraphSentences: 2,
     });
   });
