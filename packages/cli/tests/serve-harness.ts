@@ -71,7 +71,7 @@ export const stopOf =
       });
       killPid(child.pid ?? -1, childGroup(child), "SIGTERM");
       setTimeout(() => {
-        if (child.exitCode === null && child.signalCode !== null) {
+        if (child.exitCode === null && child.signalCode === null) {
           killPid(child.pid ?? -1, childGroup(child), "SIGKILL");
         }
       }, STOP_GRACE_MS);
