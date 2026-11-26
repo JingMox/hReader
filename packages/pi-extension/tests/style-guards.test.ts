@@ -1,5 +1,5 @@
-// 这层管 `/hr-style` 的三条边角语义：风格归属、并发取代、回显净化与截断、
-// 以及 2xx 非 JSON 的文案。断言都落在"用户终端上看得见什么"上。
+// Three edge semantics of `/hr-style`: style ownership, concurrent supersede, echo sanitization and
+// truncation, and the non-JSON 2xx message. All assertions land on "what the user sees in the terminal".
 
 import { describe, expect, it } from "vitest";
 
@@ -14,13 +14,13 @@ const THEMES: ScriptedReply = {
 const STYLED: ScriptedReply = {
   text: JSON.stringify({ changed: true, revision: 3, changedNodes: [] }),
 };
-/** 终端逃逸序列（实测能清屏并改色，用来验证回显净化）。 */
+/** Terminal escape sequences (verified to clear the screen and change color; used to prove echo sanitization). */
 const ESC = "\u001b[2J\u001b[31mPWNED\u001b[0m";
-/** `GET /api/theme` 的恶意版本：ESC 序列 + 换行 id（workspace 目录名是不可信输入）。 */
+/** A malicious `GET /api/theme`: ESC sequences plus a newline id (the workspace directory name is untrusted input). */
 const EVIL_THEMES: ScriptedReply = {
   text: JSON.stringify({ themes: ["feynman-tech", "\u001b[2J\u001b[31mPWNED\u001b[0m", "a\nb"] }),
 };
-/** 订阅端点：常驻空流，免得 `/hreader` 的重连循环打断命令。 */
+/** Subscription endpoint: a resident empty stream, so `/hreader`'s reconnect loop cannot interrupt the command. */
 const EVENTS: ScriptedReply = { chunks: [], keepOpen: true };
 
 interface Harness {
@@ -57,8 +57,9 @@ const sleepOf = (ms: number): Promise<void> =>
     setTimeout(done, ms);
   });
 
-/** 等到发往 `urlPart` 的请求数到 `min`（fetch 一发出就记进 calls，不等响应）——
- *  用它把"第二条命令在第一条还在路上时发出"变成可观察条件，不靠 sleep 猜调度。 */
+/** Waits until `min` requests have gone out to `urlPart` (calls are recorded the moment fetch is issued,
+ *  before the response) — this turns "the second command fires while the first is still in flight" into an
+ *  observable condition instead of guessing the schedule with sleeps. */
 const untilCalls = async (harness: Harness, urlPart: string, min: number): Promise<void> => {
   const deadline = Date.now() + 3_000;
   while (harness.calls.filter((call) => call.url.includes(urlPart)).length < min) {
@@ -67,8 +68,8 @@ const untilCalls = async (harness: Harness, urlPart: string, min: number): Promi
   }
 };
 
-describe("/hr-style 的归属（风格是文档属性）", () => {
-  it("换到另一个文档后，状态行不再报上一个文档的风格", async () => {
+describe("/hr-style ownership (style is a document property)", () => {
+  it("should stop reporting the previous document's style in the status line after switching documents", async () => {
     const harness = harnessOf({
       "/api/theme": [THEMES],
       "/api/style": [STYLED],
@@ -83,7 +84,7 @@ describe("/hr-style 的归属（风格是文档属性）", () => {
     expect(status).not.toContain("风格");
   });
 
-  it("换回原来的文档时仍记得它的风格（不清空，也不跨文档串味）", async () => {
+  it("should still remember a document's style after switching back (not cleared, not leaked across documents)", async () => {
     const harness = harnessOf({
       "/api/theme": [THEMES],
       "/api/style": [STYLED],
@@ -98,17 +99,17 @@ describe("/hr-style 的归属（风格是文档属性）", () => {
   });
 });
 
-describe("被取代的命令不得动 daemon（POST 侧）", () => {
-  it("GET /api/theme 慢时，被取代的那条命令连 POST 都不发（不只丢结果）", async () => {
-    // Arrange：第一次 GET 慢 150ms，第二次 10ms（daemon 卡一下就是这个形状）。
+describe("a superseded command must not touch the daemon (POST side)", () => {
+  it("should not even let the superseded command POST when GET /api/theme is slow (it loses more than the result)", async () => {
+    // Arrange: the first GET takes 150ms, the second 10ms (the shape of a stalling daemon).
     const harness = harnessOf({
       "/api/theme": [{ ...THEMES, waitMs: 150 }, THEMES],
       "/api/style": [STYLED],
       "/api/events": [EVENTS],
     });
     await harness.run("hreader", "docs/x.html");
-    // Act：先发 feynman-tech（卡在 GET /api/theme 的 150ms 脚本延迟上），
-    // 等这条 GET 真的发出去了再发 atelier-editorial——"第一条在途"是可观察条件。
+    // Act: fire feynman-tech first (stuck on the scripted 150ms delay of GET /api/theme), then wait until
+    // that GET has really gone out before firing atelier-editorial — "the first is in flight" is observable.
     const themeCalls = harness.calls.filter((call) => call.url.includes("/api/theme")).length;
     await Promise.all([
       harness.run("hr-style", "feynman-tech"),
@@ -116,7 +117,7 @@ describe("被取代的命令不得动 daemon（POST 侧）", () => {
         harness.run("hr-style", "atelier-editorial"),
       ),
     ]);
-    // Assert：只有后发那条落在 daemon 上；被打断的那条不得发 POST（否则盘上风格与状态行分叉）。
+    // Assert: only the later command lands on the daemon; the interrupted one must not POST (or disk style and status line fork).
     expect(postsOf(harness, "/api/style").map((request) => request.body)).toEqual([
       JSON.stringify({ docId: "docs/x.html", visualId: "atelier-editorial" }),
     ]);
@@ -125,9 +126,9 @@ describe("被取代的命令不得动 daemon（POST 侧）", () => {
   });
 });
 
-describe("/hr-style 的并发（后发起的命令赢）", () => {
-  it("后一次的结果不被前一次的慢响覆盖，被丢弃的那次也不改状态", async () => {
-    // Arrange：第一条 POST 的 body 晚 150ms 才到，第二条 10ms。
+describe("/hr-style concurrency (the latest command wins)", () => {
+  it("should not let an earlier slow reply overwrite the later result, and the dropped one must not change state", async () => {
+    // Arrange: the first POST's body arrives 150ms late, the second takes 10ms.
     const harness = harnessOf({
       "/api/theme": [THEMES],
       "/api/style": [
@@ -137,8 +138,8 @@ describe("/hr-style 的并发（后发起的命令赢）", () => {
       "/api/events": [EVENTS],
     });
     await harness.run("hreader", "docs/x.html");
-    // 第二条在第一条的 POST /api/style 还没 settle 时发出：
-    // POST 一进 calls 就证明第一条已推进到写盘阶段（其响应还压着 150ms）。
+    // The second fires while the first's POST /api/style is still unsettled:
+    // a POST in calls proves the first already reached the write stage (its reply still held 150ms).
     const styleCalls = harness.calls.filter((call) => call.url.includes("/api/style")).length;
     await Promise.all([
       harness.run("hr-style", "feynman-tech"),
@@ -147,12 +148,12 @@ describe("/hr-style 的并发（后发起的命令赢）", () => {
       ),
     ]);
     await harness.run("hreader", "");
-    // Assert：两次都真发了 POST（不是"第二次吞掉第一次"）。
+    // Assert: both really POSTed (the second did not swallow the first).
     expect(postsOf(harness, "/api/style").map((request) => request.body)).toEqual([
       JSON.stringify({ docId: "docs/x.html", visualId: "feynman-tech" }),
       JSON.stringify({ docId: "docs/x.html", visualId: "atelier-editorial" }),
     ]);
-    // 最终状态是后发那条；先发的慢响既没 notify 也没写状态。
+    // The final state is the later command's; the earlier slow reply neither notified nor wrote state.
     expect(harness.notifies.at(-1)?.message).toContain("，风格 atelier-editorial");
     expect(harness.notifies.map((entry) => entry.message).join("\n")).not.toContain(
       "换成 feynman-tech",
@@ -160,10 +161,10 @@ describe("/hr-style 的并发（后发起的命令赢）", () => {
   });
 });
 
-describe("回显净化与截断（workspace 不可信）", () => {
-  it("视觉 id 里的控制字符不原样进入列表、回显与状态行", async () => {
+describe("echo sanitization and truncation (workspace is untrusted)", () => {
+  it("should not let control characters in a visual id reach the list, the echo, or the status line verbatim", async () => {
     const harness = harnessOf({
-      // id 来自 workspace 目录名 → 不可信输入：ESC 序列、换行、都实测能进终端。
+      // Ids come from workspace directory names — untrusted input: ESC sequences and newlines verifiably reach the terminal.
       "/api/theme": [EVIL_THEMES],
       "/api/style": [STYLED],
       "/api/events": [EVENTS],
@@ -175,7 +176,7 @@ describe("回显净化与截断（workspace 不可信）", () => {
     expect(listed).toContain("a?b");
   });
 
-  it("换完风格的回显与状态行同样净化", async () => {
+  it("should also sanitize the post-switch echo and the status line", async () => {
     const harness = harnessOf({
       "/api/theme": [EVIL_THEMES],
       "/api/style": [STYLED],
@@ -191,29 +192,29 @@ describe("回显净化与截断（workspace 不可信）", () => {
   });
 });
 
-describe("回显长度上界（4KB 长 id）", () => {
-  it("非法 id 的回显同样净化（用户粘进来的 ESC 不得原样进终端）", async () => {
+describe("echo length bound (4KB long id)", () => {
+  it("should also sanitize an illegal id's echo (pasted ESC must not reach the terminal verbatim)", async () => {
     const harness = harnessOf({ "/api/theme": [THEMES] });
     await harness.run("hr-style", `${ESC}-nope`);
     const message = harness.notifies[0]?.message ?? "";
     expect(message).not.toContain("\u001b");
     expect(message).toContain("?[2J?[31mPWNED?[0m-nope");
-    // 可选列表仍完整在（净化+限长的只是回显的那一段）。
+    // The candidate list stays complete (only the echoed segment is sanitized and capped).
     expect(message).toContain("可选风格：feynman-tech、atelier-editorial");
   });
 
-  it("非法 id 很长时回显被单独限到 120 以内（列表不被 NOTIFY_MAX 挤掉）", async () => {
+  it("should cap a long illegal id's echo alone at 120 (the list is not squeezed out by NOTIFY_MAX)", async () => {
     const harness = harnessOf({ "/api/theme": [THEMES] });
     await harness.run("hr-style", `${"y".repeat(400)}-nope`);
     const message = harness.notifies[0]?.message ?? "";
-    // ① 回显段被 ECHO_MAX 截住：整条 notify 远小于 NOTIFY_MAX（400），不写死具体长度。
+    // ① The echo segment is capped by ECHO_MAX: the whole notify is far under NOTIFY_MAX (400); exact length unpinned.
     expect(message.length).toBeLessThan(200);
     expect(message).toContain("… 的风格");
-    // ② 可选列表完整在——若把 ECHO_MAX 放到 400，列表会被 NOTIFY_MAX 整条截掉。
+    // ② The candidate list is complete — had ECHO_MAX been 400, the list would be clipped away by NOTIFY_MAX.
     expect(message).toContain("可选风格：feynman-tech、atelier-editorial");
   });
 
-  it("4KB 长 id 的 notify 不超过 400 字符（不撑成几千字符满屏）", async () => {
+  it("should keep a 4KB-long-id notify within 400 chars (not inflated into a screen-filling blob)", async () => {
     const longId = "x".repeat(4096);
     const harness = harnessOf({
       "/api/theme": [{ text: JSON.stringify({ themes: [longId] }) }],
@@ -226,8 +227,8 @@ describe("回显长度上界（4KB 长 id）", () => {
   });
 });
 
-describe("2xx 但响应不是 JSON 的文案", () => {
-  it("`GET /api/theme` 返回 200 但不是 JSON：不说“返回 200：未知错误”", async () => {
+describe("message for a non-JSON 2xx", () => {
+  it('should not say "200: unknown error" when `GET /api/theme` returns non-JSON 200', async () => {
     const harness = harnessOf({ "/api/theme": [{ text: "<html>oops</html>" }] });
     await harness.run("hr-style", "feynman-tech");
     const message = harness.notifies[0]?.message ?? "";

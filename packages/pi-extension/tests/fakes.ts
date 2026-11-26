@@ -1,6 +1,7 @@
-// 这层管：测试替身——按字节脚本喂 SSE、伪造 Pi 的注册面与 UI、伪造 `~/.hreader/daemon.json` 的读盘。
-// 替身故意只实现**形状**：`fetch` 的 body 由显式 `Uint8Array[]` 逐块 enqueue（切点由用例决定），
-// 命令上下文可切成 `hasUI: false`，`confirm` 从队列里取 `true/false/throws`。
+// Test doubles: scripted-byte SSE feeds, fakes of Pi's registration surface and UI, and a fake
+// `~/.hreader/daemon.json` disk read. Doubles implement **shape** only on purpose: `fetch` bodies are
+// enqueued chunk by chunk from an explicit `Uint8Array[]` (the case picks the cut points), the command
+// context can flip to `hasUI: false`, and `confirm` draws `true/false/throws` from a queue.
 
 import type {
   FetchLike,
@@ -21,13 +22,13 @@ export interface RecordedNotify {
   readonly type: string | undefined;
 }
 
-/** `confirms` 里的一项：预先排队的 confirm 答案，`"throw"` 模拟"该模式下 confirm 根本不可用"。 */
+/** One entry of `confirms`: a pre-queued confirm answer, where `"throw"` simulates "confirm is unavailable in this mode". */
 export type ConfirmAnswer = boolean | "throw";
 
 export interface FakeContext {
   readonly ctx: HreaderContext;
   readonly notifies: readonly RecordedNotify[];
-  /** 每次 `confirm` 的 `标题\n正文`，顺序与调用一致。 */
+  /** `title\nbody` of every `confirm`, in call order. */
   readonly confirms: readonly string[];
 }
 
@@ -61,9 +62,9 @@ export interface FakePi {
   readonly pi: HreaderPi;
   readonly commands: ReadonlyMap<string, HreaderCommandOptions>;
   readonly tools: ReadonlyMap<string, HreaderTool>;
-  /** `sendMessage` 收到的消息，按顺序。 */
+  /** Messages received by `sendMessage`, in order. */
   readonly sentMessages: readonly HreaderCustomMessage[];
-  /** `on("session_shutdown", …)` 注册的处理器：测试自己调用它来模拟 Pi 收尾。 */
+  /** Handler registered via `on("session_shutdown", …)`: the test calls it itself to simulate Pi winding down. */
   readonly shutdown: readonly (() => void)[];
 }
 
@@ -97,10 +98,10 @@ export const fakePiOf = (): FakePi => {
   };
 };
 
-/** "未实现任何 fetch" 的默认值：不该被调用；被调用就抛，免得用例静默通过。 */
+/** Default for "no fetch stubbed": must not be called — throws if it is, so a case cannot pass silently. */
 const missingFetch: FetchLike = () => Promise.reject(new Error("用例没有提供 fetch 替身"));
 
-/** 读盘替身：`files` 里没有的路径按"文件不存在"抛错，与真 `node:fs` 的可观察行为一致。 */
+/** Disk-read double: paths absent from `files` throw "file does not exist", matching real `node:fs` observable behavior. */
 export const fakeReadFileOf =
   (files: Readonly<Record<string, string>>) =>
   (file: string): Promise<Uint8Array> => {
@@ -112,7 +113,7 @@ export const fakeReadFileOf =
 
 export interface FakeDeps {
   readonly deps: HreaderDeps;
-  /** 每次 fetch 的原始入参，断言 cookie/CSRF/`Last-Event-ID` 就查它。 */
+  /** Raw arguments of every fetch; cookie/CSRF/`Last-Event-ID` assertions read from it. */
   readonly requests: readonly { readonly url: string; readonly request: HreaderRequest }[];
 }
 
@@ -155,7 +156,7 @@ export const callToolOf = (
   return tool.execute("call-1", params, undefined, undefined, ctx);
 };
 
-/** 跑一次斜杠命令（命令没注册就抛，别让用例静默通过）。 */
+/** Runs a slash command once (throws when unregistered — a case must not pass silently). */
 export const runCommandOf = (
   fake: FakePi,
   name: string,

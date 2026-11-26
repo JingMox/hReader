@@ -1,5 +1,5 @@
-// 这层管：`/hreader` 命令——daemon 没起时只提示 `hr serve`（绝不 spawn），有 daemon 时给出阅读器 URL；
-// 以及默认导出确实把自己注册成一个 Pi 扩展（`pi.registerCommand`）。
+// The `/hreader` command: when the daemon is down it only hints `hr serve` (never spawns), and with a
+// daemon up it yields the reader URL; also that the default export registers itself as a Pi extension (`pi.registerCommand`).
 
 import { describe, expect, it } from "vitest";
 
@@ -21,7 +21,7 @@ const openWith = (options: { readonly daemon?: string; readonly hasUI?: boolean 
 };
 
 describe("/hreader", () => {
-  it("daemon 没在跑：只提示 hr serve，且是 error 级", async () => {
+  it("should only hint hr serve at error level when the daemon is down", async () => {
     const { run, fake } = openWith({});
     await run("docs/x.html", fake.ctx);
     const [first] = fake.notifies;
@@ -30,7 +30,7 @@ describe("/hreader", () => {
     expect(first?.message).toContain("hr serve");
   });
 
-  it("daemon 在跑：给出 `http://127.0.0.1:<port>/s/<docId>?t=<token>` 形状的 URL", async () => {
+  it("should yield a `http://127.0.0.1:<port>/s/<docId>?t=<token>`-shaped URL when the daemon is up", async () => {
     const { run, fake } = openWith({ daemon: JSON.stringify(INFO) });
     await run("docs/x.html", fake.ctx);
     const [first] = fake.notifies;
@@ -38,20 +38,20 @@ describe("/hreader", () => {
     expect(first?.message).toContain("http://127.0.0.1:7331/s/docs%2Fx.html?t=tok-1");
   });
 
-  it("参数为空：一次 notify，既给用法也给 daemon 状态", async () => {
+  it("should send one notify with both usage and daemon status when args are empty", async () => {
     const { run, fake } = openWith({ daemon: JSON.stringify(INFO) });
     await run("   ", fake.ctx);
     expect(fake.notifies.map((entry) => entry.type)).toEqual(["info"]);
     const message = fake.notifies[0]?.message ?? "";
     expect(message).toContain("/hreader <path>");
-    // 无参时若只打用法，用户看不到 daemon 到底在不在、在哪个端口。
+    // Printing usage alone on no-args would hide whether the daemon is up at all and on which port.
     expect(message).toContain("127.0.0.1:7331");
     expect(message).toContain("/work");
-    // 根路径是 cookie 认证、`/s/:docId` 是 token 认证：无参时没有可点的合法链接。
+    // The root path is cookie-auth and `/s/:docId` token-auth: with no args there is no clickable valid link.
     expect(message).not.toContain("http://");
   });
 
-  it("越界路径：报错并说出 workspace，不拼 URL", async () => {
+  it("should report the workspace and build no URL for an out-of-bounds path", async () => {
     const { run, fake } = openWith({ daemon: JSON.stringify(INFO) });
     await run("/etc/passwd", fake.ctx);
     const [first] = fake.notifies;
@@ -61,8 +61,8 @@ describe("/hreader", () => {
   });
 });
 
-describe("默认导出", () => {
-  it("把 2 命令 + 3 工具注册进 Pi，描述非空（扩展能被裸加载的最小证据）", () => {
+describe("default export", () => {
+  it("should register 2 commands and 3 tools into Pi with non-empty descriptions (minimal proof the extension loads bare)", () => {
     const { pi, commands, tools, shutdown } = fakePiOf();
     hreaderExtension(pi);
     expect([...commands.keys()]).toEqual(["hreader", "hr-style"]);

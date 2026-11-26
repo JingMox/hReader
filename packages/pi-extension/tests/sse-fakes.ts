@@ -1,22 +1,22 @@
-// 这层管：SSE/网络替身——按字节脚本喂流、按 URL 路由的 fetch、可挂起也可被 abort 打断的重连等待。
-// 与 `fakes.ts`（Pi 注册面 / UI / 磁盘）分开只为让两个文件都短到能一眼读完。
+// SSE/network doubles: scripted-byte stream feeds, a URL-routed fetch, and a reconnect wait that can hang
+// or be interrupted by abort. Kept apart from `fakes.ts` (Pi surface / UI / disk) only so both files stay short.
 
 import type { FetchLike, HreaderRequest } from "../pi-hreader.ts";
 
 export const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text);
 
-/** 字符下标 → 字节偏移：切多字节字时必须按字节给刀口。 */
+/** Char index → byte offset: multi-byte chars can only be cut by byte. */
 export const byteOfIndex = (text: string, index: number): number =>
   bytesOf(text.slice(0, index)).length;
 
-/** 按**字节**偏移切块：多字节 UTF-8 字被劈开的那一刀只能这么切。 */
+/** Splits by **byte** offset — the only way to slice a multi-byte UTF-8 char in half. */
 export const chunksAt = (text: string, cuts: readonly number[]): readonly Uint8Array[] => {
   const bytes = bytesOf(text);
   const bounds = [0, ...cuts, bytes.length];
   return bounds.slice(1).map((end, index) => bytes.slice(bounds[index] ?? 0, end));
 };
 
-/** 刀口落在 `needle` **首字内部**：多字节保护只有这种切法能证明。 */
+/** The cut lands **inside `needle`'s first char** — the only split that proves multi-byte protection. */
 export const cutInsideCharOf = (text: string, needle: string): number => {
   const at = text.indexOf(needle);
   if (at === -1) throw new Error(`刀口找不到锚：${needle}`);
@@ -25,17 +25,17 @@ export const cutInsideCharOf = (text: string, needle: string): number => {
 
 export interface ScriptedReply {
   readonly status?: number;
-  /** 一次性响应体（JSON 文本）；与 `chunks` 二选一。 */
+  /** One-shot response body (JSON text); pick this or `chunks`. */
   readonly text?: string;
-  /** 流式响应体：逐块 enqueue，`keepOpen` 为假则 enqueue 完就 close。 */
+  /** Streaming response body: enqueued chunk by chunk, closed after the last unless `keepOpen`. */
   readonly chunks?: readonly (string | Uint8Array)[];
-  /** 常驻流（SSE）：不 close，读到用例 `stop()` 时由 `cancel` 收尾。 */
+  /** Resident stream (SSE): never closes; `cancel` winds it down when the case calls `stop()`. */
   readonly keepOpen?: boolean;
-  /** 流被 `cancel()`（停止读 / 订阅被 abort / 溢出弃帧）时回调：用来观测连接真被关掉。 */
+  /** Callback when the stream is `cancel()`ed (read stopped / subscription aborted / frame dropped on overflow): proves the connection really closed. */
   readonly onCancel?: () => void;
-  /** `cancel()` 抛错：被 abort 的流上 cancel 会 reject，没人接住就会带崩进程。 */
+  /** `cancel()` throws: cancel on an aborted stream rejects, and an uncaught rejection crashes the process. */
   readonly cancelThrows?: boolean;
-  /** 响应体拖多久才吐出来：构造“先发的慢响”（`/hr-style` 并发时的竞态）。 */
+  /** How long the response body takes to arrive: builds "the earlier slow reply" (the `/hr-style` concurrency race). */
   readonly waitMs?: number;
 }
 
@@ -70,7 +70,7 @@ const replyOf = (reply: ScriptedReply) => {
   };
 };
 
-/** 队列耗尽后的"常驻空流"：让重连循环停在 `read()` 上，而不是空转。 */
+/** The "resident empty stream" after the queue runs out: parks the reconnect loop inside `read()` instead of spinning. */
 const hungReplyOf = () => ({
   ok: true,
   status: 200,
@@ -78,7 +78,7 @@ const hungReplyOf = () => ({
   text: () => Promise.resolve(""),
 });
 
-/** 按脚本依次给出响应；脚本用完就给常驻空流。 */
+/** Answers responses in script order; hands out the resident empty stream once the script is spent. */
 export const scriptedFetchOf = (
   replies: readonly ScriptedReply[],
 ): {
@@ -97,7 +97,7 @@ export const scriptedFetchOf = (
   };
 };
 
-/** 按 URL 关键字路由的 fetch 替身：并发请求（事件流 + 拉批注 + 取文档）时不必猜调用顺序。 */
+/** A fetch double routed by URL keyword: no need to guess call order when requests run concurrently (event stream + annotation fetch + document fetch). */
 export const routedFetchOf = (
   routes: Readonly<Record<string, readonly ScriptedReply[]>>,
 ): {
@@ -111,7 +111,7 @@ export const routedFetchOf = (
       calls.push({ url, request });
       for (const [key, queue] of queues) {
         if (!url.includes(key)) continue;
-        // 队列留最后一个反复用：同一端点的第 N 次请求不必逐条排脚本。
+        // The last queue entry is reused forever: the Nth request to one endpoint needs no per-call script.
         const next = queue.length > 1 ? queue.shift() : queue[0];
         return Promise.resolve(next === undefined ? hungReplyOf() : replyOf(next));
       }
@@ -121,7 +121,7 @@ export const routedFetchOf = (
   };
 };
 
-/** 重连等待替身：一直挂着，直到 `stop()`（= signal abort）。测试不会空转。 */
+/** Reconnect-wait double: stays pending until `stop()` (= signal abort). Tests never spin. */
 export const holdDelayOf =
   () =>
   (_ms: number, signal: AbortSignal): Promise<void> =>
@@ -139,7 +139,7 @@ export const holdDelayOf =
       );
     });
 
-/** 允许前 `steps` 次等待立刻返回，之后一直挂着：用来验证"断线→重连→带 Last-Event-ID"。 */
+/** Lets the first `steps` waits resolve immediately, then stays pending: proves "disconnect → reconnect → with Last-Event-ID". */
 export const steppedDelayOf = (steps: number) => {
   let left = steps;
   return (_ms: number, signal: AbortSignal): Promise<void> =>
@@ -168,8 +168,8 @@ const tickOf = (): Promise<void> =>
     setImmediate(done);
   });
 
-/** 让异步订阅循环往前走 `times` 个宏任务。 */
+/** Advances the async subscription loop by `times` macrotasks. */
 export const settleOf = (times = 8): Promise<void> =>
   times <= 0 ? Promise.resolve() : tickOf().then(() => settleOf(times - 1));
 
-/** 调工具的简写：Pi 的 5 个位置参数里，测试只关心 `params` 与 `ctx`。 */
+/** Shorthand for invoking a tool: of Pi's 5 positional args only `params` and `ctx` matter to tests. */

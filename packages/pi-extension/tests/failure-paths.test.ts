@@ -1,5 +1,6 @@
-// 这层管：纯函数层的边角与工具的失败缝——缺参拼路径、错误码文案的细节分叉、节点切片的坏输入、
-// 解码器溢出、`/s/:docId` 取不到、批注负载形状不对。每个"防御分支"都要有一个真能跑到的输入。
+// Corners of the pure layer and the tools' failure seams: path building with missing params, the error-text
+// detail forks, bad input to node slicing, decoder overflow, an unreachable `/s/:docId`, and malformed
+// annotation payloads. Every "defensive branch" needs an input that really reaches it.
 
 import { describe, expect, it } from "vitest";
 
@@ -16,19 +17,19 @@ import { routedFetchOf } from "./sse-fakes.ts";
 
 const DAEMON = daemonJsonOf({ port: 7331, token: "tok-1", workspace: "/work" });
 
-describe("pathOf 的缺参兜底", () => {
-  it("占位符没给值 → 编成空段，不抛", () => {
+describe("pathOf missing-param fallback", () => {
+  it("should encode a missing placeholder value as an empty segment without throwing", () => {
     expect(pathOf(ENDPOINTS.outline)).toBe("/api/doc//outline");
   });
 });
 
-describe("errorTextOf 的文案分叉", () => {
-  it("没有 detail 与 detail 为空串都不带破折号", () => {
+describe("errorTextOf message forks", () => {
+  it("should emit no dash for absent or empty detail", () => {
     expect(errorTextOf("not_found")).toBe("[not_found] 目标不存在");
     expect(errorTextOf("not_found", "")).toBe("[not_found] 目标不存在");
   });
 
-  it("未知码不崩，提示看日志", () => {
+  it("should not crash on an unknown code and should point at the logs", () => {
     expect(errorTextOf("something_new")).toContain("未知错误");
   });
 });
@@ -43,28 +44,28 @@ const fakeOf = (routes: Parameters<typeof routedFetchOf>[0]) => {
   return { fake, routed };
 };
 
-describe("nodeSliceOf 的坏输入", () => {
-  it("`<` 后面不是标签名（`<1 data-hr-id=…`）→ undefined", () => {
+describe("nodeSliceOf bad input", () => {
+  it("should return undefined when `<` is not followed by a tag name (`<1 data-hr-id=…`)", () => {
     expect(nodeSliceOf('<1 data-hr-id="x">正文</1>', "x")).toBeUndefined();
   });
 
-  it("开标签没有 `>` 收尾 → undefined，不切半截", () => {
+  it("should return undefined when the open tag never closes with `>`, rather than slicing halfway", () => {
     expect(nodeSliceOf('<p data-hr-id="x" 正文', "x")).toBeUndefined();
   });
 
-  it("外层没闭合、文件在最后一个 `</p` 处截断 → 循环走到头，返回 undefined", () => {
+  it("should run the loop to the end and return undefined when the outer tag never closes and the file truncates at the last `</p`", () => {
     expect(nodeSliceOf('<p data-hr-id="p1"><p></p', "p1")).toBeUndefined();
   });
 
-  it("自闭合写法 `<img … />` 按自闭合收尾", () => {
+  it("should end a self-closing `<img … />` at the tag itself", () => {
     expect(nodeSliceOf('<img data-hr-id="y" src="a.png" />', "y")).toBe(
       '<img data-hr-id="y" src="a.png" />',
     );
   });
 });
 
-describe("解码器溢出", () => {
-  it("缓冲超过上限后置 overflow，后续 push 直接空返回（不再囤字节）", () => {
+describe("decoder overflow", () => {
+  it("should set overflow past the limit and make later pushes return empty (no more byte hoarding)", () => {
     const decoder = createSseDecoder(8);
     expect(decoder.push(new TextEncoder().encode("x".repeat(64)))).toEqual([]);
     expect(decoder.overflowed()).toBe(true);
@@ -72,8 +73,8 @@ describe("解码器溢出", () => {
   });
 });
 
-describe("hreader_read_node 的失败缝", () => {
-  it("`/s/:docId` 连不上 → io_failure 文本", async () => {
+describe("hreader_read_node failure seams", () => {
+  it("should return io_failure text when `/s/:docId` is unreachable", async () => {
     const { deps } = fakeDepsOf({
       home: "/home/u",
       daemon: DAEMON,
@@ -86,8 +87,8 @@ describe("hreader_read_node 的失败缝", () => {
   });
 });
 
-describe("hreader_read_node 取不到批注时", () => {
-  it("批注端点失败：节点照给，`annotations` 空、`revision` 缺省", async () => {
+describe("hreader_read_node when annotations cannot be fetched", () => {
+  it("should still return the node with empty `annotations` and an absent `revision` when the annotation endpoint fails", async () => {
     const { fake } = fakeOf({
       "/s/": [{ text: '<p data-hr-id="p1">正文</p>' }],
       "/annotations": [{ status: 500, text: '{"code":"io_failure"}' }],
@@ -97,7 +98,7 @@ describe("hreader_read_node 取不到批注时", () => {
     expect(result.content[0]?.text).toContain('"annotations": []');
   });
 
-  it("批注负载形状不对（非数组/非对象/空 id/非 pending）都跳过，不崩", async () => {
+  it("should skip malformed annotation entries (non-array/non-object/empty id/non-pending) without crashing", async () => {
     const { fake } = fakeOf({
       "/s/": [{ text: '<p data-hr-id="p1">正文</p>' }],
       "/annotations": [
@@ -124,8 +125,8 @@ describe("hreader_read_node 取不到批注时", () => {
   });
 });
 
-describe("hreader_read_node 的批注负载形状", () => {
-  it("`annotations` 不是数组 → 当空处理", async () => {
+describe("hreader_read_node annotation payload shapes", () => {
+  it("should treat a non-array `annotations` as empty", async () => {
     const { fake } = fakeOf({
       "/s/": [{ text: '<p data-hr-id="p1">正文</p>' }],
       "/annotations": [{ text: '{"revision":1,"annotations":"nope"}' }],
