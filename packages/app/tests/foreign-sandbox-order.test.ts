@@ -42,4 +42,21 @@ describe("foreign · sandbox/src 落位顺序", () => {
     expect(sandboxAt).toBeGreaterThanOrEqual(0);
     expect(sandboxAt).toBeLessThan(srcAt);
   });
+
+  it("should keep the sandbox-before-src order when info carries a frameUrl", () => {
+    const fake = createFakeHost();
+    const deps = depsOf(fake.host);
+    mountForeign({
+      ...deps,
+      info: { cls: "foreign", scripts: true, frameUrl: "/f/capA/doc.html" },
+    });
+
+    const calls = fake.calls.filter((call) => call.op === "attr" && call.args[0] === FRAME);
+    const sandboxAt = calls.findIndex((call) => call.args[1] === "sandbox");
+    const srcAt = calls.findIndex((call) => call.args[1] === "src");
+
+    expect(srcAt).toBeGreaterThanOrEqual(0);
+    expect(sandboxAt).toBeGreaterThanOrEqual(0);
+    expect(sandboxAt).toBeLessThan(srcAt);
+  });
 });

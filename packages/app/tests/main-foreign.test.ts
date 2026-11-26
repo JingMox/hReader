@@ -356,6 +356,15 @@ describe("main · info 形状守卫", () => {
     expect(isDocInfo(null)).toBe(false);
   });
 
+  it("should accept an optional string frameUrl and reject malformed ones", async () => {
+    const { isDocInfo } = await import("../src/main.ts");
+
+    expect(isDocInfo({ revision: "r1", cls: "foreign", frameUrl: "/f/capA/doc.html" })).toBe(true);
+    expect(isDocInfo({ revision: "r1", cls: "foreign" })).toBe(true);
+    expect(isDocInfo({ revision: "r1", cls: "foreign", frameUrl: 42 })).toBe(false);
+    expect(isDocInfo({ revision: "r1", cls: "foreign", frameUrl: null })).toBe(false);
+  });
+
   it("should validate the nested permissions view field by field", async () => {
     const { isDocInfo } = await import("../src/main.ts");
 

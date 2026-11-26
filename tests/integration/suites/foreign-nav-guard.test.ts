@@ -107,6 +107,13 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
     return typeof src === "string" ? src : "";
   };
 
+  /**
+   * The reader points the iframe at `info.frameUrl` (`/f/<22-char-cap>/<name>`)
+   * directly instead of the `/s/` redirect — resets and mounts share this shape.
+   */
+  const frameUrlRe = (docName: string): RegExp =>
+    new RegExp(`^/f/[A-Za-z0-9_-]{22}/${docName.replaceAll(".", "\\.")}$`);
+
   const errorText = async (): Promise<string> => {
     const err = await page.eval(
       `(() => { const el = document.querySelector('#hr-foreign-error'); return el ? el.textContent : ''; })()`,
@@ -225,8 +232,8 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
     await waitBlocked();
     const src = await frameSrc();
     assert(
-      src.includes(`/s/${encodeURIComponent("nav-meta.html")}`),
-      `src should have been reset to /s/nav-meta.html, got ${src}`,
+      frameUrlRe("nav-meta.html").test(src),
+      `src should have been reset to the /f/ frame URL, got ${src}`,
     );
   });
 
@@ -235,7 +242,7 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
     await waitFrame();
     await waitBlocked();
     const src = await frameSrc();
-    assert(src.includes(`/s/${encodeURIComponent("nav-self.html")}`), `src=${src}`);
+    assert(frameUrlRe("nav-self.html").test(src), `src=${src}`);
   });
 
   test("should reset the frame when location= self-navigates same-origin with network off", async () => {
@@ -243,7 +250,7 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
     await waitFrame();
     await waitBlocked();
     const src = await frameSrc();
-    assert(src.includes(`/s/${encodeURIComponent("nav-loc.html")}`), `src=${src}`);
+    assert(frameUrlRe("nav-loc.html").test(src), `src=${src}`);
   });
 
   test("should let a same-origin self-navigation commit in-frame with network on", async () => {
@@ -260,7 +267,7 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
     assertEq(await errorText(), "", "blocked banner must not appear with network on");
     const src = await frameSrc();
     assert(
-      src.includes(`/s/${encodeURIComponent("nav-meta.html")}`),
+      frameUrlRe("nav-meta.html").test(src),
       `src must not be rewritten with network on, got ${src}`,
     );
     // The landing is a 401 dead page (opaque initiator, no session cookie):
@@ -313,6 +320,6 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
       "blind-spot landing ran the beacon (it would have needed credentials)",
     );
     const src = await frameSrc();
-    assert(src.includes(`/s/${encodeURIComponent("nav-loc-early.html")}`), `src=${src}`);
+    assert(frameUrlRe("nav-loc-early.html").test(src), `src=${src}`);
   });
 });
