@@ -7,7 +7,7 @@ import * as entry from "../src/index";
 describe("@hreader/mcp-server", () => {
   it("should expose the server factory and the cli seams", () => {
     expect(typeof entry.createServer).toBe("function");
-    expect(entry.SERVER_VERSION).toBe("1.0.0");
+    expect(entry.SERVER_VERSION).toBe("1.1.0");
     expect(typeof entry.modeOf).toBe("function");
     expect(typeof entry.runMain).toBe("function");
     expect(typeof entry.startHttp).toBe("function");

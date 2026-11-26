@@ -7,7 +7,7 @@ import { registerResources } from "./resources";
 import { registerTools } from "./tools";
 
 /** 与 `package.json` 的 `version` 同值；改版本时两处一起改（不在运行期读盘）。 */
-export const SERVER_VERSION = "1.0.0";
+export const SERVER_VERSION = "1.1.0";
 
 export const createServer = (workspace: string): McpServer => {
   const server = new McpServer(

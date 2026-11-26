@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-27
+
 ### Added
 
 - **Document kinds** (`hr new <file> --kind note|report|minutes|brief|slides`, and an optional `kind` on MCP `hr_create_doc`): start from a themed skeleton that already carries every `data-hr-id` and the right components, then patch block by block. The kind is recorded as `data-hr-kind` on `<article>`.
@@ -77,3 +79,7 @@ Initial open-source release of **hReader**.
   - **Portable Agent Skill (`skills/hreader/`)**: Self-contained distributable bundle (`hreader-skill.tar.gz` / `.zip`) with `SKILL.md`, component/style specifications, and zero-install CLI wrapper (`scripts/hr.mjs`).
   - **Pi Coding Agent Extension (`packages/pi-extension`)**: Single-file extension with `/hreader`, `/hr-style`, and live annotation injection.
   - **DeepSeek Harness Bundle (`packages/dsh-bundle`)**: Cordis plugin integrating hReader system prompt specs and typed workspace services.
+
+[Unreleased]: https://github.com/JingMox/hReader/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/JingMox/hReader/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/JingMox/hReader/releases/tag/v1.0.0
