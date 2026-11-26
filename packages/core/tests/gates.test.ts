@@ -52,10 +52,7 @@ const PROBES: readonly Probe[] = [
 
 const eslint = new ESLint({ cwd: REPO_ROOT });
 
-async function ruleIdsFor(
-  source: string,
-  filePath: string = PROBE_FILE,
-): Promise<string[]> {
+async function ruleIdsFor(source: string, filePath: string = PROBE_FILE): Promise<string[]> {
   const results = await eslint.lintText(source, { filePath });
   return results.flatMap((result) => result.messages).map((message) => message.ruleId ?? "");
 }
@@ -75,10 +72,7 @@ describe("lint gate effectiveness", () => {
   it("should report no-restricted-globals for Node globals inside packages/app/src", async () => {
     // packages/app/src is served to the browser verbatim: `process`/`Buffer` must not
     // compile in. The rule is file-scoped, so the probe has to lint at an app/src path.
-    const ruleIds = await ruleIdsFor(
-      "export const probe = process.env.HOME;",
-      APP_SRC_PROBE_FILE,
-    );
+    const ruleIds = await ruleIdsFor("export const probe = process.env.HOME;", APP_SRC_PROBE_FILE);
     expect(ruleIds).toContain("no-restricted-globals");
   }, 120_000);
 });
