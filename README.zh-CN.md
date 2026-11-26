@@ -10,7 +10,7 @@
   </p>
   <p>
     <a href="https://jingmox.github.io/hReader/">在线示例库</a> ·
-    <a href="./docs/launch/why-html.zh-CN.md">为什么是 HTML</a> ·
+    <a href="https://jingmox.github.io/hReader/examples/why-html.html">为什么是 HTML</a> ·
     <a href="https://github.com/JingMox/hReader/releases">下载</a> ·
     <a href="./README.md">English</a>
   </p>
@@ -75,7 +75,7 @@ unzip hreader-skill.zip -d ~/.claude/skills/
 - **改，而不是重写**：每个块都有稳定的 `data-hr-id`，Agent 先看大纲（`hr_outline`）、只读一块（`hr_read_node`）、只改一块（`hr_patch_node`），原子写入、可撤销（`hr_undo`）。
 - **文件是你的**：本地 `.html`，不绑定任何 AI 厂商；Claude Code、Cursor、Codex、DeepSeek 等任何支持 MCP 或 Skill 的 Agent 都能用。
 
-完整论述见[《AI 时代，笔记为什么该用 HTML，而不是 Markdown》](./docs/launch/why-html.zh-CN.md)。
+完整论述见[《AI 时代，笔记为什么该用 HTML，而不是 Markdown》](https://jingmox.github.io/hReader/examples/why-html.html)。
 
 ## 现状
 
@@ -308,10 +308,8 @@ pnpm smoke:pi
 - [更新日志 (CHANGELOG)](./CHANGELOG.md)
 - [贡献指南 (CONTRIBUTING)](./CONTRIBUTING.md)
 - [安全策略 (SECURITY)](./SECURITY.md)
-- [系统架构与路线图](./docs/02-architecture-and-roadmap.md)
-- [工程与代码标准](./docs/04-engineering-standards.md)
 - [桌面端实现说明](./packages/desktop/README.md)
-- [已知缺陷台账](./docs/known-defects.md)
+- [CLI 退出码表](./packages/cli/README.md#exit-codes)
 
 ---
 
