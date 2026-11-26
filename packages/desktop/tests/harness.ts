@@ -165,6 +165,8 @@ export interface Hrd {
   openNewDocModal: () => void;
   openSettingsModal: () => void;
   openHelpModal: () => void;
+  wireImmersiveSync: () => void;
+  toggleImmersive: () => void;
   openBlockHtmlModal: (el: Element | null) => void;
   openComponentModal: () => void;
   enhanceAnnotationCards: () => void;

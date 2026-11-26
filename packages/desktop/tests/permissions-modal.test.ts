@@ -1,7 +1,7 @@
 // 偏好设置里的"外来 HTML 权限"一节：读写只走 core 的 /api/permissions，
 // 不落 webview prefs（服务端拿不到本地存储）。GET 失败时两框保持禁用，
 // 不把占位的"逐个文档"当真理写回去。
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import type { HTMLSelectElement } from "happy-dom";
 
 import { createSandbox, mustGet } from "./harness.ts";
@@ -9,13 +9,20 @@ import type { Sandbox } from "./harness.ts";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function stubModesFetch(s: Sandbox, modes: unknown, status = 200): void {
-  s.window.fetch = vi.fn((input: unknown) => {
-    const url = typeof input === "string" ? input : String((input as { url?: string }).url);
-    const body =
-      url === "/api/permissions" ? JSON.stringify({ modes }) : "{}";
+/** happy-dom 的 fetch 自带真实网络：按 harness 的 Object.assign 惯例换成可控 stub。 */
+function stubModesFetch(s: Sandbox, modes: unknown, status = 200): Mock {
+  const fetchMock = vi.fn((input: unknown) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : String((input as { url?: unknown }).url);
+    const body = url === "/api/permissions" ? JSON.stringify({ modes }) : "{}";
     return Promise.resolve(new s.window.Response(body, { status }));
-  }) as unknown as typeof fetch;
+  });
+  Object.assign(s.window, { fetch: fetchMock });
+  return fetchMock;
 }
 
 function permSelects(s: Sandbox): { scripts: HTMLSelectElement; network: HTMLSelectElement } {
@@ -25,19 +32,20 @@ function permSelects(s: Sandbox): { scripts: HTMLSelectElement; network: HTMLSel
   };
 }
 
-async function openSettings(s: Sandbox, modes: unknown) {
-  stubModesFetch(s, modes);
+/** 打开设置弹窗并等回填 Promise 落地；返回 fetch 间谍供断言。 */
+async function openSettings(s: Sandbox, modes: unknown): Promise<Mock> {
+  const fetchMock = stubModesFetch(s, modes);
   s.hrd.openSettingsModal();
   await flush();
-  return mustGet(s.document, "#hrd-modal-backdrop");
+  return fetchMock;
 }
 
 describe("设置弹窗 · 外来 HTML 权限", () => {
   it("打开时 GET /api/permissions 并回填两个三选一", async () => {
     const s = createSandbox();
-    await openSettings(s, { scripts: "allow", network: "deny" });
+    const fetchMock = await openSettings(s, { scripts: "allow", network: "deny" });
 
-    expect(s.window.fetch).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       "/api/permissions",
       expect.objectContaining({ credentials: "same-origin" }),
     );
@@ -71,9 +79,9 @@ describe("设置弹窗 · 外来 HTML 权限", () => {
 
   it("GET 失败：两框保持禁用且完成按钮不再写权限", async () => {
     const s = createSandbox();
-    s.window.fetch = vi.fn(() =>
-      Promise.resolve(new s.window.Response("{}", { status: 500 })),
-    ) as unknown as typeof fetch;
+    Object.assign(s.window, {
+      fetch: vi.fn(() => Promise.resolve(new s.window.Response("{}", { status: 500 }))),
+    });
     s.hrd.openSettingsModal();
     await flush();
 
