@@ -285,8 +285,6 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   host.attr(FRAME, "title", COPY.foreignFrameTitle);
   // 外来页面拿不到引用来源：referrer 会泄露内网路径/会话参数给被嵌文档。
   host.attr(FRAME, "referrerpolicy", "no-referrer");
-  // 外来页面自己调的 Fullscreen API：只放大 iframe 自身，与沙箱正交，不放宽任何 allow-*。
-  host.attr(FRAME, "allow", "fullscreen");
 
   // 主题下拉：外来文档的"换主题"是把 `<style id="hr-theme">` 写进文件，
   // 写完重载 iframe 让新主题进文档；写盘失败把显示值回滚并把错误挂上横幅。
