@@ -52,6 +52,15 @@ export interface ForeignTheme {
   readonly apply: (id: string) => Promise<void>;
 }
 
+/** 上报给嵌入壳（桌面端）的导航门栏状态：外来 iframe 的外部导航按它决定放行/拒绝。 */
+export interface DocGate {
+  readonly docId: string;
+  /** false = 当前不是外来壳（managed/空工作台）：壳恢复外链交系统浏览器的默认行为。 */
+  readonly foreign: boolean;
+  /** 生效的联网维；仅在 foreign 为 true 时有意义。 */
+  readonly network: boolean;
+}
+
 export interface ForeignDeps {
   readonly host: Host;
   readonly parent: string;
@@ -63,6 +72,8 @@ export interface ForeignDeps {
   readonly normalize: () => Promise<void>;
   /** 主题下拉的接线；undefined = 控制条的主题位不接线（清单为空时也一样）。 */
   readonly theme: ForeignTheme | undefined;
+  /** 存在时把导航门栏状态上报给嵌入壳（桌面端）；浏览器里不接。 */
+  readonly reportGate?: (gate: DocGate) => void;
 }
 
 export interface ForeignHandle {
@@ -207,10 +218,20 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   const effectiveOf = (p: DocPermissions | undefined): string =>
     `${p?.scripts === true ? "1" : "0"}${p?.network === true ? "1" : "0"}`;
 
+  /** 把当前外来壳的门栏状态推给嵌入壳（桌面端按它裁决外来 iframe 的外部导航）。 */
+  const reportGate = (): void => {
+    deps.reportGate?.({
+      docId: deps.docId,
+      foreign: true,
+      network: perms?.network === true,
+    });
+  };
+
   const applyPerms = (next: DocPermissions): void => {
     const changed = effectiveOf(next) !== effectiveOf(perms);
     perms = next;
     paint();
+    reportGate();
     if (changed) refresh();
   };
 
@@ -324,6 +345,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   const offScripts = host.on(PERM_SCRIPTS, "click", onToggle("scripts"));
   const offNetwork = host.on(PERM_NETWORK, "click", onToggle("network"));
   const offTheme = theme === undefined ? () => undefined : host.on(THEME_SELECT, "change", onTheme);
+  reportGate();
 
   return {
     refresh,
@@ -333,6 +355,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
       info = next;
       perms = next.permissions;
       paint();
+      reportGate();
       if (changed) refresh();
     },
     destroy: () => {
@@ -348,6 +371,8 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
       host.attr(FRAME, "hidden", "");
       // about:blank 而不是摘掉 src：allow-scripts 档里的脚本只换源才真停。
       host.attr(FRAME, "src", "about:blank");
+      // 外来壳离场（切文档/normalize 重进 managed）：归还门栏，让外链回到交系统浏览器的默认行为。
+      deps.reportGate?.({ docId: deps.docId, foreign: false, network: false });
     },
   };
 };

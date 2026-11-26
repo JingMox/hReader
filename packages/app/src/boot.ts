@@ -21,6 +21,7 @@ import { COPY } from "./widgets/copy.ts";
 import { mountPresent, type PresentShell, type PresentWidget } from "./widgets/present.ts";
 import {
   mountForeign,
+  type DocGate,
   type DocPermissions,
   type ForeignHandle,
   type ForeignInput,
@@ -412,6 +413,22 @@ const foreignSseOf = (store: Store, foreign: ForeignHandle, resync: () => void):
 });
 
 /**
+ * 把外来壳的导航门栏状态推给桌面壳：经 `hr-desktop.local/doc-state` 桥导航投递
+ * （壳在 on_navigation 里拦截、永不真正导航）。桥令牌只存在于桌面壳注入的
+ * `__HR_DESKTOP_CTX__`；浏览器里没有它，整段调用直接早退。
+ */
+const reportDocGate = (gate: DocGate): void => {
+  const token = (
+    window as { __HR_DESKTOP_CTX__?: { bridgeToken?: string } }
+  ).__HR_DESKTOP_CTX__?.bridgeToken;
+  if (typeof token !== "string" || token === "") return;
+  const query = `doc=${encodeURIComponent(gate.docId)}&foreign=${gate.foreign ? "1" : "0"}&net=${
+    gate.network ? "1" : "0"
+  }&t=${encodeURIComponent(token)}`;
+  window.location.assign(`http://hr-desktop.local/doc-state?${query}`);
+};
+
+/**
  * 外来/未规范化路径：iframe + 横幅 + 主题下拉 + 状态栏是全部 UI——model 系功能（编辑、批注、
  * 大纲、演示、快捷键）不接线，而不是"接了再禁用"。`doc.changed` 重载 iframe 并回拉 info。
  */
@@ -450,6 +467,7 @@ const bootForeign = (
               await deps.postStyle(id);
             },
           },
+    reportGate: reportDocGate,
   });
   const statusbar = mountStatusbar(host, ROOT);
   host.text(`${ROOT} #hr-shortcuts`, COPY.foreignShortcuts);
