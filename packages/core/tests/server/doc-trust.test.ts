@@ -216,6 +216,47 @@ describe("doc trust · 拒绝面", () => {
   });
 });
 
+describe("doc trust · legacy route keeps the network dimension", () => {
+  const postPermissions = (
+    port: number,
+    token: string,
+    patch: Record<string, unknown>,
+  ): Promise<{ status: number; body: unknown }> =>
+    httpCall(port, {
+      method: "POST",
+      path: "/api/doc/doc.html/permissions",
+      headers: withPost(token),
+      body: JSON.stringify(patch),
+    }).then((response) => ({ status: response.status, body: jsonBodyOf(response) }));
+
+  it("should keep the network grant when the trust route toggles only scripts", async () => {
+    await withServer(async (ctx) => {
+      // 新接口先开联网：单文档 grant {scripts:false, network:true}。
+      const granted = await postPermissions(ctx.port, ctx.token, { network: true });
+      expect(granted.status).toBe(200);
+      expect(await infoOf(ctx.port, ctx.token)).toMatchObject({
+        permissions: { scripts: false, network: true },
+      });
+
+      // 旧接口只碰脚本这一维：off = 脚本关，联网必须留在开档。
+      const off = await postTrust(ctx.port, ctx.token, "off");
+      expect(off.status).toBe(200);
+      expect(off.body).toMatchObject({ trust: "off" });
+      expect(await infoOf(ctx.port, ctx.token)).toMatchObject({
+        permissions: { scripts: false, network: true },
+      });
+
+      // local = 脚本开，联网同样不许被收回。
+      const local = await postTrust(ctx.port, ctx.token, "local");
+      expect(local.status).toBe(200);
+      expect(local.body).toMatchObject({ trust: "local" });
+      expect(await infoOf(ctx.port, ctx.token)).toMatchObject({
+        permissions: { scripts: true, network: true },
+      });
+    }, foreignSeed());
+  });
+});
+
 describe("doc trust · SSE 与失效", () => {
   it("should publish doc.changed after a successful grant", async () => {
     await withServer(async (ctx) => {
