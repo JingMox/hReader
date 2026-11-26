@@ -1,4 +1,4 @@
-// 这层管：封面 / 目录 / `<head>` 三段骨架的拼接与 4 MiB 预判；不读盘、不碰进程、不碰 DOM。
+// Assembles the cover / TOC / `<head>` skeleton and pre-checks the 4 MiB budget; no disk, no process, no DOM.
 
 import { HrError } from "@hreader/core";
 
@@ -9,13 +9,13 @@ import type { TocEntry } from "./numbering";
 
 const TOC_TITLE = "目录";
 
-/** 锚名与条目成对出现：目录项和正文标题必须指向同一个锚，分开查表就多一条"查不到"的死分支。 */
+/** Anchor and entry come in pairs: a TOC item and its body heading must resolve to the same anchor, and separate lookups would add a dead "not found" branch. */
 export interface TocItem {
   readonly entry: TocEntry;
   readonly anchor: string;
 }
 
-/** 只在本模块内用：调用方按结构传字面量，导出反成一个没人 import 的名字（knip）。 */
+/** Module-local only: callers pass structural literals, and exporting it would just be a name nobody imports (knip). */
 interface PrintSheet {
   readonly paper: PaperSize;
   readonly title: string;
@@ -25,7 +25,7 @@ interface PrintSheet {
   readonly bodyClass: string | undefined;
   readonly tocItems: readonly TocItem[];
   readonly tocIds: { readonly nav: string; readonly title: string };
-  /** `<article>` 的开标签（属性已过滤并序列化好）：这一层不碰 DOM，只负责把它们拼起来。 */
+  /** Opening tag of `<article>` (attributes already filtered and serialized): this layer touches no DOM, it only concatenates. */
   readonly articleOpen: string;
   readonly body: string;
 }
@@ -39,8 +39,8 @@ const tocItemOf = (item: TocItem): string =>
   ].join("");
 
 /**
- * 封面与目录标题都用 `<p>` 而非 `h1`/`h2`：产物里 `<h1..h6>` 的总数必须与 outline 的标题数逐条相等，
- * 多出来的这两个标题会把这个计数污染掉。
+ * Cover and TOC titles use `<p>`, not `h1`/`h2`: the product's total `<h1..h6>` count must equal the outline's
+ * heading count one for one, and two extra headings would pollute that count.
  */
 const coverOf = (title: string): readonly string[] => [
   '<header class="cover">',
@@ -61,8 +61,8 @@ const tocOf = (
 ];
 
 /**
- * `</style` 在打印层先兜一层：CLI 的 `assertThemeSafe` 仍会拒绝并给 `invalid_theme`，
- * 这里只保证即使那股力量被绕过，主题也打不破 `<style>` 边界。`\/` 在 CSS 字符串里就是 `/`。
+ * `</style` gets a first net here in the print layer: the CLI's `assertThemeSafe` still rejects with `invalid_theme`,
+ * and this only guarantees that even if that check were bypassed, a theme cannot break the `<style>` boundary. `\/` is just `/` inside a CSS string.
  */
 const escapedThemeCssOf = (css: string): string => css.replaceAll(/<\/(style)/giu, "<\\/$1");
 
@@ -72,7 +72,7 @@ const headOf = (sheet: PrintSheet, printCss: string): readonly string[] => [
   `<meta name="hr-doc-id" content="${escapeAttribute(sheet.docId)}">`,
   `<meta name="hr-visual" content="${escapeAttribute(sheet.visualId)}">`,
   `<title>${escapeText(sheet.title)}</title>`,
-  // 主题在前、骨架在后：两者特异度相同时**印刷骨架压主题**（物理层优先）。
+  // Theme first, skeleton second: at equal specificity the **print skeleton beats the theme** (the physical layer wins).
   `<style class="hr-theme">${escapedThemeCssOf(sheet.themeCss)}</style>`,
   `<style class="hr-print">${printCss}</style>`,
   "</head>",
@@ -84,10 +84,10 @@ const bodyOpenOf = (bodyClass: string | undefined): string =>
     : `<body class="${escapeAttribute(bodyClass)}">`;
 
 /**
- * 4 MiB 上限：**产物最终字节数 > 4 MiB 才拒**，等于 4194304 是合格的（契约写的是 `>`）。
- * 在拼接前逐段累加 UTF-8 字节，超了就不分配整串；`reduce` 补上 `join("\n")` 的 `n-1` 个换行字节，
- * 所以这个数是**精确值**，不是上界——它与 `utf8LengthOf(返回值)` 恒等。
- * 不能拿 `part.length` 代替：CJK 一个码元 3 字节，"长度没超、字节超了"的稿子会被静默放行。
+ * 4 MiB limit: reject only when the product's final byte count is **> 4 MiB**; exactly 4194304 passes (the contract says `>`).
+ * UTF-8 bytes are accumulated per part before assembly, so an oversized product never allocates the joined string; `reduce` adds the `n-1` newline bytes of `join("\n")`,
+ * making this an **exact** figure, not an upper bound — identical to `utf8LengthOf(return value)`.
+ * `part.length` cannot stand in: a CJK code unit costs 3 bytes, so a sheet "under the limit in length but over in bytes" would slip through silently.
  */
 const MAX_PRODUCT_BYTES = 4 * 1024 * 1024;
 
@@ -119,8 +119,8 @@ export const printSheetOf = (sheet: PrintSheet): string =>
   ]);
 
 /**
- * slides 形态：没有封面与目录（标题页就是第一个 h1，多两页会让"页数 = slide 数"失约）。
- * 分页骨架用 slides 专用 CSS——纸张固定 16:9，`sheet.paper` 在这条路径上不起作用。
+ * Slides form: no cover or TOC (the title page is the first h1; two extra pages would break the "page count = slide count" promise).
+ * Pagination uses the slides-specific CSS — paper is fixed 16:9 and `sheet.paper` has no effect on this path.
  */
 export const slidesSheetOf = (sheet: PrintSheet): string =>
   productOf([

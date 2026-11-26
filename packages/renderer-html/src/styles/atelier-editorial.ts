@@ -1,17 +1,18 @@
-// 这层管：视觉主题的元数据（id / body 类名 / 展示名）；不装 CSS、不读盘。
+// Metadata of the visual themes (id / body class / display name); holds no CSS and reads no disk.
 
 /**
- * 主题 CSS 的单一真源永远是盘上的 `styles/<id>/theme.css`（由 core 的 `loadThemeCss` 读并过
- * `assertThemeSafe`）。这里重复存一份 CSS 就会立刻产生第二份真源，换机器换字节、与"主题只增不改"的约定漂移。
+ * The single source of truth for theme CSS is always the on-disk `styles/<id>/theme.css` (read by core's `loadThemeCss`
+ * and checked by `assertThemeSafe`). Duplicating the CSS here would instantly create a second source of truth — bytes
+ * that drift across machines and away from the "themes only grow, never change" rule.
  */
 export interface VisualTheme {
   readonly id: string;
-  /** 产物 `<body>` 的类名；约定 `visual-<id>`，供主题 CSS 按主题分叉用。 */
+  /** Class name on the product `<body>`; conventionally `visual-<id>`, letting theme CSS branch per theme. */
   readonly bodyClass: string;
   readonly label: string;
 }
 
-/** 打印层认得的主题：`--visual` 入参经它翻成 `<body class>`。 */
+/** Themes the print layer knows: the `--visual` argument is translated through this table into a `<body class>`. */
 export const THEMES: Readonly<Record<string, VisualTheme>> = {
   "atelier-editorial": {
     id: "atelier-editorial",

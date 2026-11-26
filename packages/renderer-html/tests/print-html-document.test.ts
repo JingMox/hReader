@@ -19,32 +19,32 @@ const codeOf = (run: () => unknown): string => {
   return "no-throw";
 };
 
-describe("封面标题取值", () => {
-  it("显式 title 优先", () => {
+describe("cover title resolution", () => {
+  it("should prefer an explicit title", () => {
     const html = printHtmlOf(inputOf(fixtureOf("article.html"), { title: "自定义标题" }));
     expect(coverTitleOf(html)).toBe("自定义标题");
     expect(html).toContain("<title>自定义标题</title>");
   });
 
-  it("没有显式 title 时取 <title> 文本", () => {
+  it("should fall back to the <title> text when no explicit title is given", () => {
     expect(coverTitleOf(printHtmlOf(inputOf(fixtureOf("article.html"))))).toBe("季度技术评述");
   });
 
-  it("没有 <title> 时取正文首个 <h1>", () => {
+  it("should fall back to the first body <h1> when there is no <title>", () => {
     const html = printHtmlOf(
       inputOf(fixtureOf("article.html").replace("<title>季度技术评述</title>", "")),
     );
     expect(coverTitleOf(html)).toBe("季度技术评述");
   });
 
-  it("四级候选全空时标题为空串（docId 也空）", () => {
+  it("should emit an empty title when all four candidates are empty (docId included)", () => {
     const html = printHtmlOf(
       inputOf('<article data-hr-id="a"><p>只有正文。</p></article>', { docId: "" }),
     );
     expect(html).toContain('<p class="cover__title"></p>');
   });
 
-  it("连 <h1> 都没有时回落 docId", () => {
+  it("should fall back to docId when there is not even an <h1>", () => {
     const html = printHtmlOf(
       inputOf("<article><h2>二级标题</h2><p>正文。</p></article>", { docId: "fallback-name" }),
     );
@@ -52,8 +52,8 @@ describe("封面标题取值", () => {
   });
 });
 
-describe("同名层级与注释", () => {
-  it("两个同级 h1 各自成章（顶层计数不复用别人的子计数）", () => {
+describe("same-level siblings and comments", () => {
+  it("should give two same-level h1s their own chapters (the top count never reuses another's child count)", () => {
     const html = printHtmlOf(
       inputOf("<article><h1>甲</h1><p>一。</p><h1>乙</h1><h2>乙一</h2></article>"),
     );
@@ -63,41 +63,41 @@ describe("同名层级与注释", () => {
     expect(nums).toEqual(["1", "2", "2.1"]);
   });
 
-  it("标题里的注释不算正文文字", () => {
+  it("should not count a comment inside a heading as body text", () => {
     const html = printHtmlOf(inputOf("<article><h1>带注释的标题<!-- 内部备注 --></h1></article>"));
     expect(coverTitleOf(html)).toBe("带注释的标题");
   });
 });
 
-describe("4 MiB 上限", () => {
+describe("4 MiB limit", () => {
   const LIMIT = 4 * 1024 * 1024;
-  /** 垫一个 `a` 起步：空段落会先撞 `empty_document`，量不到字节数。 */
+  /** Pad with one `a` to start: an empty paragraph hits `empty_document` before any byte counting happens. */
   const bytesWithPadOf = (pad: number): number =>
     printHtmlReportOf(inputOf(`<article><p>${"a".repeat(pad + 1)}</p></article>`)).bytes;
   const offset = bytesWithPadOf(0);
 
-  it("limit-1 字节正常产出，bytes 与实际一致", () => {
+  it("should produce normally at limit-1 bytes with bytes matching the real size", () => {
     const pad = LIMIT - 1 - offset;
     const report = printHtmlReportOf(inputOf(`<article><p>${"a".repeat(pad + 1)}</p></article>`));
     expect(report.bytes).toBe(LIMIT - 1);
     expect(report.bytes).toBe(Buffer.byteLength(report.html, "utf8"));
   }, 30_000);
 
-  it("恰好 limit 字节是合格产物（契约是 > 4 MiB 才拒，不是 >=", () => {
+  it("should accept exactly limit bytes as valid output (the contract rejects > 4 MiB, not >=)", () => {
     const pad = LIMIT - offset;
     const report = printHtmlReportOf(inputOf(`<article><p>${"a".repeat(pad + 1)}</p></article>`));
     expect(report.bytes).toBe(LIMIT);
     expect(report.bytes).toBe(Buffer.byteLength(report.html, "utf8"));
   }, 30_000);
 
-  it("limit+1 在拼接前抛 invalid_input（不是先拼完再判）", () => {
+  it("should throw invalid_input at limit+1 before assembly (not assemble-then-check)", () => {
     const html = `<article><p>${"a".repeat(LIMIT + 2 - offset)}</p></article>`;
     expect(codeOf(() => printHtmlOf(inputOf(html)))).toBe("invalid_input");
   }, 30_000);
 });
 
-describe("转义", () => {
-  it("标题里的标签被转义，不会变成可执行标签", () => {
+describe("escaping", () => {
+  it("should escape tags in the title so they cannot become executable markup", () => {
     const html = printHtmlOf(
       inputOf(fixtureOf("article.html"), { title: "<script>alert(1)</script>" }),
     );
@@ -105,24 +105,24 @@ describe("转义", () => {
     expect(html).not.toContain("<script");
   });
 
-  it("正文文本里的尖括号与 & 重新转义", () => {
+  it("should re-escape angle brackets and & in body text", () => {
     const html = printHtmlOf(inputOf("<article><p>5 &lt; 6 &amp; 7</p></article>"));
     expect(html).toContain("5 &lt; 6 &amp; 7");
   });
 });
 
-describe("确定性", () => {
+describe("determinism", () => {
   const input = inputOf(fixtureOf("article.html"));
 
-  it("同一输入两次调用字节相同", () => {
+  it("should produce identical bytes for two calls with the same input", () => {
     expect(printHtmlOf(input)).toBe(printHtmlOf(input));
   });
 
-  it("重新装配的等价输入也产出同样的字节", () => {
+  it("should produce the same bytes for a reassembled equivalent input", () => {
     expect(printHtmlOf(inputOf(fixtureOf("article.html")))).toBe(printHtmlOf(input));
   });
 
-  it("产物不含 cwd / 主机名 / 时间戳", () => {
+  it("should contain no cwd, hostname, or timestamp in the product", () => {
     const html = printHtmlOf(input);
     expect(html).not.toContain(process.cwd());
     expect(html).not.toContain(hostname());
@@ -130,43 +130,43 @@ describe("确定性", () => {
   });
 });
 
-describe("空稿与缺正文", () => {
-  it("article 存在但裁完无文本 → empty_document", () => {
+describe("empty sheets and missing body", () => {
+  it("should throw empty_document when article exists but trimming leaves no text", () => {
     expect(codeOf(() => printHtmlOf(inputOf(fixtureOf("article-empty.html"))))).toBe(
       "empty_document",
     );
   });
 
-  it("只有空 section/空标签壳、没有文字 → empty_document（文本级判据）", () => {
+  it("should throw empty_document for empty-section shells with no text (text-level check)", () => {
     expect(codeOf(() => printHtmlOf(inputOf(fixtureOf("article-structure-only.html"))))).toBe(
       "empty_document",
     );
   });
 
-  it("只有内联图没有文字 → empty_document（图片再合法也不构成正文）", () => {
+  it("should throw empty_document for inline images without text (even legal images are not body)", () => {
     expect(codeOf(() => printHtmlOf(inputOf(fixtureOf("article-image-only.html"))))).toBe(
       "empty_document",
     );
   });
 
-  it("只有零宽字符也算空稿（U+200B 在纸面上不占位，trim() 又不认它）", () => {
+  it("should count zero-width-only content as empty (U+200B takes no room on paper and trim() misses it)", () => {
     const html = "<article><p>\u200B\uFEFF\u180E</p></article>";
     expect(codeOf(() => printHtmlOf(inputOf(html)))).toBe("empty_document");
   });
 });
 
-describe("零宽字符与边界", () => {
-  it("零宽字符夹在真文字里不算空", () => {
+describe("zero-width characters and edge cases", () => {
+  it("should not count zero-width characters sandwiched in real text as empty", () => {
     const html = printHtmlOf(inputOf("<article><p>\u200B真文字\uFEFF</p></article>"));
     expect(html).toContain("真文字");
   });
 
-  it("只有标题没有正文不许报空", () => {
+  it("should not report empty when a document has a heading but no body", () => {
     const html = printHtmlOf(inputOf(fixtureOf("article-heading-only.html")));
     expect(html).toContain("只有标题");
   });
 
-  it("源文档没有 <article> → no_article", () => {
+  it("should throw no_article when the source document has no <article>", () => {
     const input: PrintHtmlInput = {
       docId: "x",
       visualId: "v",
@@ -179,16 +179,16 @@ describe("零宽字符与边界", () => {
   });
 });
 
-describe("主题 CSS", () => {
+describe("theme CSS", () => {
   const themed = printHtmlOf(
     inputOf(fixtureOf("article.html"), { themeCss: ".cover__title { color: red; }" }),
   );
 
-  it("主题全文内联进 head 的主题 <style>", () => {
+  it("should inline the full theme text into the theme <style> in head", () => {
     expect(themed).toContain('<style class="hr-theme">.cover__title { color: red; }</style>');
   });
 
-  it("主题在前、印刷骨架在后：同特异度时骨架压主题", () => {
+  it("should order theme before print skeleton so the skeleton wins at equal specificity", () => {
     const themeAt = themed.indexOf('<style class="hr-theme">');
     const printAt = themed.indexOf('<style class="hr-print">');
     expect(themeAt).toBeGreaterThan(-1);
@@ -196,12 +196,12 @@ describe("主题 CSS", () => {
     expect(themed.indexOf("</head>")).toBeGreaterThan(printAt);
   });
 
-  it("主题里的 </style 逃逸在打印层就被转义", () => {
+  it("should escape a </style inside the theme already at the print layer", () => {
     const escaped = printHtmlOf(
       inputOf(fixtureOf("article.html"), { themeCss: "p{color:red}</STYLE><script>x</script>" }),
     );
     const escapedRoot = parseHtml(escaped).root;
-    // 逃逸串进不了标签层：解析后仍然只有我们这两份 style，且没有任何 script 元素。
+    // The escape never reaches the tag layer: after parsing there are still only our two style tags and no script element.
     expect(tagsOf(escapedRoot, "style").length).toBe(2);
     expect(tagsOf(escapedRoot, "script")).toEqual([]);
     expect(escaped).toContain("<\\/STYLE>");
@@ -212,11 +212,11 @@ describe("nesting depth limit", () => {
   const deepDoc = (depth: number): string =>
     `<article data-hr-id="r">${"<div>".repeat(depth)}x${"</div>".repeat(depth)}</article>`;
 
-  it("嵌套超过上限 → invalid_document 而不是裸 RangeError", () => {
+  it("should throw invalid_document rather than a bare RangeError when nesting exceeds the limit", () => {
     expect(codeOf(() => printHtmlOf(inputOf(deepDoc(2100))))).toBe("invalid_document");
   });
 
-  it("上限之内的深文档照常产出", () => {
+  it("should produce normally for a deep document within the limit", () => {
     const html = printHtmlOf(inputOf(deepDoc(2000)));
     expect(html).toContain("<article");
   });

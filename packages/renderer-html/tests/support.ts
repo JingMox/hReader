@@ -1,4 +1,4 @@
-// 这层管：测试用的 fixture 读取、输入装配与"数节点"工具（按解析后的树数，不 grep 字符串）；不承载断言。
+// Test fixture loading, input assembly, and node-counting helpers (counted on the parsed tree, never by grepping strings); carries no assertions.
 
 import { readFileSync } from "node:fs";
 
@@ -20,7 +20,7 @@ interface InputOverrides {
 
 export const fixtureOf = (name: string): string => readFileSync(new URL(name, FIXTURE_DIR), "utf8");
 
-/** 走真实链路：先注入 `data-hr-id`，再由同一份解析树建 outline——CLI 读到文档后正是这个形状。 */
+/** Walks the real pipeline: inject `data-hr-id` first, then build the outline from the same parsed tree — exactly the shape the CLI sees after reading a document. */
 export const inputOf = (documentHtml: string, overrides: InputOverrides = {}): PrintHtmlInput => {
   const parsed = injectNodeIds(parseHtml(documentHtml)).parsed;
   return {
@@ -43,7 +43,7 @@ export const elementsOf = (node: HtmlNode): readonly HtmlElementNode[] => {
       found.push(current);
     }
     if (current.kind === "element" || current.kind === "document") {
-      // 逆序压栈，弹出时才是文档顺序（前序 DFS）。
+      // Push in reverse so pops yield document order (pre-order DFS).
       stack.push(...[...current.children].reverse());
     }
   }
@@ -53,7 +53,7 @@ export const elementsOf = (node: HtmlNode): readonly HtmlElementNode[] => {
 export const elementsOfHtml = (html: string): readonly HtmlElementNode[] =>
   elementsOf(parseHtml(html).root);
 
-/** 标签名比对不分大小写：parse5 在 SVG 语境产 `feImage`/`clipPath`，严格比对会让用例恒空。 */
+/** Tag-name comparison is case-insensitive: parse5 emits `feImage`/`clipPath` in SVG context, and an exact match would leave cases permanently empty. */
 export const tagsOf = (node: HtmlNode, tag: string): readonly HtmlElementNode[] =>
   elementsOf(node).filter((element) => element.tag.toLowerCase() === tag.toLowerCase());
 
@@ -86,14 +86,14 @@ export const flattenOutline = (nodes: readonly OutlineNode[]): readonly OutlineN
 
 export const isHeading = (node: OutlineNode): boolean => /^h[1-6]$/u.test(node.tag);
 
-/** 产物里所有 `id` 属性值（按文档序）；锚点唯一性/死链用例共用。 */
+/** All `id` attribute values in the product, in document order; shared by the anchor-uniqueness and dead-link cases. */
 export const idsOfHtml = (html: string): readonly string[] =>
   elementsOfHtml(html).flatMap((element) => {
     const id = attrOf(element, "id");
     return id === undefined ? [] : [id];
   });
 
-/** 产物里所有 `href="#…"` 指向的锚（去掉 `#`）。 */
+/** All anchors targeted by `href="#…"` in the product (with the `#` stripped). */
 export const anchorHrefsOfHtml = (html: string): readonly string[] =>
   tagsOf(parseHtml(html).root, "a")
     .map((link) => attrOf(link, "href") ?? "")

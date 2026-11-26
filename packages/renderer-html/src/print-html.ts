@@ -1,4 +1,4 @@
-// 这层管：把源文档与 outline 渲染成单文件可打印 HTML（封面 / 目录 / 正文三段）；不读盘、不碰进程。
+// Renders the source document and outline into a single printable HTML file (cover / TOC / body); no disk, no process.
 
 import {
   attributeOf,
@@ -22,51 +22,52 @@ import type { TocItem } from "./print-page";
 
 type Attribute = HtmlElementNode["attrs"][number];
 
-/** 本包只有打印稿一个用途；preset 参数化是 core 给 `hr import` 预留的面，这里恒为 print。 */
+/** This package has exactly one use — print sheets; the preset parameter is a surface core reserves for `hr import`, so it is always `print` here. */
 const SANITIZE_PRESET = "print" as const;
 
 /**
- * 印什么、用哪个主题、正文是什么，全部由调用方给出：包内不找文件、不读环境，同输入必然同字节。
+ * What to print, which theme, and what body are all supplied by the caller: the package looks up no files and reads
+ * no environment, so identical input always yields identical bytes.
  */
 export interface PrintHtmlInput {
-  /** 不传则回落：`<title>` → 首个 `h1` → `docId`。 */
+  /** Fallback chain when omitted: `<title>` → first `h1` → `docId`. */
   readonly title?: string;
-  /** 稳定文档标识（源文件 basename 去扩展名）：只进 `<meta name="hr-doc-id">`，不参与排版。 */
+  /** Stable document id (source basename minus extension): only lands in `<meta name="hr-doc-id">`, never in layout. */
   readonly docId: string;
   readonly visualId: string;
-  /** 纸张：必填。它直接进 `@page{size:…}`，选错纸就是版心被纸边切掉。 */
+  /** Paper: required. It goes straight into `@page{size:…}`; the wrong paper means the type area gets cropped by the paper edge. */
   readonly paper: PaperSize;
-  /** `<body>` 的类名原样输出；不传或空串表示不加类。 */
+  /** Emitted verbatim as the `<body>` class; omit or pass "" for no class. */
   readonly bodyClass?: string;
-  /** 源文档全文 HTML；本层取最外层 `<article>`，裁掉 UI 后再排。 */
+  /** Full HTML of the source document; this layer takes the outermost `<article>` and lays it out after trimming the UI. */
   readonly documentHtml: string;
   readonly outline: readonly OutlineNode[];
-  /** 主题 CSS 全文（`styles/<visual>/theme.css`），内联进产物且排在最前。 */
+  /** Full theme CSS (`styles/<visual>/theme.css`); inlined into the product ahead of everything else. */
   readonly themeCss: string;
 }
 
 export interface PrintHtmlResult {
   readonly html: string;
   /**
-   * `html` 的 UTF-8 字节数，精确值：`productOf` 在拼接前算的就是它（同一个数），调用方拿它与
-   * 4 MiB 对表，并保证 `--json.bytes` 与 `statSync(out).size` 相等。
+   * Exact UTF-8 byte count of `html`: `productOf` computes this very number before assembly, letting callers check it
+   * against 4 MiB and keep `--json.bytes` equal to `statSync(out).size`.
    */
   readonly bytes: number;
   /**
-   * 口径只算图片：被删的 `<img>` 与 SVG `<image>`。`<video>`/`<audio>`/`<svg>`/`<iframe>` 是整删，
-   * 不计数——它们不是"图片"，算进来会让那句"已移除 N 个外部图片"说谎。
+   * Counts images only: removed `<img>` and SVG `<image>`. `<video>`/`<audio>`/`<svg>`/`<iframe>` are dropped wholesale
+   * but not counted — they are not "images", and counting them would make the "N external images removed" line a lie.
    */
   readonly droppedImages: number;
   /**
-   * `true` = 产物是 slides 打印稿（无封面/目录、页框由 CSS `@page` 声明）。
-   * 渲染方据此决定听 CSS 的还是听命令行纸张参数的（`hr pdf` 的 `preferCSSPageSize`）。
+   * `true` = the product is a slides print sheet (no cover/TOC; page geometry declared by CSS `@page`).
+   * The renderer uses it to decide whether to obey CSS or the CLI paper argument (`hr pdf`'s `preferCSSPageSize`).
    */
   readonly slides: boolean;
 }
 
 const DOC_ID_ATTRIBUTE = "data-hr-id";
 
-/** 序号 span 的类名；`print-css.ts` 用同名类排版，两处必须同一个拼写。 */
+/** Class name of the number span; `print-css.ts` styles the same class, so both places must agree on the spelling. */
 const SECNUM_CLASS = "secnum";
 
 /**
@@ -80,7 +81,7 @@ const SECNUM_CLASS = "secnum";
  */
 const DEPTH_LIMIT = 2048;
 
-/** 显式栈深度测量：只走 element/document 的孩子，文本/注释节点不产生层级。 */
+/** Explicit-stack depth measurement: only element/document children count; text and comment nodes add no level. */
 const depthOf = (root: HtmlNode): number => {
   let max = 0;
   const stack: { readonly node: HtmlNode; readonly depth: number }[] = [{ node: root, depth: 1 }];
@@ -139,15 +140,16 @@ const coverTitleOf = (input: PrintHtmlInput, root: HtmlNode, article: HtmlElemen
 
 interface RewriteState {
   readonly numbering: Numbering;
-  /** `data-hr-id` → 文档内唯一的锚名；在全树占位后一次性分配，写树时只查表。 */
+  /** `data-hr-id` → anchor name unique within the document; allocated once after reserving ids across the whole tree, then only looked up while writing. */
   readonly anchorById: ReadonlyMap<string, string>;
   droppedImages: number;
 }
 
 /**
- * 生成锚：只保证"不与任何既有 `id` 冲突"，**不**保证全树唯一。源文档自带的重复 `id` 原样保留
- * （改写它会打断 `<a href="#x">` 的内部链接语义，而重复 `id` 本身就是非法 HTML——该修的是源文档）。
- * 后到者让位：`sec-1` 被占了就 `sec-1-2`、`sec-1-3`…按分配顺序取第一个空位。
+ * Anchor allocation: guaranteed only to "not collide with any existing `id`", **not** to be unique tree-wide. Duplicate
+ * `id`s shipped in the source document are kept as-is (rewriting them would break `<a href="#x">` internal links, and a
+ * duplicate `id` is already invalid HTML — the source document is what needs fixing).
+ * Latecomers yield: if `sec-1` is taken, `sec-1-2`, `sec-1-3`, … — the first free slot in allocation order wins.
  */
 const anchorOf = (base: string, used: Set<string>): string => {
   let candidate = base;
@@ -160,7 +162,7 @@ const anchorOf = (base: string, used: Set<string>): string => {
   return candidate;
 };
 
-/** 会被原样保留的 `id`（非标题/非容器的）先占位；等会儿生成的 `sec-…` 绕开它们走。 */
+/** `id`s that will be kept verbatim (non-heading, non-container) reserve their slots first, so generated `sec-…` anchors steer around them. */
 const reservedIdsOf = (node: HtmlElementNode, numbering: Numbering, used: Set<string>): void => {
   if (isDroppedNode(node, SANITIZE_PRESET) || hasExternalResource(node, SANITIZE_PRESET)) {
     return;
@@ -182,7 +184,7 @@ const chapterClassOf = (node: HtmlElementNode): Attribute => {
   return ["class", existing === "" ? "chapter" : `${existing} chapter`];
 };
 
-/** 同名属性不重复：加了 `id="sec-…"` 就摘掉源 `id`，加了 `chapter` 就摘掉源 `class`。 */
+/** No duplicate attributes: emitting `id="sec-…"` drops the source `id`; emitting `chapter` drops the source `class`. */
 const attributesOf = (
   node: HtmlElementNode,
   chapter: boolean,
@@ -203,13 +205,13 @@ const numberSpanOf = (number: string): HtmlElementNode => ({
 });
 
 /**
- * 带 `<span class="secnum">` 开头的标题 = 这棵子树曾被导出过。
- * 只认第一个子节点：序号永远在最前，作者自己写在正文里的 secnum 不该被动。
+ * A heading starting with `<span class="secnum">` = this subtree was exported before.
+ * Only the first child counts: the number is always frontmost, and a secnum the author wrote into body text must not be touched.
  */
 const isSecnumSpan = (node: HtmlNode | undefined): boolean =>
   node?.kind === "element" && node.tag === "span" && attributeOf(node, "class") === SECNUM_CLASS;
 
-/** 已有序号就换掉它而不是再套一层：对打印稿再 `export` 一次不该变成「1 1 季度复盘」。 */
+/** An existing number gets replaced, not wrapped: re-exporting a print sheet must not produce "1 1 <title>". */
 const withoutLeadingSecnum = (children: readonly HtmlNode[]): readonly HtmlNode[] =>
   isSecnumSpan(children[0]) ? children.slice(1) : children;
 
@@ -236,7 +238,7 @@ const rewrittenElementOf = (
   const children = rewrittenChildrenOf(node.children, state);
   return {
     kind: "element",
-    // 嵌套 `<article>` 降级为 `div`（属性原样留），产物里只许有一个 `<article>`。
+    // A nested `<article>` is demoted to `div` (attributes kept): the product may contain exactly one `<article>`.
     tag: node.tag === "article" ? "div" : node.tag,
     attrs: attributesOf(node, chapter, anchor),
     children:
@@ -259,9 +261,10 @@ const rewrittenChildrenOf = (
 };
 
 /**
- * 空稿判据是**文本级**而非标记级：`<section></section>` 序列化后非空，但纸面上什么都没有，
- * 放了它就等于用一个空 chapter 蒙过校验。用 parseHtml 走一遍文本节点，不用正则剥标签。
- * 零宽字符（`U+200B`/`U+FEFF`/`U+180E`）在纸面上不占位，`trim()` 又不认它们，故先剥再判。
+ * The empty-sheet check is **text-level**, not markup-level: `<section></section>` serializes to something non-empty yet
+ * prints nothing, and letting it pass would smuggle an empty chapter past validation. Walk the text nodes via parseHtml
+ * instead of stripping tags by regex.
+ * Zero-width characters (`U+200B`/`U+FEFF`/`U+180E`) take no room on paper and `trim()` does not see them, so strip them first.
  */
 const ZERO_WIDTH = /[\u200B\uFEFF\u180E]/gu;
 const hasText = (html: string): boolean =>
@@ -282,8 +285,8 @@ const articleBodyOf = (article: HtmlElementNode, state: RewriteState): string =>
 };
 
 export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
-  // 不注入 id：导出产物里只有源文档本来就有的 `data-hr-id`，
-  // 否则用户从打印稿拄下来的 id 拿去 `patch` 只会得到 `node_not_found`。
+  // No id injection: the export keeps only the `data-hr-id`s the source document already had —
+  // an id scraped off the print sheet would just earn `node_not_found` when fed to `patch`.
   const parsed = parseHtml(input.documentHtml);
   const depth = depthOf(parsed.root);
   if (depth > DEPTH_LIMIT) {
@@ -297,11 +300,11 @@ export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
     throw new HrError("no_article", "源文档里没有 <article>，无法导出打印稿");
   }
   const slides = attributeOf(article, KIND_ATTRIBUTE) === "slides";
-  // slides 不编号也不加 chapter 类：页标题不该带"1.2"前缀，目录页本来就没有。
+  // Slides get no numbers and no chapter class: page titles should not carry a "1.2" prefix, and there is no TOC page anyway.
   const numbering = slides ? numberingOf([]) : numberingOf(input.outline);
   const usedIds = new Set<string>();
   reservedIdsOf(article, numbering, usedIds);
-  // 条目与编号同源（都来自 outline 的顺序），故锚也只按条目分配一次。
+  // Entries and numbers share one source (outline order), so anchors are likewise allocated once per entry.
   const tocItems: readonly TocItem[] = numbering.entries.map((entry) => ({
     entry,
     anchor: anchorOf(`sec-${entry.number}`, usedIds),

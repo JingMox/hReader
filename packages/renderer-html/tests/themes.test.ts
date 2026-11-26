@@ -11,35 +11,35 @@ const diskTheme = readFileSync(
   "utf8",
 );
 
-describe("THEMES 注册表（只放元数据）", () => {
-  it("认得 atelier-editorial，且 id 与键一致", () => {
+describe("THEMES registry (metadata only)", () => {
+  it("should recognize atelier-editorial with id equal to its key", () => {
     expect(atelier?.id).toBe("atelier-editorial");
     expect(entries.every(([key, theme]) => theme.id === key)).toBe(true);
   });
 
-  it("bodyClass 是 visual-<id> 约定，label 非空", () => {
+  it("should follow the visual-<id> convention for bodyClass and keep a non-empty label", () => {
     expect(atelier?.bodyClass).toBe("visual-atelier-editorial");
     expect(atelier?.label.trim()).not.toBe("");
     expect(entries.every(([, theme]) => theme.bodyClass === `visual-${theme.id}`)).toBe(true);
   });
 
-  it("注册表里没有任何 CSS（单一真源是盘上的 theme.css）", () => {
+  it("should hold no CSS in the registry (the on-disk theme.css is the single source of truth)", () => {
     expect(Object.keys(atelier ?? {}).sort()).toEqual(["bodyClass", "id", "label"]);
     expect(entries.every(([, theme]) => !("css" in theme))).toBe(true);
   });
 
-  // 主题安全闸的负例（`</style>`、`url(http…)`、`@import`）在 core 的 31 例里，打印层不重复实现也不重复测。
-  it("盘上的主题里没有 @import（零外部引用的静态部分）", () => {
+  // The theme-safety negatives (`</style>`, `url(http…)`, `@import`) live in core's 31 cases; the print layer neither re-implements nor re-tests them.
+  it("should contain no @import in the on-disk themes (the static part of zero external references)", () => {
     expect(diskTheme).not.toContain("@import");
   });
 
-  it("主题的打印块在文件末尾，把暗色变量压成纸面日间值", () => {
+  it("should keep the print block at the end of each theme file, clamping dark variables to paper daylight values", () => {
     const printAt = diskTheme.lastIndexOf("@media print");
     expect(printAt).toBeGreaterThan(diskTheme.indexOf('data-hr-mode="dark"'));
     expect(diskTheme.slice(printAt)).toContain("--hr-bg: #ffffff;");
   });
 
-  it("盘上的主题 CSS 真实存在且不是骨架样式的副本", () => {
+  it("should have real on-disk theme CSS that is not a copy of the skeleton styles", () => {
     expect(diskTheme.length).toBeGreaterThan(1024);
     expect(PRINT_CSS).not.toContain(diskTheme.slice(0, 200));
   });

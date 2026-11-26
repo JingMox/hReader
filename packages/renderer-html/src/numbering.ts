@@ -1,30 +1,30 @@
-// 这层管：从 outline 派生章节号与目录项；不扫 DOM、不读文档。
+// Derives chapter numbers and TOC entries from the outline; does not scan the DOM or read documents.
 
 import type { OutlineNode } from "@hreader/core";
 
 export interface TocEntry {
   readonly id: string;
   readonly number: string;
-  /** 标题层级 1–4，直接进 `toc__item--h<level>`。 */
+  /** Heading level 1–4; feeds the `toc__item--h<level>` class directly. */
   readonly level: number;
   readonly text: string;
 }
 
 export interface Numbering {
   readonly entries: readonly TocEntry[];
-  /** `data-hr-id` → 章节号；只有编号标题在内，容器节点查不到就不该有 `id="sec-…"`。 */
+  /** `data-hr-id` → chapter number; only numbered headings appear, so a missing container node must not get an `id="sec-…"`. */
   readonly numberById: ReadonlyMap<string, string>;
-  /** outline 里的 `section` 容器：正文要给它们加 `chapter` 类（`header` 容器不产生 chapter）。 */
+  /** `section` containers from the outline: the body marks them with the `chapter` class (`header` containers produce no chapter). */
   readonly chapterIds: ReadonlySet<string>;
 }
 
-/** 只有 h1–h4 编号：h5/h6 已被 core 的 `OUTLINE_DEPTH_LIMIT` 挡在 outline 外，这里再兜一次。 */
+/** Only h1–h4 get numbers: h5/h6 are already kept out of the outline by core's `OUTLINE_DEPTH_LIMIT`; this is a second net. */
 const NUMBERED_TAGS: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4"]);
 
 interface Frame {
   readonly level: number;
   readonly number: string;
-  /** 已发出的子节点数。父帧被同级的后继节点共享，故这个计数必须可变。 */
+  /** Number of emitted children. A parent frame is shared by same-level successors, so this count must be mutable. */
   childCount: number;
   readonly parent: Frame | undefined;
 }
@@ -33,11 +33,11 @@ interface Collector {
   readonly entries: TocEntry[];
   readonly numberById: Map<string, string>;
   readonly chapterIds: Set<string>;
-  /** 顶层计数单独放：顶层没有父帧可挂，`undefined` 父帧和"父帧层级不足"必须走同一条判断。 */
+  /** Top-level count lives apart: top-level nodes have no parent frame, and an `undefined` parent must share the "no shallow-enough parent" check. */
   topCount: number;
 }
 
-/** 父帧 = 最近一个层级更浅的已发节点；越级（h2→h4）就停在 h2，所以不会出现 `.0.` 空槽。 */
+/** Parent frame = the nearest emitted node of a shallower level; a level skip (h2→h4) stops at the h2, so no `.0.` gap appears. */
 const ancestorOf = (level: number, cursor: Frame | undefined): Frame | undefined => {
   let ancestor = cursor;
   while (ancestor !== undefined && ancestor.level >= level) {
@@ -55,7 +55,7 @@ const nextCountOf = (parent: Frame | undefined, collector: Collector): number =>
   return parent.childCount;
 };
 
-/** 返回本层最后一个帧：容器不重置游标，否则"上一个标题"会被容器遮住（h2 之后隔一层 section 的 h3 会挂错父级）。 */
+/** Returns the last frame at this level: containers must not reset the cursor, or a container hides the previous heading (an h3 one section after an h2 would attach to the wrong parent). */
 const visit = (
   nodes: readonly OutlineNode[],
   cursor: Frame | undefined,
