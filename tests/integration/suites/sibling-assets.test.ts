@@ -93,6 +93,8 @@ const APP_JS = `window.__probe = true;
   catch (e) { window.__jsonStatus = String(e); }
   try { const r = await fetch('font.woff2'); window.__fontStatus = r.status; }
   catch (e) { window.__fontStatus = String(e); }
+  try { const r = await fetch('other.html'); window.__sibStatus = r.status; }
+  catch (e) { window.__sibStatus = String(e); }
   try { const r = await fetch('../secret.txt'); window.__esc = r.status; }
   catch (e) { window.__esc = String(e); }
 })();`;
@@ -196,12 +198,22 @@ describe.skipIf(skip !== undefined)("sibling-assets", () => {
     await writeFile(docPath(page, "img.png"), PNG);
     // Not a parseable font on purpose: the governed boundary is the fetch.
     await writeFile(docPath(page, "font.woff2"), Buffer.from("wOF2fake-font-bytes"));
+    // A second HTML in the same directory: opened below (registering it),
+    // yet still unservable to page A — caps are per-document.
+    await writeFile(docPath(page, "other.html"), "<!doctype html><p>other</p>", "utf8");
     // Traversal canary: one directory up from the granted dir.
     await writeFile(docPath(home.ws, "secret.txt"), SECRET, "utf8");
     daemon = await startServe({ file: DOC, workspace: home.ws, home: home.home });
     api = await connect(daemon.port, daemon.token);
     browser = await launchBrowser();
     await resolveFrameUrl();
+    // Open the sibling document too: under a per-directory cap this would
+    // silently grant page A read access to it.
+    const otherEntry = await fetch(`${baseUrl()}/s/${encodeURIComponent("page/other.html")}`, {
+      redirect: "manual",
+      headers: { cookie: api.cookie },
+    });
+    assertEq(otherEntry.status, 302, "sibling /s/ entry");
   });
 
   afterAll(async () => {
@@ -256,6 +268,17 @@ describe.skipIf(skip !== undefined)("sibling-assets", () => {
           `typeof window.__fontStatus === 'number' ? window.__fontStatus : false`,
         );
         assertEq(fontStatus, 200, "fetch font.woff2");
+        // The sibling document in page/ was opened via /s/ — but its HTML
+        // must stay unreadable to page A: caps are per-document, so
+        // 'other.html' under A's cap is a non-whitelist 404 (or a TypeError).
+        const sibSettled = await page.wait(`typeof window.__sibStatus !== 'undefined'`);
+        assert(sibSettled === true, "sibling fetch never settled");
+        const sib = await page.eval("window.__sibStatus");
+        assert(
+          (typeof sib === "string" && sib.startsWith("TypeError")) ||
+            (typeof sib === "number" && sib >= 400),
+          `sibling document was not refused: ${String(sib)}`,
+        );
         // '../secret.txt' normalizes to /f/secret.txt — a 2-segment path off
         // the capability route, where Origin:null is rejected 403 and the
         // response carries no ACAO. A CORS-mode fetch therefore sees either a
