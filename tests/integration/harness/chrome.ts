@@ -10,6 +10,7 @@ import {
   type Page as PuppeteerPage,
 } from "puppeteer-core";
 
+import { killPid, registerChild } from "../../leak-guard/registry.ts";
 import { assert } from "./check.ts";
 import { chromePath } from "./env.ts";
 
@@ -134,6 +135,12 @@ export const launchBrowser = async (): Promise<Browser> => {
     args: [...CHROME_ARGS],
     timeout: 30_000,
   });
+  // Puppeteer spawns Chrome detached: register it as a group leader so close()'s
+  // fallback and the exit sweeper can take the whole group down.
+  const chromeProc = browser.process();
+  if (chromeProc !== null) {
+    registerChild(chromeProc, { group: process.platform !== "win32", tag: "chrome" });
+  }
   return {
     open: async (url) => {
       const inner = await browser.newPage();
@@ -145,9 +152,10 @@ export const launchBrowser = async (): Promise<Browser> => {
     close: async () => {
       const proc = browser.process();
       await browser.close().catch(() => undefined);
-      // close 卡死/失败时兜底：Chrome 绝不能留给下一个套件。
+      // If close() hangs or fails, kill the whole group: Chrome must never be
+      // handed over to the next suite.
       if (proc !== null && proc.exitCode === null && proc.signalCode === null) {
-        proc.kill("SIGKILL");
+        killPid(proc.pid ?? -1, process.platform !== "win32");
       }
     },
   };

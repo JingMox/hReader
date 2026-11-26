@@ -138,7 +138,7 @@ describe.skipIf(skip !== undefined)("permissions-journey", () => {
   afterAll(async () => {
     await browser.close();
     await daemon.stop();
-    killAllTracked();
+    await killAllTracked();
     home.cleanup();
   });
 

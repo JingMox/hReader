@@ -7,6 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { killPid, registerChild } from "../../../tests/leak-guard/registry.ts";
+
 const REPO = join(import.meta.dirname, "..", "..", "..");
 const ENTRY = join(REPO, "packages", "cli", "src", "main.ts");
 const DOC =
@@ -41,8 +43,8 @@ const portClosed = (port: number): Promise<boolean> =>
     });
   });
 
-const spawnServe = (): ReturnType<typeof spawn> =>
-  spawn(
+const spawnServe = (): ReturnType<typeof spawn> => {
+  const child = spawn(
     process.execPath,
     [
       "--experimental-strip-types",
@@ -54,14 +56,21 @@ const spawnServe = (): ReturnType<typeof spawn> =>
       "--json",
       "--workspace",
       workspace,
+      // If the spawning process dies the daemon must reap itself — no relying on
+      // a teardown hook that may never run.
+      "--exit-with-parent",
     ],
     {
       cwd: workspace,
       env: { ...process.env, HOME: home, HR_DEBUG: "" },
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 20_000,
+      detached: process.platform !== "win32",
     },
   );
+  registerChild(child, { group: process.platform !== "win32" });
+  return child;
+};
 
 const firstLineOf = (child: ReturnType<typeof spawn>): Promise<string> =>
   new Promise<string>((resolve, reject) => {
@@ -105,8 +114,14 @@ const startServe = async (): Promise<{
       resolve(code);
     }),
   );
-  const line = await firstLineOf(child);
-  return { child, served: servedOf(line, child.pid ?? 0), exit };
+  try {
+    const line = await firstLineOf(child);
+    return { child, served: servedOf(line, child.pid ?? 0), exit };
+  } catch (error: unknown) {
+    // Failed start-up must reap the spawned process before rethrowing.
+    killPid(child.pid ?? -1, process.platform !== "win32", "SIGKILL");
+    throw error;
+  }
 };
 
 describe("hr serve · 生命周期", () => {
@@ -164,6 +179,7 @@ describe("hr serve · 生命周期（续）", () => {
         timeout: 20_000,
       },
     );
+    registerChild(child);
     const out = await new Promise<string>((resolve) => {
       let text = "";
       child.stdout.on("data", (chunk: Buffer) => {

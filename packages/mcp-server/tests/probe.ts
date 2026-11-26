@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { registerChild } from "../../../tests/leak-guard/registry.ts";
 import { isRecord } from "./harness";
 
 export const PACKAGE_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -109,6 +110,7 @@ export const exitCodeOf = async (
 export const probeOf = async (entry: string, options: ProbeOptions = {}): Promise<Probe> => {
   const { lines = HANDSHAKE, expected = HANDSHAKE_COUNT, cwd = PACKAGE_ROOT } = options;
   const child = spawn(process.execPath, [entry], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+  registerChild(child);
   const chunks: string[] = [];
   const errors: string[] = [];
   child.stdout.setEncoding("utf8");
@@ -261,6 +263,7 @@ export const oversizedProbeOf = async (entry: string, frame: string): Promise<Ov
     cwd: PACKAGE_ROOT,
     stdio: ["pipe", "pipe", "pipe"],
   });
+  registerChild(child);
   const chunks: string[] = [];
   const errors: string[] = [];
   child.stdout.setEncoding("utf8");

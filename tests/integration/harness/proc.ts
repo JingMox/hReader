@@ -4,6 +4,8 @@ import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 
+import { killPid, registerChild } from "../../leak-guard/registry.ts";
+
 export interface RunResult {
   /** `null` 表示被信号杀死（那时看 `signal`）。 */
   readonly code: number | null;
@@ -29,7 +31,7 @@ export const run = (
   options: RunOptions = {},
 ): Promise<RunResult> =>
   new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       file,
       [...args],
       {
@@ -53,7 +55,9 @@ export const run = (
           stderr,
         });
       },
-    ).stdin?.end(options.input);
+    );
+    registerChild(child);
+    child.stdin?.end(options.input);
   });
 
 /** shell 管道路线（`| head`、`set -e` 语义只有真 shell 才测得出来）。 */
@@ -84,7 +88,11 @@ export const live = (file: string, args: readonly string[], options: RunOptions 
     cwd: options.cwd,
     env: { ...process.env, ...options.env },
     stdio: [options.stdin === true ? "pipe" : "ignore", "pipe", "pipe"],
+    // Lead its own process group: stopProc/killAllTracked/registry sweeps can kill
+    // the whole group via `-pid`, taking any grandchildren down with it.
+    detached: process.platform !== "win32",
   });
+  registerChild(proc, { group: process.platform !== "win32" });
   const pid = proc.pid ?? -1;
   let outText = "";
   let errText = "";
@@ -178,11 +186,72 @@ const track = (proc: ChildProcess): void => {
   });
 };
 
-/** 套件收尾的最后保险：把还在喘气的子进程全部 SIGKILL（SIGTERM 赖不掉的也算孤儿）。 */
-export const killAllTracked = (): void => {
-  for (const proc of tracked) {
-    if (!proc.killed) proc.kill("SIGKILL");
+const STOP_GRACE_MS = 3_000;
+const KILL_SETTLE_MS = 5_000;
+
+const exited = (proc: ChildProcess): boolean => proc.exitCode !== null || proc.signalCode !== null;
+
+const waitExit = (proc: ChildProcess, deadline: number): Promise<void> =>
+  new Promise((resolve) => {
+    if (exited(proc)) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(resolve, Math.max(0, deadline - Date.now()));
+    proc.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+
+/**
+ * Canonical stop for a long-lived child: SIGTERM the group, grace, SIGKILL the
+ * group, then wait for real exit. Firing a signal without waiting, or killing a
+ * single pid without its group, are both leaks that already happened.
+ */
+export const stopProc = async (lp: LiveProc, graceMs = STOP_GRACE_MS): Promise<number | null> => {
+  const pid = lp.pid;
+  const group = process.platform !== "win32";
+  if (!exited(lp.proc) && lp.alive()) {
+    killPid(pid, group, "SIGTERM");
+    const settled = await Promise.race([
+      lp.exited.then(() => true),
+      new Promise<boolean>((resolve) => {
+        setTimeout(() => {
+          resolve(false);
+        }, graceMs);
+      }),
+    ]);
+    if (!settled) killPid(pid, group, "SIGKILL");
   }
+  return await Promise.race([
+    lp.exited,
+    new Promise<null>((resolve) => {
+      setTimeout(() => {
+        resolve(null);
+      }, KILL_SETTLE_MS);
+    }),
+  ]);
+};
+
+/**
+ * Suite teardown's last line of defense: SIGTERM every surviving child's group,
+ * grace, SIGKILL, and wait for real exit before returning — signals without the
+ * wait leave daemons alive past afterAll, sometimes for good.
+ */
+export const killAllTracked = async (): Promise<void> => {
+  const procs = [...tracked];
+  const group = process.platform !== "win32";
+  for (const proc of procs) {
+    if (!exited(proc) && proc.pid !== undefined) killPid(proc.pid, group, "SIGTERM");
+  }
+  const graceDeadline = Date.now() + STOP_GRACE_MS;
+  await Promise.all(procs.map((proc) => waitExit(proc, graceDeadline)));
+  for (const proc of procs) {
+    if (!exited(proc) && proc.pid !== undefined) killPid(proc.pid, group, "SIGKILL");
+  }
+  const settleDeadline = Date.now() + KILL_SETTLE_MS;
+  await Promise.all(procs.map((proc) => waitExit(proc, settleDeadline)));
 };
 
 export const pidAlive = (pid: number): boolean => {

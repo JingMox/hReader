@@ -84,7 +84,7 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
     await browser.close();
     await mcp.close();
     await daemon.stop();
-    killAllTracked();
+    await killAllTracked();
     home.cleanup();
   });
 

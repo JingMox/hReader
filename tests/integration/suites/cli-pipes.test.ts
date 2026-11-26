@@ -21,8 +21,8 @@ beforeAll(async () => {
   );
 });
 
-afterAll(() => {
-  killAllTracked();
+afterAll(async () => {
+  await killAllTracked();
   home.cleanup();
 });
 

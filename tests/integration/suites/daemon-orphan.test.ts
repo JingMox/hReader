@@ -1,6 +1,9 @@
-// 这层管：泄漏回归——经集成 harness 起的 daemon，在启动它的进程消失后必须自己退出。
-// 复现链：测试进程 → 中间启动器（扮演 vitest worker）→ `hr serve`；SIGKILL 启动器等价于
-// worker 被杀/崩溃/被 Ctrl+C 打断。靠 until 轮真条件，不猜毫秒。
+// This layer: leak regression — a serve daemon started through the integration
+// harness must reap itself once the process that launched it is gone.
+// Repro chain: test process → killable launcher (stands in for the vitest
+// worker) → `hr serve`; SIGKILLing the launcher is exactly a worker being
+// killed / crashing / an interrupted run. Real conditions are polled via
+// `until`; no timing guesses.
 
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";
@@ -16,9 +19,9 @@ import { pidAlive } from "../harness/proc.ts";
 
 const DOC = '<!doctype html><html><body><article data-hr-id="a"><p>x</p></article></body></html>';
 
-/** 启动器打出 `LAUNCHED:<pid>` 的等待上限（dist serve 启动是秒级以下，20s 只是兜底）。 */
+/** Ceiling for the launcher to print `LAUNCHED:<pid>` (dist serve starts sub-second; 20s is just a bound). */
 const LAUNCH_TIMEOUT_MS = 20_000;
-/** 看门狗 1s 一轮：从 SIGKILL 到 daemon 自尽应远小于此上限。 */
+/** The watchdog polls once per second: SIGKILL → daemon suicide should land far below this. */
 const REAP_TIMEOUT_MS = 15_000;
 
 const daemonPidOf = (home: string): number => {
@@ -30,7 +33,7 @@ const daemonPidOf = (home: string): number => {
   return typeof pid === "number" ? pid : -1;
 };
 
-/** 起"中间启动器"：它自己 import 真 harness 的 startServe，然后装死挂住——就像一个跑中的 worker。 */
+/** Spawn the in-between launcher: it imports the real harness startServe and then idles — like a busy worker. */
 const launchServe = (
   workspace: string,
   home: string,
@@ -74,23 +77,21 @@ describe("daemon orphan reaping", () => {
       expect(pidAlive(daemonPid)).toBe(true);
       expect(daemonPidOf(home)).toBe(daemonPid);
 
-      // worker 被 SIGKILL 的场景：launcher 没有任何机会跑 finally，daemon 只能靠看门狗自救。
+      // The worker-SIGKILL scenario: the launcher gets zero chance to run any
+      // finally, so only the daemon's own watchdog can save the machine.
       launcher.kill("SIGKILL");
       await new Promise((resolve) => {
         launcher.once("exit", resolve);
       });
 
-      const reaped = await until(
-        () => !pidAlive(daemonPid),
-        (gone) => gone,
-        {
-          timeoutMs: REAP_TIMEOUT_MS,
-        },
-      );
+      const reaped = await until(() => !pidAlive(daemonPid), (gone) => gone, {
+        timeoutMs: REAP_TIMEOUT_MS,
+      });
       expect(reaped).toBe(true);
     } finally {
       if (launcher.exitCode === null && launcher.signalCode === null) launcher.kill("SIGKILL");
-      // 失败路径也要收掉这个 daemon：测试断言红归红，机器上不许真留孤儿。
+      // Even on a red assertion the daemon must be collected: a failed test is
+      // no excuse to leave a real orphan on the machine.
       if (daemonPid > 0 && pidAlive(daemonPid)) process.kill(daemonPid, "SIGKILL");
       rmSync(root, { recursive: true, force: true });
     }

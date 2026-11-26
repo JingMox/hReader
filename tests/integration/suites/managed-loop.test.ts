@@ -59,7 +59,7 @@ describe.skipIf(skip !== undefined)("managed-loop", () => {
     await browser.close();
     await mcp.close();
     await daemon.stop();
-    killAllTracked();
+    await killAllTracked();
     home.cleanup();
   });
 

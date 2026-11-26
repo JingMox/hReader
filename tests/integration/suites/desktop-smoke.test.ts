@@ -61,8 +61,8 @@ describe.skipIf(skip !== undefined)("desktop-smoke", () => {
     );
   });
 
-  afterAll(() => {
-    killAllTracked();
+  afterAll(async () => {
+    await killAllTracked();
     for (const pid of daemonPids()) {
       assert(!pidAlive(pid), `孤儿 hr serve 进程残留：pid=${String(pid)}`);
     }
