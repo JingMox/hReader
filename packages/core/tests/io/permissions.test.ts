@@ -406,6 +406,41 @@ describe("permissions · 表污染回归", () => {
   });
 });
 
+describe("permissions · hostile key names (__proto__/prototype slots)", () => {
+  it("should persist and read back a grant for a doc literally named __proto__", async () => {
+    // `__proto__` is a legal file name: it must land as a plain own property.
+    // Written through the prototype slot it is dropped by JSON serialization.
+    const world = worldOf({}, ["__proto__"]);
+
+    await world.write({ scripts: true, network: true }, "__proto__");
+
+    expect(await world.read(DOC_BYTES, "__proto__")).toEqual({
+      scripts: true,
+      network: true,
+    });
+    const table: unknown = JSON.parse(world.fs.textAt(TRUST_PATH));
+    expect(Object.hasOwn(table as object, "__proto__")).toBe(true);
+  });
+
+  it("should not leak a stored __proto__ entry into other docs' reads", async () => {
+    // Attack surface: a hostile workspace can ship trust.json carrying
+    // `"__proto__":{grant}`. It may only be the grant of the doc named
+    // `__proto__`; other docs (including names like `scripts` that collide
+    // with prototype slots) must never inherit it.
+    const world = worldOf(
+      { [TRUST_PATH]: '{"__proto__":{"scripts":true,"network":true}}' },
+      [DOC, "scripts", "__proto__"],
+    );
+
+    expect(await world.read()).toEqual(DENIED);
+    expect(await world.read(DOC_BYTES, "scripts")).toEqual(DENIED);
+    expect(await world.read(DOC_BYTES, "__proto__")).toEqual({
+      scripts: true,
+      network: true,
+    });
+  });
+});
+
 describe("effectiveOf · 3×3×2×2 合成矩阵", () => {
   const modes: readonly PermissionMode[] = ["allow", "deny", "per-doc"];
   const grants: readonly DocGrant[] = [
