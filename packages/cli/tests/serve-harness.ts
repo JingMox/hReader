@@ -51,7 +51,7 @@ const addressOf = (line: string): { url: string; port: number; token: string } =
   }
   // `serving <workspace> on http://127.0.0.1:<port>/ (pid <n>)`
   const url = /on (http:\/\/\S+)/u.exec(line)?.[1] ?? "";
-  if (url === "") throw new Error(`serve 没有打印地址：${line}`);
+  if (url === "") throw new Error(`serve did not print an address: ${line}`);
   return { url, port: Number(/127\.0\.0\.1:(\d+)/u.exec(url)?.[1] ?? "0"), token: "" };
 };
 
@@ -84,7 +84,9 @@ const firstLineOf = (child: ServeChild): Promise<{ url: string; port: number; to
     let buffered = "";
     let stderr = "";
     const timer = setTimeout(() => {
-      reject(new Error(`serve 在 ${String(START_TIMEOUT_MS)}ms 内没打印地址：${stderr}`));
+      reject(
+        new Error(`serve did not print an address within ${String(START_TIMEOUT_MS)}ms: ${stderr}`),
+      );
     }, START_TIMEOUT_MS);
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
@@ -95,7 +97,7 @@ const firstLineOf = (child: ServeChild): Promise<{ url: string; port: number; to
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      reject(new Error(`serve 提前退出（code ${String(code)}）：${stderr}`));
+      reject(new Error(`serve exited early (code ${String(code)}): ${stderr}`));
     });
     child.stdout.on("data", (chunk: string) => {
       buffered += chunk;

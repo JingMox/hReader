@@ -54,7 +54,7 @@ afterAll(async () => {
 const recordOf = (raw: string): Readonly<Record<string, unknown>> => {
   const value: unknown = JSON.parse(raw);
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`不是对象：${raw}`);
+    throw new Error(`not an object: ${raw}`);
   }
   return { ...value };
 };

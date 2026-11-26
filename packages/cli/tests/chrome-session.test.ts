@@ -35,7 +35,7 @@ const until = async (ready: () => boolean, what: string): Promise<void> => {
   while (!ready() && Date.now() < deadline) {
     await sleepOf(1);
   }
-  if (!ready()) throw new Error(`等「${what}」超时`);
+  if (!ready()) throw new Error(`timed out waiting for "${what}"`);
 };
 
 const renderWithOf = (setup: SessionSetup, timeoutMs = 1000): Promise<Uint8Array> =>

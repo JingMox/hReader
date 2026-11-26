@@ -54,7 +54,7 @@ const at = (root: unknown, path: string): unknown =>
 
 const textAt = (root: unknown, path: string): string => {
   const value = at(root, path);
-  if (typeof value !== "string") throw new Error(`录像缺少字段：${path}`);
+  if (typeof value !== "string") throw new Error(`recording missing field: ${path}`);
   return value;
 };
 

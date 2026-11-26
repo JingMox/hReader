@@ -41,7 +41,9 @@ const wire = (
   let stderr = "";
   const timer = setTimeout(() => {
     child.kill("SIGKILL");
-    done.reject(new Error(`CLI 子进程超过 ${String(timeoutMs)}ms 未退出：${args.join(" ")}`));
+    done.reject(
+      new Error(`CLI subprocess did not exit within ${String(timeoutMs)}ms: ${args.join(" ")}`),
+    );
   }, timeoutMs);
 
   const out = child.stdout;
@@ -89,7 +91,9 @@ export const runCli = async (
 /** Assert no ANSI along the way: every case passes through this channel, so no omission escapes. */
 export const expectNoAnsi = (result: CliResult): void => {
   if (result.stdout.includes("\u001B") || result.stderr.includes("\u001B")) {
-    throw new Error(`输出含 ANSI 转义：stdout=${JSON.stringify(result.stdout.slice(0, 120))}`);
+    throw new Error(
+      `output contains ANSI escapes: stdout=${JSON.stringify(result.stdout.slice(0, 120))}`,
+    );
   }
 };
 
@@ -108,7 +112,7 @@ export const withTempDir = async <T>(
       run(dir),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
-          reject(new Error(`withTempDir 超过 ${String(timeoutMs)}ms 未完成`));
+          reject(new Error(`withTempDir did not finish within ${String(timeoutMs)}ms`));
         }, timeoutMs);
       }),
     ]);
@@ -122,7 +126,9 @@ export const withTempDir = async <T>(
 export const parseJsonLine = (text: string): unknown => {
   const newlines = text.split("\n").length - 1;
   if (newlines !== 1 || !text.endsWith("\n")) {
-    throw new Error(`--json 输出必须恰好 1 个换行：${JSON.stringify(text.slice(0, 200))}`);
+    throw new Error(
+      `--json output must have exactly 1 newline: ${JSON.stringify(text.slice(0, 200))}`,
+    );
   }
   return JSON.parse(text);
 };

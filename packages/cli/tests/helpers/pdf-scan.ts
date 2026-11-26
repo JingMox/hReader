@@ -49,7 +49,8 @@ const textOf = (bytes: Uint8Array): string => new TextDecoder("latin1").decode(b
 
 const requireOf = (objects: PdfObjects, id: number, what: string): string => {
   const body = objects.get(id);
-  if (body === undefined) throw new Error(`PDF 里找不到 ${what} 对象 ${String(id)} 0 R`);
+  if (body === undefined)
+    throw new Error(`cannot find ${what} object ${String(id)} 0 R in the PDF`);
   return body;
 };
 
@@ -140,7 +141,7 @@ const itemsOf = (
   const nodes: PdfOutlineNode[] = [];
   let currentId = firstId;
   while (currentId !== undefined) {
-    const body = requireOf(context.objects, currentId, "大纲条目");
+    const body = requireOf(context.objects, currentId, "outline entry");
     const declared = REF(body, "Parent");
     if (declared !== parentId) {
       throw new Error(

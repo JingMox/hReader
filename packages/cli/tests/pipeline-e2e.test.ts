@@ -20,7 +20,8 @@ const snippet = (component: string): string => {
   const heading = markdown.indexOf(`\`${component}\``);
   const fence = markdown.indexOf("```html\n", heading);
   const end = markdown.indexOf("```", fence + 8);
-  if (heading < 0 || fence < 0 || end < 0) throw new Error(`references 里没有 ${component} 片段`);
+  if (heading < 0 || fence < 0 || end < 0)
+    throw new Error(`no ${component} fragment in references`);
   return markdown.slice(fence + 8, end);
 };
 

@@ -47,7 +47,7 @@ const jsonOf = (text: string): unknown => JSON.parse(text.trim());
 /** Read a string field without a type assertion (`consistent-type-assertions` forbids `as`): fail right here if it is not a string. */
 const textOf = (value: unknown): string => {
   if (typeof value !== "string") {
-    throw new Error(`期望字符串，收到 ${typeof value}`);
+    throw new Error(`expected a string, got ${typeof value}`);
   }
   return value;
 };

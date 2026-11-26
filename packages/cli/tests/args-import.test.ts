@@ -29,7 +29,7 @@ describe("parseArgs · import", () => {
     ] as const) {
       const parsed = parse(["import", file]);
       if (!parsed.ok || parsed.intent.kind !== "import") {
-        throw new Error(`import ${file} 应解析为 import intent`);
+        throw new Error(`import ${file} should parse to an import intent`);
       }
       expect(parsed.intent.out).toBe(out);
     }

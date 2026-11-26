@@ -52,7 +52,8 @@ const codeTableOf = (source: string): ReadonlyMap<string, number> => {
   const entries = new Map<string, number>();
   for (const match of body.matchAll(/^\s{2}([a-z][a-z0-9_]*):\s*(EXIT_[A-Z_]+),/gmu)) {
     const value = constants.get(String(match[2]));
-    if (value === undefined) throw new Error(`EXIT_CODES 引用了未定义的常量：${String(match[2])}`);
+    if (value === undefined)
+      throw new Error(`EXIT_CODES references an undefined constant: ${String(match[2])}`);
     entries.set(String(match[1]), value);
   }
   return entries;

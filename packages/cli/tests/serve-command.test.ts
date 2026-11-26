@@ -286,9 +286,9 @@ const serveIntentOf = (workspace: string): ServeIntent => {
     ["serve", "doc.html", "--port", "0", "--json", "--workspace", workspace],
     workspace,
   );
-  if (!parsed.ok) throw new Error(`转发未通过：${parsed.message}`);
+  if (!parsed.ok) throw new Error(`forwarded parse failed: ${parsed.message}`);
   const { intent } = parsed;
-  if (intent.kind !== "serve") throw new Error(`意图不是 serve：${intent.kind}`);
+  if (intent.kind !== "serve") throw new Error(`intent is not serve: ${intent.kind}`);
   return intent;
 };
 

@@ -29,7 +29,8 @@ const CASES: readonly {
 /** `<p>` may not contain `table`/`div`/`ul`: a correct split means a same-name block sits right after the p and is not inside it. */
 const expectSplitOutOfParagraph = (html: string, blockTag: string): string => {
   const paragraph = /<p data-hr-id="([^"]+)">前<\/p>/u.exec(html);
-  if (paragraph === null) throw new Error(`规范化之后没有“只含『前』的 <p>”：${html}`);
+  if (paragraph === null)
+    throw new Error(`after normalize no <p> containing only "前" was found: ${html}`);
   const paragraphId = String(paragraph[1]);
   // A same-name block right after `<p …>前</p>` = it is the p's **sibling** (inside p this fragment could never appear).
   expect(html).toContain(`</p><${blockTag} data-hr-id=`);

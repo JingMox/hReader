@@ -5,8 +5,8 @@ import { CWD, expectFailure, parse } from "./args-helpers";
 
 const okOf = (argv: readonly string[]) => {
   const result = parse(argv);
-  if (!result.ok) throw new Error(`预期解析成功：${result.message}`);
-  if (result.intent.kind !== "pdf") throw new Error(`预期 pdf intent：${result.intent.kind}`);
+  if (!result.ok) throw new Error(`expected parse to succeed: ${result.message}`);
+  if (result.intent.kind !== "pdf") throw new Error(`expected a pdf intent: ${result.intent.kind}`);
   return result.intent;
 };
 

@@ -33,7 +33,7 @@ export const seed = (dir: string, name = "a.html", html = DOC): string => {
  */
 export const idOfTag = (html: string, tag: string): string => {
   const id = new RegExp(`<${tag} data-hr-id="(hr-[0-9a-f]{8})"`, "u").exec(html)?.[1];
-  if (id === undefined) throw new Error(`规范化之后 <${tag}> 没有 data-hr-id`);
+  if (id === undefined) throw new Error(`after normalize <${tag}> has no data-hr-id`);
   return id;
 };
 
