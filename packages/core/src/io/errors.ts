@@ -10,7 +10,7 @@ import type { FileSystem } from "./ports";
  */
 export const codeOf = (error: unknown): unknown => Reflect.get(Object(error), "code");
 
-/** `ENOENT` 是"输入指错了"，其余才算 io 故障：两者必须给不同 code，测试员才好断言。 */
+/** `ENOENT` means "the input points at the wrong path", everything else is an io failure: the two must carry different codes so tests can tell them apart. */
 export const isMissing = (error: unknown): boolean => codeOf(error) === "ENOENT";
 
 /** `EEXIST` 是锁的"已被别人持有"，不是故障：调用方要据此重试。 */

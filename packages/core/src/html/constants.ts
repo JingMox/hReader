@@ -202,7 +202,7 @@ interface HtmlCommentNode {
 export type HtmlNode =
   HtmlDocumentNode | HtmlDoctypeNode | HtmlElementNode | HtmlTextNode | HtmlCommentNode;
 
-/** 闭合集合：新增值必须走卡片修订，禁止用自由字符串绕道。 */
+/** Closed set: adding a value is a deliberate contract change here — no free-string detours. */
 export type DiagnosticCode =
   | "unclosed_tag"
   | "misnested_tag"

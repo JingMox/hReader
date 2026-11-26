@@ -238,7 +238,7 @@ describe("hr_outline · 结构 · 续 3 · 续 1", () => {
   // 同一缺陷的现状钉子：修好后这条会红，提醒把上一条 `it.fails` 翻牌。
 });
 describe("hr_outline · 结构 · 续 4", () => {
-  it("should expose the current last-article selection (D3 pin)", () => {
+  it("should expose the current last-article selection (KD-04 pin)", () => {
     const outline = outlineOf(
       `${articleOf(heading(1, "a1", "第一"))}${articleOf(heading(1, "a2", "第二"))}`,
     );

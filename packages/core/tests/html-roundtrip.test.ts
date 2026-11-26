@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseHtml, serializeHtml } from "../src/index";
 
-/** 卡片要求的不变式：树在 tag/attrs/children 上与首轮解析深度相等。 */
+/** The required invariant: the tree must equal the first parse, deeply, on tag/attrs/children. */
 const roundTripRoot = (html: string): unknown => parseHtml(serializeHtml(parseHtml(html))).root;
 
 const expectStable = (html: string): void => {

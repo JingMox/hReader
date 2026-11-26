@@ -83,8 +83,10 @@ describe("hr_outline · 三级收敛（最严一级）", () => {
 });
 
 describe("hr_outline · 层级继承", () => {
-  // 现状（已登记 D9）：无标题的内层 section 继承父级 level=2，但 text 是空串（不继承父的标题文本）。
-  // 卡片只写"section 取首个标题"，未规定"一个标题都没有"时是否继承父文本，故按实现钉住。
+  // Pinned current behavior: an inner section with no heading of its own inherits the
+  // parent's level=2 but an empty text (it does not inherit the parent's heading text).
+  // The spec only says "a section takes its first heading" and is silent on whether a
+  // heading-less section inherits the parent's text, so this pins the implementation as-is.
   it("should let an inner untitled section inherit the outer section's level", () => {
     const outline = outlineOf(
       article(

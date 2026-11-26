@@ -136,9 +136,11 @@ describe("toDocumentModel · 空白归一", () => {
     expect(shapeOf(derive("<article><p>  a  </p><p> b</p></article>"))).toEqual(["p:a", "p:b"]);
   });
 
-  // 规格没写死 NBSP/全角空格：卡片只写"空白归一"。按测试员口径，只压 ASCII 空白、不改字符类
-  // 才算"归一"，所以这条按该口径写，当前实现会红 —— 登记为 D2（`\s+`/u 会连 NBSP、U+3000、
-  // U+FEFF 一起压成 ASCII 空格）。修好之前 `it.fails` 把它当"已知裂缝"看着，不许删。
+  // The spec does not pin NBSP/ideographic space — it only says "whitespace folds". Under
+  // the strict reading, folding only ASCII whitespace without widening the character class
+  // is what counts as normalization, and this case follows that reading — the current
+  // implementation is red (`\s+`/u folds NBSP, U+3000 and U+FEFF into ASCII space too).
+  // Until the fix lands, `it.fails` watches it as a known crack; do not delete.
   // KD-01
   it.fails("should keep NBSP and ideographic space (only ASCII whitespace is folded)", () => {
     expect(shapeOf(derive("<article><p>a\u00A0b\u3000c</p></article>"))).toEqual([
@@ -146,7 +148,7 @@ describe("toDocumentModel · 空白归一", () => {
     ]);
   });
 
-  it("should currently fold NBSP and U+3000 into one ASCII space (D2, pinned as-is)", () => {
+  it("should currently fold NBSP and U+3000 into one ASCII space (KD-01, pinned as-is)", () => {
     expect(shapeOf(derive("<article><p>a\u00A0b\u3000c</p></article>"))).toEqual(["p:a b c"]);
     expect(shapeOf(derive("<article><p>a\u00A0\u00A0b</p></article>"))).toEqual(["p:a b"]);
   });

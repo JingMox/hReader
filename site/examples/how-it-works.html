@@ -359,9 +359,10 @@ article[data-hr-id] > header p {
   }
 }
 
-/* M4.3 打印稿：纸面永远是日间配色（AC-6「深色变量覆盖」）。
-   打印稿是独立文件，读者的 `prefers-color-scheme: dark` 与 `data-hr-mode` 都可能命中，
-   故这里用比上面三条路径更高的选择器优先级强制回落成日间值；只影响 print 介质。 */
+/* Print output always renders in the day palette.
+   A print document is a standalone file, so the reader's `prefers-color-scheme: dark`
+   and `data-hr-mode` can both hit; the selectors below outrank the three paths above
+   and force the day values back. Only affects the print medium. */
 @media print {
   :root,
   :root[data-hr-mode="dark"],
