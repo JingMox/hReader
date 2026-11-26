@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { HrError } from "../../src/hr-error";
+import { createCapabilityBook } from "../../src/server/capability";
 import type { HandlerContext } from "../../src/server/handlers";
 import { assetReply, indexReply, themeReply, themesReply } from "../../src/server/static";
 import { nodeStyleDeps } from "../../src/style";
@@ -54,6 +55,7 @@ const ctxOf = (appDir: string): HandlerContext => ({
   home: fx.home,
   deps: nodeStyleDeps(fx.workspace),
   styleDeps: { ...nodeStyleDeps(fx.workspace), home: fx.home, stylesRoot: fx.stylesRoot },
+  caps: createCapabilityBook(),
 });
 
 describe("indexReply · 构建产物与未构建回退", () => {

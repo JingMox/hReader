@@ -110,10 +110,14 @@ describe("5xx 广播成 error 事件", () => {
     try {
       await sse.waitFor(1);
       chmodSync(join(boot.workspace, "doc.html"), 0o000);
-      const failed = await httpCall(boot.port, {
+      // The doc is already active, so `/s/` only redirects — the unreadable
+      // bytes surface as 500 on the `/f/` hop that actually serves the page.
+      const entry = await httpCall(boot.port, {
         path: "/s/doc.html",
         headers: { cookie: cookieOf(boot.token) },
       });
+      const location = String(entry.headers["location"] ?? "");
+      const failed = await httpCall(boot.port, { path: location });
       // 5xx 由 fs.chmod 触发，watcher 可能额外插 `doc.error` / `library.changed`：只等 `error` 事件，不数帧。
       const errorFrame = await sse.waitForEvent("error");
       const errorFrames = sse.frames.filter((frame) => frame.event === "error");

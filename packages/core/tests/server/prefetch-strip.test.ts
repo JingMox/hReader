@@ -1,5 +1,5 @@
 // 这层管：DNS 预取/预连接残余通道的服务层收口——
-//   1. 所有 `/s/` 响应都带 `X-DNS-Prefetch-Control: off`（托管与外来一视同仁）；
+//   1. 所有 `/f/` 页面响应（`/s/` 302 的落点）都带 `X-DNS-Prefetch-Control: off`（托管与外来一视同仁）；
 //   2. 联网关时下发的 HTML 摘掉 `<link rel=dns-prefetch|preconnect|prefetch|prerender|modulepreload>`；
 //   3. 只改响应字节，磁盘上的文档原样；
 //   4. 联网开时 `<link>` 原文下发（联网是全包开关）。
@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { stripPrefetchLinks } from "../../src/html/prefetch";
-import { cookieOf, defaultSeed, httpCall, jsonBodyOf, withServer } from "./harness";
+import { defaultSeed, docPageOf, httpCall, jsonBodyOf, withServer } from "./harness";
 import { withPost } from "./wire";
 
 const PREFETCH_DOC = [
@@ -31,6 +31,7 @@ const foreignSeed =
     writeFileSync(join(workspace, "doc.html"), html, "utf8");
   };
 
+// The page bytes now come from `/f/`: `/s/` 302s there and `docPageOf` follows.
 const serveDoc = (
   port: number,
   token: string,
@@ -40,13 +41,11 @@ const serveDoc = (
   readonly headers: Readonly<Record<string, string | string[] | undefined>>;
   readonly body: string;
 }> =>
-  httpCall(port, { path: `/s/${docId}`, headers: { cookie: cookieOf(token) } }).then(
-    (response) => ({
-      status: response.status,
-      headers: response.headers,
-      body: response.body,
-    }),
-  );
+  docPageOf(port, token, docId).then((response) => ({
+    status: response.status,
+    headers: response.headers,
+    body: response.body,
+  }));
 
 const postPermissions = (
   port: number,
@@ -60,7 +59,7 @@ const postPermissions = (
     body: JSON.stringify(patch),
   }).then((response) => ({ status: response.status, body: jsonBodyOf(response) }));
 
-describe("/s/ responses · X-DNS-Prefetch-Control", () => {
+describe("/f/ page responses · X-DNS-Prefetch-Control", () => {
   it("should send X-DNS-Prefetch-Control off for a managed doc", async () => {
     await withServer(async (ctx) => {
       const res = await serveDoc(ctx.port, ctx.token);
@@ -82,7 +81,7 @@ describe("/s/ responses · X-DNS-Prefetch-Control", () => {
   });
 });
 
-describe("/s/ responses · prefetch link stripping", () => {
+describe("/f/ page responses · prefetch link stripping", () => {
   it("should strip all prefetch-family links from a foreign doc when network is off", async () => {
     await withServer(async (ctx) => {
       const res = await serveDoc(ctx.port, ctx.token);

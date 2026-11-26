@@ -7,7 +7,15 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { cookieOf, defaultSeed, httpCall, jsonBodyOf, openSse, withServer } from "./harness";
+import {
+  cookieOf,
+  defaultSeed,
+  docPageOf,
+  httpCall,
+  jsonBodyOf,
+  openSse,
+  withServer,
+} from "./harness";
 import { withPost } from "./wire";
 
 const FOREIGN_WITH_SCRIPT =
@@ -16,12 +24,15 @@ const FOREIGN_WITH_SCRIPT =
 const FOREIGN_CLEAN = '<!doctype html><html><body><div class="app">plain</div></body></html>';
 
 const OFF_CSP =
-  "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; " +
+  "default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; " +
+  "img-src 'self' data:; font-src 'self'; media-src 'self'; " +
   "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox";
 const LOCAL_CSP =
-  "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; " +
-  "img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; " +
-  "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts";
+  "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+  "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; " +
+  "font-src 'self' data:; connect-src 'self'; " +
+  "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; " +
+  "sandbox allow-scripts";
 
 const foreignSeed =
   (html = FOREIGN_WITH_SCRIPT) =>
@@ -44,10 +55,7 @@ const postTrust = (
   }).then((response) => ({ status: response.status, body: jsonBodyOf(response) }));
 
 const cspOf = async (port: number, token: string, docId = "doc.html"): Promise<string> => {
-  const response = await httpCall(port, {
-    path: `/s/${docId}`,
-    headers: { cookie: cookieOf(token) },
-  });
+  const response = await docPageOf(port, token, docId);
   return String(response.headers["content-security-policy"] ?? "");
 };
 

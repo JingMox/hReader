@@ -53,7 +53,13 @@ interface ParsedRoute {
   readonly auth: string;
 }
 
-const AUTH_KINDS: ReadonlySet<string> = new Set(["none", "cookie", "token", "cookie+csrf"]);
+const AUTH_KINDS: ReadonlySet<string> = new Set([
+  "none",
+  "cookie",
+  "token",
+  "cookie+csrf",
+  "capability",
+]);
 
 const coreRoutesOf = async (): Promise<readonly ParsedRoute[]> => {
   const source = await coreFileOf("server/routes.ts");

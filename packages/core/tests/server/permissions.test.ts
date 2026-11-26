@@ -9,7 +9,15 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { cookieOf, defaultSeed, httpCall, jsonBodyOf, openSse, withServer } from "./harness";
+import {
+  cookieOf,
+  defaultSeed,
+  docPageOf,
+  httpCall,
+  jsonBodyOf,
+  openSse,
+  withServer,
+} from "./harness";
 import { withPost } from "./wire";
 
 const FOREIGN =
@@ -18,22 +26,25 @@ const FOREIGN =
 // 四档生效组合对应的精确 CSP（与 handlers.ts 的 FOREIGN_CSP 表逐字同构）。
 const CSP = {
   "off|off":
-    "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; " +
+    "default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data:; font-src 'self'; media-src 'self'; " +
     "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox",
   "on|off":
-    "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; " +
-    "img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; " +
-    "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts",
+    "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; " +
+    "font-src 'self' data:; connect-src 'self'; " +
+    "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; " +
+    "sandbox allow-scripts",
   "off|on":
-    "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' http: https:; " +
-    "img-src http: https: data: blob:; media-src http: https: data: blob:; " +
-    "font-src http: https: data:; connect-src http: https: ws: wss:; " +
+    "default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline' http: https:; " +
+    "img-src 'self' http: https: data: blob:; media-src 'self' http: https: data: blob:; " +
+    "font-src 'self' http: https: data:; connect-src http: https: ws: wss:; " +
     "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox",
   "on|on":
-    "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' http: https:; " +
-    "style-src 'unsafe-inline' http: https:; img-src http: https: data: blob:; " +
-    "media-src http: https: data: blob:; font-src http: https: data:; " +
-    "connect-src http: https: ws: wss:; frame-src 'none'; form-action 'none'; " +
+    "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; " +
+    "style-src 'self' 'unsafe-inline' http: https:; img-src 'self' http: https: data: blob:; " +
+    "media-src 'self' http: https: data: blob:; font-src 'self' http: https: data:; " +
+    "connect-src 'self' http: https: ws: wss:; frame-src 'none'; form-action 'none'; " +
     "base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts",
 } as const;
 
@@ -47,10 +58,8 @@ const foreignSeed =
   };
 
 const cspOf = async (port: number, token: string, docId = "doc.html"): Promise<string> => {
-  const response = await httpCall(port, {
-    path: `/s/${encodeURIComponent(docId)}`,
-    headers: { cookie: cookieOf(token) },
-  });
+  // The CSP rides on the `/f/` page response: `/s/` itself is only the 302 entry.
+  const response = await docPageOf(port, token, docId);
   return String(response.headers["content-security-policy"] ?? "");
 };
 
@@ -437,7 +446,7 @@ describe("doc permissions · 路径键语义", () => {
       });
       await postDocPermissions(ctx.port, ctx.token, { scripts: true });
 
-      if (upper.status === 200) {
+      if (upper.status === 302) {
         // 大小写不敏感卷（macOS 默认 APFS）：DOC.HTML 与 doc.html 同一条记录。
         expect(await cspOf(ctx.port, ctx.token, "DOC.HTML")).toBe(CSP["on|off"]);
       } else {

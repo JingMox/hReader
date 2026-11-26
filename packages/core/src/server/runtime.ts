@@ -10,12 +10,14 @@ import type { PatchDeps } from "../io/ports";
 import { loadDocument } from "../model/load";
 import type { DocumentLoad } from "../model/load";
 import type { StyleDeps } from "../style";
+import { createCapabilityBook } from "./capability";
 import type { Reply } from "./contracts";
 import { diffNodes } from "./diff-nodes";
 import { annotationDiffReply, annotationsReply } from "./annotation-replies";
+import { docAssetReply } from "./doc-assets";
 import {
   docInfoReply,
-  documentReply,
+  documentRedirectOf,
   globalModesReply,
   globalModesSetReply,
   LOCK_WAIT_MS,
@@ -193,8 +195,9 @@ const readReplyOf = async (
   docId: string,
   remember: Runtime["remember"],
 ): Promise<Reply> => {
-  await remember(docId);
-  if (kind === "document") return (await documentReply(context, docId)).reply;
+  const target = await remember(docId);
+  // `/s/` 只发入口：页面本体与同目录资源都交给 `/f/`（cap 在这里登记）。
+  if (kind === "document") return documentRedirectOf(context, target);
   if (kind === "docInfo") return docInfoReply(context, docId);
   if (kind === "annotations") return annotationsReply(context, docId);
   return kind === "model" ? modelReply(context, docId) : outlineReply(context, docId);
@@ -224,6 +227,10 @@ const dispatchOf =
       const { reply, modes } = await globalModesSetReply(context, body, LOCK_WAIT_MS);
       runtime.hub.publish("permissions.changed", { modes });
       return reply;
+    }
+    // `/f/` 与 docId 体系无关：cap 是唯一凭证，目录从能力簿里查。
+    if (route.kind === "docAsset") {
+      return docAssetReply(context, paramOf(params, "cap", ""), paramOf(params, "path", ""));
     }
     if (isStaticKind(route.kind)) {
       // `req.url` 在 HTTP/1.1 的 origin-form 请求里恒有值；缺失只可能来自“手搓的请求对象”，
@@ -330,6 +337,8 @@ export const createRuntime = (
     home: options.home ?? options.workspace,
     deps: deps.patch,
     styleDeps: deps.style,
+    // Per-runtime secret: a restart mints a fresh key and every old cap dies.
+    caps: createCapabilityBook(),
   };
   const watcher = watchOf(deps, hub, state, options.workspace);
   // 被服务的文档启动时就挂文件级监听，不等第一个 HTTP 触碰：挂载→ready 的盲窗里，
