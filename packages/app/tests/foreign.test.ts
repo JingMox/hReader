@@ -1,9 +1,14 @@
-// 这层管：foreign widget（iframe 承载 + 信任横幅）的调用序列契约——
-// sandbox 档位、横幅文案、动作按钮、写请求的成/败两面，全部在 `Host` 调用序列上断言。
+// 这层管：foreign widget（iframe 承载 + 信任横幅 + 底栏权限开关）的调用序列契约——
+// sandbox 档位、横幅文案、动作按钮、两个权限开关、写请求的成/败两面，全部在 `Host` 调用序列上断言。
 
 import { describe, expect, it } from "vitest";
 
-import { mountForeign, type ForeignDeps, type TrustLevel } from "../src/widgets/foreign.ts";
+import {
+  mountForeign,
+  type DocPermissions,
+  type ForeignDeps,
+  type PermissionPatch,
+} from "../src/widgets/foreign.ts";
 import { COPY } from "../src/widgets/copy.ts";
 import { flush } from "./support/boot-harness.ts";
 import { createFakeHost, type FakeHost } from "./support/fake-host.ts";
@@ -14,9 +19,22 @@ const TEXT = `${ROOT} #hr-foreign-text`;
 const ACTION = `${ROOT} #hr-foreign-action`;
 const ERROR = `${ROOT} #hr-foreign-error`;
 const FRAME = `${ROOT} #hr-foreign-frame`;
+const PERMS = `${ROOT} #hr-perms`;
+const PERM_SCRIPTS = `${ROOT} #hr-perm-scripts`;
+const PERM_NETWORK = `${ROOT} #hr-perm-network`;
 
 /** 沙箱的允许项黑名单：任何状态下出现其中任何一个，这条测试就该红。 */
 const FORBIDDEN = /allow-same-origin|allow-popups|allow-modals|allow-top-navigation|allow-forms/;
+
+/** 生效视图的常用夹具：两维全关、逐文档模式（开关可点）。 */
+const permsOf = (over: Partial<DocPermissions> = {}): DocPermissions => ({
+  scripts: false,
+  network: false,
+  scriptsSource: "doc",
+  networkSource: "doc",
+  modes: { scripts: "per-doc", network: "per-doc" },
+  ...over,
+});
 
 const attrsOf = (fake: FakeHost, selector: string, name: string): readonly string[] =>
   fake.calls
@@ -33,15 +51,16 @@ const depsOf = (fake: FakeHost, over: Partial<ForeignDeps> = {}): ForeignDeps =>
   host: fake.host,
   parent: ROOT,
   docId: "外 文档.html",
-  info: { cls: "foreign", trust: "off", scripts: true },
-  setTrust: (level) => Promise.resolve(level),
+  info: { cls: "foreign", scripts: true, permissions: permsOf() },
+  setPermissions: (patch: PermissionPatch) =>
+    Promise.resolve({ ...permsOf(), ...patch }),
   normalize: () => Promise.resolve(),
   theme: undefined,
   ...over,
 });
 
 describe("foreign · 挂载与横幅", () => {
-  it("should mount a fully sandboxed iframe and the readonly banner for trust=off", () => {
+  it("should mount a fully sandboxed iframe, the readonly banner and the two toggles", () => {
     const fake = createFakeHost();
     mountForeign(depsOf(fake));
 
@@ -50,6 +69,7 @@ describe("foreign · 挂载与横幅", () => {
     expect(attrsOf(fake, FRAME, "sandbox")).toEqual([""]);
     expect(attrsOf(fake, FRAME, "hidden")).toEqual(["<removed>"]);
     expect(attrsOf(fake, FRAME, "title")).toEqual([COPY.foreignFrameTitle]);
+    expect(attrsOf(fake, FRAME, "allow")).toEqual(["fullscreen"]);
     expect(attrsOf(fake, ROOT, "data-hr-doc")).toEqual(["framed"]);
     expect(attrsOf(fake, BANNER, "hidden")).toEqual(["<removed>"]);
 
@@ -58,20 +78,46 @@ describe("foreign · 挂载与横幅", () => {
     expect(banner).toContain(COPY.foreignNoEdit);
     expect(banner).toContain(COPY.foreignScriptsOff);
     expect(lastText(fake, ACTION)).toBe(COPY.foreignAllow);
+
+    // 底栏两个开关：按生效视图画关/开态与提示。
+    expect(attrsOf(fake, PERMS, "hidden")).toEqual(["<removed>"]);
+    expect(lastText(fake, PERM_SCRIPTS)).toBe("脚本：关");
+    expect(lastText(fake, PERM_NETWORK)).toBe("联网：关");
+    expect(attrsOf(fake, PERM_SCRIPTS, "data-on")).toEqual(["false"]);
+    expect(attrsOf(fake, PERM_SCRIPTS, "aria-pressed")).toEqual(["false"]);
   });
 
-  it("should mount allow-scripts with the disable action for trust=local", () => {
+  it("should mount allow-scripts with the disable action when scripts are effective", () => {
     const fake = createFakeHost();
-    mountForeign(depsOf(fake, { info: { cls: "foreign", trust: "local", scripts: true } }));
+    mountForeign(
+      depsOf(fake, {
+        info: { cls: "foreign", scripts: true, permissions: permsOf({ scripts: true }) },
+      }),
+    );
 
     expect(attrsOf(fake, FRAME, "sandbox")).toEqual(["allow-scripts"]);
     expect(lastText(fake, TEXT)).toContain(COPY.foreignScriptsOn);
     expect(lastText(fake, ACTION)).toBe(COPY.foreignDisallow);
+    expect(lastText(fake, PERM_SCRIPTS)).toBe("脚本：开");
+  });
+
+  it("should mention the granted network dimension in the banner", () => {
+    const fake = createFakeHost();
+    mountForeign(
+      depsOf(fake, {
+        info: { cls: "foreign", scripts: true, permissions: permsOf({ network: true }) },
+      }),
+    );
+
+    expect(lastText(fake, TEXT)).toContain(COPY.foreignNetworkOn);
+    expect(lastText(fake, PERM_NETWORK)).toBe("联网：开");
+    // 联网不收 sandbox——沙箱只管脚本，网络是服务端 CSP 的事。
+    expect(attrsOf(fake, FRAME, "sandbox")).toEqual([""]);
   });
 
   it("should show only the readonly notice and no action when the page has no scripts", () => {
     const fake = createFakeHost();
-    mountForeign(depsOf(fake, { info: { cls: "foreign", trust: "off", scripts: false } }));
+    mountForeign(depsOf(fake, { info: { cls: "foreign", scripts: false } }));
 
     const banner = lastText(fake, TEXT);
     expect(banner).toContain(COPY.foreignReadonly);
@@ -80,12 +126,21 @@ describe("foreign · 挂载与横幅", () => {
     expect(lastText(fake, ACTION)).toBeUndefined();
   });
 
-  it("should show the normalize banner and action for a normalizable document", () => {
+  it("should show the normalize banner/action and keep toggles hidden for normalizable docs", () => {
     const fake = createFakeHost();
-    mountForeign(depsOf(fake, { info: { cls: "normalizable", trust: "off", scripts: false } }));
+    mountForeign(depsOf(fake, { info: { cls: "normalizable", scripts: false } }));
 
     expect(lastText(fake, TEXT)).toBe(COPY.normalizableBanner);
     expect(lastText(fake, ACTION)).toBe(COPY.normalizableAction);
+    expect(attrsOf(fake, PERMS, "hidden")).toEqual([""]);
+  });
+
+  it("should keep toggles hidden when the info carries no permissions view", () => {
+    const fake = createFakeHost();
+    mountForeign(depsOf(fake, { info: { cls: "foreign", scripts: true } }));
+
+    expect(attrsOf(fake, PERMS, "hidden")).toEqual([""]);
+    expect(attrsOf(fake, FRAME, "sandbox")).toEqual([""]);
   });
 });
 
@@ -94,7 +149,7 @@ describe("foreign · sandbox 不变量", () => {
     const fake = createFakeHost();
     mountForeign(depsOf(fake));
 
-    // off → local → off 三个状态的 sandbox 值逐一钉住。
+    // off → on → off 三个状态的 sandbox 值逐一钉住。
     fake.fire(ACTION, "click", {});
     await flush();
     fake.fire(ACTION, "click", {});
@@ -106,49 +161,76 @@ describe("foreign · sandbox 不变量", () => {
   });
 });
 
-describe("foreign · 信任开关", () => {
-  it("should re-sandbox and reload the iframe after a successful trust POST", async () => {
+describe("foreign · 权限开关", () => {
+  it("should POST the scripts patch, re-sandbox and reload the iframe", async () => {
     const fake = createFakeHost();
-    const asked: string[] = [];
+    const asked: PermissionPatch[] = [];
     mountForeign(
       depsOf(fake, {
-        setTrust: (level) => {
-          asked.push(level);
-          return Promise.resolve(level);
+        setPermissions: (patch) => {
+          asked.push(patch);
+          return Promise.resolve(permsOf({ scripts: patch.scripts === true }));
         },
       }),
     );
 
-    fake.fire(ACTION, "click", {});
+    fake.fire(PERM_SCRIPTS, "click", {});
     await flush();
 
-    expect(asked).toEqual(["local"]);
+    expect(asked).toEqual([{ scripts: true }]);
     expect(attrsOf(fake, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
     expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("/s/%E5%A4%96%20%E6%96%87%E6%A1%A3.html?r=n1");
     expect(lastText(fake, TEXT)).toContain(COPY.foreignScriptsOn);
     expect(lastText(fake, ACTION)).toBe(COPY.foreignDisallow);
+    expect(attrsOf(fake, PERM_SCRIPTS, "data-on").at(-1)).toBe("true");
   });
 
-  it("should apply the server-confirmed level rather than the requested one", async () => {
+  it("should POST the network patch and reload without touching the sandbox", async () => {
     const fake = createFakeHost();
-    // 服务端把请求钳回 off：UI 必须以确认值为准，不能乐观切换。
-    mountForeign(depsOf(fake, { setTrust: () => Promise.resolve("off") }));
+    const asked: PermissionPatch[] = [];
+    mountForeign(
+      depsOf(fake, {
+        setPermissions: (patch) => {
+          asked.push(patch);
+          return Promise.resolve(permsOf({ network: patch.network === true }));
+        },
+      }),
+    );
 
-    fake.fire(ACTION, "click", {});
+    fake.fire(PERM_NETWORK, "click", {});
+    await flush();
+
+    expect(asked).toEqual([{ network: true }]);
+    // 生效组合变了要重载（CSP 换了），但 sandbox 维度不动。
+    expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("/s/%E5%A4%96%20%E6%96%87%E6%A1%A3.html?r=n1");
+    expect(attrsOf(fake, FRAME, "sandbox").at(-1)).toBe("");
+    expect(attrsOf(fake, PERM_NETWORK, "data-on").at(-1)).toBe("true");
+  });
+
+  it("should apply the server-confirmed effective view rather than the requested one", async () => {
+    const fake = createFakeHost();
+    // 服务端把请求钳回关（例如全局模式在写入瞬间变了）：UI 必须以确认值为准。
+    mountForeign(depsOf(fake, { setPermissions: () => Promise.resolve(permsOf()) }));
+
+    fake.fire(PERM_SCRIPTS, "click", {});
     await flush();
 
     expect(attrsOf(fake, FRAME, "sandbox").at(-1)).toBe("");
+    expect(attrsOf(fake, PERM_SCRIPTS, "data-on").at(-1)).toBe("false");
   });
 
-  it("should surface a failed trust POST in the banner and keep the current level", async () => {
+  it("should surface a failed write in the banner and keep the current state", async () => {
     const fake = createFakeHost();
-    mountForeign(depsOf(fake, { setTrust: () => Promise.reject(new Error("信任档写入失败")) }));
+    mountForeign(
+      depsOf(fake, { setPermissions: () => Promise.reject(new Error("权限写入失败")) }),
+    );
 
-    fake.fire(ACTION, "click", {});
+    fake.fire(PERM_SCRIPTS, "click", {});
     await flush();
 
-    expect(lastText(fake, ERROR)).toBe("信任档写入失败");
+    expect(lastText(fake, ERROR)).toBe("权限写入失败");
     expect(attrsOf(fake, FRAME, "sandbox").at(-1)).toBe("");
+    expect(attrsOf(fake, PERM_SCRIPTS, "data-on").at(-1)).toBe("false");
   });
 
   it("should stringify a non-Error rejection instead of crashing", async () => {
@@ -156,14 +238,14 @@ describe("foreign · 信任开关", () => {
     const cause: unknown = "boom";
     mountForeign(
       depsOf(fake, {
-        setTrust: () =>
-          Promise.resolve().then((): TrustLevel => {
+        setPermissions: () =>
+          Promise.resolve().then((): DocPermissions => {
             throw cause;
           }),
       }),
     );
 
-    fake.fire(ACTION, "click", {});
+    fake.fire(PERM_SCRIPTS, "click", {});
     await flush();
 
     expect(lastText(fake, ERROR)).toBe("boom");
@@ -174,16 +256,18 @@ describe("foreign · 信任开关", () => {
     let attempt = 0;
     mountForeign(
       depsOf(fake, {
-        setTrust: (level) => {
+        setPermissions: (patch) => {
           attempt += 1;
-          return attempt === 1 ? Promise.reject(new Error("先失败")) : Promise.resolve(level);
+          return attempt === 1
+            ? Promise.reject(new Error("先失败"))
+            : Promise.resolve(permsOf({ scripts: patch.scripts === true }));
         },
       }),
     );
 
-    fake.fire(ACTION, "click", {});
+    fake.fire(PERM_SCRIPTS, "click", {});
     await flush();
-    fake.fire(ACTION, "click", {});
+    fake.fire(PERM_SCRIPTS, "click", {});
     await flush();
 
     // 第二次点击先把错误清空，成功后再重画：错误不会残留到成功态。
@@ -196,28 +280,104 @@ describe("foreign · 信任开关", () => {
 
   it("should ignore a second click while a write is in flight", async () => {
     const fake = createFakeHost();
-    const asked: string[] = [];
-    let release: (value: "off" | "local") => void = () => undefined;
+    const asked: PermissionPatch[] = [];
+    let release: (value: DocPermissions) => void = () => undefined;
     mountForeign(
       depsOf(fake, {
-        setTrust: (level) => {
-          asked.push(level);
-          return new Promise<"off" | "local">((resolve) => {
+        setPermissions: (patch) => {
+          asked.push(patch);
+          return new Promise<DocPermissions>((resolve) => {
             release = resolve;
           });
         },
       }),
     );
 
-    fake.fire(ACTION, "click", {});
-    fake.fire(ACTION, "click", {});
-    expect(asked).toEqual(["local"]);
+    fake.fire(PERM_SCRIPTS, "click", {});
+    fake.fire(PERM_SCRIPTS, "click", {});
+    fake.fire(PERM_NETWORK, "click", {});
+    expect(asked).toEqual([{ scripts: true }]);
 
-    release("local");
+    release(permsOf({ scripts: true }));
     await flush();
+    fake.fire(PERM_NETWORK, "click", {});
+    await flush();
+    expect(asked).toEqual([{ scripts: true }, { network: true }]);
+  });
+
+  it("should drive the banner action through the same permissions write", async () => {
+    const fake = createFakeHost();
+    const asked: PermissionPatch[] = [];
+    mountForeign(
+      depsOf(fake, {
+        setPermissions: (patch) => {
+          asked.push(patch);
+          return Promise.resolve(permsOf({ scripts: patch.scripts === true }));
+        },
+      }),
+    );
+
     fake.fire(ACTION, "click", {});
     await flush();
-    expect(asked).toEqual(["local", "off"]);
+
+    expect(asked).toEqual([{ scripts: true }]);
+    expect(attrsOf(fake, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
+  });
+});
+
+describe("foreign · 全局模式接管", () => {
+  const globallyAllowed = permsOf({
+    scripts: true,
+    scriptsSource: "global",
+    modes: { scripts: "allow", network: "per-doc" },
+  });
+
+  it("should disable the controlled toggle with the unified-control hint", () => {
+    const fake = createFakeHost();
+    mountForeign(
+      depsOf(fake, {
+        info: { cls: "foreign", scripts: true, permissions: globallyAllowed },
+      }),
+    );
+
+    // 开关显示的是"实际生效"（开），但不可点。
+    expect(lastText(fake, PERM_SCRIPTS)).toBe("脚本：开");
+    expect(attrsOf(fake, PERM_SCRIPTS, "disabled")).toEqual([""]);
+    expect(attrsOf(fake, PERM_SCRIPTS, "title")).toEqual([COPY.permControlled]);
+    // 未接管的另一维照常可点。
+    expect(attrsOf(fake, PERM_NETWORK, "disabled")).toEqual(["<removed>"]);
+    expect(attrsOf(fake, PERM_NETWORK, "title")).toEqual(["为本文档开启联网"]);
+  });
+
+  it("should ignore clicks on a globally controlled toggle", async () => {
+    const fake = createFakeHost();
+    const asked: PermissionPatch[] = [];
+    mountForeign(
+      depsOf(fake, {
+        info: { cls: "foreign", scripts: true, permissions: globallyAllowed },
+        setPermissions: (patch) => {
+          asked.push(patch);
+          return Promise.resolve(globallyAllowed);
+        },
+      }),
+    );
+
+    // 置灰是表现层；逻辑层同样拦住（绕过 disabled 的合成点击不能发出写请求）。
+    fake.fire(PERM_SCRIPTS, "click", {});
+    await flush();
+
+    expect(asked).toEqual([]);
+  });
+
+  it("should hide the banner action while scripts are globally controlled", () => {
+    const fake = createFakeHost();
+    mountForeign(
+      depsOf(fake, {
+        info: { cls: "foreign", scripts: true, permissions: globallyAllowed },
+      }),
+    );
+
+    expect(attrsOf(fake, ACTION, "hidden").at(-1)).toBe("");
   });
 });
 
@@ -227,7 +387,7 @@ describe("foreign · normalize 与刷新", () => {
     let calls = 0;
     mountForeign(
       depsOf(fake, {
-        info: { cls: "normalizable", trust: "off", scripts: false },
+        info: { cls: "normalizable", scripts: false },
         normalize: () => {
           calls += 1;
           return Promise.reject(new Error("规范化失败：锁定中"));
@@ -259,8 +419,54 @@ describe("foreign · normalize 与刷新", () => {
   });
 });
 
+describe("foreign · syncInfo 对账", () => {
+  it("should reload the iframe when the effective network flag changes too", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(depsOf(fake));
+
+    handle.syncInfo({
+      cls: "foreign",
+      scripts: true,
+      permissions: permsOf({ network: true }),
+    });
+
+    // sandbox 没变但 CSP 变了：生效组合变化就要重载。
+    expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("/s/%E5%A4%96%20%E6%96%87%E6%A1%A3.html?r=n1");
+    expect(lastText(fake, TEXT)).toContain(COPY.foreignNetworkOn);
+  });
+
+  it("should repaint without reloading when the effective combination is unchanged", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(depsOf(fake));
+
+    // 同一生效组合再报一次（比如 modes 重述）：不白白重载 iframe。
+    handle.syncInfo({ cls: "foreign", scripts: true, permissions: permsOf() });
+
+    expect(attrsOf(fake, FRAME, "src")).toEqual(["/s/%E5%A4%96%20%E6%96%87%E6%A1%A3.html"]);
+  });
+
+  it("should disable toggles in place when a resync reports global control", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(depsOf(fake));
+
+    handle.syncInfo({
+      cls: "foreign",
+      scripts: true,
+      permissions: permsOf({
+        scriptsSource: "global",
+        modes: { scripts: "deny", network: "per-doc" },
+      }),
+    });
+
+    expect(attrsOf(fake, PERM_SCRIPTS, "disabled").at(-1)).toBe("");
+    expect(attrsOf(fake, PERM_SCRIPTS, "title").at(-1)).toBe(COPY.permControlled);
+    // 全局 deny 下脚本不生效，开关文本也报关。
+    expect(lastText(fake, PERM_SCRIPTS)).toBe("脚本：关");
+  });
+});
+
 describe("foreign · destroy", () => {
-  it("should unbind the action, blank the frame and hand the chrome back", () => {
+  it("should unbind the action/toggles, blank the frame and hand the chrome back", () => {
     const fake = createFakeHost();
     const handle = mountForeign(depsOf(fake));
 
@@ -269,33 +475,35 @@ describe("foreign · destroy", () => {
     expect(fake.listeners()).toEqual([]);
     expect(attrsOf(fake, ROOT, "data-hr-doc").at(-1)).toBe("<removed>");
     expect(attrsOf(fake, BANNER, "hidden").at(-1)).toBe("");
+    expect(attrsOf(fake, PERMS, "hidden").at(-1)).toBe("");
     expect(attrsOf(fake, FRAME, "hidden").at(-1)).toBe("");
     // allow-scripts 档的脚本只有换源才停：撤 src 比摘 iframe 更彻底。
     expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
   });
 
-  it("should swallow a trust write that lands after destroy instead of resurrecting the frame", async () => {
+  it("should swallow a permissions write that lands after destroy", async () => {
     const fake = createFakeHost();
-    let release: (value: "off" | "local") => void = () => undefined;
+    let release: (value: DocPermissions) => void = () => undefined;
     const handle = mountForeign(
       depsOf(fake, {
-        setTrust: () =>
-          new Promise<"off" | "local">((resolve) => {
+        setPermissions: () =>
+          new Promise<DocPermissions>((resolve) => {
             release = resolve;
           }),
       }),
     );
 
-    fake.fire(ACTION, "click", {});
+    fake.fire(PERM_SCRIPTS, "click", {});
     handle.destroy();
 
-    // 用户点了"允许脚本"又立刻切走：promise 落地时外壳已归还，横幅不能复活、src 不能回写。
-    release("local");
+    // 用户点了开关又立刻切走：promise 落地时外壳已归还，开关与横幅不能复活、src 不能回写。
+    release(permsOf({ scripts: true }));
     await flush();
 
     expect(attrsOf(fake, BANNER, "hidden").at(-1)).toBe("");
     expect(attrsOf(fake, FRAME, "src").at(-1)).toBe("about:blank");
     expect(attrsOf(fake, FRAME, "sandbox").at(-1)).toBe("");
+    expect(attrsOf(fake, PERM_SCRIPTS, "data-on").at(-1)).toBe("false");
   });
 
   it("should swallow a normalize failure that lands after destroy", async () => {
@@ -303,7 +511,7 @@ describe("foreign · destroy", () => {
     let reject: (cause: unknown) => void = () => undefined;
     const handle = mountForeign(
       depsOf(fake, {
-        info: { cls: "normalizable", trust: "off", scripts: false },
+        info: { cls: "normalizable", scripts: false },
         normalize: () =>
           new Promise<void>((_resolve, rej) => {
             reject = rej;
@@ -322,19 +530,19 @@ describe("foreign · destroy", () => {
     expect(lastText(fake, ERROR)).toBe("");
   });
 
-  it("should swallow a trust rejection that lands after destroy", async () => {
+  it("should swallow a permissions rejection that lands after destroy", async () => {
     const fake = createFakeHost();
     let reject: (cause: unknown) => void = () => undefined;
     const handle = mountForeign(
       depsOf(fake, {
-        setTrust: () =>
-          new Promise<"off" | "local">((_resolve, rej) => {
+        setPermissions: () =>
+          new Promise<DocPermissions>((_resolve, rej) => {
             reject = rej;
           }),
       }),
     );
 
-    fake.fire(ACTION, "click", {});
+    fake.fire(PERM_SCRIPTS, "click", {});
     handle.destroy();
 
     reject(new Error("迟到拒绝"));
@@ -360,7 +568,11 @@ describe("foreign · destroy", () => {
     const handle = mountForeign(depsOf(fake));
 
     handle.destroy();
-    handle.syncInfo({ cls: "foreign", trust: "local", scripts: true });
+    handle.syncInfo({
+      cls: "foreign",
+      scripts: true,
+      permissions: permsOf({ scripts: true }),
+    });
 
     // 销毁后到的 info 重拉（同步竞态里慢一拍的服务端应答）不许复活横幅或换沙箱档。
     expect(attrsOf(fake, BANNER, "hidden").at(-1)).toBe("");

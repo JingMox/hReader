@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { bootDocument, type ClassifiedBootDeps, type DocInfo } from "../src/boot.ts";
 import type { SseHandlers } from "../src/sse.ts";
 import { COPY } from "../src/widgets/copy.ts";
+import type { DocPermissions } from "../src/widgets/foreign.ts";
 import { flush, harnessOf, type Harness } from "./support/boot-harness.ts";
 
 const ROOT = "#hr-root";
@@ -53,7 +54,7 @@ const classifiedOf = (
         documentHtml: "<article data-hr-id='hr-a'><p>新</p></article>",
       });
     },
-    postTrust: (level) => Promise.resolve(level),
+    postPermissions: (patch) => Promise.resolve({ ...permsOf(), ...patch }),
     postNormalize: () => Promise.resolve({ revision: "r2", cls: "managed" }),
     fetchThemes: () =>
       Promise.resolve({ themes: ["atelier-editorial"], default: "atelier-editorial" }),
@@ -64,8 +65,25 @@ const classifiedOf = (
 };
 
 const managedInfo: DocInfo = { revision: "r1", cls: "managed" };
-const foreignInfo: DocInfo = { revision: "r1", cls: "foreign", trust: "off", scripts: true };
 const normalizableInfo: DocInfo = { revision: "r1", cls: "normalizable" };
+
+/** 外来文档生效视图的默认夹具：两维全关、逐文档模式。 */
+const permsOf = (over: Partial<DocPermissions> = {}): DocPermissions => ({
+  scripts: false,
+  network: false,
+  scriptsSource: "doc",
+  networkSource: "doc",
+  modes: { scripts: "per-doc", network: "per-doc" },
+  ...over,
+});
+
+const foreignInfo: DocInfo = {
+  revision: "r1",
+  cls: "foreign",
+  trust: "off",
+  scripts: true,
+  permissions: permsOf(),
+};
 
 describe("bootDocument · 三类分流", () => {
   it("should run the original boot path unchanged for a managed document", async () => {
@@ -158,14 +176,14 @@ describe("bootDocument · SSE 与状态", () => {
   });
 });
 
-describe("bootDocument · 信任开关", () => {
-  it("should POST the trust level and re-sandbox + reload the iframe", async () => {
+describe("bootDocument · 权限开关", () => {
+  it("should POST the scripts patch and re-sandbox + reload the iframe", async () => {
     const h = harnessOf(true);
-    const asked: string[] = [];
+    const asked: { scripts?: boolean; network?: boolean }[] = [];
     const { deps } = classifiedOf(h, () => foreignInfo, {
-      postTrust: (level) => {
-        asked.push(level);
-        return Promise.resolve(level);
+      postPermissions: (patch) => {
+        asked.push(patch);
+        return Promise.resolve({ ...permsOf(), ...patch });
       },
     });
     await bootDocument(deps);
@@ -173,7 +191,7 @@ describe("bootDocument · 信任开关", () => {
     h.fake.fire(ACTION, "click", {});
     await flush();
 
-    expect(asked).toEqual(["local"]);
+    expect(asked).toEqual([{ scripts: true }]);
     expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
     expect(attrsOf(h, FRAME, "src").at(-1)).toBe("/s/doc.html?r=n1");
   });
@@ -278,16 +296,22 @@ const optionSpecsOf = (h: Harness): readonly OptionSpec[] => {
   return call === undefined ? [] : (JSON.parse(call.args[1] ?? "[]") as OptionSpec[]);
 };
 
-describe("bootDocument · 信任对账", () => {
-  it("should re-pull info on doc.changed and re-sandbox when trust dropped server-side", async () => {
-    let current: DocInfo = { revision: "r1", cls: "foreign", trust: "local", scripts: true };
+describe("bootDocument · 权限对账", () => {
+  it("should re-pull info on doc.changed and re-sandbox when the grant dropped server-side", async () => {
+    let current: DocInfo = {
+      revision: "r1",
+      cls: "foreign",
+      trust: "local",
+      scripts: true,
+      permissions: permsOf({ scripts: true }),
+    };
     const h = harnessOf(true);
     const { deps, handlers } = classifiedOf(h, () => current);
     const booted = await bootDocument(deps);
     expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
 
-    // 外部写盘（比如换了主题）：sha 变了，服务端信任档随之失效。
-    current = { revision: "r2", cls: "foreign", trust: "off", scripts: true };
+    // 外部改盘（比如改名）：按路径记的授权随之失效。
+    current = { revision: "r2", cls: "foreign", trust: "off", scripts: true, permissions: permsOf() };
     handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
     await flush();
 
@@ -302,13 +326,25 @@ describe("bootDocument · 信任对账", () => {
     booted.destroy();
   });
 
-  it("should restore the banner and sandbox when undo returns a trusted sha", async () => {
-    let current: DocInfo = { revision: "r1", cls: "foreign", trust: "off", scripts: true };
+  it("should restore the banner and sandbox when the grant is back server-side", async () => {
+    let current: DocInfo = {
+      revision: "r1",
+      cls: "foreign",
+      trust: "off",
+      scripts: true,
+      permissions: permsOf(),
+    };
     const h = harnessOf(true);
     const { deps, handlers } = classifiedOf(h, () => current);
     await bootDocument(deps);
 
-    current = { revision: "r2", cls: "foreign", trust: "local", scripts: true };
+    current = {
+      revision: "r2",
+      cls: "foreign",
+      trust: "local",
+      scripts: true,
+      permissions: permsOf({ scripts: true }),
+    };
     handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
     await flush();
 
@@ -324,7 +360,7 @@ describe("bootDocument · 信任对账", () => {
     await bootDocument(deps);
     expect(lastText(h, TEXT)).toBe(COPY.normalizableBanner);
 
-    current = { revision: "r2", cls: "foreign", trust: "off", scripts: true };
+    current = { revision: "r2", cls: "foreign", trust: "off", scripts: true, permissions: permsOf() };
     handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
     await flush();
 
@@ -334,7 +370,13 @@ describe("bootDocument · 信任对账", () => {
   });
 
   it("should re-boot as managed when the file was overwritten into a managed doc", async () => {
-    let current: DocInfo = { revision: "r1", cls: "foreign", trust: "off", scripts: true };
+    let current: DocInfo = {
+      revision: "r1",
+      cls: "foreign",
+      trust: "off",
+      scripts: true,
+      permissions: permsOf(),
+    };
     const h = harnessOf(true);
     const { deps, handlers, pageCalls } = classifiedOf(h, () => current);
     await bootDocument(deps);
@@ -348,10 +390,79 @@ describe("bootDocument · 信任对账", () => {
     expect(h.closed()).toBe(true);
   });
 
+  it("should re-pull info on permissions.changed without reloading on its own", async () => {
+    const current: DocInfo = {
+      revision: "r1",
+      cls: "foreign",
+      trust: "off",
+      scripts: true,
+      permissions: permsOf(),
+    };
+    const h = harnessOf(true);
+    let pulls = 0;
+    const { deps, handlers } = classifiedOf(h, () => current, {
+      fetchInfo: () => {
+        pulls += 1;
+        return Promise.resolve(current);
+      },
+    });
+    await bootDocument(deps);
+    expect(pulls).toBe(1);
+
+    // 全局模式变更：只回拉 info；生效组合真变了（这次没变）才由 syncInfo 决定重载。
+    handlers.current?.onEvent({
+      id: 1,
+      type: "permissions.changed",
+      payload: { modes: { scripts: "per-doc", network: "per-doc" } },
+    });
+    await flush();
+
+    expect(pulls).toBe(2);
+    expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html"]);
+  });
+
+  it("should reload through syncInfo when permissions.changed flips the effective combo", async () => {
+    let current: DocInfo = {
+      revision: "r1",
+      cls: "foreign",
+      trust: "off",
+      scripts: true,
+      permissions: permsOf(),
+    };
+    const h = harnessOf(true);
+    const { deps, handlers } = classifiedOf(h, () => current);
+    await bootDocument(deps);
+
+    // 全局脚本改"全部允许"：生效组合 0→1，syncInfo 必须重载 iframe。
+    current = {
+      ...current,
+      permissions: permsOf({
+        scripts: true,
+        scriptsSource: "global",
+        modes: { scripts: "allow", network: "per-doc" },
+      }),
+    };
+    handlers.current?.onEvent({
+      id: 1,
+      type: "permissions.changed",
+      payload: { modes: { scripts: "allow", network: "per-doc" } },
+    });
+    await flush();
+
+    expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
+    expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html", "/s/doc.html?r=n1"]);
+  });
+
   it("should settle to the latest server state across rapid consecutive changes", async () => {
     const queue: DocInfo[] = [
-      { revision: "r2", cls: "foreign", trust: "off", scripts: true },
-      { revision: "r3", cls: "foreign", trust: "local", scripts: true },
+      { revision: "r2", cls: "foreign", trust: "off", scripts: true, permissions: permsOf() },
+      {
+        revision: "r3",
+        cls: "foreign",
+        trust: "local",
+        scripts: true,
+        permissions: permsOf({ scripts: true }),
+      },
     ];
     const h = harnessOf(true);
     let pulls = 0;
@@ -360,7 +471,13 @@ describe("bootDocument · 信任对账", () => {
         pulls += 1;
         // 第一次是分流那次；之后每次对账都取队列头。
         return Promise.resolve(
-          queue.shift() ?? { revision: "r3", cls: "foreign", trust: "local", scripts: true },
+          queue.shift() ?? {
+            revision: "r3",
+            cls: "foreign",
+            trust: "local",
+            scripts: true,
+            permissions: permsOf({ scripts: true }),
+          },
         );
       },
     });
@@ -478,14 +595,20 @@ describe("bootDocument · 外来主题（补充分支）", () => {
     expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html"]);
   });
 
-  it("should treat a missing trust field as off and missing scripts as false on resync", async () => {
-    let current: DocInfo = { revision: "r1", cls: "foreign", trust: "local", scripts: true };
+  it("should treat a missing permissions field as fully off on resync", async () => {
+    let current: DocInfo = {
+      revision: "r1",
+      cls: "foreign",
+      trust: "local",
+      scripts: true,
+      permissions: permsOf({ scripts: true }),
+    };
     const h = harnessOf(true);
     const { deps, handlers } = classifiedOf(h, () => current);
     await bootDocument(deps);
     expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
 
-    // 服务端 info 没带 trust/scripts 字段时按最保守档处理。
+    // 服务端 info 没带 permissions 字段时按最保守档处理。
     current = { revision: "r2", cls: "foreign" };
     handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
     await flush();

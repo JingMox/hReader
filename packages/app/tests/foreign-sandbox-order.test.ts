@@ -16,8 +16,15 @@ const depsOf = (host: ReturnType<typeof createFakeHost>["host"]): ForeignDeps =>
   host,
   parent: ROOT,
   docId: "doc.html",
-  info: { cls: "foreign", trust: "off", scripts: true },
-  setTrust: (level) => Promise.resolve(level),
+  info: { cls: "foreign", scripts: true },
+  setPermissions: (patch) =>
+    Promise.resolve({
+      scripts: patch.scripts === true,
+      network: patch.network === true,
+      scriptsSource: "doc",
+      networkSource: "doc",
+      modes: { scripts: "per-doc", network: "per-doc" },
+    }),
   normalize: () => Promise.resolve(),
   theme: undefined,
 });

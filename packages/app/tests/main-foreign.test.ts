@@ -16,6 +16,9 @@ const FRAME = `${ROOT} #hr-foreign-frame`;
 const ACTION = `${ROOT} #hr-foreign-action`;
 const ERROR = `${ROOT} #hr-foreign-error`;
 const TEXT = `${ROOT} #hr-foreign-text`;
+const PERMS = `${ROOT} #hr-perms`;
+const PERM_SCRIPTS = `${ROOT} #hr-perm-scripts`;
+const PERM_NETWORK = `${ROOT} #hr-perm-network`;
 
 /** 外来壳碰到的每个选择器都登记一个假元素；带 `#hr-root` 前缀的选择器与裸 id 共用同一元素。 */
 const installForeignDom = (): FakeElement => {
@@ -30,7 +33,21 @@ const installForeignDom = (): FakeElement => {
 
 const el = (selector: string): FakeElement | undefined => stubs.doc.bySelector.get(selector);
 
-const foreignInfo = { revision: "r1", cls: "foreign", trust: "off", scripts: true };
+/** 外来文档的生效视图夹具：两维全关、逐文档模式（与 core 默认一致）。 */
+const permsOff = {
+  scripts: false,
+  network: false,
+  scriptsSource: "doc",
+  networkSource: "doc",
+  modes: { scripts: "per-doc", network: "per-doc" },
+};
+const foreignInfo = {
+  revision: "r1",
+  cls: "foreign",
+  trust: "off",
+  scripts: true,
+  permissions: permsOff,
+};
 const normalizableInfo = { revision: "r1", cls: "normalizable" };
 
 const foreignDoc =
@@ -98,11 +115,16 @@ describe("main · 外来文档首屏", () => {
     expect(frame?.attrs.get("src")).toBe("/s/doc.html");
     expect(frame?.attrs.get("sandbox")).toBe("");
     expect(frame?.attrs.get("referrerpolicy")).toBe("no-referrer");
+    expect(frame?.attrs.get("allow")).toBe("fullscreen");
     expect(frame?.attrs.has("hidden")).toBe(false);
     expect(el(TEXT)?.textContent).toContain(COPY.foreignReadonly);
     expect(el(TEXT)?.textContent).toContain(COPY.foreignNoEdit);
     expect(el(TEXT)?.textContent).toContain(COPY.foreignScriptsOff);
     expect(el(ACTION)?.textContent).toBe(COPY.foreignAllow);
+    // 底栏两个权限开关：外来文档才挂出来。
+    expect(el(PERMS)?.attrs.has("hidden")).toBe(false);
+    expect(el(PERM_SCRIPTS)?.textContent).toBe("脚本：关");
+    expect(el(PERM_NETWORK)?.textContent).toBe("联网：关");
   });
 
   it("should not blow up on mouseup since there is no selection surface", async () => {
@@ -115,35 +137,59 @@ describe("main · 外来文档首屏", () => {
   });
 });
 
-describe("main · 信任开关（POST /trust）", () => {
-  it("should POST the level, re-sandbox and reload the iframe", async () => {
+describe("main · 权限开关（POST /permissions）", () => {
+  it("should POST the scripts patch, re-sandbox and reload the iframe", async () => {
     install("doc.html", "http://x/", (url) =>
-      url.endsWith("/trust") ? jsonOf({ trust: "local" }) : foreignDoc()(url),
+      url.endsWith("/permissions")
+        ? jsonOf({ permissions: { ...permsOff, scripts: true } })
+        : foreignDoc()(url),
     );
     installForeignDom();
     await load();
 
-    stubs.doc.fire(ACTION, "click", {});
+    stubs.doc.fire(PERM_SCRIPTS, "click", {});
     await flush();
 
-    expect(requestBodies("/api/doc/doc.html/trust")).toEqual([{ level: "local" }]);
+    expect(requestBodies("/api/doc/doc.html/permissions")).toEqual([{ scripts: true }]);
     const frame = el(FRAME);
     expect(frame?.attrs.get("sandbox")).toBe("allow-scripts");
     expect(frame?.attrs.get("src")).toBe("/s/doc.html?r=n1");
     expect(el(ACTION)?.textContent).toBe(COPY.foreignDisallow);
+    expect(el(PERM_SCRIPTS)?.attrs.get("data-on")).toBe("true");
   });
 
-  it("should surface a shape-mismatched trust response in the banner", async () => {
+  it("should POST the network patch through the same channel", async () => {
     install("doc.html", "http://x/", (url) =>
-      url.endsWith("/trust") ? jsonOf({ trust: "bogus" }) : foreignDoc()(url),
+      url.endsWith("/permissions")
+        ? jsonOf({ permissions: { ...permsOff, network: true } })
+        : foreignDoc()(url),
     );
     installForeignDom();
     await load();
 
-    stubs.doc.fire(ACTION, "click", {});
+    stubs.doc.fire(PERM_NETWORK, "click", {});
     await flush();
 
-    expect(el(ERROR)?.textContent).toBe("/api/doc/doc.html/trust → 响应形状不符");
+    expect(requestBodies("/api/doc/doc.html/permissions")).toEqual([{ network: true }]);
+    // 联网不收 sandbox，但生效组合变了必须重载（服务端 CSP 换了）。
+    expect(el(FRAME)?.attrs.get("sandbox")).toBe("");
+    expect(el(FRAME)?.attrs.get("src")).toBe("/s/doc.html?r=n1");
+    expect(el(PERM_NETWORK)?.textContent).toBe("联网：开");
+  });
+
+  it("should surface a shape-mismatched permissions response in the banner", async () => {
+    install("doc.html", "http://x/", (url) =>
+      url.endsWith("/permissions")
+        ? jsonOf({ permissions: { scripts: "bogus" } })
+        : foreignDoc()(url),
+    );
+    installForeignDom();
+    await load();
+
+    stubs.doc.fire(PERM_SCRIPTS, "click", {});
+    await flush();
+
+    expect(el(ERROR)?.textContent).toBe("/api/doc/doc.html/permissions → 响应形状不符");
     expect(el(FRAME)?.attrs.get("sandbox")).toBe("");
   });
 
