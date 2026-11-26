@@ -25,6 +25,7 @@ import {
   type TrustLevel,
 } from "../io/permissions";
 import { parseHtml } from "../html/parse";
+import { stripPrefetchLinks } from "../html/prefetch";
 import { hasExecutableContent } from "../html/sanitize";
 import { attributeOf } from "../model/attrs";
 import { classifyDocument } from "../model/classify";
@@ -80,6 +81,8 @@ const HTML_HEADERS: Readonly<Record<string, string>> = {
   "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'",
   "referrer-policy": "no-referrer",
   "cache-control": "no-store",
+  // 预取提示不归 CSP 管：`<link rel=dns-prefetch>` 照发 DNS 探测，头层关掉浏览器自己的预取。
+  "x-dns-prefetch-control": "off",
 };
 
 /**
@@ -227,12 +230,17 @@ export const documentReply = async (ctx: HandlerContext, docId: string): Promise
   // 托管/可归一文档的响应头逐字节不动；外来文档才按生效权限换 CSP。
   if (classifyDocument(parsed).cls !== "foreign") return { ...doc, reply: htmlReply(doc.bytes) };
   const { effective } = await permissionsOf(ctx, doc.target, doc.bytes);
+  // 联网关时把 `<link rel=dns-prefetch|preconnect|prefetch|prerender|modulepreload>` 从下发
+  // 字节里摘掉：预取提示不受 CSP 约束，是绕过联网闸的残余通道。只改响应，不动文件。
+  const body =
+    // Stryker disable next-line ConditionalExpression: 联网开时原文下发，strip 是纯字符串变换。
+    effective.network ? doc.bytes : stripPrefetchLinks(decodeUtf8(doc.bytes, doc.target.realPath));
   return {
     ...doc,
     reply: {
       status: 200,
       headers: { ...HTML_HEADERS, "content-security-policy": foreignCspOf(effective) },
-      body: doc.bytes,
+      body,
     },
   };
 };
