@@ -76,6 +76,16 @@ module.exports = {
       to: { dependencyTypes: ["npm-no-pkg", "npm-unknown"] },
     },
     {
+      name: "app-src-stays-browser-pure",
+      severity: "error",
+      comment:
+        "packages/app/src is served to the browser verbatim: no Node builtins may be " +
+        "imported there. src/version.ts is the single audited exception — build-static.mjs " +
+        "rewrites its emitted output into a baked literal before it is served.",
+      from: { path: "^packages/app/src", pathNot: "^packages/app/src/version\\.ts$" },
+      to: { dependencyTypes: ["core"] },
+    },
+    {
       name: "widgets-use-host-interface",
       severity: "error",
       comment:
