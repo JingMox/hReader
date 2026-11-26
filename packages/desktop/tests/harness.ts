@@ -26,6 +26,7 @@ export const WORKBENCH_MODULES = [
   "modals.js",
   "sidebar.js",
   "statusbar.js",
+  "immersive.js",
   "menu-shortcuts.js",
 ] as const;
 
@@ -215,6 +216,7 @@ export const WORKBENCH_HTML = `
         <button id="hr-perm-scripts" type="button"></button>
         <button id="hr-perm-network" type="button"></button>
       </span>
+      <button id="hr-immersive-btn" type="button"></button>
       <span id="hr-hint"></span>
     </div>
     <style id="hr-theme"></style>

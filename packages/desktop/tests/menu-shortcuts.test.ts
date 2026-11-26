@@ -26,6 +26,7 @@ function make(): Sandbox {
     "flushBlockSave",
     "showToast",
     "bridgeNavigate",
+    "toggleImmersive",
   ]) {
     s.hrd[name] = vi.fn();
   }
@@ -193,6 +194,7 @@ describe("原生菜单动作分发", () => {
       ["export-html", () => s.hrd.runExportAction],
       ["print", () => s.hrd.runExportAction],
       ["reveal", () => s.hrd.runExportAction],
+      ["toggle-immersive", () => s.hrd.toggleImmersive],
     ];
     for (const [id, spy] of cases) {
       menuAction(s, id);
