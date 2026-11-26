@@ -1,7 +1,7 @@
-// 这层管：parent-death 看门狗与 `--exit-with-parent` 的接线——纯判定 `parentGone` /
-// `orphanedAtLaunch`、采集口径 `parentWatchOf`、开关 `shouldWatchParent`、定时器接线 `watchParent`，
-// 以及旗标从 argv 一路接到看门狗的那一段。真进程案（kill -9 假父进程 → daemon 自杀 + 端口释放）
-// 在 `scripts/gui/parent-death.sh`。
+// This layer covers the parent-death watchdog and `--exit-with-parent` wiring — the pure checks `parentGone` /
+// `orphanedAtLaunch`, the sampling surface `parentWatchOf`, the switch `shouldWatchParent`, timer wiring
+// `watchParent`, and the stretch where the flag runs from argv to the watchdog. The real-process case
+// (kill -9 a fake parent → daemon suicide + port release) lives in `scripts/gui/parent-death.sh`.
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -63,7 +63,7 @@ describe("shouldWatchParent", () => {
   });
 });
 
-describe("serveCommand · 父进程看门狗的开关", () => {
+describe("serveCommand · the parent watchdog switch", () => {
   it("should not install a poll timer without --exit-with-parent", async () => {
     const dir = serveDirs();
     const handle = stopHandle();
@@ -91,13 +91,13 @@ describe("serveCommand · 父进程看门狗的开关", () => {
   }, 20_000);
 });
 
-describe("serveCommand · stop 撤回看门狗", () => {
+describe("serveCommand · stop retracts the watchdog", () => {
   it("should drop the poll timer on stop, not just close the server", async () => {
     const dir = serveDirs();
     const handle = stopHandle();
     try {
       const { clearSpy, timer } = await startWatched(dir, handle.stopped);
-      // 只 `close()` 不撤看门狗 = `--exit-with-parent` 收到 SIGTERM 后靠 1s 定时器续命。
+      // `close()` without retracting the watchdog = after `--exit-with-parent` receives SIGTERM, the 1s timer keeps it alive.
       handle.stop();
       await vi.waitFor(() => {
         expect(clearSpy.mock.calls.some((call) => call[0] === timer)).toBe(true);
@@ -109,7 +109,7 @@ describe("serveCommand · stop 撤回看门狗", () => {
   }, 20_000);
 });
 
-describe("serveCommand · 启动时父进程已死", () => {
+describe("serveCommand · parent already dead at startup", () => {
   it("should refuse to start when the parent was already gone at launch", async () => {
     const dir = serveDirs();
     const handle = stopHandle();
@@ -121,7 +121,7 @@ describe("serveCommand · 启动时父进程已死", () => {
           launchParentPid: 1,
         }),
       ).rejects.toThrow(/ppid=1/);
-      // 不建服务就退：home 里不该留下任何 daemon 记录。
+      // Exiting without creating a server: no daemon record should remain in home.
       expect(existsSync(join(dir.home, ".hreader", "daemon.json"))).toBe(false);
     } finally {
       handle.stop();
@@ -145,7 +145,7 @@ describe("serveCommand · 启动时父进程已死", () => {
   });
 });
 
-/** 用假时钟跑一段：区间回调不真等 1 秒。 */
+/** Run a stretch on a fake clock: interval callbacks don't really wait 1 second. */
 const withFakeTimers = (body: () => void): void => {
   vi.useFakeTimers();
   try {
@@ -155,7 +155,7 @@ const withFakeTimers = (body: () => void): void => {
   }
 };
 
-describe("watchParent · 不看父进程", () => {
+describe("watchParent · not watching the parent", () => {
   it("should not schedule anything when the flag is off", () => {
     withFakeTimers(() => {
       const close = vi.fn(() => Promise.resolve());
@@ -178,11 +178,11 @@ describe("watchParent · 不看父进程", () => {
   });
 });
 
-describe("watchParent · 父进程消失", () => {
+describe("watchParent · the parent disappears", () => {
   it("should re-read the parent pid on every poll and close on the third one", () => {
     withFakeTimers(() => {
       const close = vi.fn(() => Promise.resolve());
-      // 前两次还是老 ppid、第三次才变：缓存的实现会在第二次就写成“没变”，第三次看不出翻转。
+      // The first two polls still see the old ppid, the third sees the change: a caching implementation would write "unchanged" on the second and never show the flip.
       const readParentPid = vi.fn(() => 999);
       readParentPid.mockReturnValueOnce(4321).mockReturnValueOnce(4321);
       watchParent(watchOf(4321, readParentPid), { close });
@@ -208,7 +208,7 @@ describe("watchParent · 父进程消失", () => {
       ppid = 1;
       vi.advanceTimersByTime(PARENT_POLL_MS);
       expect(close).toHaveBeenCalledTimes(1);
-      // 定时器必须清掉：否则事件循环永不排空，daemon 关完服务还赖着不退。
+      // The timer must be cleared: otherwise the event loop never drains and the daemon lingers after the server is down.
       vi.advanceTimersByTime(PARENT_POLL_MS * 3);
       expect(close).toHaveBeenCalledTimes(1);
     });
@@ -228,13 +228,13 @@ describe("watchParent · disposer", () => {
 
       dispose();
 
-      // 定时器还在 = `close()` 之后事件循环仍有活干，进程不会自己退。
+      // A live timer = work remains in the event loop after `close()`; the process will not exit on its own.
       expect(vi.getTimerCount()).toBe(0);
     });
   });
 
   it("should unref the poll timer so it can never be what holds the daemon alive", () => {
-    // 真定时器：fake timers 下 `unref()` 是空操作，删掉 `serve.ts` 那一行也没人红。
+    // A real timer: under fake timers `unref()` is a no-op and deleting that `serve.ts` line turns nothing red.
     const setSpy = vi.spyOn(globalThis, "setInterval");
     const dispose = watchParent(
       watchOf(4321, () => 4321),
@@ -258,7 +258,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("serveCommand · --exit-with-parent 不打断正常生命周期", () => {
+describe("serveCommand · --exit-with-parent does not interrupt the normal lifecycle", () => {
   it("should keep the watchdog and the daemon record across three live-parent polls", async () => {
     const dir = serveDirs();
     const { stop, stopped } = stopHandle();
@@ -267,7 +267,7 @@ describe("serveCommand · --exit-with-parent 不打断正常生命周期", () =>
       expect(timer).toBeDefined();
       expect(poll).toBeDefined();
 
-      // 父进程没换：三次轮询都不该关服务，也不该把看门狗清掉。
+      // The parent never changed: none of the three polls should stop the server, nor clear the watchdog.
       for (let index = 0; index < 3; index += 1) poll?.();
 
       expect(existsSync(join(dir.home, ".hreader", "daemon.json"))).toBe(true);
@@ -295,7 +295,7 @@ describe("serveCommand · --exit-with-parent 不打断正常生命周期", () =>
   });
 });
 
-describe("run · --exit-with-parent 从 argv 到看门狗", () => {
+describe("run · --exit-with-parent from argv to the watchdog", () => {
   it("should plumb the flag from argv through run() into the watchdog", async () => {
     const dir = serveDirs();
     const previous = process.env["HOME"];

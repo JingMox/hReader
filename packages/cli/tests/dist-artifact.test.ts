@@ -1,6 +1,6 @@
-// 这层管：交付物 `dist/cli.mjs` 的写盘路径回归——`patch` 落盘走 write-file-atomic（CJS），
-// 产物里 `__filename`/`__dirname` 的 define 一丢，这个用例在真子进程里当场崩。
-// 测的是 `package.json` 的 `bin` 指向的产物，不是 src；mcp-server 侧的对应探针在 stdio.test.ts。
+// This layer covers the write-path regression of the shipped `dist/cli.mjs` — `patch` writes through
+// write-file-atomic (CJS); lose the `__filename`/`__dirname` defines in the bundle and this case crashes in a real subprocess.
+// It tests the artifact `package.json`'s `bin` points at, not src; the mcp-server counterpart probe is in stdio.test.ts.
 
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -47,7 +47,7 @@ beforeAll(() => {
   execFileSync("node", ["scripts/build.mjs"], { cwd: PACKAGE_ROOT, stdio: "pipe" });
 }, 120_000);
 
-describe("dist/cli.mjs · 交付面", () => {
+describe("dist/cli.mjs · delivery surface", () => {
   it("should ship with a shebang, executable bit and bundled styles", () => {
     expect(existsSync(DIST_CLI)).toBe(true);
     expect(readFileSync(DIST_CLI, "utf8").startsWith("#!/usr/bin/env node")).toBe(true);
@@ -57,7 +57,7 @@ describe("dist/cli.mjs · 交付面", () => {
   });
 });
 
-describe("dist/cli.mjs · 写盘路径", () => {
+describe("dist/cli.mjs · write path", () => {
   it("should patch then undo against the built artifact", async () => {
     expect(existsSync(DIST_CLI)).toBe(true);
 
@@ -101,7 +101,7 @@ describe("dist/cli.mjs · 写盘路径", () => {
       const styled = await runDist(["style", "d.html", "--visual", "atelier-editorial"], dir);
       expectNoAnsi(styled);
       expect(styled.code).toBe(0);
-      // 主题按 `<style id="hr-theme">` 注入；这一行同时证明 dist/styles 随产物分发。
+      // The theme is injected as `<style id="hr-theme">`; this line also proves dist/styles ships with the artifact.
       expect(readFileSync(path, "utf8")).toContain('<style id="hr-theme"');
     });
   });

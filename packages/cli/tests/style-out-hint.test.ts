@@ -1,4 +1,4 @@
-// 这层管：`--out` 落到发现链外时 stderr 的那一行提示（真子进程；提示不是错误，exit 仍为 0）。
+// This layer covers the stderr hint line when `--out` lands outside the discovery chain (real subprocess; a hint is not an error, exit stays 0).
 
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,19 +17,19 @@ const seed = (dir: string, sub: string): string => {
   return path;
 };
 
-describe("hr style extract · --out 发现路径提示 · 展示", () => {
+describe("hr style extract · --out discovery-path hint · display", () => {
   it("should quote the path as the user typed it", async () => {
     await withTempDir(async (dir) => {
       const file = seed(dir, "styles");
       const result = await runOf(dir, [file, "--id", "my-voice", "--out", "styles/my-voice.yaml"]);
 
-      // 逐字钉"展示的是用户敲过的相对路径"；提示里建议的目标路径本来就是绝对路径，不在此断言范围。
+      // Byte-pinned "the relative path the user typed is what is displayed"; the suggested target in the hint is an absolute path by design, out of assertion scope.
       expect(result.stderr).toContain("提示：styles/my-voice.yaml 不在风格发现路径里");
     });
   });
 });
 
-describe("hr style extract · --out 发现路径提示", () => {
+describe("hr style extract · --out discovery-path hint", () => {
   it("should hint when writing outside the two discovered locations", async () => {
     await withTempDir(async (dir) => {
       const file = seed(dir, "styles");
@@ -57,7 +57,7 @@ describe("hr style extract · --out 发现路径提示", () => {
       writeFileSync(join(dir, "styles/my-voice.yaml"), "id: my-voice\n");
       const result = await runOf(dir, [file, "--id", "my-voice", "--out", "styles/my-voice.yaml"]);
 
-      // `--out` 被占、什么都没写：此时打“不在发现路径里”会读成“已经写了”。
+      // `--out` was taken and nothing was written: printing "not on the discovery path" now would read as "already written".
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("目标已存在");
       expect(result.stderr).not.toContain("不在风格发现路径里");
@@ -65,7 +65,7 @@ describe("hr style extract · --out 发现路径提示", () => {
   });
 });
 
-describe("hr style extract · --out 提示与软链", () => {
+describe("hr style extract · --out hints and symlinks", () => {
   it("should stay quiet when HOME reaches the target through a symlink", async () => {
     await withTempDir(async (dir) => {
       const root = realpathSync(mkdtempSync(join(dir, "link-root-")));
@@ -88,7 +88,7 @@ describe("hr style extract · --out 提示与软链", () => {
         { cwd: home, env: { HOME: home, OPENCODE_API_KEY: "" } },
       );
 
-      // 两个路径是同一个文件（软链两侧）：报"不在发现路径里"就是把真话讲反了。
+      // Both paths are the same file (two sides of a symlink): saying "not on the discovery path" states the opposite of the truth.
       expect(result.code).toBe(0);
       expect(result.stderr).not.toContain("不在风格发现路径里");
     });

@@ -1,4 +1,4 @@
-// 这层管：stderr 洪流下的缓冲上限与监听器回收；不测 Chrome 渲染本身。
+// This layer covers the stderr-flood buffer cap and listener cleanup; it does not test Chrome rendering itself.
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -11,23 +11,23 @@ import { NEVER } from "./chrome-session-setup";
 
 const FAKE_CHROME = fileURLToPath(new URL("../fixtures/fake-chrome.mjs", import.meta.url));
 
-describe("stderr 缓冲", () => {
-  it("单块 5 MB 只保留前 64 KiB", () => {
+describe("stderr buffering", () => {
+  it("should keep only the first 64 KiB of a single 5 MB chunk", () => {
     expect(stderrBufferOf("", "x".repeat(5 * 1024 * 1024))).toHaveLength(65536);
   });
 
-  it("跨块追加也在 65536 处截断", () => {
+  it("should still truncate at 65536 when appending across chunks", () => {
     expect(stderrBufferOf("y".repeat(65_000), "z".repeat(100_000))).toHaveLength(65536);
   });
 
-  it("已满 64 KiB 后不再继续拼接", () => {
+  it("should stop appending once 64 KiB is full", () => {
     const full = "x".repeat(65_536);
     expect(stderrBufferOf(full, "tail")).toBe(full);
   });
 });
 
-describe("renderPdfOf · stderr 洪流", () => {
-  it("DevTools 行仍能解析，结束后 stderr 监听器归零", async () => {
+describe("renderPdfOf · stderr flood", () => {
+  it("should still parse DevTools lines and leave zero stderr listeners afterwards", async () => {
     const base = chromeDepsOf({ HREADER_CHROME: FAKE_CHROME });
     let child: ChildProcess | undefined;
     const deps = {

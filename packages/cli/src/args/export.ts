@@ -1,4 +1,4 @@
-// 这层管：`hr export` / `hr pdf` / `hr png` 的 argv 切片 → intent；不读盘、不开 Chrome。
+// This layer: argv slicing for `hr export` / `hr pdf` / `hr png` -> intent; never reads disk or starts Chrome.
 
 import { DEFAULT_STYLE_ID } from "@hreader/core";
 
@@ -59,7 +59,7 @@ export const exportIntent = (raw: Raw, rest: readonly string[], cwd: string): Pa
     intent: {
       kind: "export",
       path: absoluteOf(file, cwd),
-      // 缺省主题由这里定：`--visual` 的合法值校验在 core。
+      // The default theme is decided here; `--visual` values are validated in core.
       visual: visual ?? DEFAULT_STYLE_ID,
       out: out === undefined || out === "" ? undefined : absoluteOf(out, cwd),
       force: raw.switches.has("--force"),
@@ -89,7 +89,7 @@ export const pdfIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
   if (timeoutSec === "invalid") {
     return failure(`--timeout 必须是 1..${String(MAX_TIMEOUT_S)} 的整数秒`, "pdf");
   }
-  // 互斥不在这里报错：两个旗标各自合法，"同时给"是语义问题（`invalid_input` exit 1），归命令层判。
+  // Mutual exclusion is not an error here: each flag is legal on its own; giving both is a semantic problem (`invalid_input` exit 1) for the command layer.
   return {
     ok: true,
     intent: {
@@ -99,8 +99,8 @@ export const pdfIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
       timeoutMs: timeoutSec * 1000,
       outline: !raw.switches.has("--no-outline"),
       outlineConflict: raw.switches.has("--outline") && raw.switches.has("--no-outline"),
-      // `--visual` 缺省走"文档已嵌入主题 → 默认主题"的回落链，不在用法层焊死；
-      // 显式值的合法值校验在 core（`unknown_style`），与 `hr export` 同口径。
+      // A missing `--visual` follows the fallback chain "embedded document theme -> default theme" rather than being fixed at the usage layer;
+      // explicit values are validated in core (`unknown_style`), same as `hr export`.
       visual,
       out: absoluteOf(out, cwd),
       force: raw.switches.has("--force"),
@@ -133,15 +133,15 @@ export const pngIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
       kind: "png",
       path: absoluteOf(file, cwd),
       out: absoluteOf(out, cwd),
-      // 三个尺寸只在这里取默认值；区间由命令层判（越界是 `invalid_input` exit 1，不是用法错误 exit 2）。
+      // The three size defaults only apply here; range checking is the command layer's job (out of range is `invalid_input` exit 1, not usage error exit 2).
       width: raw.values.get("--width") ?? DEFAULT_WIDTH,
       scale: raw.values.get("--scale") ?? DEFAULT_SCALE,
       maxHeight: raw.values.get("--max-height") ?? DEFAULT_MAX_HEIGHT,
       maxHeightExplicit: raw.values.has("--max-height"),
-      // `--outline`/`--no-outline` 在 png 上是"已知旗标放错子命令"：放行到意图里，由命令层报 `invalid_input`。
+      // `--outline`/`--no-outline` on png are "known flags on the wrong subcommand": pass them into the intent and let the command layer report `invalid_input`.
       outlineFlag: OUTLINE_FLAGS.find((flag) => raw.switches.has(flag)),
       timeoutMs: timeoutSec * 1000,
-      // 缺省同样把主题选择权交给命令层（文档嵌入主题 → 默认主题）。
+      // The default likewise leaves theme selection to the command layer (embedded document theme -> default theme).
       visual: raw.values.get("--visual"),
       force: raw.switches.has("--force"),
       ...commonOf(raw, cwd),

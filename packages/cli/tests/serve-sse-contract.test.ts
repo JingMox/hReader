@@ -1,5 +1,5 @@
-// 这层管：**SSE 契约**——服务器真实帧 → 客户端真实解析器。
-// 规矩：假件只能控时序，不能定义格式；帧格式必须与真服务器对一次。
+// This layer covers the **SSE contract** — real server frames → the real client parser.
+// The rule: fakes may control timing, never define the format; the frame format must match the real server once.
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -54,12 +54,12 @@ afterAll(async () => {
 const recordOf = (raw: string): Readonly<Record<string, unknown>> => {
   const value: unknown = JSON.parse(raw);
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`不是对象：${raw}`);
+    throw new Error(`not an object: ${raw}`);
   }
   return { ...value };
 };
 
-/** 按 SSE 语法切帧：`event:` / `id:` / `data:` 三种行，空行结束（末尾帧也收）。 */
+/** Split frames by SSE syntax: `event:` / `id:` / `data:` lines, ended by a blank line (a trailing frame counts). */
 const framesOf = (text: string): Frame[] => {
   const frames: Frame[] = [];
   let event = "";
@@ -90,9 +90,10 @@ const framesOf = (text: string): Frame[] => {
   return frames;
 };
 
-/** 真长连接：读到 `until` 出现或到点 abort（用真连接的自然流，不轮询）。
- *  收尾用 `releaseLock` 而不是 `cancel`：cancel 会把整条流掐死，ready 帧先行消费后
- *  后续 `text()` 就读不到字节了；释放锁让同一个 body 能被顺序续读。 */
+/** A real long connection: read until `until` appears or abort on time (use the natural flow of a real
+ *  connection, no polling). Close with `releaseLock` rather than `cancel`: cancel kills the whole stream,
+ *  and after the ready frame is consumed a later `text()` reads no bytes; releasing the lock lets the same
+ *  body be read on in order. */
 const readStream = async (
   body: ReadableStream<Uint8Array>,
   until: string,
@@ -113,7 +114,7 @@ const readStream = async (
       if (text.includes(until)) break;
     }
   } catch {
-    // abort 把流打断：已收到的字节仍然有效。
+    // abort breaks the stream: bytes already received stay valid.
   } finally {
     clearTimeout(timer);
     reader.releaseLock();
@@ -138,8 +139,8 @@ const patchOnce = async (server: RunningServer, html: string): Promise<Response>
     }),
   });
 
-/** 打开真 SSE 连接并等到 `ready` 帧（hub 在登记进客户端表之后才写它）——
- *  收到 ready 才返回，之后的 patch 一定会落进这条流；`text` 读到目标帧或 5s 到点。 */
+/** Open a real SSE connection and wait for the `ready` frame (the hub writes it only after registering the
+ *  client) — returning only after ready guarantees a later patch lands on this stream; `text` reads until the target frame or a 5s deadline. */
 const openEvents = async (
   server: RunningServer,
 ): Promise<{ text: (until: string) => Promise<string>; stop: () => void }> => {
@@ -150,7 +151,7 @@ const openEvents = async (
   });
   expect(response.status).toBe(200);
   const body = response.body;
-  if (body === null) throw new Error("没有响应体");
+  if (body === null) throw new Error("no response body");
   const text = async (until: string): Promise<string> =>
     await readStream(body, until, 5000, () => {
       controller.abort();
@@ -165,7 +166,7 @@ const openEvents = async (
   };
 };
 
-/** 抓一组真帧：先像浏览器那样取一次 model（绑定 doc/revision），再真 patch，读到 `doc.changed`。 */
+/** Capture a set of real frames: fetch model like a browser first (binding doc/revision), then really patch, and read until `doc.changed`. */
 const captureFrames = async (server: RunningServer, html: string): Promise<Frame[]> => {
   const model = await fetch(`http://127.0.0.1:${String(server.port)}/api/doc/doc.html/model`, {
     headers: { cookie: `hr=${server.token}` },
@@ -186,7 +187,7 @@ const expectedEventsOf = (frames: readonly Frame[]): { id: number; type: string 
   const events: { id: number; type: string }[] = [];
   for (const frame of frames) {
     const id = Number(frame.id);
-    // 服务器把 `ready` 编成 id 0；客户端按"id 严格递增"把 0 当旧帧（设计如此）。
+    // The server emits `ready` as id 0; the client treats 0 as an old frame under "ids strictly increase" (by design).
     if (id > 0) events.push({ id, type: String(recordOf(frame.data)["type"]) });
   }
   return events;
@@ -204,7 +205,7 @@ const assertTypedDocChanged = (frames: readonly Frame[]): void => {
   expect(typeof payload["revision"]).toBe("string");
 };
 
-describe("SSE 契约 · 服务器帧 → 客户端解析器", () => {
+describe("SSE contract · server frames → client parser", () => {
   it("should produce frames that parse into typed doc.changed events", () => {
     assertTypedDocChanged(captured);
   });
@@ -217,17 +218,17 @@ describe("SSE 契约 · 服务器帧 → 客户端解析器", () => {
 
   it("should drop a replayed frame whose id the parser already saw (stale guard on real ids)", () => {
     const last = [...captured].reverse().find((frame) => Number(frame.id) > 0);
-    if (last === undefined) throw new Error("fixture 没抓到 id>0 的帧");
+    if (last === undefined) throw new Error("fixture captured no id>0 frame");
     const expected = expectedEventsOf(captured);
     expect(expected.length).toBeGreaterThan(0);
-    // 同一 id 再送一次：`isStale` 必须挡住，客户端事件序列与只送一遍完全相同。
+    // Delivering the same id twice: `isStale` must block it, leaving the client event sequence identical to one delivery.
     expect(replayThroughSse([...captured, last])).toEqual(expected);
   });
 
-  it("should never leak an absolute path in a watcher-driven payload", async () => {
-    // 实测：外部改工作区内非当前文档触发 `library.changed`，载荷必须只给相对路径，不泄绝对路径。
+  it("should emit library.changed with only the relative path when an outside change hits a non-current document", async () => {
+    // Observed: an outside change to a non-current document in the workspace triggers `library.changed`; the payload must give only the relative path, never leak the absolute one.
     const server = fixture?.server;
-    if (server === undefined) throw new Error("fixture 未就绪");
+    if (server === undefined) throw new Error("fixture not ready");
     const events = await openEvents(server);
     const reading = events.text('"type":"library.changed"');
     writeFileSync(
@@ -242,7 +243,7 @@ describe("SSE 契约 · 服务器帧 → 客户端解析器", () => {
   }, 15_000);
 });
 
-/** 只回放真帧；`lastEventId` 按帧头给（`main.ts` 的适配层正是在这里丢了 id）。 */
+/** Only real frames are replayed; `lastEventId` comes from the frame header (`main.ts`'s adapter lost the id right here). */
 const replayThroughSse = (frames: readonly Frame[]): { id: number; type: string }[] => {
   const received: { id: number; type: string }[] = [];
   const listeners = new Map<string, (event: MessageEventLike) => void>();

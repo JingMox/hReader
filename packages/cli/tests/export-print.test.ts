@@ -1,4 +1,4 @@
-// 这层管：`hr export` 的真子进程行为（stdout/落盘/--json/错误码/外部图片提示）；不碰网络、不起 Chrome。
+// This layer covers `hr export` real-subprocess behavior (stdout/disk/--json/error codes/external image notices); no network, no Chrome.
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,7 +30,7 @@ const seed = (dir: string): string => {
 const dataFieldOf = (result: { readonly stdout: string }, key: string): unknown =>
   fieldOf(fieldOf(parseJsonLine(result.stdout), "data"), key);
 
-/** 成功信封的键集是**精确**契约：`ok`+`data`（四个键），不多不少。 */
+/** The success envelope's key set is an **exact** contract: `ok`+`data` (four keys), no more, no less. */
 const expectSuccessKeysOf = (result: { readonly stdout: string }): void => {
   const envelope = parseJsonLine(result.stdout);
   expect(keysOf(envelope)).toEqual(["ok", "data"]);
@@ -52,7 +52,7 @@ describe("hr export · stdout", () => {
     await withTempDir(async (dir) => {
       seed(dir);
       const result = await runCli(["export", "doc.html", "--workspace", dir], { cwd: dir });
-      // 类名会出现在 CSS 的 `@media print` 防御块里，只断 DOM：没有 `<button` 才算真删掉。
+      // The class name appears in the CSS `@media print` defense block, so assert on the DOM: no `<button` means it is really gone.
       expect(result.stdout).not.toContain("<button");
       expect(result.stdout).not.toContain("cdn.example");
       expect(result.stderr).toBe("已移除 1 个外部图片\n");
@@ -69,7 +69,7 @@ describe("hr export · stdout", () => {
   });
 });
 
-describe("hr export · 纸张", () => {
+describe("hr export · paper", () => {
   it("should always print on a4 regardless of any pdf page-size flag", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -134,7 +134,7 @@ describe("hr export · --out", () => {
   });
 });
 
-describe("hr export · file_exists 与 --force", () => {
+describe("hr export · file_exists and --force", () => {
   it("should refuse an existing --out with a --force hint (exit 1)", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -164,7 +164,7 @@ describe("hr export · file_exists 与 --force", () => {
   });
 });
 
-describe("hr export · --out 成功路径", () => {
+describe("hr export · --out success path", () => {
   it("should write inside the workspace and leave no tmp file behind", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -180,7 +180,7 @@ describe("hr export · --out 成功路径", () => {
   });
 });
 
-describe("hr export · 错误码", () => {
+describe("hr export · error codes", () => {
   it("should map an empty document to empty_document (exit 1)", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(join(dir, "empty.html"), "<article><section></section></article>");
@@ -205,10 +205,10 @@ describe("hr export · 错误码", () => {
   });
 });
 
-describe("hr export · 4 MiB 上限", () => {
+describe("hr export · 4 MiB limit", () => {
   it("should reject a product one byte over the 4 MiB limit", async () => {
     await withTempDir(async (dir) => {
-      // 上限按产物**最终字节**判（`>` 才拒）：量尺与正稿同名（docId 进产物），否则差值混进文件名长度。
+      // The limit is judged on the artifact's **final bytes** (rejects only `>`): ruler and real draft share the name (docId enters the artifact), or filename length leaks into the delta.
       const measure = async (pad: number): Promise<number> => {
         writeFileSync(
           join(dir, "measure.html"),

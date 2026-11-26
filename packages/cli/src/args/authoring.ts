@@ -1,4 +1,4 @@
-// 这层管：文档起稿、规范化、阅读、修补、检查与撤销命令的参数校验与 intent 构造；不碰 fs。
+// This layer: argument validation and intent construction for the new/normalize/read/patch/check/undo document commands; no fs.
 
 import { basename, dirname, extname, join } from "node:path";
 
@@ -30,7 +30,7 @@ const NEW_FLAGS = ["--force", "--json", "--kind", "--title", "--visual", "--work
 
 const IMPORT_FLAGS = ["--force", "--json", "--kind", "--out", "--title", "--workspace"];
 
-/** 默认落点与源同目录、同名加 `.hr` 中缀：`a.html` → `a.hr.html`，`a` → `a.hr.html`。 */
+/** Default output sits next to the source with a `.hr` infix: `a.html` → `a.hr.html`, `a` → `a.hr.html`. */
 const defaultImportOutOf = (file: string): string =>
   join(dirname(file), `${basename(file, extname(file))}.hr.html`);
 
@@ -54,7 +54,7 @@ export const importIntent = (raw: Raw, rest: readonly string[], cwd: string): Pa
   }
   const path = absoluteOf(file, cwd);
   const target = absoluteOf(out ?? defaultImportOutOf(file), cwd);
-  // 词法这道先拦：`--out` 指向源文件 = 覆盖输入本身，是用法错误（exit 2），不是写盘守卫的事。
+  // Lexical gate first: `--out` pointing at the source file overwrites the input itself — a usage error (exit 2), not the write guard's job.
   if (target === path) return failure("--out 不能指向源文件自身", "import");
   return {
     ok: true,
@@ -94,9 +94,9 @@ export const newIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
       kind: "new",
       path: absoluteOf(file, cwd),
       docKind,
-      // 标题缺省取文件名（去扩展名）：先有一份能看的稿，标题之后再 patch。
+      // Default title is the file name (sans extension): produce a readable draft first; the title can be patched later.
       title: raw.values.get("--title") ?? basename(file, extname(file)),
-      // 缺省主题由这里定：合法性校验在 core（`loadThemeCss`）。
+      // The default theme is decided here; validity is checked in core (`loadThemeCss`).
       visual: raw.values.get("--visual") ?? DEFAULT_STYLE_ID,
       force: raw.switches.has("--force"),
       ...commonOf(raw, cwd),
@@ -104,7 +104,7 @@ export const newIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
   };
 };
 
-/** 只补 id、不碰其它字节：`--write` 才落盘，不给就只把结果打到 stdout。 */
+/** Only fills in ids, touches no other bytes: `--write` persists, otherwise the result just goes to stdout. */
 export const normalizeIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
   const [file = "", ...extra] = rest;
   const problem =

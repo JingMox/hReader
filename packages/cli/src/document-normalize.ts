@@ -1,7 +1,7 @@
-// 这层管：读入口共同的"这份文档现在能不能读"前置判定；不读盘、不建模型、不写盘。
+// This layer: the shared "can this document be read now" preflight for read entries; no disk reads, no model building, no writes.
 //
-// 两个判定要分开：缺 id 是一条命令能修好的状态（`hr normalize --write`），
-// 没有 `<article>` 是这份文件本来就不是文档——混成一个码会让用户按提示跑了也修不好。
+// The two checks stay separate: missing ids are a state one command can fix (`hr normalize --write`),
+// while no `<article>` means the file simply is not a document — merging them into one code would send users down a fix that cannot work.
 
 import {
   hasArticle,
@@ -13,9 +13,9 @@ import {
 } from "@hreader/core";
 
 /**
- * 重复 `data-hr-id` 在加载侧就要拒：定位按 id 取值，重复的那两处**一处也定位不到**（不是“命中第一个”），
- * 所以 `read`/`patch` 在进定位之前就退出 2。
- * 与 `needs_normalize` 分开说：那是“缺 id”，这是“两个元素共用同一个 id”。
+ * Duplicate `data-hr-id`s are refused at load time: location resolves by id, and **neither** duplicate can be
+ * located (not "first match wins"), so `read`/`patch` exit 2 before location is attempted.
+ * Kept separate from `needs_normalize`: that one means "ids are missing", this one means "two elements share one id".
  */
 const countHrId = (counts: Map<string, number>, element: HtmlElementNode): void => {
   for (const [name, value] of element.attrs) {
@@ -43,7 +43,7 @@ export const assertUniqueIds = (parsed: ParsedHtml, file: string): void => {
   }
 };
 
-/** 注入会产出新 id ⇔ 盘上缺 id；用注入结果当判据，不另立一套“什么算缺”。 */
+/** Injection produces new ids <=> ids are missing on disk; the injection result is the criterion — no second definition of "missing". */
 const needsNormalize = (parsed: ParsedHtml): boolean => injectNodeIds(parsed).injected.length > 0;
 
 export const assertIsDocument = (parsed: ParsedHtml, file: string): void => {
@@ -53,7 +53,7 @@ export const assertIsDocument = (parsed: ParsedHtml, file: string): void => {
 };
 
 /**
- * 缺 id 时直接失败而不是临时注入：算出来的 id 不在盘上，用户把它喂回 `patch` 必挂。
+ * Fail outright when ids are missing instead of injecting ad hoc: computed ids are not on disk, and feeding one back to `patch` fails.
  */
 export const assertNormalized = (parsed: ParsedHtml, file: string): void => {
   if (needsNormalize(parsed)) {
@@ -65,8 +65,8 @@ export const assertNormalized = (parsed: ParsedHtml, file: string): void => {
 };
 
 /**
- * core 不知道文件名（它手上只有模型），报"缺 id"时只能泛指。有路径的那一层用它把文件名与
- * 可直接粘贴的命令补上，别让用户对着 `<file>` 猜。
+ * core does not know the file name (it only holds the model), so its "missing ids" error can only be generic.
+ * The layer with the path uses it to fill in the file name and a paste-ready command — do not make the user guess at `<file>`.
  */
 export const withNormalizeAdvice = (error: unknown, file: string): unknown =>
   error instanceof HrError && error.code === "needs_normalize"

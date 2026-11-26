@@ -1,10 +1,10 @@
-// 这层管：**首用路径**——一个只有手写 HTML 的人，从空目录一路走到浏览器里能读。
+// This layer covers the **first-run path** — someone with only handwritten HTML walks from an empty directory to reading in a browser.
 //
-// 规矩（这张卡的分家理由）：
-//   · 只用公开契约：`--help` 里的命令与参数、stdout/stderr 形状、退出码、HTTP 路由；
-//   · **不 import 任何 `src/**`**——只 spawn CLI，serve 起来后发 HTTP；
-//   · 断言写"用户拿到了什么"（大纲里有三章 / 导出的 HTML 里 `<h1>` 是章标题 / 页面里能看到正文），
-//     不写"走了哪个分支"。
+// The rules (why this card is its own file):
+//   · Only public contracts: the commands and args in `--help`, stdout/stderr shapes, exit codes, HTTP routes;
+//   · **Never import anything under `src/**`** — spawn the CLI only, then speak HTTP once serve is up;
+//   · Assertions say "what the user got" (three chapters in the outline / `<h1>` chapter titles in the
+//     exported HTML / visible body text in the page), not "which branch it took".
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +15,7 @@ import { checked } from "../cli-support";
 import { fieldOf, listOf, parseJsonLine, runCli, textOf, withTempDir } from "../harness";
 import { homeOf, startServe } from "../serve-harness";
 
-/** 用户真实原料：封面 + 3 章 + 1 节，**一个 `data-hr-id` 都没有**。 */
+/** Real user material: a cover + 3 chapters + 1 section, **not one `data-hr-id`**. */
 const DRAFT = [
   "<!doctype html>",
   '<html lang="zh-CN"><head><meta charset="utf-8"><title>季度复盘</title></head>',
@@ -44,7 +44,7 @@ interface Outline {
 const dataOf = (result: { readonly stdout: string }): unknown =>
   fieldOf(parseJsonLine(result.stdout), "data");
 
-/** ① 手写稿 → 补 id：返回注入了几个（0 就说明 normalize 空转了）。 */
+/** ① Handwritten draft → inject ids: returns how many were injected (0 means normalize spun idle). */
 const normalizeDraft = async (dir: string): Promise<number> => {
   writeFileSync(join(dir, "doc.html"), DRAFT);
   const result = checked(
@@ -56,11 +56,11 @@ const normalizeDraft = async (dir: string): Promise<number> => {
 
 const titleOf = (node: unknown): string => textOf(fieldOf(node, "text"));
 
-/** 大纲是树（章节嵌在 `children` 里）：用户眼里的"大纲"是摊平后的标题序列。 */
+/** The outline is a tree (chapters nest in `children`): the "outline" a user sees is the flattened heading sequence. */
 const flatten = (nodes: readonly unknown[]): readonly unknown[] =>
   nodes.flatMap((node) => [node, ...flatten(listOf(fieldOf(node, "children")))]);
 
-/** ② 大纲：用户能不能看见自己的三章与一节。 */
+/** ② Outline: can the user see their three chapters and one section. */
 const outlineOf = async (dir: string): Promise<Outline> => {
   const result = checked(await runCli(["outline", "doc.html", "--json"], { cwd: dir }));
   expect(result.code).toBe(0);
@@ -73,7 +73,7 @@ const outlineOf = async (dir: string): Promise<Outline> => {
   };
 };
 
-/** ③ 读：整篇能读（含正文），单章也能定位到。 */
+/** ③ Read: the whole doc is readable (body included), and a single chapter is locatable too. */
 const readOf = async (
   dir: string,
   chapterId: string,
@@ -88,7 +88,7 @@ const readOf = async (
   };
 };
 
-/** ④ 改一章：返回 patch 的信封 `data`（id 不变，「旧 id 还能用」才是用户要的那件事）。 */
+/** ④ Patch a chapter: returns patch's envelope `data` (ids unchanged — "old ids still work" is what the user wants). */
 const patchChapter = async (dir: string, oldId: string): Promise<unknown> => {
   const result = checked(
     await runCli(
@@ -109,7 +109,7 @@ const patchChapter = async (dir: string, oldId: string): Promise<unknown> => {
   return dataOf(result);
 };
 
-/** ⑤ 上一套视觉风格：命令成功，且文件里真的落进了主题样式（不是只在内存里改）。 */
+/** ⑤ Apply a visual style: the command succeeds, and the file really gained theme styles (not only in memory). */
 const styleOf = async (dir: string): Promise<void> => {
   const result = checked(
     await runCli(["style", "doc.html", "--visual", "atelier-editorial", "--json"], { cwd: dir }),
@@ -119,7 +119,7 @@ const styleOf = async (dir: string): Promise<void> => {
   expect(readFileSync(join(dir, "doc.html"), "utf8")).toMatch(/<style|class="hr-/u);
 };
 
-/** ⑥ 导出打印稿：返回"盘上那份 / 信封里那份"，判据是用户真的拿到一份能读的 HTML。 */
+/** ⑥ Export the printout: returns "the one on disk / the one in the envelope"; the criterion is a really readable HTML reaching the user. */
 const exportOf = async (dir: string): Promise<{ printed: string; bytes: number }> => {
   const result = checked(
     await runCli(["export", "doc.html", "--out", "print.html", "--json"], { cwd: dir }),
@@ -131,7 +131,7 @@ const exportOf = async (dir: string): Promise<{ printed: string; bytes: number }
   };
 };
 
-describe("首用路径 · 手写稿先补齐结构再读", () => {
+describe("first-run path · fix the handwritten draft's structure before reading", () => {
   it("should let a handwritten draft be normalized, outlined and read", async () => {
     // Four sequential CLI spawns fit the default deadline idle, but not under
     // CPU contention — the deadline only guards a real hang (each spawn has
@@ -154,14 +154,14 @@ describe("首用路径 · 手写稿先补齐结构再读", () => {
   });
 });
 
-describe("首用路径 · 改一章、换风格、出打印稿", () => {
+describe("first-run path · patch a chapter, switch style, export the printout", () => {
   it("should let the user edit one chapter, restyle it and export a printable copy", async () => {
     await withTempDir(async (dir) => {
       await normalizeDraft(dir);
       const { chapter2 } = await outlineOf(dir);
 
-      // 改完：「id 归产品所有」——新根继承目标 id，**旧 id 仍然可用**，
-      // 所以这里断言的是「拿旧 id 立刻读回新正文」，而不是「旧 id 已失效」。
+      // After the patch: "ids belong to the product" — the new root inherits the target id and **the old id still works**,
+      // so this asserts "read the new body back by the old id right away", not "the old id died".
       const replaced = await patchChapter(dir, chapter2);
       expect(listOf(fieldOf(replaced, "replacedIds"))).toEqual([]);
       expect((await readOf(dir, chapter2)).chapter).toContain("第二章 评审：必须与可以");
@@ -170,7 +170,7 @@ describe("首用路径 · 改一章、换风格、出打印稿", () => {
       await styleOf(dir);
       const exported = await exportOf(dir);
       expect(exported.bytes).toBe(Buffer.byteLength(exported.printed));
-      // 打印稿要能独立打开：章标题在 `<h1>` 里，正文也在。
+      // The printout must open standalone: chapter titles in `<h1>`s, body text present.
       expect(exported.printed).toMatch(/<h1[^>]*>[\s\S]*?第一章 发布节奏/u);
       expect(exported.printed).toMatch(/<h1[^>]*>[\s\S]*?第三章 下一季度/u);
       expect(exported.printed).toContain("下一季度只做三件事。");
@@ -178,18 +178,18 @@ describe("首用路径 · 改一章、换风格、出打印稿", () => {
   });
 });
 
-describe("首用路径 · 起站点在浏览器里读", () => {
+describe("first-run path · serve the site and read it in a browser", () => {
   it("should serve the finished document at the URL it printed", async () => {
     await withTempDir(async (dir) => {
       await normalizeDraft(dir);
-      // 不带 `--json`：只认程序印给人看的那一行 `serving … on <url> (pid N)`。
+      // No `--json`: only the line the program prints for humans, `serving … on <url> (pid N)`, is honored.
       const serve = await startServe("doc.html", { json: false, home: homeOf(dir), cwd: dir });
       try {
-        // 印出来的那串必须自带凭据：裸地址粘进浏览器就是 401。
+        // The printed address must carry its credentials: a bare address pasted into a browser is a 401.
         expect(serve.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/\?token=[\w-]+$/u);
 
-        // 照用户的做法：把那串地址原样 GET，不带任何自造的 cookie / header。
-        // 首访落 `hr` cookie 后 302 回干净的 `/`——浏览器会自动带回去，这里只用响应自己给的 cookie。
+        // Do what the user does: GET that address verbatim, no self-made cookie/header.
+        // The first visit drops the `hr` cookie then 302s back to a clean `/` — a browser would carry it along; here we only use the cookie the response itself gave.
         const first = await fetch(serve.url, { redirect: "manual" });
         expect(first.status).toBe(302);
         expect(first.headers.get("location")).toBe("/");
@@ -202,10 +202,10 @@ describe("首用路径 · 起站点在浏览器里读", () => {
         const html = await page.text();
         expect(page.status).toBe(200);
         expect(html).toContain("doc.html");
-        // 首页必须有正文（不然"打开首页看不到内容"）。
+        // The front page must have body content (otherwise "opened the page, saw nothing").
         expect(html).toContain("下一季度只做三件事。");
 
-        // 反面：裸 `/` 没凭据就是 401（同一台机器上别的网页不能拿走正文）。
+        // Negative: a bare `/` without credentials is a 401 (another page on the same machine must not take the content).
         expect((await fetch(new URL("/", serve.url))).status).toBe(401);
       } finally {
         await serve.stop();

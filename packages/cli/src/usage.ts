@@ -1,4 +1,4 @@
-// 这层管：`--help` 文本的单一来源（根目录 + 每条命令一段）；不做解析、不格式化结果。
+// This layer: the single source of `--help` text (root + one section per command); no parsing, no result formatting.
 
 export const COMMAND_NAMES = [
   "new",

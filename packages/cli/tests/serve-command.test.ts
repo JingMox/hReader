@@ -1,5 +1,5 @@
-// 这层管：`serveCommand`/`serveCommandOf` 的进程内行为（生命周期、诊断出口、`--app-dir`、
-// allowHosts、`--home`）；子进程案只验生命周期。
+// This layer covers `serveCommand`/`serveCommandOf`'s in-process behavior (lifecycle, diagnostic outlets,
+// `--app-dir`, allowHosts, `--home`); the subprocess cases only verify lifecycle.
 
 import { existsSync, mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -49,7 +49,7 @@ describe("serveCommand", () => {
   });
 });
 
-describe("serveCommand · 结束后", () => {
+describe("serveCommand · after it ends", () => {
   it("should remove daemon.json once stop resolves", async () => {
     const dir = dirs();
     const { stop, stopped } = stopHandle();
@@ -71,7 +71,7 @@ describe("serveCommand · 结束后", () => {
       const text = await serveCommand(inputOf(dir, false, stopped));
       stop();
 
-      // 打印的必须是"能直接粘进浏览器"的那串：裸地址没 token，粘了就是 401（`GET /` 吃 token）。
+      // What is printed must be the "paste straight into a browser" string: a bare address has no token — paste it and you get a 401 (`GET /` consumes the token).
       expect(text).toMatch(
         /^serving .+ on http:\/\/127\.0\.0\.1:\d+\/\?token=[\w-]+ \(pid \d+\)\n$/u,
       );
@@ -98,7 +98,7 @@ const runServeJson = async (
   return out;
 };
 
-describe("serveCommand · allowHosts 与 run 分发", () => {
+describe("serveCommand · allowHosts and run dispatch", () => {
   it("should pass an explicit allowHosts list through to startServer", async () => {
     const dir = dirs();
     const { stop, stopped } = stopHandle();
@@ -151,7 +151,7 @@ const runServeWith = async (
   return { code, err: err.join("") };
 };
 
-describe("run · --app-dir 的端到端透传", () => {
+describe("run · --app-dir end-to-end passthrough", () => {
   it("should pass an existing --app-dir through run() into startServer", async () => {
     const dir = dirs();
     const previous = process.env["HOME"];
@@ -190,7 +190,7 @@ describe("run · --app-dir 的端到端透传", () => {
   });
 });
 
-describe("serveCommand · --app-dir 的两条分支", () => {
+describe("serveCommand · the two --app-dir branches", () => {
   it("should pass an existing appDir through to startServer", async () => {
     const dir = dirs();
     const { stop, stopped } = stopHandle();
@@ -209,8 +209,8 @@ describe("serveCommand · --app-dir 的两条分支", () => {
     try {
       const { code, err } = await runServeWith(dir, join(dir.workspace, "no-such-app"));
 
-      // 文档规格声称 exit 2；实际 `invalid_input` 映射到 EXIT_FAILURE（1），
-      // 只有 `daemon_already_running` 是 2。断言按实现钉住当前行为。
+      // The doc spec claims exit 2; in fact `invalid_input` maps to EXIT_FAILURE (1) —
+      // only `daemon_already_running` is 2. Assertions pin the current implemented behavior.
       expect(code).toBe(EXIT_FAILURE);
       expect(err).toContain("--app-dir 目录不存在");
       expect(existsSync(join(dir.home, ".hreader", "daemon.json"))).toBe(false);
@@ -242,7 +242,7 @@ const runServeHome = async (
   return { code, out: out.join(""), err: err.join("") };
 };
 
-describe("run · serve 的 --home", () => {
+describe("run · serve --home", () => {
   it("should write daemon.json under --home and never under $HOME", async () => {
     const dir = dirs();
     const other = realpathSync(mkdtempSync(join(tmpdir(), "hr-serve-other-home-")));
@@ -280,19 +280,19 @@ describe("run · serve 的 --home", () => {
 });
 type ServeIntent = Extract<Intent, { kind: "serve" }>;
 
-/** 装配好的 `serve` 意图：四种 app-dir 情形共用同一份，只改 app-dir 相关字段。 */
+/** An assembled `serve` intent: the four app-dir situations share one copy, changing only the app-dir fields. */
 const serveIntentOf = (workspace: string): ServeIntent => {
   const parsed = parseArgs(
     ["serve", "doc.html", "--port", "0", "--json", "--workspace", workspace],
     workspace,
   );
-  if (!parsed.ok) throw new Error(`转发未通过：${parsed.message}`);
+  if (!parsed.ok) throw new Error(`forwarded parse failed: ${parsed.message}`);
   const { intent } = parsed;
-  if (intent.kind !== "serve") throw new Error(`意图不是 serve：${intent.kind}`);
+  if (intent.kind !== "serve") throw new Error(`intent is not serve: ${intent.kind}`);
   return intent;
 };
 
-/** 上次 daemon 被 kill -9 留下的注册表文件：core 会报一行"清理陈旧…"。 */
+/** The registry file left behind by a kill -9'd daemon: core reports a "cleaning stale…" line. */
 const seedStaleDaemon = (home: string, workspace: string): void => {
   mkdirSync(join(home, ".hreader"), { recursive: true });
   writeFileSync(
@@ -301,7 +301,7 @@ const seedStaleDaemon = (home: string, workspace: string): void => {
   );
 };
 
-describe("serveCommandOf · 诊断出口", () => {
+describe("serveCommandOf · diagnostic outlets", () => {
   it("should hand core's one-line diagnoses to stderr with a trailing newline", async () => {
     const dir = dirs();
     const { stop, stopped } = stopHandle();
@@ -321,7 +321,7 @@ describe("serveCommandOf · 诊断出口", () => {
       );
       stop();
 
-      // core 的诊断不带换行（"一句一说"）：这里的包装必须补上，否则 stderr 会粘成一行。
+      // core's diagnostics carry no newline ("one line per statement"): this wrapper must add it, or stderr glues into one line.
       expect(rows.join("")).toContain("清理陈旧 daemon.json");
       expect(rows.every((row) => row.endsWith("\n"))).toBe(true);
     } finally {
@@ -330,7 +330,7 @@ describe("serveCommandOf · 诊断出口", () => {
   });
 });
 
-/** 起一次 `serveCommandOf`：workspace 故意给不存在，core 立刻失败、不起监听。 */
+/** Start one `serveCommandOf`: the workspace deliberately does not exist — core fails at once, no listener starts. */
 const callServeOf = (
   dir: ServeDirs,
   appDir: string | undefined,
@@ -349,9 +349,9 @@ const callServeOf = (
   return { running, stop, stopped };
 };
 
-describe("serveCommandOf · --app-dir 的防御分支", () => {
+describe("serveCommandOf · --app-dir defensive branch", () => {
   it("should pass an existing app-dir through without any path display", async () => {
-    // `appDirGiven` 为真、`appDir` 却是 `undefined` 时不许去 `existsSync(undefined)`，直接放行到 core。
+    // When `appDirGiven` is true but `appDir` is `undefined`, it must not `existsSync(undefined)` — pass through to core.
     const dir = dirs();
     try {
       const call = callServeOf(dir, undefined, true);
@@ -364,7 +364,7 @@ describe("serveCommandOf · --app-dir 的防御分支", () => {
   });
 
   it("should accept an existing app-dir and hand it to core", async () => {
-    // 正面对照：`--app-dir` 指向真实目录时不报错、原样传下去。
+    // Positive control: `--app-dir` pointing at a real directory is not an error and passes through verbatim.
     const dir = dirs();
     try {
       const call = callServeOf(dir, dir.workspace, true);
@@ -377,10 +377,10 @@ describe("serveCommandOf · --app-dir 的防御分支", () => {
   });
 
   it("should refuse a missing app-dir and fall back to the process cwd for the path", () => {
-    // 这条走"目录不存在"的真拒绝分支；`wiring.cwd` 故意不给，报表里的路径要按进程 cwd 回显。
+    // This one takes the real "directory does not exist" refusal branch; `wiring.cwd` is deliberately unset so the report echoes the process cwd.
     const dir = dirs();
     try {
-      // 这个校验在装配阶段同步抛（还没进 core）：`serveCommandOf` 不是 async 函数。
+      // This check throws synchronously at assembly (before core): `serveCommandOf` is not an async function.
       expect(() => callServeOf(dir, join(dir.workspace, "没有这个主题"), true)).toThrow(
         /--app-dir 目录不存在/u,
       );

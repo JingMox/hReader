@@ -1,4 +1,4 @@
-// 这层管：Skill 壳 `skills/hreader/scripts/hr.mjs`（真子进程 + 真退出码透传）；不 mock spawn。
+// This layer covers the Skill shell `skills/hreader/scripts/hr.mjs` (real subprocess + real exit-code passthrough); no spawn mocking.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
@@ -26,7 +26,7 @@ const runShell = async (args: readonly string[], cwd: string): Promise<ShellResu
     let stderr = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error(`hr.mjs 超过 10s：${args.join(" ")}`));
+      reject(new Error(`hr.mjs exceeded 10s: ${args.join(" ")}`));
     }, 10_000);
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
@@ -51,7 +51,7 @@ const expectClean = (result: ShellResult): void => {
   expect(result.stderr).not.toContain("\u001B");
 };
 
-describe("hr.mjs · 在仓库外可运行", () => {
+describe("hr.mjs · runnable outside the repo", () => {
   it("should outline from a temp cwd (paths resolved by the caller's cwd)", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -67,7 +67,7 @@ describe("hr.mjs · 在仓库外可运行", () => {
   });
 });
 
-describe("hr.mjs · 路径与退出码", () => {
+describe("hr.mjs · paths and exit codes", () => {
   it("should work when the path contains spaces and Chinese characters", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
@@ -118,7 +118,7 @@ const firstLineOf = (child: ChildProcess): Promise<string> =>
   new Promise((resolve, reject) => {
     let buf = "";
     const timer = setTimeout(() => {
-      reject(new Error("hr.mjs serve 超过 10s 未输出启动信封"));
+      reject(new Error("hr.mjs serve printed no startup envelope within 10s"));
     }, 10_000);
     child.stdout?.setEncoding("utf8");
     child.stdout?.on("data", (chunk: string) => {
@@ -137,17 +137,17 @@ const firstLineOf = (child: ChildProcess): Promise<string> =>
 const portFromEnvelope = (line: string, expectedPid: number | undefined): number => {
   const envelope: unknown = JSON.parse(line);
   if (!isRecord(envelope) || !isRecord(envelope["data"])) {
-    throw new Error(`启动信封格式有误：${line}`);
+    throw new Error(`malformed startup envelope: ${line}`);
   }
   const data = envelope["data"];
   expect(envelope["ok"]).toBe(true);
   expect(data["pid"]).toBe(expectedPid);
   const port = data["port"];
-  if (typeof port !== "number") throw new Error(`port 不是数字：${line}`);
+  if (typeof port !== "number") throw new Error(`port is not a number: ${line}`);
   return port;
 };
 
-describe("hr.mjs · serve PID 一致性（桌面壳按子进程 PID 探活 /healthz）", () => {
+describe("hr.mjs · serve PID consistency (the desktop shell probes /healthz by the child PID)", () => {
   it("should keep the same pid in the serve envelope and /healthz as the spawned wrapper", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);

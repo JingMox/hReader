@@ -1,5 +1,5 @@
-// 这层管：`hr outline`（读文件 → 前置检查 → 解析 → 大纲 → 文本/JSON）；不做参数校验、不判断退出码。
-// 诊断在两种模式下都看得见：`--json` 在信封里，人读模式走 `warn`（SKILL.md：没 id 的标题以 warning 出现在 stderr）。
+// This layer: `hr outline` (read file -> preflight -> parse -> outline -> text/JSON); no argument checks, no exit codes.
+// Diagnostics are visible in both modes: inside the envelope under `--json`, via `warn` in human mode (SKILL.md: headings without ids appear as warnings on stderr).
 
 import { buildOutline, parseHtml } from "@hreader/core";
 
@@ -10,9 +10,9 @@ import { dataOutline, humanDiagnostic, humanOutline, jsonOk } from "../output";
 export interface OutlineInput {
   readonly path: string;
   readonly json: boolean;
-  /** 空大纲提示里印的路径（用户视角）；缺省 = `path`。 */
+  /** Path printed in the empty-outline note (user's view); default = `path`. */
   readonly displayPath?: string | undefined;
-  /** 诊断出口（人读模式）；缺省 = 丢弃（单测只需要返回串时）。 */
+  /** Diagnostics outlet (human mode); default = discard (when a unit test only needs the returned string). */
   readonly warn?: (message: string) => void;
 }
 

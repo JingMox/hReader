@@ -1,5 +1,5 @@
-// 这层管：`hr check --strict`、`hr style --lint --strict` 与外来文档的 CLI 反馈
-// （cls 字段、人读说明行、normalize 的 stderr 指引、`--strict` 用法错误）。
+// This layer covers `hr check --strict`, `hr style --lint --strict`, and the CLI feedback for foreign documents
+// (cls fields, human explanation lines, normalize's stderr guidance, `--strict` usage errors).
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -44,7 +44,7 @@ const write = (dir: string, name: string, html: string): void => {
   writeFileSync(join(dir, name), html);
 };
 
-describe("hr check · 外来 HTML 分档", () => {
+describe("hr check · foreign HTML grading", () => {
   it.each([
     ["a.html", DOC, "managed"],
     ["b.html", NORMALIZABLE, "normalizable"],
@@ -156,7 +156,7 @@ describe("hr check · --strict", () => {
   });
 });
 
-describe("hr check · --strict 用法错误", () => {
+describe("hr check · --strict usage errors", () => {
   it("should exit 2 on an unknown --strict value", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -241,7 +241,7 @@ describe("hr style · --lint --strict", () => {
   });
 });
 
-describe("hr normalize · 外来文档的指引", () => {
+describe("hr normalize · guidance for foreign documents", () => {
   it("should append the read-only hint to stderr after the frozen error", async () => {
     await withTempDir(async (dir) => {
       write(dir, "f.html", FOREIGN);

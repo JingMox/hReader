@@ -1,5 +1,5 @@
-// 这层管：core 的内部相对导入不带扩展名（vitest 会推断，Node ESM 不推断）——补 `.ts` 与 `/index.ts`。
-// 只对相对说明符降级；其它说明符失败时原样再抛一次，让真实解析错误冒出来。
+// This layer: core's internal relative imports carry no extension (vitest infers it, Node ESM does not) — fill in `.ts` and `/index.ts`.
+// Only relative specifiers get the fallback; other specifier failures rethrow as-is so real resolution errors surface.
 
 import type { ResolveFnOutput, ResolveHookContext } from "node:module";
 

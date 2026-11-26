@@ -1,6 +1,6 @@
-// 这层管：puppeteer-core 的薄适配——把真 `Browser`/`Page` 折成渲染层要的最小面
-// （`PageLike`/`BrowserLike`），并把 puppeteer 报错统一折成 `chrome_failed`。
-// 报文序列、纸张/余白口径、长图算法在 `render.ts`；进程与端口在 `process.ts`/`session.ts`。
+// This layer: thin adapter over puppeteer-core — folds a real `Browser`/`Page` into the minimal surface
+// (`PageLike`/`BrowserLike`) the render layer needs, and folds puppeteer errors into `chrome_failed`.
+// Render sequences, page/margin semantics, and the tall-image algorithm live in `render.ts`; processes and endpoints in `process.ts`/`session.ts`.
 
 import { connect, ProtocolError, type ConnectOptions } from "puppeteer-core";
 
@@ -8,7 +8,7 @@ import { HrError } from "@hreader/core";
 
 import { firstErrorLineOf, messageOf } from "../errors";
 
-/** `page.pdf` 的入参：尺寸与余白一律带单位字符串——puppeteer 把裸数字当 px 而不是英寸。 */
+/** `page.pdf` arguments: sizes and margins always carry unit strings — puppeteer treats bare numbers as px, not inches. */
 export interface PdfPrintOptions {
   readonly printBackground: boolean;
   readonly preferCSSPageSize: boolean;
@@ -23,7 +23,7 @@ export interface PdfPrintOptions {
   readonly outline: boolean;
 }
 
-/** `clip.scale` 固定 1：倍率只由 viewport 的 `deviceScaleFactor` 给，两个都给会被 Chrome 乘两次。 */
+/** `clip.scale` is pinned to 1: the factor comes only from the viewport's `deviceScaleFactor` — setting both makes Chrome multiply it twice. */
 export interface PngShotOptions {
   readonly clip: {
     readonly x: number;
@@ -46,17 +46,17 @@ export interface PageLike {
   pdf(options: PdfPrintOptions): Promise<Uint8Array>;
   screenshot(options: PngShotOptions): Promise<Uint8Array>;
   setViewport(viewport: ViewportSpec): Promise<void>;
-  /** `Page.getLayoutMetrics` 的原始回包：形状由调用方校验，这里不建模。 */
+  /** Raw `Page.getLayoutMetrics` reply: the shape is validated by the caller, not modeled here. */
   metrics(): Promise<unknown>;
 }
 
 export interface BrowserLike {
   newPage(): Promise<PageLike>;
-  /** fire-and-forget：清理路径不 await，进程回收由 `process.ts` 的进程组 kill 兜底。 */
+  /** Fire-and-forget: the cleanup path is not awaited; process-group kill in `process.ts` is the backstop. */
   disconnect(): void;
 }
 
-/** puppeteer 对象在适配层暴露的最小面；真 `Page`/`Browser`/`CDPSession` 结构上都满足。 */
+/** Minimal surface the adapter exposes for puppeteer objects; real `Page`/`Browser`/`CDPSession` all satisfy it structurally. */
 interface PuppeteerSession {
   send(method: "Page.getLayoutMetrics"): Promise<unknown>;
 }
@@ -77,7 +77,7 @@ interface PuppeteerBrowser {
   disconnect(): Promise<void>;
 }
 
-/** CDP 层报错取 `originalMessage`（剥掉 puppeteer 加的 "Protocol error (...):" 前缀），其余取首行。 */
+/** CDP errors take `originalMessage` (stripping puppeteer's added "Protocol error (...):" prefix); everything else takes the first line. */
 const reasonOf = (error: unknown): string =>
   error instanceof ProtocolError ? error.originalMessage : messageOf(error);
 
@@ -94,7 +94,7 @@ const callOf = async <T>(method: string, run: () => Promise<T>): Promise<T> => {
   }
 };
 
-/** `timeout: 0` 关掉 puppeteer 自身的超时：期限统一由外层 `deadline` 管，报错才稳定是 `render_timeout`。 */
+/** `timeout: 0` disables puppeteer's own timeout: the deadline is owned by the outer `deadline`, keeping failures a stable `render_timeout`. */
 export const pageLikeOf = (page: PuppeteerPage): PageLike => {
   let session: Promise<PuppeteerSession> | undefined;
   return {
@@ -123,8 +123,8 @@ export const browserLikeOf = (browser: PuppeteerBrowser): BrowserLike => ({
 });
 
 /**
- * 连到已抓到的 DevTools 浏览器端点。`protocolTimeout: 0` 同上：协议层不另设期限。
- * `connectFn` 是注入点：生产是 puppeteer 的 `connect`，测试给假实现，不起真 Chrome。
+ * Connect to the captured DevTools browser endpoint. `protocolTimeout: 0` as above: the protocol layer gets no deadline of its own.
+ * `connectFn` is the injection point: puppeteer's `connect` in production, a fake in tests so no real Chrome starts.
  */
 export const browserOf = async (
   url: string,

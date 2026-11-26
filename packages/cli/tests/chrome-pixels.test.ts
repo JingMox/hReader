@@ -1,4 +1,4 @@
-// 这层管：像素闸的边界值（65535/65536、2.5e8 上下一格），不碰 Chrome。
+// This layer covers the pixel gate boundary values (65535/65536, one cell either side of 2.5e8); no Chrome.
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
@@ -29,8 +29,8 @@ const messageOf = (run: () => void): string => {
   return "";
 };
 
-describe("assertPixelFrameOf · 单边", () => {
-  it("65535 放行，65536 拒绝", () => {
+describe("assertPixelFrameOf · single edge", () => {
+  it("should pass 65535 and reject 65536", () => {
     expect(PIXEL_EDGE_LIMIT).toBe(65_535);
     expect(
       codeOf(() => {
@@ -45,8 +45,8 @@ describe("assertPixelFrameOf · 单边", () => {
   });
 });
 
-describe("assertPixelFrameOf · 旧 16384 上限已证伪", () => {
-  it("16385 这种旧上限下的合法高度不再被单边闸拒（默认档 9 页长图 17634 就死在这）", () => {
+describe("assertPixelFrameOf · old 16384 limit disproved", () => {
+  it("should no longer reject legal heights under the old limit (the default-profile 9-page long image 17634 died on this)", () => {
     expect(
       codeOf(() => {
         assertPixelFrameOf({ deviceWidth: 2400, deviceHeight: 16_385 });
@@ -60,8 +60,8 @@ describe("assertPixelFrameOf · 旧 16384 上限已证伪", () => {
   });
 });
 
-describe("assertPixelFrameOf · 高边", () => {
-  it("高边卡在 65535", () => {
+describe("assertPixelFrameOf · height edge", () => {
+  it("should cap the height edge at 65535", () => {
     expect(
       codeOf(() => {
         assertPixelFrameOf({ deviceWidth: 1, deviceHeight: 65_535 });
@@ -75,8 +75,8 @@ describe("assertPixelFrameOf · 高边", () => {
   });
 });
 
-describe("assertPixelFrameOf · 总像素", () => {
-  it("恰好 2.5e8 放行，多一格拒绝", () => {
+describe("assertPixelFrameOf · total pixels", () => {
+  it("should pass exactly 2.5e8 and reject one cell more", () => {
     expect(PIXEL_AREA_LIMIT).toBe(250_000_000);
     expect(
       codeOf(() => {
@@ -91,8 +91,8 @@ describe("assertPixelFrameOf · 总像素", () => {
   });
 });
 
-describe("assertPixelRequestOf · 起 Chrome 前的预检", () => {
-  it("默认档（1200×20000@2）放行：单边闸不看请求高", () => {
+describe("assertPixelRequestOf · pre-Chrome checks", () => {
+  it("should pass the default profile (1200×20000@2): the single-edge gate ignores requested height", () => {
     expect(
       codeOf(() => {
         assertPixelRequestOf({
@@ -105,7 +105,7 @@ describe("assertPixelRequestOf · 起 Chrome 前的预检", () => {
     ).toBeUndefined();
   });
 
-  it("未显式给 --max-height 时不算最坏面积：--width 4096 --scale 3 放行", () => {
+  it("should not count worst-case area when --max-height is not explicit: --width 4096 --scale 3 passes", () => {
     expect(
       codeOf(() => {
         assertPixelRequestOf({
@@ -119,8 +119,8 @@ describe("assertPixelRequestOf · 起 Chrome 前的预检", () => {
   });
 });
 
-describe("assertPixelRequestOf · 显式 --max-height 的面积闸", () => {
-  it("显式 --max-height 20000@2 的面积合法必须放行（2400×20000×2 = 96M < 2.5e8）", () => {
+describe("assertPixelRequestOf · explicit --max-height area gate", () => {
+  it("should pass a legal area at explicit --max-height 20000@2 (2400×20000×2 = 96M < 2.5e8)", () => {
     expect(
       codeOf(() => {
         assertPixelRequestOf({
@@ -133,7 +133,7 @@ describe("assertPixelRequestOf · 显式 --max-height 的面积闸", () => {
     ).toBeUndefined();
   });
 
-  it("显式 --scale 3 --max-height 50000 的总像素超限被拒", () => {
+  it("should reject an over-limit total at explicit --scale 3 --max-height 50000", () => {
     expect(
       codeOf(() => {
         assertPixelRequestOf({
@@ -147,8 +147,8 @@ describe("assertPixelRequestOf · 显式 --max-height 的面积闸", () => {
   });
 });
 
-describe("assertPixelRequestOf · 宽边闸", () => {
-  it("宽边闸永远查：65535 放行、65536 拒绝", () => {
+describe("assertPixelRequestOf · width-edge gate", () => {
+  it("should always check the width edge: 65535 passes, 65536 rejects", () => {
     expect(
       codeOf(() => {
         assertPixelRequestOf({

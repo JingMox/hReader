@@ -1,11 +1,11 @@
-// 这层管：读 PDF 产物的真值（页数 + 大纲条目数）；只读，读不出来一律抛 `render_empty`。
+// This layer: reads the PDF product's true values (page count + outline entry count); read-only — anything unparseable throws `render_empty`.
 //
-// 解析交给 pdf-lib（`throwOnInvalidObject` 严格模式：畸形字节直接报错，不做恢复、
-// 不向 console 吐警告）；这里只做语义——从 Catalog 的 `/Outlines` 进树、`/First`/`/Next`
-// 走链数条目、跟 `/Count` 对账。
+// Parsing is delegated to pdf-lib (`throwOnInvalidObject` strict mode: malformed bytes error immediately, no recovery,
+// no console warnings); this layer only does semantics — enter the tree via the Catalog's `/Outlines`, walk
+// entries via `/First`/`/Next` links, and reconcile against `/Count`.
 //
-// 与 `tests/helpers/pdf-scan.ts` **刻意不共用代码**：那份是测试侧独立 oracle，
-// 共用的话"src 读错、oracle 也读错"会一起绿。
+// **Deliberately** shares no code with `tests/helpers/pdf-scan.ts`: that file is the test-side independent oracle —
+// sharing it would let "src misreads, oracle misreads the same way" go green together.
 
 import { PDFDict, PDFDocument, PDFName, PDFNumber, PDFRef } from "pdf-lib";
 
@@ -21,7 +21,7 @@ interface PdfFacts {
   readonly outline: number;
 }
 
-/** 严格解析：`throwOnInvalidObject` 下畸形字节当场抛错（且无 console.warn 副作用）。 */
+/** Strict parsing: `throwOnInvalidObject` throws on malformed bytes on the spot (with no console.warn side effects). */
 const loadOf = async (bytes: Uint8Array): Promise<PDFDocument> => {
   try {
     return await PDFDocument.load(bytes, { throwOnInvalidObject: true });
@@ -51,11 +51,11 @@ const dictionaryOf = (document: PDFDocument, ref: PDFRef, what: string): PDFDict
 
 interface ItemsContext {
   readonly document: PDFDocument;
-  /** 见过的条目对象号：唯一的终止守卫——合法遍历里每条目各占一个对象号，重复就是环。 */
+  /** Seen entry object numbers: the sole termination guard — in a legal walk each entry owns one object number, so a repeat means a cycle. */
   readonly seen: Set<number>;
 }
 
-/** 跟 `/Next` 走同级链、跟 `/First` 进子层；两个引用都没有就是链尾，正常收尾。 */
+/** `/Next` walks the sibling chain, `/First` descends a level; neither reference means end of chain — a normal finish. */
 const countItemsOf = (context: ItemsContext, first: PDFRef | undefined): number => {
   let count = 0;
   let current = first;
@@ -65,7 +65,7 @@ const countItemsOf = (context: ItemsContext, first: PDFRef | undefined): number 
     }
     context.seen.add(current.objectNumber);
     const entries = dictionaryOf(context.document, current, "大纲条目");
-    // 走错进页树就会把页对象当书签数；别等 `/Count` 兜底——页数与大头条数可能刚好相等。
+    // Wandering into the page tree would count page objects as bookmarks; do not wait for `/Count` to cover it — page count and outline count could coincide.
     const type = nameOf(entries, "Type");
     if (type === "/Page" || type === "/Pages") {
       throw failOf(`大纲条目 ${String(current.objectNumber)} 是页树节点（/Type ${type}）`);
@@ -77,13 +77,14 @@ const countItemsOf = (context: ItemsContext, first: PDFRef | undefined): number 
 };
 
 /**
- * 条目数报的是**产物真值**：`display: none` 的标题在打印稿里仍是 `h1`，但 Chrome 不为它
- * 生成书签，只有读产物才数得对。`/Count` 是生成方自报数，实走是结构证明的；两者不等说明
- * 产物自相矛盾，挑任何一个都是在替产物撒谎（条目上的 `/Count` 可为负表折叠，取绝对值）。
+ * The entry count reports the **product's true value**: a `display: none` heading is still an `h1` in the print
+ * sheet but Chrome generates no bookmark for it — only the product counts right. `/Count` is the generator's
+ * self-report; the walk is structurally proven. If they disagree the product is self-contradictory, and picking
+ * either number lies for it (an entry's `/Count` can be negative for collapsed state — take the absolute value).
  */
 const outlineCountOf = (document: PDFDocument): number => {
   const outlines = referenceOf(document.catalog, "Outlines");
-  // 没有这个键 = 这份文档没开大纲（`--no-outline`，或本来就没有标题），是正常路径而不是错误。
+  // A missing key = this document has no outline (`--no-outline`, or simply no headings) — a normal path, not an error.
   if (outlines === undefined) return 0;
   const root = dictionaryOf(document, outlines, "/Outlines");
   const walked = countItemsOf({ document, seen: new Set() }, referenceOf(root, "First"));
@@ -97,8 +98,9 @@ const outlineCountOf = (document: PDFDocument): number => {
 };
 
 /**
- * 结构读不出来（不是 PDF、页树断链、`/First` 断链、`/Count` 与实走不等）一律抛 `render_empty`，
- * 不回退 0：回退 0 会把"Chrome 换了输出格式"伪装成"这份文档没有大纲"，是最难查的一类假绿。
+ * Any unreadable structure (not a PDF, broken page-tree links, broken `/First`, `/Count` != walked count)
+ * throws `render_empty` — never falls back to 0: falling back would disguise "Chrome changed its output
+ * format" as "this document has no outline", the hardest kind of false green to hunt down.
  */
 export const inspectPdfOf = async (bytes: Uint8Array): Promise<PdfFacts> => {
   const document = await loadOf(bytes);

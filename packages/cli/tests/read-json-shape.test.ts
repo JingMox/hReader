@@ -1,10 +1,10 @@
-// `read --json` 的 `data` 形状恒定（`src/output.ts` 的 `dataRead`）。
-// ① 四键恒在：`html` / `ids` / `truncated` / `diagnostics`；未截断时 `truncated === false`、
-//    `diagnostics === []`——不是"键不存在"，也不是省略空数组；
-// ② 截断时 `truncated === true` 且 `diagnostics` 里带 `truncated_output`（键集不变）；
-// ③ 人读模式不能只在 JSON 里说截断：stdout 必须出现 `（已截断：` 那一行，否则用户会以为节点就这么长。
+// `read --json`'s `data` shape is constant (`src/output.ts`'s `dataRead`).
+// ① Four keys always present: `html` / `ids` / `truncated` / `diagnostics`; untruncated means `truncated === false`,
+//    `diagnostics === []` — not "key absent", not an elided empty array;
+// ② Truncated means `truncated === true` and `diagnostics` carries `truncated_output` (key set unchanged);
+// ③ Human mode must not say "truncated" only in JSON: stdout must show the `（已截断：` line, or the user thinks the node is just that long.
 //
-// 断言钉外部可观察物：`--json` 信封的键集与字段值、stdout 原文行。
+// Assertions pin external observables: the `--json` envelope's key set and field values, raw stdout lines.
 
 import { writeFileSync } from "node:fs";
 
@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import { fieldOf, keysOf, listOf, parseJsonLine, runCli, withTempDir } from "./harness";
 
-/** 四个长段落：`<article>` 序列化后远大于下面的 `--max-bytes`，逼出截断。 */
+/** Four long paragraphs: `<article>` serializes far beyond the `--max-bytes` below, forcing truncation. */
 const LONG: string = [
   "<!doctype html>",
   '<html data-hr-id="hr-h"><head data-hr-id="hr-head"><title data-hr-id="hr-title">t</title></head>',
@@ -34,7 +34,7 @@ const SHORT: string = [
 
 const TRUNCATED_FLAG = "truncated";
 
-describe("read --json 的 data 四键恒定", () => {
+describe("read --json's four data keys are constant", () => {
   it("should always carry html/ids/truncated/diagnostics, with false/[] when nothing was cut", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, SHORT);
@@ -65,8 +65,8 @@ describe("read --json 的 data 四键恒定", () => {
   });
 });
 
-describe("人读模式也要说截断", () => {
-  it("should print a `（已截断：` line in human mode", async () => {
+describe("human mode must say it is truncated too", () => {
+  it("should print the truncation line in human mode", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, LONG);
       const result = await runCli(["read", "a.html", "hr-root", "--max-bytes", "400"], {

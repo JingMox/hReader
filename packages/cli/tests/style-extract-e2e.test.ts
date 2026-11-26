@@ -1,6 +1,6 @@
-// 这层管：端到端——CLI 真跑一遍把 yaml 写到盘，再用公开的 loadStyle/compileTone/lintByStyle 消费它。
-// LLM 版与纯统计版各走一遍：产物是"用户下一次写作的全部输入"。断言要能证伪链路（条数/人设/请求体），
-// 只证"能 load"的套话对"合并层丢字段""--no-llm 仍联网"这类错误全盲。
+// This layer is end-to-end — the CLI really runs once writing yaml to disk, then the public loadStyle/compileTone/lintByStyle consume it.
+// The LLM and pure-stats versions each run once: the artifact is "all the input for the user's next writing".
+// Assertions must be able to falsify the chain (entry counts/persona/request body) — a "it loads" platitude is blind to "merge layer drops fields" or "--no-llm still phones home".
 
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,17 +14,17 @@ import { run, type CliIo } from "../src/run";
 
 const REPO = join(import.meta.dirname, "../../..");
 
-/** 三篇 fixture 是统计层的真值来源，端到端必须用同一份语料，否则"能消费"只是对合成输入成立。 */
+/** The three fixtures are the statistical layer's ground truth; the e2e must use the same corpus or "it can be consumed" only holds on synthetic input. */
 const CORPUS = ["engineering-playbook.md", "plugin-usage-notes.md", "style-authoring.md"].map(
   (name) => join(REPO, "fixtures/extract", name),
 );
 
-/** 每篇语料的**篇首独有串**：按 argv 顺序出现才证明"三篇都进了 prompt 且顺序没被打乱"。 */
+/** Each corpus piece's **opening-only string**: appearing in argv order proves "all three entered the prompt and order was not scrambled". */
 const ANCHORS = ["## 阳台园艺手记", "### 宿主插件使用说明", "# 访谈式自定义风格"];
 
 /**
- * 逆字典序传同一批语料：按路径排序后再拼 prompt 的实现在升序 `CORPUS` 下也能过，
- * 只有"顺序与路径序相反"这一例能证伪，所以两套锚点各钉一份。
+ * Pass the same corpus in reverse lexicographic order: an implementation sorting paths before building the
+ * prompt would still pass under ascending `CORPUS`; only "order opposite to path order" falsifies it, so the two anchors pin one copy each.
  */
 const REVERSED = ["style-authoring.md", "plugin-usage-notes.md", "engineering-playbook.md"].map(
   (name) => join(REPO, "fixtures/extract", name),
@@ -42,7 +42,7 @@ const parsedOf = (text: string): unknown => {
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** 按 `a.0.b` 取嵌套值（纯数字段走数组下标）：fixture 是外部数据，取不到要返回 undefined 而不是抛。 */
+/** Read a nested value by `a.0.b` (numeric segments are array indices): fixtures are external data, so a miss returns undefined instead of throwing. */
 const at = (root: unknown, path: string): unknown =>
   path.split(".").reduce<unknown>((acc, key) => {
     if (Array.isArray(acc)) {
@@ -54,14 +54,14 @@ const at = (root: unknown, path: string): unknown =>
 
 const textAt = (root: unknown, path: string): string => {
   const value = at(root, path);
-  if (typeof value !== "string") throw new Error(`录像缺少字段：${path}`);
+  if (typeof value !== "string") throw new Error(`recording missing field: ${path}`);
   return value;
 };
 
 const personaOf = (raw: string): string =>
   textAt(parsedOf(textAt(parsedOf(raw), "choices.0.message.content")), "persona");
 
-/** 录像里模型给的原文：`ok.json` 的 content 就落在 persona 上，逐字比对才能证"真走了 LLM 而不是静默降级"。 */
+/** The verbatim content the model gave in the recording: `ok.json`'s content lands on persona — only a byte-exact compare proves "the LLM really ran, not a silent downgrade". */
 const PERSONA = personaOf(RECORDED);
 
 const CANARY = "sk-test-LEAKCANARY";
@@ -124,7 +124,7 @@ const extractOf = async (
 const loadedOf = async (path: string): Promise<StyleSpec> =>
   (await loadStyle({ path }, nodeStyleDeps(dir))).spec;
 
-/** 段落 → 节点：lint 只看节点文本，用真语料段落比手搓句子更能证明"词表能命中真文本"。 */
+/** Paragraph → node: lint only sees node text; real corpus paragraphs beat hand-made sentences at proving "the wordlist hits real text". */
 const nodesOf = (text: string): readonly DocumentModel[] =>
   text
     .split(/\n{2,}/u)
@@ -142,7 +142,7 @@ const firstSentenceOf = (persona: string): string => {
   return (first ?? persona).trim();
 };
 
-describe("style extract · 端到端（LLM 版）", () => {
+describe("style extract · end-to-end (LLM version)", () => {
   it("should write a yaml that carries every merged field and can be consumed", async () => {
     const sent = sentOf();
     const result = await extractOf("e2e-llm", [], { key: CANARY, fetch: replayOf(sent) });
@@ -150,11 +150,11 @@ describe("style extract · 端到端（LLM 版）", () => {
 
     const spec = await loadedOf(result.path);
     expect(sent.bodies).toHaveLength(1);
-    // 条数钉在录像上：合并层"只留第一条"之类的退化在"能 load"下看不出来。
+    // The count is pinned to the recording: a merge-layer regression like "keeps only the first" is invisible under "it loads".
     expect(spec.language.narrativeRules).toHaveLength(6);
     expect(spec.language.examples).toHaveLength(2);
     expect(spec.language.persona).toBe(PERSONA);
-    // 「赋能」只在模型建议里，统计词表没有它；并集写成交集就会丢。
+    // 「赋能」 only lives in the model's suggestions, not the statistical wordlist; writing union as intersection would drop it.
     expect(spec.language.vocabulary.forbidden).toContain("赋能");
   });
 
@@ -171,7 +171,7 @@ describe("style extract · 端到端（LLM 版）", () => {
   });
 });
 
-describe("style extract · 端到端（请求体）", () => {
+describe("style extract · end-to-end (request body)", () => {
   it("should send all three corpora in argv order", async () => {
     const sent = sentOf();
     await extractOf("e2e-order", [], { key: CANARY, fetch: replayOf(sent) });
@@ -204,7 +204,7 @@ describe("style extract · 端到端（请求体）", () => {
   });
 });
 
-describe("style extract · 端到端（纯统计版）", () => {
+describe("style extract · end-to-end (pure-stats version)", () => {
   it("should produce an equally consumable yaml with --no-llm and never touch the network", async () => {
     const sent = sentOf();
     const result = await extractOf("e2e-stat", ["--no-llm"], {
@@ -215,7 +215,7 @@ describe("style extract · 端到端（纯统计版）", () => {
     expect(sent.bodies).toHaveLength(0);
 
     const spec = await loadedOf(result.path);
-    // 统计层只出 3 条规则、0 组例子：与 LLM 版区分开，才能钉住"哪条路径真的跑了"。
+    // The statistical layer only produces 3 rules, 0 example groups: separating it from the LLM version pins "which path really ran".
     expect(spec.language.narrativeRules).toHaveLength(3);
     expect(spec.language.examples).toHaveLength(0);
 
@@ -233,7 +233,7 @@ describe("style extract · 端到端（纯统计版）", () => {
   });
 });
 
-describe("style extract · 端到端反向", () => {
+describe("style extract · end-to-end reverse", () => {
   it("should reject a yaml whose persona line was deleted", async () => {
     const source = await extractOf("e2e-broken", ["--no-llm"]);
     const text = readFileSync(source.path, "utf8");

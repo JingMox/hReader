@@ -1,12 +1,12 @@
-// 重复 `data-hr-id` 的文案归一。
+// Copy unification for duplicate `data-hr-id`.
 //
-// 老文案说"`read`/`patch` 只会命中第一个"，而实现是**进定位之前就退出 2**（`duplicate_id`）——
-// 报文让人预测到的行为与实测相反，这是用户唯一能读到的契约，所以两侧都要钉：
-// ① 过期措辞 `只会命中第一个` 在 `packages/*/src` 与 `docs` 下**零命中**（注释/报文/文档都算）；
-// ② 新报文必须给出可执行的那一步（`先跑 hr normalize <file> --write`），并说清"重复的那处永远读不到"；
-// ③ 退出码 2（用法/内容错误），不是 1（目标找不到）——它连定位都没进。
+// The old copy said "`read`/`patch` will only hit the first", while the implementation **exits 2 before locating at all** (`duplicate_id`) —
+// the behavior the message lets you predict is the opposite of reality; this is the only contract a user can read, so both sides are pinned:
+// ① the stale phrasing "只会命中第一个" has **zero hits** under `packages/*/src` and `docs` (comments/messages/docs all count);
+// ② the new message must give the executable step (`先跑 hr normalize <file> --write`) and state that the duplicate is unreachable;
+// ③ exit code 2 (usage/content error), not 1 (target not found) — it never even entered locating.
 //
-// 断言钉外部可观察物：源码文件内容、`--json` 信封、退出码。
+// Assertions pin external observables: source file contents, the `--json` envelope, exit codes.
 
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,7 +20,7 @@ const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
 const OBSOLETE = "只会命中第一个";
 
-/** 文案归一的作用域：实现与文档（历史评审归档不算，它们记录的是改动前的事实）。 */
+/** Scope of copy unification: implementation and docs (archived review records do not count — they record pre-change facts). */
 const SCOPES = ["packages/core/src", "packages/cli/src", "docs"] as const;
 
 const filesUnder = (dir: string): readonly string[] =>
@@ -39,7 +39,7 @@ const DUP = [
   "</article></body></html>",
 ].join("\n");
 
-describe("过期文案零命中", () => {
+describe("zero hits for stale copy", () => {
   it.each(SCOPES)("should not keep the obsolete wording under %s", (scope) => {
     const offenders = filesUnder(join(ROOT, scope)).filter((path) =>
       readFileSync(path, "utf8").includes(OBSOLETE),
@@ -49,7 +49,7 @@ describe("过期文案零命中", () => {
   });
 });
 
-describe("duplicate_id 报文给出可执行的那一步", () => {
+describe("the duplicate_id message gives the executable step", () => {
   it("should tell the user to run `hr normalize <file> --write` (read)", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, DUP);
@@ -61,7 +61,7 @@ describe("duplicate_id 报文给出可执行的那一步", () => {
       expect(fieldOf(parsed, "code")).toBe("duplicate_id");
       expect(message).toContain('两个元素共用 data-hr-id "hr-x"');
       expect(message).toContain("永远读不到");
-      // 路径形态随命令路径不同（read 报 realpath，patch 报用户输入的相对路径）：钉“可照抄的命令”本身。
+      // Path shape differs per command path (read reports realpath, patch reports the user's relative input): pin "the copy-pasteable command" itself.
       expect(message).toMatch(/先跑 hr normalize \S*a\.html --write/);
       expect(message).not.toContain(OBSOLETE);
     });

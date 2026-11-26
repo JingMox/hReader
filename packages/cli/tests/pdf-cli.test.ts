@@ -1,4 +1,4 @@
-// 这层管：`hr pdf` 真子进程的退出码与进程卫生（假 Chrome 脚本，不碰真 Chrome）。
+// This layer covers `hr pdf` real-subprocess exit codes and process hygiene (fake Chrome script, no real Chrome).
 import {
   existsSync,
   mkdirSync,
@@ -26,8 +26,8 @@ const pidAliveOf = (pid: number): boolean => {
   }
 };
 
-describe("hr pdf · chrome 缺失", () => {
-  it("--json 时 stdout 给 chrome_missing 包络、exit 3", async () => {
+describe("hr pdf · chrome missing", () => {
+  it("should give the chrome_missing envelope on stdout and exit 3 under --json", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
       writeFileSync(join(dir, "a.html"), DOC);
@@ -39,14 +39,14 @@ describe("hr pdf · chrome 缺失", () => {
       const envelope: unknown = JSON.parse(result.stdout);
       expect(Reflect.get(Object(envelope), "ok")).toBe(false);
       expect(Reflect.get(Object(envelope), "code")).toBe("chrome_missing");
-      // 一次性报错只走 stdout，HREADER_CHROME 的实际情况跟着 message 一起出来。
+      // The one-shot error only goes to stdout; the actual state of HREADER_CHROME comes out with the message.
       expect(Reflect.get(Object(envelope), "message")).toContain("HREADER_CHROME=");
       expect(result.stderr).toBe("");
       expect(existsSync(join(dir, "a.pdf"))).toBe(false);
     });
   });
 
-  it("人读模式只给一行错误、exit 3", async () => {
+  it("should give a single error line and exit 3 in human mode", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
       writeFileSync(join(dir, "a.html"), DOC);
@@ -99,8 +99,8 @@ const runHygieneOf = (
     env: { HREADER_CHROME: FAKE_CHROME, TMPDIR: setup.tmpRoot, ...extraEnv },
   });
 
-describe("hr pdf · 进程卫生", () => {
-  it("超时路径：exit 3、进程组无存活、TMPDIR 无 hr-chrome-*", async () => {
+describe("hr pdf · process hygiene", () => {
+  it("should exit 3 on the timeout path with no process group alive and no hr-chrome-* in TMPDIR", async () => {
     await docDirOf(async (dir) => {
       const setup = hygieneOf(dir);
       const args = ["pdf", "a.html", "--out", "a.pdf", "--timeout", "1"];
@@ -115,7 +115,7 @@ describe("hr pdf · 进程卫生", () => {
     });
   });
 
-  it("Chrome 崩溃路径：exit 3、进程组无存活、TMPDIR 无 hr-chrome-*", async () => {
+  it("should exit 3 on the Chrome-crash path with no process group alive and no hr-chrome-* in TMPDIR", async () => {
     await docDirOf(async (dir) => {
       const setup = hygieneOf(dir);
       const result = await runHygieneOf(setup, ["pdf", "a.html", "--out", "a.pdf"], {

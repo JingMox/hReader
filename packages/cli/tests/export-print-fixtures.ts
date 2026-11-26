@@ -1,4 +1,4 @@
-// 这层管：`hr export` 用例的共享夹具（输入构造 / json 取值 / 4 MiB 量尺）；不做断言。
+// This layer holds shared fixtures for `hr export` cases (input construction / json field reads / the 4 MiB measuring stick); no assertions.
 
 import { realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,8 +21,8 @@ export const ARTICLE = [
 type Overrides = Partial<Omit<ExportPrintInput, "workspace">>;
 
 /**
- * `workspace` 不给覆盖口：`writeAtomic` 比的是 realpath，而 macOS 的 `/var` 会解析成 `/private/var`。
- * 文档与落盘都在同一个临时目录里，所以一律取文档所在目录的真实路径。
+ * `workspace` takes no override: `writeAtomic` compares realpaths and macOS `/var` resolves to `/private/var`.
+ * Doc and output live in the same temp dir, so always take the real path of the doc's directory.
  */
 export const inputOf = (path: string, overrides: Overrides = {}): ExportPrintInput => ({
   path,
@@ -50,8 +50,9 @@ const docWithPadOf = (dir: string, pad: number): string => {
 };
 
 /**
- * 4 MiB 边界按产物**最终字节**判（`>` 才拒），所以先量小稿再补 ASCII 填充。
- * 量尺与正稿必须同名：docId 进产物，换名会把文件名长度的偏移混进差值。
+ * The 4 MiB boundary is judged on the artifact's **final byte count** (rejects only `>`), so measure the small
+ * draft first, then pad with ASCII. Ruler and real draft must share the name: docId enters the artifact, and
+ * a different name would mix filename-length offset into the delta.
  */
 export const writeProductOfBytes = async (dir: string, bytes: number): Promise<string> => {
   const offset = fieldOfData(await jsonOf(inputOf(docWithPadOf(dir, 1), { json: true })), "bytes");

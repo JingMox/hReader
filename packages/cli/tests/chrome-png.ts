@@ -1,5 +1,5 @@
-// PNG 夹具：最小合法 PNG 字节（IHDR 的宽高在 byte 16–23，大端），假页面截图与命令层测试共用。
-/** 最小 PNG：8 字节签名 + IHDR（w/h 大端在 byte 16–23，位深 8 在 byte 24）+ 一点尾巴。 */
+// PNG fixture: minimal legal PNG bytes (IHDR width/height are big-endian at bytes 16–23), shared by fake-page screenshots and command-layer tests.
+/** Minimal PNG: 8-byte signature + IHDR (w/h big-endian at bytes 16–23, bit depth 8 at byte 24) + a little tail. */
 export const pngOf = (width: number, height: number): Uint8Array => {
   const bytes = Buffer.alloc(33);
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);

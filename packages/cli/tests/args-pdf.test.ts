@@ -1,17 +1,17 @@
-// 这层管：`hr pdf` 的 argv → intent（纸张/超时/绝对路径/开关）；不碰文件系统。
+// This layer covers `hr pdf` argv → intent (paper/timeout/absolute path/switches); no filesystem.
 import { describe, expect, it } from "vitest";
 
 import { CWD, expectFailure, parse } from "./args-helpers";
 
 const okOf = (argv: readonly string[]) => {
   const result = parse(argv);
-  if (!result.ok) throw new Error(`预期解析成功：${result.message}`);
-  if (result.intent.kind !== "pdf") throw new Error(`预期 pdf intent：${result.intent.kind}`);
+  if (!result.ok) throw new Error(`expected parse to succeed: ${result.message}`);
+  if (result.intent.kind !== "pdf") throw new Error(`expected a pdf intent: ${result.intent.kind}`);
   return result.intent;
 };
 
-describe("parseArgs · hr pdf 默认值", () => {
-  it("纸张默认 a4，超时默认 60s，路径换算成绝对路径", () => {
+describe("parseArgs · hr pdf defaults", () => {
+  it("should default paper to a4, timeout to 60s, and resolve the path to absolute", () => {
     const intent = okOf(["pdf", "a.html", "--out", "out/a.pdf"]);
     expect(intent.pageSize).toBe("a4");
     expect(intent.timeoutMs).toBe(60_000);
@@ -22,7 +22,7 @@ describe("parseArgs · hr pdf 默认值", () => {
     expect(intent.workspace).toBe(CWD);
   });
 
-  it("三个开关与 --workspace 都透传", () => {
+  it("should pass through all three switches and --workspace", () => {
     const intent = okOf([
       "pdf",
       "a.html",
@@ -44,52 +44,52 @@ describe("parseArgs · hr pdf 默认值", () => {
     expect(intent.workspace).toBe("/repo/docs");
   });
 
-  it("绝对路径原样保留", () => {
+  it("should keep absolute paths verbatim", () => {
     const intent = okOf(["pdf", "/tmp/a.html", "--out", "/tmp/a.pdf"]);
     expect(intent.path).toBe("/tmp/a.html");
     expect(intent.out).toBe("/tmp/a.pdf");
   });
 });
 
-describe("parseArgs · hr pdf 大纲旗标", () => {
-  it("不传任何大纲旗标时默认开（--outline 是这个旗标的开态缺省）", () => {
+describe("parseArgs · hr pdf outline flags", () => {
+  it("should default the outline to on when no outline flag is given (--outline is the on-state default)", () => {
     const intent = okOf(["pdf", "a.html", "--out", "a.pdf"]);
     expect(intent.outline).toBe(true);
     expect(intent.outlineConflict).toBe(false);
   });
 
-  it("--outline 显式给也是开，且不标冲突", () => {
+  it("should stay on and mark no conflict when --outline is given explicitly", () => {
     const intent = okOf(["pdf", "a.html", "--out", "a.pdf", "--outline"]);
     expect(intent.outline).toBe(true);
     expect(intent.outlineConflict).toBe(false);
   });
 
-  it("--no-outline 关掉大纲", () => {
+  it("should turn the outline off with --no-outline", () => {
     const intent = okOf(["pdf", "a.html", "--out", "a.pdf", "--no-outline"]);
     expect(intent.outline).toBe(false);
     expect(intent.outlineConflict).toBe(false);
   });
 
-  it("两个同传只在意图里标 conflict（`invalid_input` exit 1 归命令层）", () => {
+  it("should only mark a conflict in the intent when both are given (`invalid_input` exit 1 belongs to the command layer)", () => {
     const intent = okOf(["pdf", "a.html", "--out", "a.pdf", "--outline", "--no-outline"]);
     expect(intent.outlineConflict).toBe(true);
   });
 });
 
-describe("parseArgs · hr pdf 用法错误", () => {
-  it("缺 file", () => {
+describe("parseArgs · hr pdf usage errors", () => {
+  it("should reject a missing file", () => {
     expectFailure(["pdf", "--out", "a.pdf"], "pdf 缺少 <file>", "pdf");
   });
 
-  it("缺 --out", () => {
+  it("should reject a missing --out", () => {
     expectFailure(["pdf", "a.html"], "pdf 缺少 --out <path>", "pdf");
   });
 
-  it("--out 传空串也算缺", () => {
+  it("should treat an empty --out string as missing", () => {
     expectFailure(["pdf", "a.html", "--out", ""], "pdf 缺少 --out <path>", "pdf");
   });
 
-  it("多出位置参数", () => {
+  it("should reject extra positional arguments", () => {
     expectFailure(
       ["pdf", "a.html", "b.html", "--out", "a.pdf"],
       "pdf 只接受 1 个位置参数，多出 1 个",
@@ -97,15 +97,18 @@ describe("parseArgs · hr pdf 用法错误", () => {
     );
   });
 
-  it("不认识的开关", () => {
+  it("should reject unknown switches", () => {
     expectFailure(["pdf", "a.html", "--out", "a.pdf", "--width", "800"], "--width", "pdf");
   });
 
-  it.each(["0", "601", "1.5", "abc", "-3"])("--timeout %s 越界", (value) => {
-    expectFailure(
-      ["pdf", "a.html", "--out", "a.pdf", "--timeout", value],
-      "--timeout 必须是 1..600 的整数秒",
-      "pdf",
-    );
-  });
+  it.each(["0", "601", "1.5", "abc", "-3"])(
+    "should reject --timeout %s as out of range",
+    (value) => {
+      expectFailure(
+        ["pdf", "a.html", "--out", "a.pdf", "--timeout", value],
+        "--timeout 必须是 1..600 的整数秒",
+        "pdf",
+      );
+    },
+  );
 });

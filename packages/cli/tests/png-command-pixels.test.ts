@@ -1,4 +1,4 @@
-// 这层管：`pngCommand` 的像素闸与"宽高取自 IHDR"（渲染由假 render 注入，不起 Chrome）；其余行为在 `png-command.test.ts`。
+// This layer covers `pngCommand`'s pixel gate and "w/h taken from IHDR" (rendering is a fake injected render, no Chrome); the rest lives in `png-command.test.ts`.
 import { realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -51,7 +51,7 @@ const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
     if (error instanceof HrError) return error;
     throw error;
   }
-  throw new Error("预期抛出 HrError");
+  throw new Error("expected an HrError to be thrown");
 };
 
 const dataFieldOf = (text: string): ((key: string) => unknown) => {
@@ -59,13 +59,13 @@ const dataFieldOf = (text: string): ((key: string) => unknown) => {
   return (key) => fieldOf(data, key);
 };
 
-describe("pngCommand · 像素闸（exit 1，起 Chrome 前）", () => {
+describe("pngCommand · pixel gate (exit 1, before Chrome)", () => {
   it.each([
     ["1200", "3", "50000"],
     ["1200", "3", "24000"],
     ["4096", "3", "7000"],
   ])(
-    "--width %s --scale %s --max-height %s → invalid_input，且不渲染",
+    "should report invalid_input for --width %s --scale %s --max-height %s without rendering",
     async (width, scale, maxHeight) => {
       await withDocOf(async (dir) => {
         let rendered = false;
@@ -84,8 +84,8 @@ describe("pngCommand · 像素闸（exit 1，起 Chrome 前）", () => {
   );
 });
 
-describe("pngCommand · 未显式给 --max-height 时不拿默认值算最坏面积", () => {
-  it("--width 4096 --scale 3（宽边合法、短文档）能出图，不误拒", async () => {
+describe("pngCommand · implicit --max-height does not count worst-case area from the default", () => {
+  it("should produce an image for --width 4096 --scale 3 (legal width edge, short document) without a wrong refusal", async () => {
     await withDocOf(async (dir) => {
       let rendered = false;
       const render = (input: { width: number; scale: number; maxHeight: number }) => {
@@ -102,10 +102,10 @@ describe("pngCommand · 未显式给 --max-height 时不拿默认值算最坏面
   });
 });
 
-describe("pngCommand · 宽高取自 IHDR", () => {
-  it("--width 256 时 json 高等于 IHDR 高，不是渲染层自报的旧视口高", async () => {
+describe("pngCommand · w/h taken from IHDR", () => {
+  it("should report the json height from the IHDR for --width 256, not the render layer's stale viewport height", async () => {
     await withDocOf(async (dir) => {
-      // 旧 bug：渲染层报 4661（陈旧视口），盘上 IHDR 其实是 7229。
+      // Old bug: the render layer reported 4661 (stale viewport) while the on-disk IHDR was really 7229.
       const render = (): Promise<LongImage> =>
         Promise.resolve({ bytes: pngOf(256, 7229), width: 256, height: 4661, clipped: false });
       const field = dataFieldOf(

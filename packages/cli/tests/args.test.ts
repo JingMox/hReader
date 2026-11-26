@@ -1,10 +1,10 @@
-// 这层管：`parseArgs` 的纯函数表（argv → Intent / 用法错误）；不跑子进程、不碰 fs。
+// This layer covers the pure-function `parseArgs` table (argv → Intent / usage error); no subprocess, no fs.
 
 import { describe, expect, it } from "vitest";
 
 import { COMMAND_LIST_HINT, CWD, expectFailure, parse } from "./args-helpers";
 
-describe("parseArgs · 顶层", () => {
+describe("parseArgs · top level", () => {
   it("should reject an empty argv with the command list", () => {
     expectFailure([], COMMAND_LIST_HINT, undefined);
   });
@@ -66,7 +66,7 @@ describe("parseArgs · --help", () => {
   });
 
   it("should let a value flag eat a following --help (documented quirk)", () => {
-    // `--html` 会把 `--help` 当成自己的取值：开关先被吃掉，帮助就不会触发。
+    // `--html` swallows `--help` as its own value: the switch is consumed first, so help never triggers.
     expect(parse(["patch", "--html", "--help"])).toEqual({
       ok: false,
       message: "patch 缺少 <file>",
@@ -135,7 +135,7 @@ describe("parseArgs · read", () => {
   });
 });
 
-describe("parseArgs · read 的用法错误", () => {
+describe("parseArgs · read usage errors", () => {
   it.each([
     [["read"], "read 缺少 <file>"],
     [["read", "a.html"], "read 缺少 <nodeId|selector>"],
@@ -146,7 +146,7 @@ describe("parseArgs · read 的用法错误", () => {
   });
 });
 
-describe("parseArgs · read 的 --max-bytes", () => {
+describe("parseArgs · read --max-bytes", () => {
   it.each(["abc", "0", "-1", "1.5", "10000001"])("should reject --max-bytes %s", (value) => {
     expectFailure(
       ["read", "a.html", "b", "--max-bytes", value],
@@ -194,7 +194,7 @@ describe("parseArgs · patch", () => {
   });
 
   it("should keep ../ outside strings for core to reject (no early normalisation)", () => {
-    // `../x.html` 先按 cwd 绝对化（/x.html），边界判定交给 core —— CLI 不做提前拒绝。
+    // `../x.html` is absolutized against cwd first (/x.html); the boundary check belongs to core — the CLI does not refuse early.
     expect(parse(["patch", "../x.html", "hr-1", "--action", "delete"])).toMatchObject({
       ok: true,
       intent: { path: "/x.html", workspace: "/repo" },
@@ -205,7 +205,7 @@ describe("parseArgs · patch", () => {
   });
 });
 
-describe("parseArgs · patch 的用法错误", () => {
+describe("parseArgs · patch usage errors", () => {
   it.each([
     [["patch"], "patch 缺少 <file>"],
     [["patch", "a.html"], "patch 缺少 <nodeId|selector>"],
@@ -215,7 +215,7 @@ describe("parseArgs · patch 的用法错误", () => {
     [["patch", "a", "b", "--patch-note", "x", "--action", "delete"], "未知参数：--patch-note"],
   ])("should reject %j", (argv, message) => {
     if (message.startsWith("参数 --action") || message.startsWith("未知参数")) {
-      // tokenize 阶段失败：还没有 topic，也没有 json。
+      // Failure in the tokenize phase: no topic yet, no json flag either.
       expect(parse(argv)).toEqual({ ok: false, message });
       return;
     }
@@ -232,7 +232,7 @@ describe("parseArgs · patch 的用法错误", () => {
   });
 });
 
-describe("parseArgs · patch 的 html 来源", () => {
+describe("parseArgs · patch html source", () => {
   it("should require exactly one html source outside delete", () => {
     expectFailure(
       ["patch", "a", "b", "--action", "append"],
@@ -265,7 +265,7 @@ describe("parseArgs · patch 的 html 来源", () => {
   });
 });
 
-describe("parseArgs · patch 的来源解析", () => {
+describe("parseArgs · patch source resolution", () => {
   it("should accept file and stdin sources", () => {
     expect(
       parse(["patch", "a", "b", "--action", "append", "--html-file", "frag.html"]),

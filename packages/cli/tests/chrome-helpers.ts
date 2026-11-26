@@ -1,4 +1,4 @@
-// 假进程/假浏览器/假页面的共同夹具：让 `chrome_*` 的每层都能跳过真 Chrome 单独测。
+// Shared fixtures for fake process/browser/page: every `chrome_*` layer can be tested without real Chrome.
 import { mkdtempSync, rmSync } from "node:fs";
 
 import { HrError } from "@hreader/core";
@@ -18,12 +18,13 @@ import { pngOf } from "./chrome-png";
 
 export { pngBase64Of, pngOf } from "./chrome-png";
 
-/** 永不兑现的 promise：goto/metrics/pdf 的 "hang" 模式靠它挂住渲染（让外层超时/中断来赢）。 */
+/** A promise that never resolves: the "hang" mode of goto/metrics/pdf parks rendering on it (so the outer timeout/abort wins). */
 const HANG: Promise<never> = new Promise<never>(() => undefined);
 
 /**
- * 造一份页数可数、**结构自洽**的 PDF：Catalog(1) → Pages(2) → Page(3..)，带 trailer，不带 `/Outlines`。
- * 页树与 trailer 必须真在：产物要过 `inspectPdfOf` 的 catalog → `/Outlines` 走法。
+ * Build a PDF with a countable, **structurally consistent** page count: Catalog(1) → Pages(2) → Page(3..),
+ * with trailer, without `/Outlines`. The page tree and trailer must really be there: the artifact must
+ * survive `inspectPdfOf`'s catalog → `/Outlines` walk.
  */
 export const pdfOf = (pages: number): string => {
   const ids = Array.from({ length: pages }, (_unused: unknown, index: number) => String(3 + index));
@@ -92,7 +93,7 @@ export interface FakePageOptions {
   readonly pages?: number;
   readonly goto?: "ok" | "error" | "hang";
   readonly pdf?: "ok" | "error" | "hang";
-  /** `cssContentSize.height`；`"none"` = 不给这个字段。 */
+  /** `cssContentSize.height`; `"none"` = do not provide the field. */
   readonly contentHeight?: number | "none" | "hang";
   readonly png?: "ok" | "error" | "hang" | "not-png" | "half-width" | "half-height";
 }
@@ -104,7 +105,7 @@ export interface FakePage extends PageLike {
   readonly viewports: ViewportSpec[];
 }
 
-/** 半分辨率夹具：宽或高只给一半，用来验证截图后的倍率交叉断言。 */
+/** Half-resolution fixture: only half of width or height is given, to verify the post-screenshot scale cross-check. */
 const halfShotOf = (
   mode: FakePageOptions["png"],
   width: number,
@@ -177,7 +178,7 @@ const metricsOf = (mode: FakePageOptions["contentHeight"]): PageLike["metrics"] 
   };
 };
 
-/** 假 `PageLike`：记录每一次调用；回包按 `options` 的故障模式走。 */
+/** Fake `PageLike`: records every call; replies follow the `options` failure modes. */
 export const fakePageOf = (options: FakePageOptions = {}): FakePage => {
   const goneTo: string[] = [];
   const pdfCalls: PdfPrintOptions[] = [];

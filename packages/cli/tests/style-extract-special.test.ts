@@ -36,10 +36,10 @@ const expectRefused = async (path: string, dir: string): Promise<void> => {
   expect(result.stdout).toContain("只能是普通文件");
 };
 
-describe("hr style extract · 目录当语料", () => {
+describe("hr style extract · a directory as corpus", () => {
   it("should refuse a directory path that carries a valid corpus suffix", async () => {
     await withTempDir(async (dir) => {
-      // 后缀合法（`.md`）才会走到 `fileSizeOf`；否则 `formatOf` 先按后缀拒掉，`isDirectory` 那支永远碰不到。
+      // Only a legal suffix (`.md`) reaches `fileSizeOf`; otherwise `formatOf` rejects by suffix and the `isDirectory` branch never runs.
       const path = join(dir, "corpus.md");
       mkdirSync(path);
 
@@ -52,8 +52,8 @@ describe("hr style extract · 目录当语料", () => {
   });
 });
 
-describe("hr style extract · 设备与管道", () => {
-  // 刻意接受的 Windows 空跑：本仓 CI 只跑 POSIX，`/dev/zero` 在 Windows 没有等价物。
+describe("hr style extract · devices and pipes", () => {
+  // A deliberately accepted Windows no-op: this repo's CI is POSIX-only and `/dev/zero` has no Windows equivalent.
   it.skipIf(process.platform === "win32")(
     "should refuse a corpus that is a symlink to /dev/zero",
     async () => {
@@ -66,7 +66,7 @@ describe("hr style extract · 设备与管道", () => {
     },
   );
 
-  // 刻意接受的 Windows 空跑：本仓 CI 只跑 POSIX，`mkfifo` 在 Windows 没有等价物。
+  // A deliberately accepted Windows no-op: this repo's CI is POSIX-only and `mkfifo` has no Windows equivalent.
   it.skipIf(process.platform === "win32")("should refuse a corpus that is a fifo", async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, "pipe.md");

@@ -1,4 +1,4 @@
-// 这层管：进程内跑 `run()` 时的 io 捕获（stdout / stderr 各收一份）；不做断言。
+// This layer captures io when running `run()` in-process (one copy each of stdout / stderr); no assertions.
 
 import { run, type CliIo } from "../../src/run";
 
@@ -8,7 +8,7 @@ export interface Captured {
   readonly stderr: string;
 }
 
-/** `cwd` 同时是默认 workspace：用例传临时目录即可，不必再给 `--workspace`。 */
+/** `cwd` doubles as the default workspace: cases pass a temp dir and never need `--workspace` again. */
 export const runIn = async (cwd: string, argv: readonly string[]): Promise<Captured> => {
   const out: string[] = [];
   const err: string[] = [];

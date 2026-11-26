@@ -1,5 +1,5 @@
-// 这层管：`hr undo`——参数、退出码、两种输出，以及真子进程下"改一次再撤一次"。
-// `undo` 是 CLI 侧唯一新增的可写命令，之前零用例（src 里 50% 死码），这里补齐。
+// This layer covers `hr undo` — arguments, exit codes, both outputs, and a real-subprocess "change once, undo once".
+// `undo` is the only new writable command on the CLI side, previously zero-covered (50% dead code in src) — filled in here.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -43,7 +43,7 @@ const patchOf = (path: string): readonly string[] => [
   "<p>改过的正文</p>",
 ];
 
-describe("hr undo · 参数", () => {
+describe("hr undo · arguments", () => {
   it("should reject a missing <file> with exit 2 and the undo synopsis", async () => {
     const { io, out, err } = capture(process.cwd());
     const code = await run(["undo"], io);
@@ -71,7 +71,7 @@ describe("hr undo · 参数", () => {
   });
 });
 
-describe("hr undo · 真盘与输出", () => {
+describe("hr undo · real disk and output", () => {
   it("should keep the file and report nothing_to_undo when there is no history", async () => {
     await withTempDir(async (dir) => {
       const path = seed(dir);
@@ -88,7 +88,7 @@ describe("hr undo · 真盘与输出", () => {
   });
 });
 
-describe("hr undo · 输出与历史", () => {
+describe("hr undo · output and history", () => {
   it("should print the human line after an undo", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -112,18 +112,18 @@ describe("hr undo · 输出与历史", () => {
       out.length = 0;
       expect(await run(["undo", "a.html", "--json"], io)).toBe(0);
 
-      // 键序是契约（信封 `ok`→`data`，data 内是 `dataUndo` 的字段顺序）：一条正则同时钉住 envelope 与内层。
+      // Key order is the contract (envelope `ok`→`data`, inside data the `dataUndo` field order): one regex pins both the envelope and the inner layer.
       const line = out.join("").trimEnd();
       expect(line).toMatch(
         /^\{"ok":true,"data":\{"path":"[^"]+a\.html","bytes":\d+,"restoredFrom":".+","sha256":"[0-9a-f]{64}"\}\}$/u,
       );
-      // `sha256` 必须是"恢复后的盘上字节"的哈希：差一位就说明 undo 没真把原字节写回去。
+      // `sha256` must be the hash of "the on-disk bytes after restore": one digit off and undo did not really write the old bytes back.
       expect(out.join("")).toContain(`"sha256":"${sha(join(dir, "a.html"))}"`);
     });
   });
 });
 
-describe("hr undo · 真子进程", () => {
+describe("hr undo · real subprocess", () => {
   it("should restore the exact bytes of the previous revision", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -156,7 +156,7 @@ describe("hr undo · 真子进程", () => {
   });
 });
 
-describe("undo 的输出格式（纯函数）", () => {
+describe("undo's output format (pure functions)", () => {
   const result = { path: "/w/a.html", bytes: 12, restoredFrom: "r1", sha256: "abc" };
 
   it("should render the human line with path, bytes and source revision", () => {
@@ -169,9 +169,9 @@ describe("undo 的输出格式（纯函数）", () => {
 
     expect(keysOf(envelope)).toEqual(["ok", "data"]);
     expect(fieldOf(envelope, "ok")).toBe(true);
-    // 信封内层键序是契约（`dataUndo` 的字段顺序）：一条 toEqual 同钉住顺序与四个字段。
+    // The envelope's inner key order is the contract (`dataUndo`'s field order): one toEqual pins order and all four fields.
     expect(keysOf(fieldOf(envelope, "data"))).toEqual(["path", "bytes", "restoredFrom", "sha256"]);
-    // 所有 `--json` 输出都以换行结尾（行导向消费：`head -1` / `readline` 都不必处理半行）。
+    // All `--json` output ends with a newline (line-oriented consumers: `head -1` / `readline` never handle half lines).
     expect(line.endsWith("\n")).toBe(true);
   });
 });

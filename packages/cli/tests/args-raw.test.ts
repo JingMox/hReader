@@ -1,10 +1,10 @@
-// 这层管：node:util parseArgs 接入后的词法能力（`--flag=val`、`--` 结束符、重复 `--allow-host`、开关拒绝取值）。
+// This layer covers the lexical powers gained from node:util parseArgs (`--flag=val`, the `--` terminator, repeated `--allow-host`, switches refusing values).
 
 import { describe, expect, it } from "vitest";
 
 import { CWD, expectFailure, parse } from "./args-helpers";
 
-describe("parseArgs · node:util parseArgs 词法增强", () => {
+describe("parseArgs · node:util parseArgs lexical upgrades", () => {
   it("should accept inline --flag=value for value options", () => {
     expect(parse(["outline", "a.html", "--workspace=/w"])).toEqual({
       ok: true,

@@ -1,7 +1,7 @@
-// 这层管：CLI 的真子进程执行器与临时工作区（测试专用）；不做断言。
+// This layer is the real-subprocess executor and temp workspace for CLI tests (test-only); no assertions.
 //
-// 规矩：每个子进程 `stdio: ["ignore"|fd, "pipe", "pipe"]` + 10s 硬超时，
-// 否则子进程等 stdin、父进程等子进程，会静默挂死整棵套件。
+// The rule: every subprocess gets `stdio: ["ignore"|fd, "pipe", "pipe"]` + a 10s hard timeout,
+// otherwise the child waits on stdin while the parent waits on the child — a silent hang for the whole suite.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -22,15 +22,15 @@ export interface CliResult {
 
 export interface CliOptions {
   readonly cwd?: string;
-  /** 省略 = 不提供 stdin（`ignore`，读 stdin 的命令立即读到 EOF）。 */
+  /** Omitted = no stdin provided (`ignore`; a command reading stdin gets EOF immediately). */
   readonly stdin?: Uint8Array;
-  /** 用一个已打开的 fd 当 stdin（例如目录 fd，用来触发非 HrError 读失败）。 */
+  /** Use an already-open fd as stdin (e.g. a directory fd, to trigger a non-HrError read failure). */
   readonly stdinFd?: number;
   readonly env?: Readonly<Record<string, string>>;
   readonly timeoutMs?: number;
 }
 
-/** 挂上 stdout/stderr 与超时/退出事件的监听（body 拆出去，免得单函数过 40 行）。 */
+/** Attach listeners for stdout/stderr and timeout/exit events (the body lives elsewhere to keep the function under 40 lines). */
 const wire = (
   child: ChildProcess,
   args: readonly string[],
@@ -41,13 +41,15 @@ const wire = (
   let stderr = "";
   const timer = setTimeout(() => {
     child.kill("SIGKILL");
-    done.reject(new Error(`CLI 子进程超过 ${String(timeoutMs)}ms 未退出：${args.join(" ")}`));
+    done.reject(
+      new Error(`CLI subprocess did not exit within ${String(timeoutMs)}ms: ${args.join(" ")}`),
+    );
   }, timeoutMs);
 
   const out = child.stdout;
   const errOut = child.stderr;
   if (out === null || errOut === null) {
-    done.reject(new Error("子进程的 stdout/stderr 不是管道：检查 spawn 的 stdio"));
+    done.reject(new Error("subprocess stdout/stderr are not pipes: check the spawn stdio"));
     return;
   }
   out.setEncoding("utf8");
@@ -79,23 +81,25 @@ export const runCli = async (
       stdio: [options.stdinFd ?? (options.stdin === undefined ? "ignore" : "pipe"), "pipe", "pipe"],
     });
     if (child.stdout === null || child.stderr === null) {
-      reject(new Error("子进程的 stdout/stderr 不是管道：检查 spawn 的 stdio"));
+      reject(new Error("subprocess stdout/stderr are not pipes: check the spawn stdio"));
       return;
     }
     wire(child, args, options.timeoutMs ?? TIMEOUT_MS, { resolve, reject });
     if (options.stdin !== undefined && child.stdin !== null) child.stdin.end(options.stdin);
   });
 
-/** 顺带断言无 ANSI：所有用例都经这条通道，一处遗漏不放过。 */
+/** Assert no ANSI along the way: every case passes through this channel, so no omission escapes. */
 export const expectNoAnsi = (result: CliResult): void => {
   if (result.stdout.includes("\u001B") || result.stderr.includes("\u001B")) {
-    throw new Error(`输出含 ANSI 转义：stdout=${JSON.stringify(result.stdout.slice(0, 120))}`);
+    throw new Error(
+      `output contains ANSI escapes: stdout=${JSON.stringify(result.stdout.slice(0, 120))}`,
+    );
   }
 };
 
 /**
- * 临时工作区统一 `realpathSync`：macOS 的 `$TMPDIR` 是 `/var/...` 而内核返回 `/private/var/...`，
- * 不归一就会让合法路径被判成 `path_outside_workspace`。
+ * Temp workspaces all go through `realpathSync`: macOS `$TMPDIR` is `/var/...` while the kernel returns
+ * `/private/var/...` — without normalization, legal paths get judged `path_outside_workspace`.
  */
 export const withTempDir = async <T>(
   run: (dir: string) => Promise<T>,
@@ -108,7 +112,7 @@ export const withTempDir = async <T>(
       run(dir),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
-          reject(new Error(`withTempDir 超过 ${String(timeoutMs)}ms 未完成`));
+          reject(new Error(`withTempDir did not finish within ${String(timeoutMs)}ms`));
         }, timeoutMs);
       }),
     ]);
@@ -118,25 +122,27 @@ export const withTempDir = async <T>(
   }
 };
 
-/** `--json` 契约：合法 JSON、恰好一个 `\n`、无缩进/尾随空格。 */
+/** `--json` contract: valid JSON, exactly one `\n`, no indentation/trailing spaces. */
 export const parseJsonLine = (text: string): unknown => {
   const newlines = text.split("\n").length - 1;
   if (newlines !== 1 || !text.endsWith("\n")) {
-    throw new Error(`--json 输出必须恰好 1 个换行：${JSON.stringify(text.slice(0, 200))}`);
+    throw new Error(
+      `--json output must have exactly 1 newline: ${JSON.stringify(text.slice(0, 200))}`,
+    );
   }
   return JSON.parse(text);
 };
 
-/** 从 `--json` 信封里按路径取字段（`fieldOf(env, "data")`），避免测试里写 `as` 断言。 */
+/** Read a field out of the `--json` envelope by path (`fieldOf(env, "data")`), avoiding `as` assertions in tests. */
 export const fieldOf = (value: unknown, key: string): unknown => Reflect.get(Object(value), key);
 
-/** 对象自有键（顺序敏感）：`--json` 的键序契约用它断言。 */
+/** An object's own keys (order-sensitive): used to assert the `--json` key-order contract. */
 export const keysOf = (value: unknown): readonly string[] =>
   typeof value === "object" && value !== null
     ? Reflect.ownKeys(value).map((key) => String(key))
     : [];
 
-/** `--json` 里的数组字段按元素遍历（非数组一律空），避免测试里为 `unknown[]` 写断言。 */
+/** Iterate elements of an array field in `--json` (non-arrays collapse to empty), avoiding `unknown[]` assertions in tests. */
 export const listOf = (value: unknown): readonly unknown[] =>
   Array.isArray(value)
     ? keysOf(value)
@@ -144,22 +150,22 @@ export const listOf = (value: unknown): readonly unknown[] =>
         .map((key) => fieldOf(value, key))
     : [];
 
-/** 数组/对象按下标取值（配合 `keysOf` 断言嵌套键序）。 */
+/** Index into an array/object (paired with `keysOf` to assert nested key order). */
 export const atOf = (value: unknown, index: number): unknown =>
   Reflect.get(Object(value), String(index));
 
-/** 假 fetch 拿到的第一个参数可能是字符串/URL/Request：一律折成 URL 文本，供 `toContain`/相等断言。 */
+/** The fake fetch's first argument may be string/URL/Request: always fold it to URL text for `toContain`/equality assertions. */
 export const fetchUrlOf = (input: Parameters<typeof globalThis.fetch>[0]): string => {
   if (typeof input === "string") return input;
   return input instanceof URL ? input.href : input.url;
 };
 
-/** 请求体原文（假 fetch 只写字符串体）；非字符串体折成空串，避免测试里做 `as` 断言。 */
+/** The raw request body (fake fetch only writes string bodies); non-string bodies fold to "", avoiding `as` in tests. */
 export const fetchBodyOf = (init: Parameters<typeof globalThis.fetch>[1]): string => {
   const body: unknown = init?.body;
   return typeof body === "string" ? body : "";
 };
 
-/** 只接受字符串的字段（其余一律序列化），让 `toContain` 不依赖断言。 */
+/** String-only fields (everything else gets serialized), so `toContain` needs no assertion. */
 export const textOf = (value: unknown): string =>
   typeof value === "string" ? value : JSON.stringify(value);

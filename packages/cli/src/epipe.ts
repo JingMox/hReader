@@ -1,18 +1,19 @@
-// 这层管：stdout/stderr 下游提前关闭（`| head -1`）时的死法；只挂 `'error'` 监听，不管输出内容。
+// This layer: how the process dies when the stdout/stderr consumer closes early (`| head -1`); only attaches an `'error'` listener, never touches the output.
 
-/** `process.stdout`/`stderr` 上需要的最小面：`on("error", …)`。测试用一个真 EventEmitter 即可满足。 */
+/** Minimal surface needed on `process.stdout`/`stderr`: `on("error", …)`. A real EventEmitter satisfies it in tests. */
 interface ErrorStream {
   on(event: "error", listener: (error: NodeJS.ErrnoException) => void): unknown;
 }
 
 /**
- * Node 对 `process.stdout` 不吞 EPIPE：消费者提前关读端时，`'error'` 没人接就成未捕获异常
- * （exit 1 + 满屏栈）。EPIPE 不是产品失败——下游自己走了，按已定的退出码静默收场；
- * 非 EPIPE 仍照原样抛，不替运行时发明第三种死法。
+ * Node does not swallow EPIPE on `process.stdout`: when the consumer closes the read end early, an
+ * unhandled `'error'` becomes an uncaught exception (exit 1 + a screenful of stack). EPIPE is not a
+ * product failure — downstream left on its own — so settle quietly with the established exit code;
+ * non-EPIPE errors are rethrown as-is rather than inventing a third way to die.
  */
 export const epipeGuard = (stream: ErrorStream): void => {
   stream.on("error", (error: NodeJS.ErrnoException) => {
-    // 非 EPIPE 照原样抛，不替运行时发明第三种死法。
+    // Non-EPIPE is rethrown as-is — no third way to die invented for the runtime.
     if (error.code !== "EPIPE") throw error;
     process.exit(process.exitCode ?? 0);
   });

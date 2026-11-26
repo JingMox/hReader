@@ -1,8 +1,8 @@
-// 这层管：`hr undo` 的**信封与空态**。
+// This layer covers `hr undo`'s **envelope and empty state**.
 //
-// 用户视角两件事：
-//   1. 有历史时 undo 真的把内容退回去，`--json` 给出 `{path,bytes,restoredFrom,sha256}`；
-//   2. 没历史时是一条**可读的空态**（`nothing_to_undo`，退出 1），不是崩栈、不是"静默成功"。
+// Two user-visible facts:
+//   1. With history, undo really rolls the content back and `--json` gives `{path,bytes,restoredFrom,sha256}`;
+//   2. With no history it is a **readable empty state** (`nothing_to_undo`, exit 1) — not a crash, not a silent success.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -28,7 +28,7 @@ const seed = (dir: string): string => {
 const undo = (dir: string, json = false): Promise<CliResult> =>
   runCli(json ? ["undo", "d.html", "--json"] : ["undo", "d.html"], { cwd: dir });
 
-describe("hr undo · 空态", () => {
+describe("hr undo · empty state", () => {
   it("should report nothing_to_undo (exit 1) when there is no snapshot", async () => {
     await withTempDir(async (dir) => {
       const path = seed(dir);
@@ -43,13 +43,13 @@ describe("hr undo · 空态", () => {
       expect(json.code).toBe(1);
       expect(fieldOf(envelope, "ok")).toBe(false);
       expect(fieldOf(envelope, "code")).toBe("nothing_to_undo");
-      // 空态不许动文件。
+      // The empty state must not touch the file.
       expect(readFileSync(path, "utf8")).toBe(DOC);
     });
   });
 });
 
-describe("hr undo · 退回上一次改动", () => {
+describe("hr undo · rolling back the last change", () => {
   it("should restore the exact previous bytes and hand the snapshot path back", async () => {
     await withTempDir(async (dir) => {
       const path = seed(dir);
@@ -64,7 +64,7 @@ describe("hr undo · 退回上一次改动", () => {
 
       expect(result.code).toBe(0);
       expect(fieldOf(envelope, "ok")).toBe(true);
-      // 撤完就回到 patch 前那一字节不差的样子（用户手上/编辑器里的那份）。
+      // After undo the doc is byte-exactly what it was before the patch (the copy in the user's hand/editor).
       expect(readFileSync(path, "utf8")).toBe(DOC);
       expect(fieldOf(data, "bytes")).toBe(Buffer.byteLength(DOC));
       expect(textOf(fieldOf(data, "sha256"))).toMatch(/^[0-9a-f]{64}$/u);
@@ -73,7 +73,7 @@ describe("hr undo · 退回上一次改动", () => {
   });
 });
 
-describe("hr undo · 第二次撤销没有东西可退", () => {
+describe("hr undo · nothing left to undo on the second run", () => {
   it("should be undoable only once per snapshot, then say nothing_to_undo", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
@@ -88,7 +88,7 @@ describe("hr undo · 第二次撤销没有东西可退", () => {
   });
 });
 
-describe("hr undo · 人读回执", () => {
+describe("hr undo · human receipt", () => {
   it("should print a one-line human receipt naming the file and its size", async () => {
     await withTempDir(async (dir) => {
       seed(dir);

@@ -1,4 +1,4 @@
-// 这层管：core 的内部相对导入补 `.ts` / `/index.ts` 的降级逻辑；不 spawn 子进程（直调函数，假 nextResolve）。
+// This layer covers core's fallback that appends `.ts` / `/index.ts` to internal relative imports; no subprocess (direct calls, fake nextResolve).
 
 import type { ResolveFnOutput, ResolveHookContext } from "node:module";
 
@@ -19,7 +19,7 @@ const errOf = (code: string, message: string): Error => Object.assign(new Error(
 const MISSING = (specifier: string): Error =>
   errOf("ERR_MODULE_NOT_FOUND", `Cannot find module '${specifier}'`);
 
-describe("resolveFallback · 直通", () => {
+describe("resolveFallback · passthrough", () => {
   it("should return the first successful resolution untouched", () => {
     const nextResolve = vi.fn(() => outputOf("file:///repo/a.js"));
 
@@ -45,7 +45,7 @@ describe("resolveFallback · 直通", () => {
   });
 });
 
-describe("resolveFallback · 补扩展名", () => {
+describe("resolveFallback · appending an extension", () => {
   it("should retry with `.ts` when the bare relative path is missing", () => {
     const nextResolve = vi
       .fn<(specifier: string, context?: Partial<ResolveHookContext>) => ResolveFnOutput>()
@@ -82,7 +82,7 @@ describe("resolveFallback · 补扩展名", () => {
   });
 });
 
-describe("resolveFallback · 三次均失败", () => {
+describe("resolveFallback · all three attempts fail", () => {
   it("should rethrow the LAST error when all three attempts fail", () => {
     const last = errOf("ERR_MODULE_NOT_FOUND", "Cannot find module './gone/index.ts'");
     const nextResolve = vi

@@ -1,4 +1,4 @@
-// 这层管：`hr style` 三种模式（--visual 落盘 / --tone 编译 prompt / --lint 禁用词）；只校验 --visual 的 id 空间，其余交给 args。
+// This layer: `hr style`'s three modes (--visual writes / --tone compiles a prompt / --lint banned words); only the --visual id space is checked here, args handles the rest.
 
 import { join } from "node:path";
 
@@ -29,20 +29,20 @@ export interface StyleInput {
   readonly mode: StyleMode;
   readonly workspace: string;
   readonly json: boolean;
-  /** 只有 `--lint` 会用：命中禁用词即以 invalid_document 失败（报告先走 stdout）。 */
+  /** Only used by `--lint`: a banned-word hit fails as invalid_document (the report goes to stdout first). */
   readonly strict?: StrictLevel | undefined;
-  /** 回执里印的路径（用户视角）：不给就印结果里的真实路径。 */
+  /** Path printed in the receipt (user's view): falls back to the result's real path when not given. */
   readonly displayPath?: string | undefined;
 }
 
-/** `--lint` 没有风格参数：用默认风格的禁用词表（默认风格的唯一 id）。 */
+/** `--lint` takes no style argument: it uses the default style's banned-word list (the default style's sole id). */
 const lintReportOf = async (file: string, workspace: string): Promise<LintReport> => {
   const style = await loadStyle({ id: DEFAULT_STYLE_ID }, nodeStyleDeps(workspace));
   const injected = injectNodeIds(parseHtml(await readTextFile(join(workspace, file))));
   return lintByStyle([toDocumentModel(injected.parsed)], style.spec.language.vocabulary);
 };
 
-/** 视觉主题能否加载：`resolveThemePath` 是唯一落点（用户目录优先、仓库内置兜底）。 */
+/** Whether a visual theme can be loaded: `resolveThemePath` is the single place (user dir first, repo-bundled fallback). */
 const hasVisualTheme = async (id: string, deps: StyleDeps): Promise<boolean> => {
   try {
     await resolveThemePath(id, deps);
@@ -53,14 +53,14 @@ const hasVisualTheme = async (id: string, deps: StyleDeps): Promise<boolean> => 
   }
 };
 
-/** 语言风格（tone）注册表：内置 preset + 项目 `.hreader/style.yaml` + 用户 styles 目录，一个名字都不硬编码。 */
+/** Tone registry: built-in presets + project `.hreader/style.yaml` + user styles dir — not a single name is hardcoded. */
 const isToneId = async (id: string, deps: StyleDeps): Promise<boolean> => {
   const discovered = await discoverStyles(deps);
   return [...BUILTIN_STYLES, ...discovered.styles].some((style) => style.id === id);
 };
 
-/** `--visual` 与 `--tone` 是两套 id 空间：把 tone id 交给 `--visual` 会静默换错主题。
- * 既不是 visual 也不是 tone 的 id 不在这里拦：交给 `applyStyle` 报既有的 `unknown_style`（四个来源都找不到）。 */
+/** `--visual` and `--tone` are two id spaces: handing a tone id to `--visual` silently swaps in the wrong theme.
+ * An id in neither space is not stopped here: `applyStyle` reports the existing `unknown_style` (not found in any of the four sources). */
 const assertVisualId = async (id: string, deps: StyleDeps): Promise<void> => {
   if ((await hasVisualTheme(id, deps)) || !(await isToneId(id, deps))) return;
   throw new HrError(
@@ -78,7 +78,7 @@ export const styleCommand = async (input: StyleInput): Promise<string> => {
   if (input.mode.kind === "lint") {
     const report = await lintReportOf(input.path, input.workspace);
     const output = input.json ? jsonOk(dataLint(report)) : humanLint(report);
-    // 命中没有 error/warning 分档：两种 `--strict` 同一门槛——有命中就失败。
+    // Hits have no error/warning tiering: both `--strict` levels share one threshold — any hit fails.
     if (input.strict !== undefined && report.hits.length > 0) {
       throw new StrictFailure(
         `${input.displayPath ?? input.path}：${String(report.hits.length)} 条禁用词命中（--strict）`,

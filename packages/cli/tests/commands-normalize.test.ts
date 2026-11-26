@@ -1,5 +1,5 @@
-// 这层管：`normalize` / `undo` 的编排与人读回执，以及 `outline` 的诊断行走 `warn`；
-// 真 fs + 真 core，不跑子进程。
+// This layer covers `normalize` / `undo` orchestration and human receipts, plus `outline` diagnostics going
+// through `warn`; real fs + real core, no subprocess.
 
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,10 +41,10 @@ describe("undoCommand", () => {
       json: false,
     });
 
-    // `undo` 与 `patch` 同一口径：文件按 workspace 相对路径给。
+    // `undo` speaks the same dialect as `patch`: the file is given as a workspace-relative path.
     const human = await undoCommand({ path: "u1.html", workspace: dir, json: false });
     expect(human).toMatch(/^undone .*u1\.html \(\d+ bytes, from /u);
-    // 一份快照只能退一次：第二回得说“没东西可退”，不能假装成功。
+    // One snapshot undoes once: the second run must say "nothing to undo", not fake success.
     await expect(
       undoCommand({ path: "u1.html", workspace: dir, json: false }),
     ).rejects.toMatchObject({
@@ -55,7 +55,7 @@ describe("undoCommand", () => {
 
 const DRAFT = "<article><h1>第一章</h1><p>正文。</p></article>";
 
-describe("normalizeCommand · 仅打印", () => {
+describe("normalizeCommand · print only", () => {
   it("should print the normalized html itself when --write is not given", async () => {
     const path = fileOf("n1.html", DRAFT);
     const printed = await normalizeCommand({
@@ -65,7 +65,7 @@ describe("normalizeCommand · 仅打印", () => {
       json: false,
     });
 
-    // `hr normalize a.html > b.html` 要逐字节可用：stdout 就是结果，不多补换行。
+    // `hr normalize a.html > b.html` must be byte-usable: stdout is the result, no extra newline appended.
     expect(printed).toContain('data-hr-id="');
     expect(printed).not.toMatch(/\n$/u);
     expect(readFileSync(path, "utf8")).toBe(DRAFT);
@@ -107,19 +107,19 @@ describe("normalizeCommand · --write", () => {
       json: false,
     });
 
-    // 用户关心的是"到底补了几个 id"：只回一句"好了"没法判断是不是白写了一遍盘。
+    // What the user cares about is "how many ids were injected": a bare "done" cannot tell whether the write was a no-op.
     expect(human).toMatch(/^normalized .*n4\.html \(\+[1-9]\d* ids, \d+ bytes\)\n$/u);
   });
 });
 
-describe("outlineCommand · 诊断行", () => {
+describe("outlineCommand · diagnostic lines", () => {
   it("should hand each diagnostic to warn as one human line instead of swallowing it", async () => {
-    // 把 `hr-meta` 手改坏：大纲仍能出，但要带一条解析诊断（人读模式得看得到，不能只在 --json 里有）。
+    // Hand-break `hr-meta`: the outline still comes out but must carry a parse diagnostic (visible in human mode, not only under --json).
     const path = fileOf(
       "o4.html",
       [
         "<!doctype html><html><head>",
-        // 批注块被手改坏了：这是用户会真的遇到的那类诊断（不是造出来的分支）。
+        // The annotation block is hand-broken: the kind of diagnostic a user really hits (not a manufactured branch).
         '<script id="hr-meta">{不是 JSON}</script>',
         '</head><body><article data-hr-id="hr-a"><h1 data-hr-id="hr-b">一</h1>',
         '<p data-hr-id="hr-c">正文</p></article></body></html>',
@@ -130,9 +130,9 @@ describe("outlineCommand · 诊断行", () => {
     const printed = await outlineCommand({ path, json: false, warn: (row) => rows.push(row) });
 
     expect(rows.length).toBeGreaterThan(0);
-    // 钉住"针对坏 meta"这个症状：任何一条无关诊断都能满足 `[a-z_]+: .+`，等于没锁。
+    // Pin the symptom "about bad meta": any unrelated diagnostic satisfies `[a-z_]+: .+`, which would lock nothing.
     expect(rows[0]).toMatch(/^(warning|error): .*hr-meta/u);
-    // 诊断走 warn，不抿进 stdout 的正文：stdout 还得是能直接拼的大纲。
+    // Diagnostics go through warn, not smoothed into stdout's body: stdout must remain a directly usable outline.
     expect(printed).not.toContain(rows[0]);
   });
 });

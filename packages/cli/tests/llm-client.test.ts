@@ -1,4 +1,4 @@
-// 这层管：`llm/client` 的 HTTP 契约（请求形状、形状校验、超时、不泄漏）；不打真网络。
+// This layer covers `llm/client`'s HTTP contract (request shape, shape validation, timeout, no leakage); no real network.
 
 import { describe, expect, it } from "vitest";
 
@@ -21,7 +21,7 @@ const configOf = (
   fetch,
 });
 
-/** 只回一份固定响应：`body` 是原文，所以非 JSON / 空串都能照原样喂进去。 */
+/** Always reply with one fixed response: `body` is raw text, so non-JSON / empty strings can be fed in verbatim. */
 const responseOf =
   (body: string, status = 200): typeof globalThis.fetch =>
   () =>
@@ -53,10 +53,10 @@ const failureOf = async (fetch: typeof globalThis.fetch, timeoutMs?: number): Pr
     if (error instanceof HrError) return error;
     throw error;
   }
-  throw new Error("期望抛出 HrError，但调用成功了");
+  throw new Error("expected an HrError, but the call succeeded");
 };
 
-describe("llm/client · 请求形状", () => {
+describe("llm/client · request shape", () => {
   const sendOnce = async (): Promise<{ text: string; sent: Sent[] }> => {
     const recorder = recordingOf(JSON.stringify(BODY));
     const text = await createLlmClient(configOf(recorder.fetch)).complete("提示词");
@@ -72,7 +72,7 @@ describe("llm/client · 请求形状", () => {
     expect(sent[0]?.init.headers).toMatchObject({
       authorization: "Bearer sk-test-LEAKCANARY",
       "content-type": "application/json",
-      // 缺了这个头 Zen 网关直接 400。
+      // Without this header the Zen gateway answers 400 directly.
       "x-opencode-session": "session-1",
     });
     expect(JSON.parse(fetchBodyOf(sent[0]?.init))).toEqual({
@@ -86,7 +86,7 @@ describe("llm/client · 请求形状", () => {
   });
 });
 
-describe("llm/client · 失败面", () => {
+describe("llm/client · failure surface", () => {
   it("should fail with llm_failure on a 500", async () => {
     const error = await failureOf(responseOf('{"error":"boom"}', 500));
 
@@ -96,7 +96,7 @@ describe("llm/client · 失败面", () => {
   });
 
   it("should fail on a 500 even when the body is a valid completion", async () => {
-    // 只看 body 形状的实现会把这一条误判为成功：HTTP 状态才是失败依据。
+    // An implementation that only checks body shape would misjudge this one as success: HTTP status is the failure signal.
     const error = await failureOf(responseOf(JSON.stringify(BODY), 500));
 
     expect(error.code).toBe("llm_failure");
@@ -118,7 +118,7 @@ describe("llm/client · 失败面", () => {
   });
 });
 
-describe("llm/client · 空流与超时", () => {
+describe("llm/client · empty body and timeout", () => {
   it("should fail when content is not a string, and on an empty stream", async () => {
     const numeric = await failureOf(responseOf('{"choices":[{"message":{"content":42}}]}'));
     const empty = await failureOf(responseOf(""));
@@ -138,7 +138,7 @@ describe("llm/client · 空流与超时", () => {
       });
     };
 
-    // 10 ms 注入，别真等 30 s：断言的是"signal 真接进 fetch"，不是墙钟时长。
+    // 10 ms injected — do not really wait 30 s: what is asserted is "the signal really reaches fetch", not wall-clock time.
     const error = await failureOf(hanging, 10);
 
     expect(error.code).toBe("llm_failure");
@@ -146,13 +146,13 @@ describe("llm/client · 空流与超时", () => {
   });
 });
 
-describe("llm/client · 不泄漏", () => {
+describe("llm/client · no leakage", () => {
   it("should truncate the snippet and never print the key", async () => {
     const error = await failureOf(responseOf(`{"x":"${"长".repeat(500)}"}`, 502));
 
     expect(error.message.length).toBeLessThan(400);
     expect(error.message).not.toContain("sk-test-LEAKCANARY");
-    // 截断只留前 200 字符：够定位，又不至于把整份响应灌进日志。
+    // Truncation keeps the first 200 chars: enough to locate, without pouring the whole response into the log.
     expect(error.message.length).toBeLessThan(320);
     expect(error.message).not.toContain("长".repeat(201));
   });

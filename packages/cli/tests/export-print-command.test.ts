@@ -1,5 +1,5 @@
-// 这层管：`exportPrintCommand` 的进程内行为（json 键集 / dropped_images / 4 MiB 上限 / `--out` 守卫 /
-// 落盘与错误归口）；不起子进程。
+// This layer covers `exportPrintCommand`'s in-process behavior (json key set / dropped_images / 4 MiB limit /
+// `--out` guards / write routing and error routing); no subprocess.
 
 import {
   chmodSync,
@@ -29,9 +29,9 @@ import {
 } from "./export-print-fixtures";
 
 /**
- * 一律拿**真实路径**当 workspace：`run.ts` 在调命令前已把 workspace 与 `--out` 都真实化，
- * 而 macOS 的 `$TMPDIR` 是 `/var/...`、`realpath` 后是 `/private/var/...`——两侧不统一，
- * 词法越界判定会把同一个目录当成两个。
+ * Always use **real paths** as the workspace: `run.ts` realpath'd both the workspace and `--out` before
+ * calling the command, and macOS `$TMPDIR` is `/var/...` while `realpath` gives `/private/var/...` — leave
+ * the two sides inconsistent and the lexical escape check treats one directory as two.
  */
 const withRealDir = async (
   run: (dir: string) => Promise<void>,
@@ -41,8 +41,8 @@ const withRealDir = async (
     await run(realpathSync(raw));
   }, timeoutMs);
 
-describe("exportPrintCommand · --json 键集精确", () => {
-  // 键集是**精确**契约：不多不少这四个，`out:null` / `droppedImages:0` 都不省键。
+describe("exportPrintCommand · exact --json key set", () => {
+  // The key set is an **exact** contract: exactly these four, `out:null` / `droppedImages:0` keep their keys.
   it("should emit exactly ok/data with the four contract data keys", async () => {
     await withRealDir(async (dir) => {
       const path = join(dir, "doc.html");
@@ -91,7 +91,7 @@ describe("exportPrintCommand · dropped_images", () => {
   });
 });
 
-describe("exportPrintCommand · stdout 与人读行", () => {
+describe("exportPrintCommand · stdout and human lines", () => {
   it("should print the raw printable html when --json is off", async () => {
     await withRealDir(async (dir) => {
       const path = join(dir, "doc.html");
@@ -112,7 +112,7 @@ describe("exportPrintCommand · stdout 与人读行", () => {
   });
 });
 
-describe("exportPrintCommand · 4 MiB 三档（契约是 > limit 才拒）", () => {
+describe("exportPrintCommand · 4 MiB three-way (the contract rejects only > limit)", () => {
   it("should accept limit-1 / limit and reject limit+1", async () => {
     await withRealDir(async (dir) => {
       for (const target of [LIMIT - 2, LIMIT - 1, LIMIT]) {
@@ -133,7 +133,7 @@ describe("exportPrintCommand · 4 MiB 三档（契约是 > limit 才拒）", () 
   }, 120_000);
 });
 
-describe("exportPrintCommand · 落盘与错误归口", () => {
+describe("exportPrintCommand · write routing and error routing", () => {
   it("should refuse an existing target with a --force hint", async () => {
     await withRealDir(async (dir) => {
       const path = join(dir, "doc.html");
@@ -160,7 +160,7 @@ describe("exportPrintCommand · 落盘与错误归口", () => {
   });
 });
 
-describe("exportPrintCommand · 原子写与逃逸", () => {
+describe("exportPrintCommand · atomic write and escapes", () => {
   it("should leave no target and no tmp residue when the parent dir is unwritable", async () => {
     if (process.getuid?.() === 0) return;
     await withRealDir(async (dir) => {
@@ -182,7 +182,7 @@ describe("exportPrintCommand · 原子写与逃逸", () => {
     });
   }, 60_000);
 
-  // 换回 `writeFile` 时目标符号链接会被跟随写入：连同"链接目标未被改动"一起杀掉那个变异。
+  // With `writeFile` back in place, a target symlink would be followed and written: the assertion that "the link target is unmodified" kills that mutation too.
   it("should refuse a symlinked target and keep the link target untouched", async () => {
     await withRealDir(async (dir) => {
       const path = join(dir, "doc.html");
@@ -199,12 +199,12 @@ describe("exportPrintCommand · 原子写与逃逸", () => {
   });
 });
 /**
- * 一律拿**真实路径**当 workspace：`run.ts` 在调命令前已把 workspace 与 `--out` 都真实化，
- * 而 macOS 的 `$TMPDIR` 是 `/var/...`、`realpath` 后是 `/private/var/...`——两侧不统一，
- * 词法越界判定会把同一个目录当成两个。
+ * Always use **real paths** as the workspace: `run.ts` realpath'd both the workspace and `--out` before
+ * calling the command, and macOS `$TMPDIR` is `/var/...` while `realpath` gives `/private/var/...` — leave
+ * the two sides inconsistent and the lexical escape check treats one directory as two.
  */
 
-describe("exportPrintCommand · --out 越界先于 file_exists", () => {
+describe("exportPrintCommand · --out escape precedes file_exists", () => {
   it("should say path_outside_workspace even when the outside target exists", async () => {
     await withRealDir(async (dir) => {
       const path = join(dir, "doc.html");

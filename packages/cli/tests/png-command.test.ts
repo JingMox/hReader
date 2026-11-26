@@ -1,4 +1,4 @@
-// 这层管：`pngCommand` 的进程内行为（键集 / IHDR 校验 / 落盘 / 失败零残留）；渲染由假 render 注入，不起 Chrome。
+// This layer covers `pngCommand`'s in-process behavior (key set / IHDR validation / disk write / zero leftovers on failure); rendering is a fake injected render, no Chrome.
 import {
   existsSync,
   readdirSync,
@@ -66,7 +66,7 @@ const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
     if (error instanceof HrError) return error;
     throw error;
   }
-  throw new Error("预期抛出 HrError");
+  throw new Error("expected an HrError to be thrown");
 };
 
 const dataFieldOf = (text: string): ((key: string) => unknown) => {
@@ -80,8 +80,8 @@ const ihdrOf = (bytes: Uint8Array): { width: number; height: number; depth: numb
   return { width: view.getUint32(16), height: view.getUint32(20), depth: view.getUint8(24) };
 };
 
-describe("pngCommand · --json 键集", () => {
-  it("只含 png/bytes/width/height/clipped/out 六个键", async () => {
+describe("pngCommand · --json key set", () => {
+  it("should contain exactly the six keys png/bytes/width/height/clipped/out", async () => {
     await withDocOf(async (dir) => {
       const envelope: unknown = JSON.parse(await pngCommand(inputOf(dir, { json: true })));
       expect(keysOf(envelope)).toEqual(["ok", "data"]);
@@ -96,7 +96,7 @@ describe("pngCommand · --json 键集", () => {
     });
   });
 
-  it("落盘字节的 IHDR 与报出的宽高一致", async () => {
+  it("should match the written bytes' IHDR to the reported w/h", async () => {
     await withDocOf(async (dir) => {
       const out = join(dir, "out.png");
       const field = dataFieldOf(await pngCommand(inputOf(dir, { json: true, out })));
@@ -108,11 +108,11 @@ describe("pngCommand · --json 键集", () => {
   });
 });
 
-describe("pngCommand · clipped 三态与人读行", () => {
+describe("pngCommand · the clipped tri-state and human lines", () => {
   it.each([
     [false, "2400×1800"],
     [true, "2400×1800, clipped"],
-  ] as const)("clipped=%s 的人读行", async (clipped, expected) => {
+  ] as const)("should print the human line for clipped=%s", async (clipped, expected) => {
     await withDocOf(async (dir) => {
       const out = join(dir, "out.png");
       const text = await pngCommand(
@@ -122,7 +122,7 @@ describe("pngCommand · clipped 三态与人读行", () => {
     });
   });
 
-  it("--json 的 clipped 原样透传", async () => {
+  it("should pass --json clipped through verbatim", async () => {
     await withDocOf(async (dir) => {
       const text = await pngCommand(
         inputOf(dir, { json: true, render: () => Promise.resolve(imageOf(2400, 18_000, true)) }),
@@ -133,8 +133,8 @@ describe("pngCommand · clipped 三态与人读行", () => {
   });
 });
 
-describe("pngCommand · 渲染入参", () => {
-  it("把 --width/--scale/--max-height/--timeout 与打印稿 HTML 一起交给渲染层", async () => {
+describe("pngCommand · render arguments", () => {
+  it("should hand --width/--scale/--max-height/--timeout and the printout HTML to the render layer", async () => {
     await withDocOf(async (dir) => {
       const seen: { html: string; width: number; scale: number; maxHeight: number; s: number }[] =
         [];
@@ -162,7 +162,7 @@ describe("pngCommand · 渲染入参", () => {
   });
 });
 
-describe("pngCommand · 尺寸越界（exit 1）", () => {
+describe("pngCommand · out-of-range dimensions (exit 1)", () => {
   it.each([
     ["--width", "255", "256..4096"],
     ["--width", "4097", "256..4096"],
@@ -171,7 +171,7 @@ describe("pngCommand · 尺寸越界（exit 1）", () => {
     ["--scale", "4", "1..3"],
     ["--max-height", "999", "1000..50000"],
     ["--max-height", "50001", "1000..50000"],
-  ])("%s → invalid_input，且不渲染", async (flag, value, range) => {
+  ])("should report invalid_input for %s without rendering", async (flag, value, range) => {
     await withDocOf(async (dir) => {
       const overrides = {
         "--width": { width: value },
@@ -191,9 +191,9 @@ describe("pngCommand · 尺寸越界（exit 1）", () => {
   });
 });
 
-describe("pngCommand · 大纲旗标", () => {
+describe("pngCommand · outline flags", () => {
   it.each(["--outline", "--no-outline"])(
-    "%s 报 invalid_input（PNG 没有大纲），不渲染不落盘",
+    "should report invalid_input for %s (PNG has no outline), without rendering or writing",
     (flag) =>
       withDocOf(async (dir) => {
         const out = join(dir, "out.png");
@@ -202,8 +202,8 @@ describe("pngCommand · 大纲旗标", () => {
             inputOf(dir, {
               out,
               outlineFlag: flag,
-              // 真去渲染就会以别的错误码红掉：这行既是“不许渲染”，也保证落盘闸门没走到。
-              render: () => Promise.reject(new Error("PNG 不该渲染")),
+              // Really rendering would go red with a different code: this line is both "must not render" and proof the write gate was never reached.
+              render: () => Promise.reject(new Error("PNG must not be rendered")),
             }),
           ),
         );
@@ -214,8 +214,8 @@ describe("pngCommand · 大纲旗标", () => {
   );
 });
 
-describe("pngCommand · 产物校验", () => {
-  it("空字节报 render_empty", async () => {
+describe("pngCommand · artifact validation", () => {
+  it("should report render_empty for empty bytes", async () => {
     await withDocOf(async (dir) => {
       const render = (): Promise<LongImage> =>
         Promise.resolve({ bytes: new Uint8Array(), width: 0, height: 0, clipped: false });
@@ -225,7 +225,7 @@ describe("pngCommand · 产物校验", () => {
     });
   });
 
-  it("签名不对的字节报 render_empty", async () => {
+  it("should report render_empty for bytes with a bad signature", async () => {
     await withDocOf(async (dir) => {
       const render = (): Promise<LongImage> =>
         Promise.resolve({ bytes: Buffer.from("GIF89a"), width: 1, height: 1, clipped: false });
@@ -234,7 +234,7 @@ describe("pngCommand · 产物校验", () => {
     });
   });
 
-  it("只有签名没有 IHDR 时也拒收", async () => {
+  it("should refuse bytes with a signature but no IHDR", async () => {
     await withDocOf(async (dir) => {
       const bytes = pngOf(1, 1).slice(0, 12);
       const render = (): Promise<LongImage> =>
@@ -245,8 +245,8 @@ describe("pngCommand · 产物校验", () => {
   });
 });
 
-describe("pngCommand · 落盘闸门", () => {
-  it("已存在的 --out 不给 --force 就拒写，且不白渲染一次", async () => {
+describe("pngCommand · write gate", () => {
+  it("should refuse to write an existing --out without --force and not render uselessly first", async () => {
     await withDocOf(async (dir) => {
       const out = join(dir, "out.png");
       writeFileSync(out, "old");
@@ -262,7 +262,7 @@ describe("pngCommand · 落盘闸门", () => {
     });
   });
 
-  it("--force 覆盖已有文件", async () => {
+  it("should overwrite an existing file with --force", async () => {
     await withDocOf(async (dir) => {
       const out = join(dir, "out.png");
       writeFileSync(out, "old");
@@ -272,8 +272,8 @@ describe("pngCommand · 落盘闸门", () => {
   });
 });
 
-describe("pngCommand · --out 越界", () => {
-  it("--out 在 workspace 外时报 path_outside_workspace", async () => {
+describe("pngCommand · --out escape", () => {
+  it("should report path_outside_workspace when --out is outside the workspace", async () => {
     await withRealDir(async (workspace) => {
       await withRealDir(async (other) => {
         writeFileSync(join(other, "doc.html"), DOC);
@@ -287,8 +287,8 @@ describe("pngCommand · --out 越界", () => {
   });
 });
 
-describe("pngCommand · 失败零残留", () => {
-  it("渲染失败时盘上零残留", async () => {
+describe("pngCommand · zero leftovers on failure", () => {
+  it("should leave zero on-disk leftovers when rendering fails", async () => {
     await withDocOf(async (dir) => {
       const render = (): Promise<LongImage> =>
         Promise.reject(new HrError("render_timeout", "渲染超时（1s）"));

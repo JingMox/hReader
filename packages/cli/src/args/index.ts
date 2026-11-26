@@ -1,4 +1,4 @@
-// argv → 意图的纯函数入口（不读 process、不做 IO、不抛异常）；CLI 用法错误（exit 2）在这里汇聚。
+// Pure argv -> intent entry point (never touches process, does no IO, throws nothing); CLI usage errors (exit 2) all funnel through here.
 
 import { resolve } from "node:path";
 
@@ -52,7 +52,7 @@ const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
       path: absoluteOf(file, cwd),
       port,
       allowHosts: allowHostsOf(raw),
-      // 缺省必须留 undefined：core 据此走默认兜底页面。
+      // The default must stay undefined: core uses it to pick the built-in fallback page.
       appDir: appDirRaw === undefined ? undefined : resolve(cwd, appDirRaw),
       appDirGiven: appDirRaw !== undefined,
       home: homeRaw === undefined ? undefined : resolve(cwd, homeRaw),
@@ -64,7 +64,7 @@ const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
 
 type IntentBuilder = (raw: Raw, rest: readonly string[], cwd: string) => ParsedArgs;
 
-/** 一张表代替 if 链：每加一个命令只多一行，`build` 的圈复杂度不随之增长。 */
+/** One table instead of an if chain: each new command adds one row, and `build`'s cyclomatic complexity stays flat. */
 const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
   new: newIntent,
   import: importIntent,

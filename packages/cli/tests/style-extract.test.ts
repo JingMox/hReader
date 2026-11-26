@@ -1,4 +1,4 @@
-// 这层管：`hr style extract` 的真子进程行为（stdout YAML、写盘、错误码、无 key 降级）；不碰网络。
+// This layer covers `hr style extract`'s real-subprocess behavior (stdout YAML, disk write, error codes, no-key downgrade); no network.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -23,8 +23,9 @@ const CORPUS = [
 ].join("\n");
 
 /**
- * 用真实文件当语料：`--no-llm` 是这一批唯一可用的路径，所以每个用例都显式给。
- * env 里显式清空 `OPENCODE_API_KEY`：开发机的 shell 往往真有一枚，"有没有 key"必须由用例决定。
+ * Real files as corpus: `--no-llm` is the only path available to this batch, so every case gives it explicitly.
+ * `OPENCODE_API_KEY` is explicitly cleared in env: dev shells often really have one, and "is there a key" must
+ * be the case's own decision.
  */
 const NO_KEY = { OPENCODE_API_KEY: "" };
 
@@ -79,7 +80,7 @@ describe("hr style extract · stdout", () => {
   });
 });
 
-describe("hr style extract · 单篇提醒", () => {
+describe("hr style extract · single-file reminder", () => {
   it("should warn when only one corpus file is given", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);
@@ -92,7 +93,7 @@ describe("hr style extract · 单篇提醒", () => {
   });
 });
 
-describe("hr style extract · 写盘", () => {
+describe("hr style extract · writing to disk", () => {
   it("should write the file and print a one-line summary with --out", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);
@@ -110,7 +111,7 @@ describe("hr style extract · 写盘", () => {
   });
 });
 
-describe("hr style extract · 覆盖守卫", () => {
+describe("hr style extract · overwrite guard", () => {
   it("should leave an existing file byte-identical without --force", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);
@@ -147,7 +148,7 @@ describe("hr style extract · 覆盖守卫", () => {
   });
 });
 
-describe("hr style extract · 父目录守卫", () => {
+describe("hr style extract · parent-directory guard", () => {
   it("should refuse a missing parent directory instead of creating it", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);
@@ -164,7 +165,7 @@ describe("hr style extract · 父目录守卫", () => {
   });
 });
 
-describe("hr style extract · --out 边界", () => {
+describe("hr style extract · --out boundaries", () => {
   it("should refuse --out outside the workspace", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);
@@ -177,7 +178,7 @@ describe("hr style extract · --out 边界", () => {
   });
 });
 
-describe("hr style extract · 语料边界", () => {
+describe("hr style extract · corpus boundaries", () => {
   it("should reject an unsupported corpus format", async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, "corpus.txt");
@@ -204,11 +205,11 @@ describe("hr style extract · 语料边界", () => {
   });
 });
 
-describe("hr style extract · 语料与 id 上限", () => {
+describe("hr style extract · corpus and id limits", () => {
   it("should reject a corpus file above 1 MiB before decoding it", async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, "big.md");
-      // 超限 + 非法 UTF-8：先解码的实现会报 invalid_utf8（exit 3），先 stat 的实现报 1 MiB（exit 1）。
+      // Over limit + invalid UTF-8: decode-first reports invalid_utf8 (exit 3), stat-first reports 1 MiB (exit 1).
       writeFileSync(path, Buffer.alloc(1024 * 1024 + 1, 0xff));
 
       const result = await extract([path, "--json"], dir);
@@ -243,12 +244,12 @@ describe("hr style extract · 语料与 id 上限", () => {
   });
 });
 
-describe("hr style extract · LLM 开关", () => {
+describe("hr style extract · the LLM switch", () => {
   it("should surface a transport failure when a key is present", async () => {
     await withTempDir(async (dir) => {
       const file = seedCorpus(dir);
 
-      // 子进程里没有注入点，所以把请求指向一个必然连不上的地址：链路真跑，网络不出本机。
+      // A subprocess has no injection point, so the request is aimed at an address that cannot connect: the chain really runs, the network stays on-machine.
       const result = await runCli(["style", "extract", file, "--json"], {
         cwd: dir,
         env: { OPENCODE_API_KEY: "sk-test-never-used", HR_LLM_BASE_URL: "http://127.0.0.1:9" },

@@ -1,6 +1,6 @@
-// 这层管：`run()` 的写命令路径换算（realpathThroughAncestors）与 human 输出分支；不做参数解析。
+// This layer covers `run()`'s write-command path resolution (realpathThroughAncestors) and human output branches; no arg parsing.
 //
-// 关键点：`--workspace` / 目标都可能尚不存在，路径换算必须退到最深的已存在祖先，且绝不创建目录。
+// The key point: `--workspace` / the target may not exist yet — path resolution must retreat to the deepest existing ancestor and never create directories.
 
 import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +17,7 @@ afterAll(() => {
 
 const DOC = '<article data-hr-id="hr-a"><p data-hr-id="hr-b">x</p></article>';
 
-/** 记录 stdout/stderr 的假 io；stdin 永远空（这些用例不给 `--html-stdin`）。 */
+/** A fake io recording stdout/stderr; stdin is always empty (these cases never pass `--html-stdin`). */
 const ioAt = (): { io: CliIo; out: () => string; err: () => string } => {
   const out: string[] = [];
   const err: string[] = [];
@@ -39,7 +39,7 @@ const ioAt = (): { io: CliIo; out: () => string; err: () => string } => {
   };
 };
 
-describe("run · 缺失目标/缺失 workspace 的路径换算", () => {
+describe("run · path resolution for missing target / missing workspace", () => {
   it("should walk up to the deepest existing ancestor for a missing nested target", async () => {
     const { io, err } = ioAt();
     const code = await run(["patch", "missing/deep.html", "hr-a", "--action", "delete"], io);
@@ -63,7 +63,7 @@ describe("run · 缺失目标/缺失 workspace 的路径换算", () => {
   });
 });
 
-describe("run · 大纲旗标（exit 1 且不落盘）", () => {
+describe("run · outline flags (exit 1 and nothing on disk)", () => {
   it("should reject --outline with --no-outline as invalid_input without writing", async () => {
     writeFileSync(join(dir, "conflict.html"), DOC);
     const { io, err } = ioAt();
@@ -88,7 +88,7 @@ describe("run · 大纲旗标（exit 1 且不落盘）", () => {
   });
 });
 
-describe("run · style 的 human 输出", () => {
+describe("run · style human output", () => {
   it("should print the unchanged line for an already-styled document", async () => {
     writeFileSync(join(dir, "human.html"), DOC);
     const first = ioAt();

@@ -1,10 +1,10 @@
-// 这层管：渲染期限（超时 → `render_timeout`）与它的取消口；不碰进程、不碰 socket。
+// This layer: the render deadline (timeout -> `render_timeout`) and its cancellation handle; no processes, no sockets.
 import { HrError } from "@hreader/core";
 
 export const deadlineOf = (
   timeoutMs: number,
 ): { readonly expired: Promise<never>; cancel(): void } => {
-  // `cancel` 走 AbortController 而不是闭包里的 timer：否则要先塞一个占位函数进 `let`，那行永远没人调用。
+  // `cancel` uses an AbortController rather than a closure-held timer: otherwise a placeholder would sit in a `let` that nobody ever calls.
   const abort = new AbortController();
   const expired = new Promise<never>((_resolve, reject) => {
     const timer = setTimeout(() => {

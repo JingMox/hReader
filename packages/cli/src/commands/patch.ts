@@ -1,7 +1,7 @@
-// 这层管：`hr patch`（片段文本已解析好 → core 落盘 → 文本/JSON）；不做参数校验、不读 stdin。
-// 入口做与 `outline`/`read` 同一道「文档已 normalize」前置判定：patch 消耗 `data-hr-id`，
-// 半规范化（根有 id、子节点没有）的文档在这里就要收，否则用户会拿到 `node_not_found` 这种猜字式的报错。
-// `<nodeId|选择器>` 的解释与 `read` 同一处实现（core 的 `locateTarget`）：两条命令同输入必须同 id。
+// This layer: `hr patch` (fragment already parsed -> core writes -> text/JSON); no argument checks, no stdin.
+// The entry runs the same "document is normalized" preflight as `outline`/`read`: patch consumes `data-hr-id`,
+// so a half-normalized document (id on the root, none below) must be stopped here — otherwise the user gets guessing-game `node_not_found` errors.
+// `<nodeId|selector>` is interpreted by the same implementation as `read` (core's `locateTarget`): both commands must resolve the same input to the same id.
 
 import {
   type PatchAction,
@@ -22,22 +22,23 @@ import { dataPatch, humanPatch, jsonOk } from "../output";
 
 export interface PatchInput {
   readonly path: string;
-  /** `data-hr-id` 或选择器（与 `hr read` 同一解析器）：解析在 core 的锁内做，此层不先读盘。 */
+  /** `data-hr-id` or selector (same resolver as `hr read`): resolution happens inside core's lock; this layer does not read the file first. */
   readonly nodeId: string;
   readonly action: PatchAction;
-  /** `delete` 时必须为 `undefined`；其余 action 是已取好的片段原文。 */
+  /** Must be `undefined` for `delete`; for other actions it is the fetched fragment text. */
   readonly html: string | undefined;
   readonly workspace: string;
   readonly json: boolean;
-  /** 回执里印的路径（用户视角）：不给就印结果里的真实路径。 */
+  /** Path printed in the receipt (user's view): falls back to the result's real path when not given. */
   readonly displayPath?: string | undefined;
 }
 
 /**
- * 整段判定与定位都交给 core 在锁内、对着**将要写入的那份字节**跑（`request` 以函数形式给）：
- * 命令层若先锁外读一遍盘，判定的是一份快照，两次读之间文档可被别人改掉，定位到的就是另一棵树上的节点。
- * 顺序仍是「是不是文档 → 重复 id → 缺 id → 定位」：重复 id 排在 `needs_normalize` 前面，
- * 那是“缺 id”，这是“两个元素共用同一个 id”。
+ * Judgment and location both run inside core's lock against **the very bytes about to be written** (`request` is
+ * passed as a function): if the command layer read the file outside the lock first, it would judge a snapshot the
+ * document could have drifted from, and locate a node on a different tree.
+ * The order stays "is a document -> duplicate ids -> missing ids -> locate": duplicate ids rank ahead of
+ * `needs_normalize` — that one means "ids are missing", this one means "two elements share one id".
  */
 const requestOf =
   (input: PatchInput) =>

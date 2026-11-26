@@ -1,6 +1,6 @@
-// 这层管：`hr serve` 印出来的那一行能不能直接用——文档路径要认得出来，地址要自带凭据、点开有正文。
+// This layer covers whether the line `hr serve` prints is directly usable — the document path must be recognizable, and the address must carry credentials and open to real content.
 //
-// 起站点一律在进程内（`run()` 的 `stop` 句柄收尾），前台跑 `serve` 子进程会把整棵套件挂死。
+// Sites always start in-process (closed via `run()`'s `stop` handle); a foreground `serve` subprocess would hang the whole suite.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +25,7 @@ interface Serving {
   readonly stop: () => void;
 }
 
-/** 起一个真站点并等它把首行印出来；调用方负责 `stop()`。 */
+/** Start a real site and wait for its first printed line; the caller runs `stop()`. */
 const serveOf = async (dir: string, extra: readonly string[] = []): Promise<Serving> => {
   const home = join(dir, "home");
   mkdirSync(home, { recursive: true });
@@ -44,24 +44,24 @@ const serveOf = async (dir: string, extra: readonly string[] = []): Promise<Serv
   return { text: out.join(""), code, stop };
 };
 
-/** 人读行必须认得文档，且那串地址原样打开就有正文。 */
+/** The human line must name the document, and the printed address opens to real content verbatim. */
 const expectHumanLine = async (dir: string): Promise<void> => {
   const served = await serveOf(dir);
   try {
     expect(served.code).toBe(0);
-    // 人读行必须出现用户给的那个路径：`serving <dir> on …`（workspace 绝对路径）认不出是哪篇文档。
+    // The human line must show the path the user gave: `serving <dir> on …` (workspace absolute path) cannot name which document it is.
     expect(served.text).toMatch(
       /^serving d\.html on http:\/\/127\.0\.0\.1:\d+\/\?token=[\w-]+ \(pid \d+\)\n$/u,
     );
     const url = /on (http:\/\/\S+)/u.exec(served.text)?.[1] ?? "";
 
-    // 照用户的做法：把那串地址原样打开。首访用 token 换 cookie 并 302 回干净的 `/`。
+    // Do what the user does: open that address verbatim. The first visit trades the token for a cookie and 302s back to a clean `/`.
     const first = await fetch(url, { redirect: "manual" });
     expect(first.status).toBe(302);
     const cookie = (first.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
     expect(cookie).toMatch(/^hr=[\w-]+$/u);
 
-    // 首页必须有正文：打开了却没内容是这条命令最伤人的失败方式。
+    // The front page must have content: opening to nothing is this command's worst failure mode.
     const page = await fetch(new URL("/", url), { headers: { cookie } });
     expect(page.status).toBe(200);
     expect(await page.text()).toContain(BODY);
@@ -70,7 +70,7 @@ const expectHumanLine = async (dir: string): Promise<void> => {
   }
 };
 
-/** `--json` 地址自带凭据，且不夹 workspace 绝对路径。 */
+/** The `--json` address carries credentials and no workspace absolute path. */
 const expectJsonUrl = async (dir: string): Promise<void> => {
   const served = await serveOf(dir, ["--json"]);
   try {
@@ -78,17 +78,17 @@ const expectJsonUrl = async (dir: string): Promise<void> => {
     const envelope = parseJsonLine(served.text);
     const url = String(fieldOf(fieldOf(envelope, "data"), "url"));
 
-    // 裸地址粘进浏览器就是 401：凭据必须在这一串里，让程序替人拼 token 只会拼错。
+    // A bare address pasted into a browser is a 401: the credentials must ride inside this string — asking the user to assemble the token only assembles it wrong.
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/\?token=[\w-]+$/u);
     expect(url).toContain(`:${String(fieldOf(fieldOf(envelope, "data"), "port"))}/`);
-    // 地址里不能混进 workspace 绝对路径：它是给浏览器用的，路径段只该是 `/`。
+    // The address must not mix in a workspace absolute path: it is for the browser, whose path portion should be just `/`.
     expect(url).not.toContain(dir);
   } finally {
     served.stop();
   }
 };
 
-describe("serve · 印出来的路径与凭据", () => {
+describe("serve · the printed path and credentials", () => {
   it("should name the document in the human line and serve its body behind that URL", async () => {
     await withTempDir(async (dir) => {
       await expectHumanLine(dir);

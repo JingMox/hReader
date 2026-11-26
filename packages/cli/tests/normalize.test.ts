@@ -1,9 +1,9 @@
-// 这层管：`hr normalize`——先补 id 才能 outline/read/patch/serve。
+// This layer covers `hr normalize` — ids must be injected before outline/read/patch/serve work.
 //
-// 用户视角的三件事，一条不能少：
-//   1. 不加 `--write` 时只看不写（把结果打到 stdout，文件一个字节不动）；
-//   2. `--write` 落盘，且**已有 id 一字不动**；连跑第二次 `injected=0`、字节不变（幂等）；
-//   3. 没有 `<article>` 时明说"这不是可规范化的文档"（`invalid_document`，退出 1），不是空转。
+// Three user-visible facts, none optional:
+//   1. Without `--write` it only prints (the result goes to stdout; the file loses not a byte);
+//   2. `--write` lands on disk, and **existing ids stay byte-identical**; a second run reports `injected=0`, bytes unchanged (idempotent);
+//   3. With no `<article>` it says plainly "this is not a normalizable document" (`invalid_document`, exit 1) — no silent no-op.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { checked } from "./cli-support";
 import { fieldOf, parseJsonLine, runCli, textOf, withTempDir, type CliResult } from "./harness";
 
-/** 手写文档：封面 + 3 章 + 一节，**没有任何** `data-hr-id`（用户真实原料）。 */
+/** A handwritten document: cover + 3 chapters + one section, **no** `data-hr-id` at all (real user material). */
 export const HANDWRITTEN = [
   "<!doctype html>",
   "<html><head><title>季度复盘</title></head><body>",
@@ -37,10 +37,10 @@ const seed = (dir: string, html = HANDWRITTEN): string => {
 const normalize = (dir: string, extra: readonly string[] = []): Promise<CliResult> =>
   runCli(["normalize", "doc.html", ...extra], { cwd: dir });
 
-/** `--json` 的 `data` 字段（不写 `as`：断言走 `textOf`/`Number`）。 */
+/** The `--json` `data` field (no `as`: assertions go through `textOf`/`Number`). */
 const dataOf = (result: CliResult): unknown => fieldOf(parseJsonLine(result.stdout), "data");
 
-describe("hr normalize · 只看不写", () => {
+describe("hr normalize · print without write", () => {
   it("should report what it would inject on stdout without touching the file", async () => {
     await withTempDir(async (dir) => {
       const path = seed(dir);
@@ -52,10 +52,10 @@ describe("hr normalize · 只看不写", () => {
       expect(result.code).toBe(0);
       expect(fieldOf(data, "needsNormalize")).toBe(true);
       expect(Number(fieldOf(data, "injected"))).toBeGreaterThan(0);
-      // 打印出来的 html 是"补完 id 的样子"，用户能直接看到每个节点的 id。
+      // The printed html is "what it looks like with ids injected" — the user can see every node's id directly.
       expect(textOf(fieldOf(data, "html"))).toContain("data-hr-id=");
       expect(textOf(fieldOf(data, "html"))).toContain("第一章 把发布节奏拉回来");
-      // 关键：没 --write 就绝不落盘。
+      // The key point: without --write, nothing lands on disk.
       expect(readFileSync(path, "utf8")).toBe(before);
     });
   });
@@ -73,7 +73,7 @@ describe("hr normalize · 只看不写", () => {
   });
 });
 
-describe("hr normalize --write · 幂等", () => {
+describe("hr normalize --write · idempotent", () => {
   it("should write ids to disk and report injected 0 on the second run", async () => {
     await withTempDir(async (dir) => {
       const path = seed(dir);
@@ -83,7 +83,7 @@ describe("hr normalize --write · 幂等", () => {
 
       const second = checked(await normalize(dir, ["--write", "--json"]));
 
-      // 幂等是这条命令存在的前提：否则用户重跑一次就换一批 id，之前拿到的 id 全失效。
+      // Idempotency is this command's reason to exist: otherwise a rerun swaps every id and all previously handed-out ids die.
       expect(fieldOf(dataOf(second), "needsNormalize")).toBe(false);
       expect(fieldOf(dataOf(second), "injected")).toBe(0);
       expect(readFileSync(path, "utf8")).toBe(afterFirst);
@@ -107,7 +107,7 @@ describe("hr normalize --write · 幂等", () => {
   });
 });
 
-describe("hr normalize · 不是文档", () => {
+describe("hr normalize · not a document", () => {
   it("should reject a file without <article> as invalid_document (exit 1)", async () => {
     await withTempDir(async (dir) => {
       seed(dir, "just plain text");
@@ -131,7 +131,7 @@ describe("hr normalize · 不是文档", () => {
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain("<article>");
-      // 别再让用户看到 `injectNodeIds` 这类内部函数名。
+      // Internal function names like `injectNodeIds` must not reach the user.
       expect(result.stderr).not.toContain("injectNodeIds");
     });
   });

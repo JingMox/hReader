@@ -1,4 +1,4 @@
-// 这层管：`run(["pdf"|"png", …])` 把 stop/env 接进渲染层，以及"找不到 Chrome"时的退出码与 stderr。
+// This layer covers `run(["pdf"|"png", …])` wiring stop/env into the render layer, plus the exit code and stderr when Chrome cannot be found.
 
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,23 +36,26 @@ const capture = (overrides: Partial<CliIo> = {}): { io: CliIo; out: string[]; er
   };
 };
 
-describe("run · pdf/png 的 Chrome 接线", () => {
-  // 只走到"选 Chrome 二进制"这一步就失败：命令层到会话层的整条接线被执行到，但不真的起进程。
+describe("run · pdf/png Chrome wiring", () => {
+  // It fails as early as "pick the Chrome binary": the whole command→session wiring ran, but no process really starts.
   const noChrome = { env: { HREADER_CHROME: join(dir, "no-chrome") } };
 
-  // 用 `img.html`：`printProductOf` 在渲染之前就发警告，顺带把 stderr 的 warn 接线也走一遍。
+  // `img.html` is used: `printProductOf` warns before rendering, exercising the stderr warn wiring along the way.
   it.each([
     ["pdf", ["img.html", "--out", join(dir, "a.pdf")], join(dir, "a.pdf")],
     ["png", ["img.html", "--out", join(dir, "a.png"), "--width", "800"], join(dir, "a.png")],
-  ])("%s 找不到 Chrome 时 exit 3、警告已出、不落盘", async (kind, argv, out) => {
-    // `stop` 给上：pdf/png 也必须把它接进渲染层（不传就等满 --timeout，Ctrl-C 会白等）。
-    const stop = new Promise<void>(() => undefined);
-    const { io, out: stdout, err } = capture({ ...noChrome, stop });
-    expect(await run([kind, ...argv], io)).toBe(3);
-    expect(err.join("")).toContain("已移除 1 个外部图片");
-    expect(err.join("")).toContain("找不到 Chrome");
-    expect(err.join("")).toContain("候选路径：");
-    expect(stdout.join("")).toBe("");
-    expect(existsSync(out)).toBe(false);
-  });
+  ])(
+    "should exit 3 with the warning already out and nothing on disk when %s finds no Chrome",
+    async (kind, argv, out) => {
+      // `stop` is supplied: pdf/png must wire it into the render layer too (without it, Ctrl-C waits out the full --timeout).
+      const stop = new Promise<void>(() => undefined);
+      const { io, out: stdout, err } = capture({ ...noChrome, stop });
+      expect(await run([kind, ...argv], io)).toBe(3);
+      expect(err.join("")).toContain("已移除 1 个外部图片");
+      expect(err.join("")).toContain("找不到 Chrome");
+      expect(err.join("")).toContain("候选路径：");
+      expect(stdout.join("")).toBe("");
+      expect(existsSync(out)).toBe(false);
+    },
+  );
 });

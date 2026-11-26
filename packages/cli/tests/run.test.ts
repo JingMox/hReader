@@ -1,7 +1,7 @@
-// 这层管：`run()` 的归口逻辑（argv → 退出码 / stdout / stderr），用假 io；真 fs 只为成功路径。
+// This layer covers `run()`'s routing logic (argv → exit code / stdout / stderr) with a fake io; real fs only for success paths.
 //
-// 注意：`--html-stdin` 的 stdin 拒绝用例只是**防御分支/顺带**覆盖 `run.ts` 的 `runPatch` 返回，
-// 它的红色只由 stderr 格式决定，别把它记作 patch 路径的症状覆盖。
+// Note: the `--html-stdin` stdin-refusal case only exercises a **defensive/incidental** branch — `run.ts`'s `runPatch`
+// return; its redness is decided by the stderr shape — do not count it as patch-path symptom coverage.
 
 import {
   existsSync,
@@ -34,7 +34,7 @@ writeFileSync(
   '<article data-hr-id="hr-i"><h2 data-hr-id="hr-j">图</h2><p data-hr-id="hr-k">正文</p><img src="https://cdn.example/a.png" alt="外链"></article>',
 );
 
-// 模块级 fixture：import 各用例都吃这份源——靠"前一个用例顺手写的文件"会让乱序跑空。
+// Module-level fixture: every importing case eats from this source — relying on "whatever file a previous case happened to write" breaks under reordering.
 writeFileSync(
   join(dir, "foreign.html"),
   "<body><main><h1>外来</h1><script>boot()</script><p>正文</p></main></body>",
@@ -59,14 +59,14 @@ const capture = (overrides: Partial<CliIo> = {}): Capture => {
       readStdin: () => Promise.resolve(new Uint8Array()),
       debug: false,
       launchParentPid: process.ppid,
-      // `home` 必须注入：`run(["serve", …])` 不带 `--home` 时落 `homedir()`，即覆盖真实 `~/.hreader/daemon.json`。
+      // `home` must be injected: `run(["serve", …])` without `--home` lands on `homedir()` — that is the real `~/.hreader/daemon.json`.
       home: dir,
       ...overrides,
     },
   };
 };
 
-describe("run · 成功路径", () => {
+describe("run · success paths", () => {
   it("should print help and exit 0", async () => {
     const { io, out, err } = capture();
     const code = await run(["--help"], io);
@@ -84,7 +84,7 @@ describe("run · 成功路径", () => {
       { argv: ["style", "a.html", "--tone", DEFAULT_STYLE_ID], needle: "语言风格" },
       { argv: ["style", "a.html", "--lint"], needle: "" },
       {
-        // 目标必须是能装块级子节点的容器：往 `<p>` 里 append 一个 `<p>` 会写出不可重解析的嵌套。
+        // The target must be a container that holds block-level children: appending a `<p>` into a `<p>` writes an unreparsable nest.
         argv: ["patch", "a.html", "hr-a", "--action", "append", "--html", "<p>新</p>"],
         needle: "patched",
       },
@@ -98,7 +98,7 @@ describe("run · 成功路径", () => {
   });
 });
 
-describe("run · export 接线", () => {
+describe("run · export wiring", () => {
   it("should print the printable html to stdout", async () => {
     const { io, out } = capture();
     const code = await run(["export", "a.html"], io);
@@ -122,19 +122,19 @@ describe("run · export 接线", () => {
   });
 });
 
-describe("run · import 接线", () => {
+describe("run · import wiring", () => {
   it("should convert a foreign html and write <name>.hr.html by default", async () => {
     const { io, out } = capture();
     const code = await run(["import", "foreign.html"], io);
 
     expect(code).toBe(0);
     expect(out.join("")).toContain("imported foreign.hr.html (note");
-    // 产物是真正的托管文档：带齐 data-hr-id 与 data-hr-kind。
+    // The artifact is a real managed document: data-hr-id and data-hr-kind all present.
     const written = readFileSync(join(dir, "foreign.hr.html"), "utf8");
     expect(written).toContain('data-hr-id="root" data-hr-kind="note"');
     expect(written).not.toContain("<script");
 
-    // 不带 --force 重跑：目标已存在 → file_exists（exit 1）。
+    // Rerun without --force: target exists → file_exists (exit 1).
     const second = capture();
     expect(await run(["import", "foreign.html"], second.io)).toBe(1);
     expect(second.err.join("")).toContain("目标已存在");
@@ -162,7 +162,7 @@ describe("run · import 接线", () => {
   });
 });
 
-describe("run · 片段来源", () => {
+describe("run · fragment sources", () => {
   it("should read the fragment from stdin for --html-stdin", async () => {
     const { io, out } = capture({
       readStdin: () => Promise.resolve(new TextEncoder().encode("<p>来自 stdin</p>")),
@@ -177,7 +177,7 @@ describe("run · 片段来源", () => {
   });
 });
 
-describe("run · 用法错误（exit 2）", () => {
+describe("run · usage errors (exit 2)", () => {
   it("should print the message + topic usage to stderr only", async () => {
     const { io, out, err } = capture();
     const code = await run(["outline"], io);
@@ -188,9 +188,9 @@ describe("run · 用法错误（exit 2）", () => {
   });
 });
 
-describe("run · 用法错误在 --json 下的信封", () => {
-  // 已知缺口：契约要求"错误也遵守 --json"，但 args 失败信封里没有 json 字段，
-  // usageFailure 拿不到 --json，于是 usage 错误在 --json 下只写 stderr。断言保留，用 it.fails 固定缺口。
+describe("run · usage-error envelopes under --json", () => {
+  // Known gap: the contract wants "errors honor --json too", but the args failure envelope has no json field,
+  // so usageFailure never sees --json and usage errors under --json only write stderr. The assertion stays, pinned with it.fails.
   // KD-09
   it.fails("should also emit a usage JSON envelope on stdout under --json", async () => {
     const { io, out, err } = capture();
@@ -201,7 +201,7 @@ describe("run · 用法错误在 --json 下的信封", () => {
     expect(err.join("")).toContain("outline 缺少 <file>");
   });
 
-  // 同上：空 stdin 走 UsageError 分支，--json 下没有 stdout 信封。
+  // Same as above: empty stdin takes the UsageError branch, and under --json there is no stdout envelope.
   // KD-10
   it("should treat empty --html-stdin as a usage error in plain mode", async () => {
     const plain = capture();
@@ -225,7 +225,7 @@ describe("run · 用法错误在 --json 下的信封", () => {
   });
 });
 
-describe("run · core 错误与内部错误", () => {
+describe("run · core errors and internal errors", () => {
   it("should map an HrError to its exit code and print the message to stderr", async () => {
     const { io, out, err } = capture();
     const code = await run(["outline", "missing.html"], io);
@@ -245,7 +245,7 @@ describe("run · core 错误与内部错误", () => {
         join(dir, "missing.html") +
         '"}\n',
     );
-    // 只走一条通道：`2>&1` 的消费者不会再收到第二段。
+    // One channel only: `2>&1` consumers must not receive a second segment.
     expect(err).toEqual([]);
   });
 
@@ -261,7 +261,7 @@ describe("run · core 错误与内部错误", () => {
 
   it("should bound the stderr line even when the error echoes a megabyte-sized argument", async () => {
     const { io, out, err } = capture();
-    // `文档里没有匹配 "<选择器>" 的节点。` 会原样回显入参：MB 级单行能把终端与日志管线卡死。
+    // `文档里没有匹配 "<选择器>" 的节点。` echoes the input verbatim: an MB-scale single line can stall terminals and log pipelines.
     const code = await run(["read", "a.html", `#${"x".repeat(2 * 1024 * 1024)}`], io);
 
     expect(code).toBe(1);
@@ -288,10 +288,10 @@ describe("run · HR_DEBUG", () => {
   });
 });
 
-describe("run · 没有 stack 的 Error", () => {
+describe("run · an Error with no stack", () => {
   it('should print an empty line instead of the string "undefined" when --debug has no stack', async () => {
     const error = new Error("没有栈");
-    // 有的运行时/包装只留 message：`error.stack` 读出来是 undefined，`--debug` 不能因此印 "undefined"。
+    // Some runtimes/wrappers keep only message: `error.stack` reads as undefined, and `--debug` must not print "undefined" for it.
     Reflect.deleteProperty(error, "stack");
     const { io, err, out } = capture({ debug: true, readStdin: () => Promise.reject(error) });
 
@@ -299,12 +299,12 @@ describe("run · 没有 stack 的 Error", () => {
       70,
     );
     expect(err.join("")).toBe("没有栈\n\n");
-    // patch 走 io 失败时 stdout 必须空：这条是 patch 路径的正常失败通道，不是只为了看 debug 栈。
+    // On an io failure in patch, stdout must be empty: this is the patch path's normal failure channel, not a debug-stack check.
     expect(out.join("")).toBe("");
   });
 });
 
-describe("run · 非 Error 的拒绝值", () => {
+describe("run · non-Error rejection values", () => {
   it("should not try to print a stack when --debug is on but the rejection is not an Error", async () => {
     const rejection: unknown = "不是 Error 的字符串";
     const { io, err } = capture({
@@ -315,7 +315,7 @@ describe("run · 非 Error 的拒绝值", () => {
         }),
     });
 
-    // 没有 `stack` 可读：照样只印一句，不能因为开了 --debug 就再印一行 "undefined"。
+    // No `stack` to read: still just one line — enabling --debug must not add an "undefined" line.
     expect(await run(["patch", "a.html", "hr-c", "--action", "append", "--html-stdin"], io)).toBe(
       70,
     );
@@ -324,8 +324,8 @@ describe("run · 非 Error 的拒绝值", () => {
 
   it("should stringify a non-Error rejection", async () => {
     const rejection: unknown = Symbol("非 Error");
-    // run.ts 的 messageOf 必须能 stringify 非 Error 拒绝值：用 Reflect.apply 构造
-    // "拒绝值不是 Error"的场景，避免与 prefer-promise-reject-errors 的静态规则冲突。
+    // run.ts's messageOf must stringify non-Error rejection values: Reflect.apply constructs the
+    // "rejection is not an Error" scenario without tripping the prefer-promise-reject-errors static rule.
     const { io, err } = capture({
       readStdin: () =>
         new Promise<never>((_resolve, reject) => {
@@ -339,7 +339,7 @@ describe("run · 非 Error 的拒绝值", () => {
   });
 });
 
-describe("run · serve 的 stop 注入", () => {
+describe("run · serve stop injection", () => {
   it("should hand the injected stop through to the serve command", async () => {
     let release: () => void = () => undefined;
     const stop = new Promise<void>((resolve) => {

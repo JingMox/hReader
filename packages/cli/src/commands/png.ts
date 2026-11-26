@@ -1,5 +1,5 @@
-// 这层管：`hr png`（打印稿 → 会话层出长图 → PNG 头校验 → 原子写）；不判 argv、不定退出码。
-// 落盘三连（io → 越界 → 已存在）与 `hr pdf` 同序同语义，渲染失败时盘上零残留。
+// This layer: `hr png` (print sheet -> session-layer tall image -> PNG header validation -> atomic write); no argv checks, no exit codes.
+// The three write checks (io -> out-of-bounds -> exists) share `hr pdf`'s order and meaning; a failed render leaves nothing on disk.
 
 import { dirname } from "node:path";
 
@@ -26,28 +26,28 @@ export type RenderPng = (input: {
 }) => Promise<LongImage>;
 
 export interface PngCommandInput {
-  /** 绝对路径：打印稿要先读源文档。 */
+  /** Absolute path: the print sheet is built by first reading the source document. */
   readonly path: string;
-  /** 原样字符串：越界是语义错误（`invalid_input` exit 1），不是用法错误。 */
+  /** Verbatim string: out of range is a semantic error (`invalid_input` exit 1), not a usage error. */
   readonly width: string;
   readonly scale: string;
   readonly maxHeight: string;
-  /** 用户是否显式传了 `--max-height`：没传就不拿默认值做面积预检（短文档会被误拒）。 */
+  /** Whether the user explicitly passed `--max-height`: unset, the default must not feed the area preflight (short documents would be wrongly refused). */
   readonly maxHeightExplicit: boolean;
-  /** 命中的大纲旗标（`--outline`/`--no-outline`）：PNG 没有大纲，给了就是 `invalid_input`。 */
+  /** The outline flag given (`--outline`/`--no-outline`): PNG has no outline, so passing one is `invalid_input`. */
   readonly outlineFlag: string | undefined;
   readonly timeoutMs: number;
-  /** 打印稿主题：`undefined` = 用文档已嵌入的 `#hr-theme`（没有才回落默认）；显式值合法值由 core 判。 */
+  /** Print-sheet theme: `undefined` = the document's embedded `#hr-theme` (default only when absent); explicit values are validated by core. */
   readonly visual: string | undefined;
-  /** 绝对路径（`run.ts` 已真实化）。 */
+  /** Absolute path (already realpathed by `run.ts`). */
   readonly out: string;
   readonly force: boolean;
   readonly workspace: string;
   readonly json: boolean;
   readonly warn: (message: string) => void;
-  /** 回执里印的 `--out`（用户视角）：不给就印真实路径。 */
+  /** The `--out` printed in the receipt (user's view): falls back to the real path when not given. */
   readonly displayOut?: string | undefined;
-  /** 会话层注入点：`run.ts` 接真 Chrome，进程内测试接假传输。 */
+  /** Session-layer injection point: `run.ts` wires real Chrome, in-process tests wire a fake transport. */
   readonly render: RenderPng;
 }
 
@@ -79,7 +79,7 @@ const assertPngOutOf = async (input: PngCommandInput): Promise<void> => {
   assertOutInsideOf(input.out, input.workspace);
 };
 
-/** 报告宽高取自 IHDR，不取渲染层自报值：旧 bug 就是渲染层报了陈旧视口高。 */
+/** Reported width/height come from IHDR, not the render layer's self-report: an old bug was the render layer reporting a stale viewport height. */
 const reportOf = (image: LongImage, out: string): PngReport => {
   const size = pngSizeOf(image.bytes);
   return {
@@ -93,22 +93,22 @@ const reportOf = (image: LongImage, out: string): PngReport => {
 };
 
 export const pngCommand = async (input: PngCommandInput): Promise<string> => {
-  // 已知旗标放错子命令属于用户输入错（同 `--page-size` 越界）：一落盘都不落，先拦。
+  // A known flag on the wrong subcommand is user input error (like an out-of-range `--page-size`): stop it before anything is written.
   if (input.outlineFlag !== undefined) {
     throw new HrError("invalid_input", `hr png 不支持 ${input.outlineFlag}（PNG 没有大纲）`);
   }
   const width = sizeOf(input.width, WIDTH);
   const scale = sizeOf(input.scale, SCALE);
   const maxHeight = sizeOf(input.maxHeight, MAX_HEIGHT);
-  // 起 Chrome 前先拦显式 `--max-height` 下的最坏总像素（如 `--scale 3 --max-height 50000`）：
-  // 单边与真实面积要等量到内容高，见 `cdp.ts`。
+  // Before Chrome starts, reject the worst-case total pixels under an explicit `--max-height` (e.g. `--scale 3 --max-height 50000`):
+  // edge and real-area checks wait for the measured content height; see `cdp.ts`.
   assertPixelRequestOf({ width, scale, maxHeight, maxHeightExplicit: input.maxHeightExplicit });
   await assertPngOutOf(input);
   await assertTargetFreeOf(input.out, input.force, nodePatchDeps);
   const product = await printProductOf({
     path: input.path,
     visual: input.visual,
-    // 长图按 A4 版心排，不跟 `--page-size`：PNG 没有纸，只有视口宽。
+    // Tall images lay out at A4 content width, ignoring `--page-size`: PNG has no paper, only a viewport width.
     paper: "a4",
     workspace: input.workspace,
     warn: input.warn,

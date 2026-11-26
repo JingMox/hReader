@@ -1,4 +1,4 @@
-// 这层管：基于 node:util parseArgs 的 argv 词法扫描与参数表校验；不判断子命令语义、不碰 process。
+// This layer: argv lexical scanning and option-table validation on top of node:util parseArgs; no subcommand semantics, no process.
 
 import { parseArgs as parseNodeArgs, type ParseArgsOptionDescriptor } from "node:util";
 
@@ -45,8 +45,8 @@ const OPTION_SPECS = {
   "no-llm": { type: "boolean" },
   "no-outline": { type: "boolean" },
   outline: { type: "boolean" },
-  // `--strict` 取 boolean 形态：裸旗标是开关，`--strict=warning` 走 token.value——
-  // 这正是「可选值」在 tokens 模式下的表达（string 形态会把下一个位置参数吞成取值）。
+  // `--strict` uses the boolean form: a bare flag is a switch, `--strict=warning` arrives via token.value —
+  // that is exactly how "optional value" is expressed in tokens mode (the string form would swallow the next positional as its value).
   strict: { type: "boolean" },
   help: { type: "boolean" },
   write: { type: "boolean" },
@@ -55,8 +55,9 @@ const OPTION_SPECS = {
 const SPECS = new Map<string, ParseArgsOptionDescriptor>(Object.entries(OPTION_SPECS));
 
 /**
- * 用 strict: false + tokens: true 让 node:util 处理 `--flag=val` 与 `--` 结束符，
- * 再由本函数统一给出中文错误并保留 `--html --help` / 负数参数等既有词法行为。
+ * strict: false + tokens: true lets node:util handle `--flag=val` and the `--` terminator, while this function
+ * produces the unified error wording and preserves the existing lexical behavior (`--html --help`, negative
+ * arguments, etc.).
  */
 export const tokenize = (argv: readonly string[]): Tokenized => {
   const { tokens, positionals } = parseNodeArgs({
@@ -85,7 +86,7 @@ export const tokenize = (argv: readonly string[]): Tokenized => {
       continue;
     }
     if (token.value !== undefined) {
-      // 唯一允许 `=值` 的开关：语义校验（error | warning）归意图层，这里只收串。
+      // The only switch allowed an `=value`: semantic validation (error | warning) belongs to the intent layer; this layer just captures the string.
       if (token.name === "strict") {
         values.set(flag, token.value);
         continue;
@@ -97,7 +98,7 @@ export const tokenize = (argv: readonly string[]): Tokenized => {
   return { ok: true, raw: { values, switches, allowHosts, positionals } };
 };
 
-/** `--allow-host` 支持重复传参与逗号分隔：逐项切分、去空白、丢空项；全空视为未设置。 */
+/** `--allow-host` accepts repeats and comma-separated lists: split per item, trim, drop empties; an all-empty result counts as unset. */
 export const allowHostsOf = (raw: Raw): readonly string[] | undefined => {
   if (raw.allowHosts.length === 0) return undefined;
   const hosts = raw.allowHosts

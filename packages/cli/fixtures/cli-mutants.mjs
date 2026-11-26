@@ -1,7 +1,7 @@
-// 这层管：CLI 的变异测试（真改 src → 跑指定用例 → 逐字节还原）；不做断言。
+// This layer: CLI mutation testing (actually edit src -> run selected cases -> restore byte-for-byte); no assertions.
 //
-// 用法：node packages/cli/fixtures/cli-mutants.mjs（从仓库根跑）
-// CLI6 是反向变异（把安全/契约逻辑改坏），必须变红。
+// Usage: node packages/cli/fixtures/cli-mutants.mjs (run from the repo root)
+// CLI6 is a negative mutation (it breaks safety/contract logic) and must go red.
 
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
@@ -63,7 +63,7 @@ const MUTANTS = [
   },
 ];
 
-/** Vite 按 mtime/内容缓存转换结果：同秒内改写会被当成旧模块，必须让缓存失效。 */
+/** Vite caches transform results by mtime/content: a rewrite within the same second reads as the old module, so the cache must be invalidated. */
 const pause = (ms) => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 };

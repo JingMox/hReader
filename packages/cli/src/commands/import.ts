@@ -1,5 +1,5 @@
-// 这层管：`hr import`（读外来 HTML → importForeign → 原子写托管文档）；不判参数、不定退出码。
-// `<out>` 的落盘规矩与 `hr export --out` 同一套（父目录 → 越界 → 已存在），不另写第二份判定。
+// This layer: `hr import` (read foreign HTML -> importForeign -> atomically write a managed document); no argument checks, no exit codes.
+// `<out>`'s write rules are the same set as `hr export --out` (parent dir -> out-of-bounds -> exists); no second copy of the logic.
 
 import { dirname } from "node:path";
 
@@ -17,28 +17,28 @@ import {
 const encoder = new TextEncoder();
 
 export interface ImportDocInput {
-  /** 外来 HTML 源文件（真实绝对路径）。 */
+  /** Foreign HTML source file (real absolute path). */
   readonly path: string;
-  /** 落盘位置（真实绝对路径）：意图层已把缺省换成 `<name>.hr.html`。 */
+  /** Destination (real absolute path): the intent layer already substituted `<name>.hr.html` for a missing `--out`. */
   readonly out: string;
-  /** 未给 `--kind` 时为 `undefined`：默认形态归 core，这层不发明默认值。 */
+  /** `undefined` without `--kind`: the default shape is core's call; this layer invents no default. */
   readonly docKind: DocKind | undefined;
   readonly title: string | undefined;
   readonly workspace: string;
   readonly force: boolean;
   readonly json: boolean;
-  /** 回执里印的 `<out>`（用户视角）：不给就印真实路径。 */
+  /** The `<out>` printed in the receipt (user's view): falls back to the real path when not given. */
   readonly displayOut?: string | undefined;
 }
 
 export const importDocCommand = async (input: ImportDocInput): Promise<string> => {
-  // 先转换再判写盘：转不出（源已是托管文档）时不探目标路径，也不留半成品。
+  // Convert before checking the write: when conversion fails (source is already managed) the target path is not probed and no half-product is left.
   const product = importForeign(await readTextFile(input.path), {
     ...(input.docKind === undefined ? {} : { kind: input.docKind }),
     ...(input.title === undefined ? {} : { title: input.title }),
   });
   const data = encoder.encode(product.html);
-  // 顺序与 `hr export --out` 一致：io（父目录不可写）→ 越界 → 已存在，退出码才稳定是 3/3/1。
+  // Same order as `hr export --out`: io (unwritable parent) -> out-of-bounds -> exists, so exit codes stay a stable 3/3/1.
   await assertWritableDirOf(dirname(input.out), nodePatchDeps);
   assertOutInsideOf(input.out, input.workspace);
   await assertTargetFreeOf(input.out, input.force, nodePatchDeps);

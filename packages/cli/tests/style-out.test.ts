@@ -1,4 +1,4 @@
-// 这层管：`--out` 落点是否落在发现链上（`isDiscoveredStylePath`）——纯路径比较，两组真两组假。
+// This layer covers whether `--out` lands on the discovery chain (`isDiscoveredStylePath`) — pure path comparison, two true and two false cases.
 
 import { describe, expect, it } from "vitest";
 
@@ -28,7 +28,7 @@ describe("isDiscoveredStylePath", () => {
   });
 
   it("should accept the project path even when the requested id differs", () => {
-    // 项目级文件里写哪个 id 由加载层比对，路径本身只有一个（同 id 才生效）。
+    // Which id a project-level file names is checked by the load layer; the path itself is the only thing here (effective only for the same id).
     expect(isDiscoveredStylePath("/work/doc/.hreader/style.yaml", "other-id", deps)).toBe(true);
   });
 

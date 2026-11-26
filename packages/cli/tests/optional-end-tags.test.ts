@@ -1,7 +1,7 @@
-// 这组用例要证明：HTML5 允许**省略结束标签**的写法（`<li>a<li>b`）不会让 patch 变红，
-// 并且写盘之后**再解析一次是同一棵树**——省略写法被补成规范形态，字节不再变动。
+// These cases prove: HTML5's **omissible end tags** (`<li>a<li>b`) do not make patch go red,
+// and after the write **a re-parse yields the same tree** — the omitted form is completed to canonical shape and the bytes no longer move.
 //
-// 断言全部落在磁盘字节与真实进程输出上：rc、写盘后的规范形态、二次 `normalize` 的 `unchanged` 行、sha256 相等。
+// All assertions land on disk bytes and real process output: rc, the canonical shape after write, a second `normalize`'s `unchanged` line, equal sha256.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,7 +20,7 @@ const docOf = (body: string): string =>
     "",
   ].join("\n");
 
-/** 一个「可省略结束标签」的元素：往哪个容器 append、片段怎么写、盘上应该长成什么样。 */
+/** One "omissible end tag" element: which container to append into, how the fragment reads, what it should look like on disk. */
 interface OmittedEndTagCase {
   readonly tag: string;
   readonly container: string;
@@ -30,8 +30,9 @@ interface OmittedEndTagCase {
 }
 
 /**
- * 覆盖 6 个代表元素（`li p td th dt option`）+ 表格行 `tr`。
- * 每行的 `onDisk` 都要求"结束标签被补齐"：写得进去但留个半开标签的实现会在这里红。
+ * Covers 6 representative elements (`li p td th dt option`) + the table row `tr`.
+ * Every row's `onDisk` requires "the end tag got completed": an implementation that writes but leaves a
+ * half-open tag goes red here.
  */
 const CASES: readonly OmittedEndTagCase[] = [
   {
@@ -81,16 +82,16 @@ const CASES: readonly OmittedEndTagCase[] = [
     container: "div",
     body: "<div><p>a</p></div>",
     fragment: "<select><option>a<option>b</select>",
-    // `select`/`option` 不是可寻址元素：新片段不带 id，但结束标签照样补齐。
+    // `select`/`option` are not addressable elements: the new fragment carries no id, but the end tags still get completed.
     onDisk: /<select><option>a<\/option><option>b<\/option><\/select>/u,
   },
 ];
 
-/** 给一个文件补 id（`select`/`option` 不在可寻址集合里，其余元素都该拿到 id）。 */
+/** Inject ids into a file (`select`/`option` are outside the addressable set; every other element must get an id). */
 const normalizeIn = async (dir: string): Promise<number | null> =>
   checked(await runCli(["normalize", "doc.html", "--write"], { cwd: dir })).code;
 
-/** 追加一个"结束标签省略"的片段，然后验证盘上的形态与二次解析的稳定性。 */
+/** Append an "end-tag-omitted" fragment, then verify the on-disk shape and re-parse stability. */
 const appendOmitted = async (dir: string, item: OmittedEndTagCase): Promise<void> => {
   const file = join(dir, "doc.html");
   writeFileSync(file, docOf(item.body));
@@ -106,7 +107,7 @@ const appendOmitted = async (dir: string, item: OmittedEndTagCase): Promise<void
   expect(patched.code).toBe(0);
   expect(readFileSync(file, "utf8")).toMatch(item.onDisk);
 
-  // 核心性质：写出去的字节与解析回来的树一致 —— 再跑一次 normalize 只报 unchanged、字节不差。
+  // The core property: written bytes and the re-parsed tree agree — a second normalize only reports unchanged, bytes equal.
   const written = sha(file);
   const second = checked(await runCli(["normalize", "doc.html", "--write"], { cwd: dir }));
   expect(second.code).toBe(0);
@@ -114,7 +115,7 @@ const appendOmitted = async (dir: string, item: OmittedEndTagCase): Promise<void
   expect(sha(file)).toBe(written);
 };
 
-describe("可省略结束标签的片段", () => {
+describe("fragments with omissible end tags", () => {
   it.each(CASES)(
     "should accept a $tag fragment with its end tag omitted and keep the tree stable",
     async (item) => {
@@ -123,7 +124,7 @@ describe("可省略结束标签的片段", () => {
   );
 });
 
-/** 整段重写成只用省略结束标签的同一棵树：应当 rc=0、回执 `unchanged`、字节一个不动。 */
+/** Rewrite the whole section to the same tree using only omitted end tags: expect rc=0, an `unchanged` receipt, not one byte moved. */
 const rewriteListWithoutEndTags = async (dir: string): Promise<void> => {
   const file = join(dir, "doc.html");
   writeFileSync(file, docOf("<ul><li>a</li><li>b</li></ul>"));
@@ -146,13 +147,13 @@ const rewriteListWithoutEndTags = async (dir: string): Promise<void> => {
     ),
   );
 
-  // 同一棵树 → 内容寻址的 id 也不变 → 这一改动等于什么都没改，回执必须是 unchanged。
+  // Same tree → same content-derived ids → this edit equals no edit; the receipt must be unchanged.
   expect(result.code).toBe(0);
   expect(result.stdout).toContain("unchanged doc.html");
   expect(sha(file)).toBe(before);
 };
 
-describe("整段重写只靠省略结束标签", () => {
+describe("a whole-section rewrite using only omitted end tags", () => {
   it("should treat a <ul> rewrite without end tags as the very same tree", async () => {
     await withTempDir(rewriteListWithoutEndTags);
   });
@@ -181,7 +182,7 @@ describe("整段重写只靠省略结束标签", () => {
         ),
       );
 
-      // 放宽"省略结束标签"不能顺手放宽根数：两个根仍然是不可执行的内容。
+      // Loosening "omitted end tags" must not loosen the root count along with it: two roots remain inexecutable content.
       expect(result.code).toBe(1);
       expect(result.stdout).toContain('"code":"invalid_fragment"');
       expect(result.stdout).toContain("根");
@@ -190,7 +191,7 @@ describe("整段重写只靠省略结束标签", () => {
   });
 });
 
-describe("表格结构片段写错位置", () => {
+describe("a table-structure fragment written to the wrong place", () => {
   it("should name the next step when a <td> fragment would lose its structure", async () => {
     await withTempDir(async (dir) => {
       const file = join(dir, "doc.html");
@@ -206,10 +207,10 @@ describe("表格结构片段写错位置", () => {
         ),
       );
 
-      // 片段本身能解析（省略了 `</td>`），但写进 `<div>` 解析回来就不再是 div 的子节点 → 写盘前拒绝。
+      // The fragment itself parses (`</td>` omitted), but written into `<div>` it re-parses outside the div's children → refuse before write.
       expect(result.code).toBe(2);
       expect(result.stdout).toContain('"code":"content_model_conflict"');
-      // 报文要给出下一步：换成表格上下文，而不是让用户换个语法再撞一次。
+      // The message must give a next step: switch to a table context, not make the user retry with another syntax.
       expect(result.stdout).toContain("<tbody>");
       expect(sha(file)).toBe(before);
     });

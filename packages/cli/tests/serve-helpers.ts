@@ -1,4 +1,4 @@
-// 这层管：serve 系测试共享的真临时目录与"怎么让它停下"（无断言决策）。
+// This layer holds real temp dirs shared by serve tests and "how to stop it" (no assertion decisions).
 
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,7 +19,7 @@ export interface ServeDirs {
   readonly drop: () => void;
 }
 
-/** 一套真目录：workspace 里已放好 `doc.html`，home 空着等 `daemon.json`。 */
+/** A real directory set: `doc.html` already sits in workspace, home is empty waiting for `daemon.json`. */
 export const serveDirs = (): ServeDirs => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "hr-serve-ws-")));
   const home = realpathSync(mkdtempSync(join(tmpdir(), "hr-serve-home-")));
@@ -47,7 +47,7 @@ export const stopHandle = (): StopHandle => {
   return { stop, stopped: stopped };
 };
 
-/** 收尾清 daemon.json 是 `await stop` 之后的异步链：轮询到文件真的没了再断言（3s 上界），不猜固定毫秒。 */
+/** daemon.json cleanup after `await stop` is an async chain: poll until the file is really gone before asserting (3s bound), never guess fixed milliseconds. */
 export const waitGone = async (path: string): Promise<void> => {
   const deadline = Date.now() + 3_000;
   while (existsSync(path) && Date.now() < deadline) {
@@ -57,7 +57,7 @@ export const waitGone = async (path: string): Promise<void> => {
   }
 };
 
-/** 固定 `launchParentPid` 是个真 pid（本进程的父）；要演"父已死"的用例自己 spread 覆盖。 */
+/** The fixed `launchParentPid` is a real pid (this process's parent); cases playing "parent is dead" spread-override it. */
 export const serveInputOf = (
   dir: { readonly workspace: string; readonly home: string },
   json: boolean,
@@ -73,32 +73,33 @@ export const serveInputOf = (
   launchParentPid: process.ppid,
 });
 
-/** 只数 parent-death 那只定时器：core 自己的计时器不算。 */
+/** Count only the parent-death timer: core's own timers do not count. */
 export const pollTimers = (spy: MockInstance<typeof globalThis.setInterval>): number =>
   spy.mock.calls.filter((call) => call[1] === PARENT_POLL_MS).length;
 
-/** 从 `setInterval` 的返回值里拿出 parent-death 那只定时器（断言它被谁清掉要靠这个句柄）。 */
+/** Pull the parent-death timer out of `setInterval`'s return (asserting who cleared it needs this handle). */
 export const pollTimerOf = (spy: MockInstance<typeof globalThis.setInterval>): unknown => {
   const index = spy.mock.calls.findIndex((call) => call[1] === PARENT_POLL_MS);
   return index === -1 ? undefined : spy.mock.results[index]?.value;
 };
 
-/** 看门狗每次轮询跑的那个回调：真起服务时靠它把"一次 poll"手动推进（不用假时钟）。 */
+/** The callback the watchdog runs each poll: real-serving cases advance "one poll" manually through it (no fake clock). */
 export const pollCallbackOf = (
   spy: MockInstance<typeof globalThis.setInterval>,
 ): (() => void) | undefined => spy.mock.calls.find((call) => call[1] === PARENT_POLL_MS)?.[0];
 
 /**
- * 定时器还拽着事件循环没有：`unref()` 之后是 false。fake timer 下看不到 ref 状态，
- * 所以断言 `unref()` 只能用真定时器问 Node 本人。
+ * Whether the timer still holds the event loop: false after `unref()`. Fake timers cannot see ref state,
+ * so asserting `unref()` must ask Node itself with a real timer.
  */
 export const timerStillHoldsProcess = (timer: unknown): boolean => {
   const hasRef: unknown = Reflect.get(Object(timer), "hasRef");
-  if (typeof hasRef !== "function") throw new TypeError("timer 没有 hasRef()：无法证明 unref()");
+  if (typeof hasRef !== "function")
+    throw new TypeError("timer has no hasRef(): cannot prove unref()");
   return Reflect.apply(hasRef, timer, []) === true;
 };
 
-/** 起一个带 parent-death 看门狗的服务，顺手交出两只定时器 spy 与看门狗句柄（断言归调用方）。 */
+/** Start a server with the parent-death watchdog and hand back two timer spies plus the watchdog handle (assertions belong to the caller). */
 export const startWatched = async (dir: ServeDirs, stopped: Promise<void>) => {
   const setSpy = vi.spyOn(globalThis, "setInterval");
   const clearSpy = vi.spyOn(globalThis, "clearInterval");

@@ -1,4 +1,4 @@
-// 这层管：`hr export` 的 argv→intent、`print-skip` 三态、fs 错误归口；不落盘、不起 Chrome。
+// This layer covers `hr export` argv→intent, the `print-skip` tri-state, and fs error routing; no disk, no Chrome.
 
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
@@ -56,7 +56,7 @@ describe("exportIntent", () => {
       "export 只接受 1 个位置参数，多出 1 个",
       "export",
     );
-    // 未知参数一路裸名透到 `run.ts` 再拼提示（`未知参数：--tone`），这里只断 intent 层的原样。
+    // Unknown args pass their bare name through to `run.ts` where the hint is assembled (`未知参数：--tone`); here we only pin the intent layer's verbatim.
     expectFailure(["export", "a.html", "--tone", "x"], "--tone", "export");
   });
 });
@@ -72,7 +72,7 @@ describe("ioFailureOf", () => {
   });
 
   it("should pass an existing HrError through unchanged", () => {
-    // `path_outside_workspace` 这类真码不该被折成 io_failure。
+    // A real code like `path_outside_workspace` must not be folded into io_failure.
     const passthrough = ioFailureOf(
       new HrError("path_outside_workspace", "逃逸"),
       "写入",

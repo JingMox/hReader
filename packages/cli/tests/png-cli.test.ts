@@ -1,5 +1,5 @@
-// 这层管：`hr png` 真子进程的退出码与进程卫生（假 Chrome 脚本，不碰真 Chrome）；
-// 图像语义在 `png-command.test.ts`，报文序列在 `chrome-cdp.test.ts`。
+// This layer covers `hr png` real-subprocess exit codes and process hygiene (fake Chrome script, no real Chrome);
+// image semantics live in `png-command.test.ts`, message sequences in `chrome-cdp.test.ts`.
 import {
   existsSync,
   mkdirSync,
@@ -34,20 +34,20 @@ const docDirOf = async (run: (dir: string) => Promise<void>): Promise<void> =>
     await run(dir);
   }, 20_000);
 
-describe("hr png · 取值越界 (exit 1)", () => {
+describe("hr png · out-of-range values (exit 1)", () => {
   it.each([
     ["--width", "4097", "--width 必须是 256..4096 的整数"],
     ["--width", "100", "--width 必须是 256..4096 的整数"],
     ["--scale", "4", "--scale 必须是 1..3 的整数"],
     ["--max-height", "999", "--max-height 必须是 1000..50000 的整数"],
-  ])("%s %s 在起 Chrome 前就被拒", async (flag, value, expected) => {
+  ])("should reject %s %s before Chrome ever starts", async (flag, value, expected) => {
     await docDirOf(async (dir) => {
       const result = await runCli(["png", "a.html", "--out", "a.png", "--json", flag, value], {
         cwd: dir,
         env: { HREADER_CHROME: join(dir, "no-chrome") },
       });
       expect(result.code).toBe(1);
-      // `--json` 只有一条通道：越界说明在信封的 message 里，stderr 留空。
+      // `--json` has only one channel: the out-of-range explanation rides the envelope's message, stderr stays empty.
       expect(fieldOf(parseJsonLine(result.stdout), "message")).toContain(expected);
       expect(result.stderr).toBe("");
       expect(existsSync(join(dir, "a.png"))).toBe(false);
@@ -55,8 +55,8 @@ describe("hr png · 取值越界 (exit 1)", () => {
   });
 });
 
-describe("hr png · chrome 缺失", () => {
-  it("--json 时 stdout 给 chrome_missing 包络、exit 3、零残留", async () => {
+describe("hr png · chrome missing", () => {
+  it("should give the chrome_missing envelope on stdout, exit 3 and zero leftovers under --json", async () => {
     await docDirOf(async (dir) => {
       const result = await runCli(["png", "a.html", "--out", "a.png", "--json"], {
         cwd: dir,
@@ -103,8 +103,8 @@ const assertCleanOf = (setup: Hygiene): void => {
   }
 };
 
-describe("hr png · 显式 max-height 面积预检", () => {
-  it("--scale 3 --max-height 50000 → exit 1，且根本不 spawn Chrome（pidfile 不出现）", async () => {
+describe("hr png · explicit max-height area pre-check", () => {
+  it("should exit 1 for --scale 3 --max-height 50000 and never spawn Chrome (no pidfile appears)", async () => {
     await withHygieneOf(async (setup) => {
       const result = await runHygieneOf(
         setup,
@@ -120,8 +120,8 @@ describe("hr png · 显式 max-height 面积预检", () => {
   }, 20_000);
 });
 
-describe("hr png · 进程卫生", () => {
-  it("超时路径：exit 3、进程组无存活、TMPDIR 无残留、盘上零残留", async () => {
+describe("hr png · process hygiene", () => {
+  it("should exit 3 on the timeout path with no process group alive, nothing in TMPDIR, zero on-disk leftovers", async () => {
     await withHygieneOf(async (setup) => {
       const result = await runHygieneOf(
         setup,
@@ -136,7 +136,7 @@ describe("hr png · 进程卫生", () => {
     });
   }, 20_000);
 
-  it("Chrome 崩溃路径：exit 3、盘上零残留", async () => {
+  it("should exit 3 on the Chrome-crash path with zero on-disk leftovers", async () => {
     await withHygieneOf(async (setup) => {
       const result = await runHygieneOf(setup, ["png", "a.html", "--out", "a.png"], {
         FAKE_CHROME_EXIT: "1",

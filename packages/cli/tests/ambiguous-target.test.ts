@@ -1,12 +1,12 @@
-// 这层管：多义/双解释目标——多个候选时报文给出 `reason/count/candidates`（文档序前 5 个），
-// 同一字面既是标签名又是别人 id 时拒绝替你选（`reason:"ambiguous"`）并把三条逃路都列出来。
+// This layer covers ambiguous/dual-interpretation targets — on multiple candidates the message gives
+// `reason/count/candidates` (first 5 in document order), and when one literal is both a tag name and another element's id it refuses to pick for you (`reason:"ambiguous"`) and lists all three escapes.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checked, sha } from "./cli-support";
 import { fieldOf, listOf, parseJsonLine, runCli, withTempDir } from "./harness";
 
-/** 7 个 `<p>`，id 在文档里的出现顺序恰好是 `sort()` 升序的逆序。 */
+/** 7 `<p>`s whose document order is exactly the reverse of `sort()` ascending. */
 const DOC_ORDER_IDS = ["hr-z", "hr-y", "hr-x", "hr-w", "hr-v", "hr-u", "hr-t"] as const;
 
 const docWith = (body: string): string =>
@@ -27,7 +27,7 @@ interface Refusal {
   readonly data: unknown;
 }
 
-/** 跑一次必然失败的 `patch --json`：返回退出码与信封里要被断言的四个字段。 */
+/** Run a `patch --json` that must fail: returns the exit code and the four envelope fields to assert. */
 const refusalOf = async (dir: string, target: string): Promise<Refusal> => {
   const result = checked(
     await runCli(["patch", "a.html", target, "--action", "delete", "--json"], { cwd: dir }),
@@ -47,20 +47,21 @@ const countOf = (data: unknown): unknown => fieldOf(data, "count");
 const DOC_ORDER_CANDIDATES = ["hr-z", "hr-y", "hr-x", "hr-w", "hr-v"] as const;
 
 /**
- * 候选截断的核心判据：文档序前 5、且字典序前 5 **一个都不在**里面。
- * 后者是对 `.sort()` 变异的敏感点：两份前 5 在这份语料上无交集。
+ * The core criterion for candidate truncation: first 5 in document order, and **none** of the first 5
+ * lexicographically appears in it. The latter is the sensitive spot for a `.sort()` mutation: the two
+ * top-5 sets have no overlap on this corpus.
  */
 const expectDocOrderCandidates = (data: unknown): void => {
   const candidates = candidatesOf(data);
   expect(candidates).toEqual(DOC_ORDER_CANDIDATES);
   expect(candidates).not.toEqual([...DOC_ORDER_IDS].sort().slice(0, 5));
-  // 第 6、7 个（`hr-u`/`hr-t`）不进候选，但被 `count` 算进去。
+  // The 6th and 7th (`hr-u`/`hr-t`) stay out of candidates but are counted by `count`.
   expect(candidates).not.toContain("hr-u");
   expect(candidates).not.toContain("hr-t");
   expect(countOf(data)).toBe(7);
 };
 
-/** 信封头部 + 人类报文（同一份候选、同一顺序，总量补在尾部）。 */
+/** Envelope header + human message (same candidates, same order, total appended at the tail). */
 const expectAmbiguousEnvelope = (refused: Refusal): void => {
   expect(refused.code).toBe(1);
   expect(refused.codeField).toBe("invalid_selector");
@@ -74,21 +75,21 @@ const expectDocOrderRefusal = (refused: Refusal): void => {
   expectDocOrderCandidates(refused.data);
 };
 
-describe("patch · 多义报文的候选按文档序截断", () => {
+describe("patch · ambiguous message candidates are truncated in document order", () => {
   it("should list the first five candidates in document order, not in sorted order", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(`${dir}/a.html`, docWith(paragraphsOf(DOC_ORDER_IDS)));
       const before = readFileSync(`${dir}/a.html`);
 
       expectDocOrderRefusal(await refusalOf(dir, "p"));
-      // 拒答不动盘。
+      // A refusal does not touch disk.
       expect(readFileSync(`${dir}/a.html`).equals(before)).toBe(true);
     });
   });
 
   it("should cap candidates at five but still count the sixth match", async () => {
     await withTempDir(async (dir) => {
-      // `CANDIDATE_LIMIT + 1` 个命中：候选正好被截断一位，`count` 不受截断影响。
+      // `CANDIDATE_LIMIT + 1` hits: candidates are truncated by exactly one, `count` ignores the truncation.
       writeFileSync(`${dir}/a.html`, docWith(paragraphsOf(DOC_ORDER_IDS.slice(0, 6))));
 
       const refused = await refusalOf(dir, "p");
@@ -101,7 +102,7 @@ describe("patch · 多义报文的候选按文档序截断", () => {
 
   it("should not append the overflow hint when the count fits the candidate list", async () => {
     await withTempDir(async (dir) => {
-      // 正好 5 个命中：候选全列出，末尾不许出现「…等」。
+      // Exactly 5 hits: all candidates listed, no "... etc" tail allowed.
       writeFileSync(`${dir}/a.html`, docWith(paragraphsOf(DOC_ORDER_IDS.slice(0, 5))));
 
       const refused = await refusalOf(dir, "p");
@@ -113,11 +114,11 @@ describe("patch · 多义报文的候选按文档序截断", () => {
   });
 });
 
-describe("patch · 命中不可寻址元素", () => {
+describe("patch · hits on non-addressable elements", () => {
   it("should count 0 addressable for inline-only matches and refuse as node_not_found", async () => {
     await withTempDir(async (dir) => {
-      // 三个 `<span>` 都没有 `data-hr-id`（行内元素不在 `ADDRESSABLE_TAGS` 里，规范化也不补）：
-      // 命中数 3，可寻址数 0。若实现按「命中总数」判多义，这里会错报 `invalid_selector`。
+      // None of the three `<span>`s has `data-hr-id` (inline elements are not in `ADDRESSABLE_TAGS` and normalize adds none):
+      // 3 hits, 0 addressable. If the implementation judged ambiguity by total hits it would wrongly report `invalid_selector` here.
       writeFileSync(
         `${dir}/a.html`,
         docWith('<p data-hr-id="hr-p">前<span>甲</span>中<span>乙</span>后<span>丙</span></p>'),
@@ -132,7 +133,7 @@ describe("patch · 命中不可寻址元素", () => {
     });
   });
 });
-/** core 的 `CANDIDATE_LIMIT`：报文只印前 5 个候选。 */
+/** core's `CANDIDATE_LIMIT`: the message prints only the first 5 candidates. */
 const CANDIDATE_LIMIT = 5;
 
 const docWithIds = (body: string): string =>
@@ -142,7 +143,7 @@ const docWithIds = (body: string): string =>
     `<body data-hr-id="hr-body"><article data-hr-id="hr-root">${body}</article></body></html>`,
   ].join("\n");
 
-/** 双解释语料：`<h2>` 有 id `hr-h2`，另有一个**不是** `<h2>` 的元素的 id 恰好是 `h2`。 */
+/** Dual-interpretation corpus: an `<h2>` has id `hr-h2`, and another element that is **not** an `<h2>` has id exactly `h2`. */
 const DUAL = docWithIds(
   ['<h2 data-hr-id="hr-h2">标题</h2>', '<div data-hr-id="h2">div 也叫 h2</div>'].join(""),
 );
@@ -177,12 +178,12 @@ const candidatesIn = (data: unknown): readonly unknown[] => listOf(fieldOf(data,
 
 const htmlIn = (parsed: unknown): string => String(fieldOf(dataOf(parsed), "html"));
 
-/** 不变式：候选列表恰好是"可寻址总数被上限截掉之后"剩下的那截。 */
+/** Invariant: the candidate list is exactly what remains after the addressable total is clipped by the limit. */
 const expectCandidateInvariant = (data: unknown): void => {
   expect(candidatesIn(data)).toHaveLength(Math.min(numberIn(data, "count"), CANDIDATE_LIMIT));
 };
 
-describe("双解释拒绝（count = 可寻址总数，matches = 选择器命中数）", () => {
+describe("dual-interpretation refusal (count = addressable total, matches = selector hits)", () => {
   it("should refuse `read h2` as ambiguous with count 2 / matches 1", async () => {
     await withTempDir(async (dir) => {
       const { code, parsed } = await run(dir, DUAL, ["read", "a.html", "h2"]);
@@ -216,7 +217,7 @@ describe("双解释拒绝（count = 可寻址总数，matches = 选择器命中�
   });
 });
 
-describe("报文承诺的三条逃路各有一条能跑通", () => {
+describe("each of the three escapes promised in the message actually works", () => {
   it("should resolve `#h2` to the element whose id is h2, not the <h2> tag", async () => {
     await withTempDir(async (dir) => {
       const { code, parsed } = await run(dir, DUAL, ["read", "a.html", "#h2"]);
@@ -251,7 +252,7 @@ describe("报文承诺的三条逃路各有一条能跑通", () => {
   });
 });
 
-describe("双解释报文自己把三条逃路都列出来", () => {
+describe("the dual-interpretation message itself lists all three escapes", () => {
   it("should mention all three escape hatches in the ambiguous message", async () => {
     await withTempDir(async (dir) => {
       const { parsed } = await run(dir, DUAL, ["read", "a.html", "h2"]);
@@ -264,7 +265,7 @@ describe("双解释报文自己把三条逃路都列出来", () => {
   });
 });
 
-describe("未截断时 count 与 candidates.length 相等", () => {
+describe("count equals candidates.length when untruncated", () => {
   it("should report count 3 / matches 3 when the 3 hits fit under the limit", async () => {
     await withTempDir(async (dir) => {
       const { code, parsed } = await run(dir, docWithIds(liOf(3)), [
@@ -289,7 +290,7 @@ describe("未截断时 count 与 candidates.length 相等", () => {
   });
 });
 
-describe("截断时 count 保留总数、candidates 只剩 5 个", () => {
+describe("count keeps the total while candidates drop to 5 when truncated", () => {
   it("should keep count 7 while truncating candidates to 5", async () => {
     await withTempDir(async (dir) => {
       const { code, parsed } = await run(dir, docWithIds(liOf(7)), [
@@ -307,14 +308,14 @@ describe("截断时 count 保留总数、candidates 只剩 5 个", () => {
       expect(numberIn(data, "count")).toBe(7);
       expect(numberIn(data, "matches")).toBe(7);
       expect(candidatesIn(data)).toHaveLength(CANDIDATE_LIMIT);
-      // 未截断时 `count === candidates.length`，截断时两者不等：这条不变式才让 `count` 不是噪声。
+      // Untruncated: `count === candidates.length`; truncated: they differ — this invariant keeps `count` from being noise.
       expectCandidateInvariant(data);
       expect(numberIn(data, "count")).toBeGreaterThan(candidatesIn(data).length);
     });
   });
 });
 
-describe("撞名的标签：文档里真有 <li>，另有一个元素的 id 也是 li", () => {
+describe("colliding tag: the doc has a real <li> and another element whose id is also li", () => {
   const CLI = docWithIds(
     [
       '<ul data-hr-id="hr-ul"><li data-hr-id="hr-l1">一</li></ul>',

@@ -1,7 +1,7 @@
-// 这层管：command 层的编排与兜底分支（文件 → core → 文本/JSON）；真 fs + 真 core，不跑子进程。
+// This layer covers command-layer orchestration and fallback branches (file → core → text/JSON); real fs + real core, no subprocess.
 //
-// 坑：workspace 与 cwd 在 core 里是 realpath 的，而 `--workspace` 是用户原文；
-// 不把 cwd 也 realpath 会拿到两个不同的串去比同一个目录。
+// Trap: workspace and cwd are realpath'd inside core while `--workspace` is the user's literal string;
+// without realpathing cwd too you compare two different strings for the same directory.
 
 import {
   mkdtempSync,
@@ -26,7 +26,7 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** 带 id 的文档：`outline`/`patch` 都只认已存在的 `data-hr-id`。 */
+/** Document with ids: `outline`/`patch` only honor existing `data-hr-id`s. */
 const DOC = [
   "<!doctype html>",
   "<html><head><title>t</title></head><body>",
@@ -41,13 +41,13 @@ const fileOf = (name: string, html: string): string => {
   return path;
 };
 
-/** 断言 JSON 形状（`toMatchObject` 对数组是长度严格的，所以顺便断"只有这些"）。 */
+/** Assert the JSON shape (`toMatchObject` is length-strict on arrays, so "only these" comes along for free). */
 const jsonOf = (text: string): unknown => JSON.parse(text.trim());
 
-/** 取字符串字段而不写类型断言（`consistent-type-assertions` 不许 `as`）：不是字符串就当场失败。 */
+/** Read a string field without a type assertion (`consistent-type-assertions` forbids `as`): fail right here if it is not a string. */
 const textOf = (value: unknown): string => {
   if (typeof value !== "string") {
-    throw new Error(`期望字符串，收到 ${typeof value}`);
+    throw new Error(`expected a string, got ${typeof value}`);
   }
   return value;
 };
@@ -69,7 +69,7 @@ describe("outlineCommand", () => {
   it("should reject a handwritten document with needs_normalize (no silent empty outline)", async () => {
     const path = fileOf("o3.html", "<article><h2>标题</h2></article>");
 
-    // 用户视角：大纲空了却不说“为什么”，看起来像“文档没标题”；这里必须指向唯一的下一步。
+    // From the user's view an empty outline with no "why" reads as "the doc has no headings"; this must point at the only next step.
     await expect(outlineCommand({ path, json: true })).rejects.toMatchObject({
       code: "needs_normalize",
     });
@@ -111,8 +111,8 @@ describe("readCommand", () => {
   });
 });
 
-/** 预算只管内容：`data.html` 的 UTF-8 字节数 ≤ 80；`（已截断：…）` 是元信息，不计入预算。 */
-describe("readCommand · --max-bytes 的预算边界", () => {
+/** The budget only covers content: `data.html`'s UTF-8 byte count ≤ 80; the `（已截断：…）` marker is meta-info, not counted. */
+describe("readCommand · --max-bytes budget boundaries", () => {
   it("should apply --max-bytes to the content and leave the truncation line outside it", async () => {
     const path = fileOf("r2.html", DOC);
     const json = await readCommand({ path, target: "article", maxBytes: 80, json: true });
@@ -134,8 +134,8 @@ describe("patchCommand", () => {
     fileOf("p1.html", DOC);
     const text = await patchCommand({
       path: "p1.html",
-      // 目标换成容器 <article>：往 <p>（hr-d）里 append 段落会被拒（内容模型冲突），
-      // 而这条用例只关心“写入成功且回报 changed/newIds/historyPath”。
+      // Switch the target to the container <article>: appending a paragraph into <p> (hr-d) is refused (content-model
+      // conflict), while this case only cares that "the write succeeded and reports changed/newIds/historyPath".
       nodeId: "hr-a",
       action: "append",
       html: "<p>新</p>",
@@ -160,8 +160,8 @@ describe("patchCommand", () => {
       json: false,
     });
 
-    // `replace` 的新根继承目标 id ⇒ 没有「旧 → 新」可说，行尾是干净的 `+0)`；
-    // 老 id `hr-c` 仍是盘上那个节点的锚点（下一行断言从这里读回来）。
+    // `replace`'s new root inherits the target id ⇒ there is no "old → new" to tell; the tail is a clean `+0)`;
+    // old id `hr-c` still anchors the node on disk (the next line's assertion reads back from here).
     expect(text).toMatch(/^patched .*p2\.html \(\d+ bytes, \+0\)\n$/u);
     expect(text).not.toContain("id 变更");
     expect(readFileSync(join(dir, "p2.html"), "utf8")).toContain('<p data-hr-id="hr-c">改</p>');
@@ -246,7 +246,7 @@ describe("styleCommand · visual", () => {
       json: false,
     });
 
-    // 命令层拿不到用户写的那个相对串（只有分发层知道）：退路是结果自己的路径，且一样要印出来。
+    // The command layer cannot see the relative string the user typed (only the dispatch layer knows it): the fallback is the result's own path, and it must be printed too.
     expect(human).toContain("s5.html");
     expect(human).toMatch(/^styled .+s5\.html \(\d+ bytes\)\n$/u);
   });
@@ -270,11 +270,11 @@ describe("styleCommand · visual", () => {
   });
 });
 
-describe("styleCommand · visual 的 id 校验", () => {
-  it("should refuse a tone id on --visual （两套 id 空间）", async () => {
+describe("styleCommand · id validation for visual", () => {
+  it("should refuse a tone id on --visual (two id spaces)", async () => {
     fileOf("s4.html", DOC);
 
-    // 把语言基调 id 交给 `--visual` 会静默换错主题，所以要在应用前就拦住并指着剩下的那条路。
+    // Handing a tone id to `--visual` would silently apply the wrong theme, so stop it before applying and point at the one remaining route.
     await expect(
       styleCommand({
         path: "s4.html",
@@ -288,7 +288,7 @@ describe("styleCommand · visual 的 id 校验", () => {
   it("should surface a malformed visual id as invalid_style instead of treating it as unknown", async () => {
     fileOf("s6.html", DOC);
 
-    // `--visual "Bad Id!"` 连形状都不合法：这不是"找不到主题"，而是 id 本身就写错了（后手完全不同）。
+    // `--visual "Bad Id!"` is not even a legal shape: this is not "theme not found" but a malformed id (a wholly different next step).
     await expect(
       styleCommand({
         path: "s6.html",
@@ -300,11 +300,11 @@ describe("styleCommand · visual 的 id 校验", () => {
   });
 });
 
-describe("styleCommand · visual 的未知 id", () => {
+describe("styleCommand · unknown ids for visual", () => {
   it("should let an unknown id through to applyStyle instead of guessing", async () => {
     fileOf("s5.html", DOC);
 
-    // 既不是 visual 也不是 tone：不在这里抢答，交给 applyStyle 报它自己的 `unknown_style`。
+    // Neither visual nor tone: do not answer here — let applyStyle report its own `unknown_style`.
     await expect(
       styleCommand({
         path: "s5.html",
@@ -333,7 +333,7 @@ const edgeFileOf = (name: string, html: string): string => {
   return path;
 };
 
-/** 把拒绝结果收敛成“码 + 消息 + data.reason”，避免每处都写 `await expect(...).rejects`。 */
+/** Collapse a rejection into "code + message + data.reason" to avoid writing `await expect(...).rejects` everywhere. */
 const rejectionOf = async (
   promise: Promise<string>,
 ): Promise<{ code: string; message: string; reason: string }> => {
@@ -346,10 +346,10 @@ const rejectionOf = async (
     const reason: unknown = Reflect.get(Object(data), "reason");
     return { code: String(code), message: String(message), reason: String(reason) };
   }
-  throw new Error("期望被拒绝，但命令成功了");
+  throw new Error("expected rejection, but the command succeeded");
 };
 
-describe("readCommand · 选择器失败后按 node id 重试", () => {
+describe("readCommand · retry by node id after selector failure", () => {
   it("should retry a plain node id as [data-hr-id] and succeed", async () => {
     const path = edgeFileOf("e1.html", EDGE_DOC);
     const text = await readCommand({ path, target: "hr-b", maxBytes: undefined, json: true });
@@ -366,7 +366,7 @@ describe("readCommand · 选择器失败后按 node id 重试", () => {
       readCommand({ path, target: '">', maxBytes: undefined, json: false }),
     );
 
-    // 两跳都会失败时，码与报文都由目标形态定——`">` 不是合规 id，所以是 syntax 那一句。
+    // When both hops fail, code and message are decided by the target's shape — `">` is not a legal id, so it is the syntax sentence.
     expect(failed.code).toBe("invalid_selector");
     expect(failed.reason).toBe("syntax");
     expect(failed.message).toContain('选择器 "\\">" 无法解析：');
@@ -374,8 +374,8 @@ describe("readCommand · 选择器失败后按 node id 重试", () => {
 
   it("should prefer node_not_found when only the id lookup is well-formed", async () => {
     const path = edgeFileOf("e3.html", EDGE_DOC);
-    // `hr-NOPE` 是合规 id 形态（`HR_ID_PATTERN` 允许大写）且文档里没有：只走 id 那一跳的失败，
-    // 用来证明“两跳只有 id 那跳成立时给 node_not_found”这条原始意图没有随 `p[` 改判 syntax 丢掉。
+    // `hr-NOPE` is a legal id shape (`HR_ID_PATTERN` allows uppercase) and absent from the doc: only the id hop fails —
+    // it proves the original intent "when only the id hop holds, report node_not_found" was not lost to a syntax re-judgment under `p[`.
     const failed = await rejectionOf(
       readCommand({ path, target: "hr-NOPE", maxBytes: undefined, json: false }),
     );
@@ -385,7 +385,7 @@ describe("readCommand · 选择器失败后按 node id 重试", () => {
   });
 });
 
-describe("patchCommand · 目标尚不存在", () => {
+describe("patchCommand · target does not exist yet", () => {
   it("should resolve the deepest existing ancestor and fail node_not_found without creating it", async () => {
     const failed = await rejectionOf(
       patchCommand({
@@ -403,7 +403,7 @@ describe("patchCommand · 目标尚不存在", () => {
   });
 });
 
-describe("styleCommand · lint 模式", () => {
+describe("styleCommand · lint mode", () => {
   it("should print the human lint summary", async () => {
     edgeFileOf("e4.html", EDGE_DOC);
     const text = await styleCommand({
