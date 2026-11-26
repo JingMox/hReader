@@ -154,7 +154,9 @@ export const launchBrowser = async (): Promise<Browser> => {
       });
       inner.on("console", (message) => {
         if (message.type() === "error") {
-          consoleErrors.push(`console.error: ${message.text()} (${message.location().url})`);
+          consoleErrors.push(
+            `console.error: ${message.text()} (${message.location().url ?? "no url"})`,
+          );
         }
       });
       inner.on("requestfailed", (request) => {
