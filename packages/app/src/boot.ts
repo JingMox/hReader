@@ -30,6 +30,12 @@ import {
 } from "./widgets/foreign.ts";
 import { syncView } from "./wiring.ts";
 
+// doc-gate 桥推送要走 window（桌面壳注入的 __HR_DESKTOP_CTX__ + location.assign 投递）。
+declare const window: {
+  readonly __HR_DESKTOP_CTX__?: { readonly bridgeToken?: string };
+  readonly location: { assign(url: string): void };
+};
+
 export interface ModelResponse {
   readonly revision: string;
   readonly model: {
