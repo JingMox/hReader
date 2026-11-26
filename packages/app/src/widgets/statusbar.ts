@@ -2,6 +2,7 @@
 
 import type { Host } from "../dom.ts";
 import type { ConnState, ReaderIntent, ReaderState } from "../state.ts";
+import { APP_VERSION } from "../version.ts";
 import { COPY } from "./copy.ts";
 import type { Widget } from "./library.ts";
 
@@ -18,7 +19,7 @@ export const mountStatusbar = (
   parent: string,
   onIntent?: (intent: ReaderIntent) => void,
 ): Widget => {
-  host.text(`${parent} #hr-version`, COPY.version);
+  host.text(`${parent} #hr-version`, APP_VERSION);
   host.text(`${parent} #hr-shortcuts`, COPY.shortcuts);
   host.text(`${parent} #hr-immersive-btn`, COPY.immersive);
   host.attr(`${parent} #hr-immersive-btn`, "title", COPY.immersiveHint);

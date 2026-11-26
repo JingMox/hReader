@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { versionTextOf } from "../src/version.ts";
 import { mountStatusbar } from "../src/widgets/statusbar.ts";
 import { createFakeHost } from "./support/fake-host.ts";
 
@@ -23,5 +24,19 @@ describe("statusbar · version", () => {
       (call) => call.op === "text" && call.args[0] === `${ROOT} #hr-version`,
     );
     expect(written?.args[1]).toBe(`v${version}`);
+  });
+});
+
+describe("versionTextOf · manifest guard", () => {
+  it("should prefix a string version with v", () => {
+    expect(versionTextOf({ version: "0.0.1" })).toBe("v0.0.1");
+  });
+
+  it("should throw when the manifest has no string version", () => {
+    expect(() => versionTextOf({})).toThrow('package.json must declare a string "version"');
+    expect(() => versionTextOf({ version: 1 })).toThrow(
+      'package.json must declare a string "version"',
+    );
+    expect(() => versionTextOf(null)).toThrow('package.json must declare a string "version"');
   });
 });
