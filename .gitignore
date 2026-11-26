@@ -1,6 +1,6 @@
 node_modules/
 dist/
-# 生成物：build 把仓库根 styles/ 拷进来，不入库
+# Build output: build copies the repo-root styles/ in; not versioned
 packages/mcp-server/styles/
 packages/cli/styles/
 skills/hreader/scripts/cli.mjs
@@ -19,7 +19,7 @@ coverage/
 .eslintcache
 .deltabox/
 .workflow/
-# 内部文档只留本地、不进版本库；docs/ 下新建文件默认不入库（docs/06 是唯一公开的例外）
+# Internal docs stay local and out of version control; new files under docs/ are untracked by default (docs/06 is the only public exception)
 docs/*
 !docs/06-plugins-and-integrations.md
 AGENTS.md
@@ -28,6 +28,6 @@ home3/
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map
 packages/*/src/**/*.d.ts.map
-# Tauri 桌面壳的构建产物与自动生成的 schema
+# Build output and generated schemas of the Tauri desktop shell
 packages/desktop/src-tauri/target/
 packages/desktop/src-tauri/gen/schemas/

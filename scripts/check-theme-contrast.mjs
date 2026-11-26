@@ -1,11 +1,15 @@
-// 这层管：styles/ 下每个主题的量化可访问性门——
-//   1. 按 WCAG 2.1 公式实测对比度：正文 --hr-fg、次要文字 --hr-muted 相对 --hr-bg 必须 ≥ 4.5:1，
-//      代码块文字（fg/muted on --hr-code-bg）同标准；强调/警示色只报告不卡（多用于大字/装饰）。
-//   2. 明暗双模：主题声明了 dark 覆盖（data-hr-mode="dark" 或 prefers-color-scheme: dark）就两套都验；
-//      单模主题（如 deck-noir）只验它自己的那一套。
-//   3. @media print 必须存在；动画/过渡存在时必须有 prefers-reduced-motion 收口（完全没有动效记 n/a）。
-//   4. 选择器不许碰应用外壳 chrome（#hr-root/#hr-controls/…），#hr-doc 是主题的合法作用域。
-// 纯 Node、零依赖：`pnpm verify` 与 CI 同一道门。
+// Quantitative accessibility gate for every theme under styles/ —
+//   1. Contrast measured by the WCAG 2.1 formula: body --hr-fg and secondary --hr-muted against
+//      --hr-bg must be ≥ 4.5:1, code-block text (fg/muted on --hr-code-bg) to the same standard;
+//      accent/warning colors are reported but not gated (mostly large text/decoration).
+//   2. Dual mode: a theme declaring a dark override (data-hr-mode="dark" or
+//      prefers-color-scheme: dark) is verified on both sets; a single-mode theme (e.g. deck-noir)
+//      only on its own.
+//   3. @media print must exist; any animation/transition requires a prefers-reduced-motion
+//      fallback (none at all records n/a).
+//   4. Selectors must not touch the app-shell chrome (#hr-root/#hr-controls/…); #hr-doc is a
+//      theme's legitimate scope.
+// Pure Node, zero deps: one gate shared by `pnpm verify` and CI.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,7 +30,7 @@ const SHELL_CHROME = [
 
 const stripComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, "");
 
-/** 提取 { selector, declarations, media }：@media 块递归进内层规则，media 记父级条件。 */
+/** Extracts { selector, declarations, media }: @media blocks recurse into inner rules, `media` records the parent condition. */
 const rulesOf = (css, media = "") => {
   const rules = [];
   let i = 0;
@@ -34,7 +38,7 @@ const rulesOf = (css, media = "") => {
     const open = css.indexOf("{", i);
     if (open === -1) break;
     const head = css.slice(i, open).trim();
-    // 配平找对应的 }
+    // Balance braces to find the matching }
     let depth = 1;
     let j = open + 1;
     while (j < css.length && depth > 0) {
@@ -46,7 +50,7 @@ const rulesOf = (css, media = "") => {
     if (head.startsWith("@media")) {
       rules.push(...rulesOf(body, head.slice(6).trim()));
     } else if (head.startsWith("@")) {
-      // @supports/@keyframes 等：选择器语义不同，不收（@supports 内规则不属 token 层）。
+      // @supports/@keyframes etc.: different selector semantics, not collected (rules inside @supports are not token-layer).
       if (head.startsWith("@supports")) rules.push(...rulesOf(body, `${media} ${head}`));
     } else {
       for (const selector of head.split(",")) {
@@ -66,7 +70,7 @@ const tokensOf = (declarations) => {
   return tokens;
 };
 
-/** 主题的模式集：base = :root + light 手动覆盖；dark = base + dark 手动覆盖 + 自动 dark 媒体块。 */
+/** A theme's mode set: base = :root + manual light override; dark = base + manual dark override + automatic dark media blocks. */
 const modesOf = (rules) => {
   const base = {};
   const darkOver = {};
@@ -74,8 +78,9 @@ const modesOf = (rules) => {
     const sel = rule.selector;
     const isRoot = /^(:root|html)\b/.test(sel) || sel.startsWith(":root");
     if (!isRoot) continue;
-    // 只有顶层规则与 prefers-color-scheme 媒体块算 token 源；@media print 里的 :root 覆写
-    // （打印强制白底黑字）不属于屏幕模式，混进来会把实测值换成打印值。
+    // Only top-level rules and prefers-color-scheme media blocks count as token sources; a :root
+    // override inside @media print (forced white-on-black for print) is not a screen mode, and
+    // letting it in would swap the measured values for print ones.
     const topLevel = rule.media === "";
     const inDarkMedia = /prefers-color-scheme:\s*dark/.test(rule.media);
     if (!topLevel && !inDarkMedia) continue;
@@ -86,10 +91,10 @@ const modesOf = (rules) => {
     }
   }
   if (Object.keys(darkOver).length === 0) {
-    // 单模主题（deck-noir 这类天生暗色）只有一套 token，标 default 不叫 light/dark。
+    // A single-mode theme (deck-noir is natively dark) has one token set, labeled default rather than light/dark.
     return { default: { ...base } };
   }
-  // 有 dark 覆盖时 :root 就是 light（data-hr-mode="light" 与它等价）。
+  // With a dark override present, :root is the light set (data-hr-mode="light" is equivalent).
   return { light: { ...base }, dark: { ...base, ...darkOver } };
 };
 
@@ -116,7 +121,7 @@ const parseColor = (value) => {
   return undefined;
 };
 
-/** alpha 合成到底色上再算亮度：rgba 色值（如 --hr-accent-soft）当文字/底色用时先铺平。 */
+/** Composite alpha onto the base color before computing luminance: an rgba value (e.g. --hr-accent-soft) is flattened before use as text/base. */
 const composite = (fg, bg) =>
   fg.a >= 1
     ? fg
@@ -146,7 +151,7 @@ const check = (theme, mode, label, fgVal, bgVal, min, required) => {
   const fg = parseColor(fgVal);
   const bg = parseColor(bgVal);
   if (fg === undefined || bg === undefined) {
-    failures.push(`${theme} [${mode}] ${label}: 无法解析色值 ${fgVal} / ${bgVal}`);
+    failures.push(`${theme} [${mode}] ${label}: cannot parse color values ${fgVal} / ${bgVal}`);
     return;
   }
   const bgFlat = composite(bg, { r: 255, g: 255, b: 255, a: 1 });
@@ -166,7 +171,7 @@ for (const dir of readdirSync(STYLES_DIR).sort()) {
   try {
     css = readFileSync(file, "utf8");
   } catch {
-    continue; // styles/ 下非主题目录（无 theme.css）跳过
+    continue; // non-theme directories under styles/ (no theme.css) are skipped
   }
   const clean = stripComments(css);
   const rules = rulesOf(clean);
@@ -175,15 +180,15 @@ for (const dir of readdirSync(STYLES_DIR).sort()) {
   for (const [mode, tokens] of Object.entries(modes)) {
     const bg = tokens["--hr-bg"];
     if (bg === undefined) {
-      failures.push(`${dir} [${mode}]: 缺 --hr-bg`);
+      failures.push(`${dir} [${mode}]: missing --hr-bg`);
       continue;
     }
     for (const [name, label] of [
-      ["--hr-fg", "正文 fg/bg"],
-      ["--hr-muted", "次要 muted/bg"],
+      ["--hr-fg", "body fg/bg"],
+      ["--hr-muted", "secondary muted/bg"],
     ]) {
       if (tokens[name] === undefined) {
-        failures.push(`${dir} [${mode}]: 缺 ${name}`);
+        failures.push(`${dir} [${mode}]: missing ${name}`);
         continue;
       }
       check(dir, mode, label, tokens[name], bg, 4.5, true);
@@ -204,24 +209,24 @@ for (const dir of readdirSync(STYLES_DIR).sort()) {
     }
   }
 
-  // 结构性检查
+  // Structural checks
   if (!/@media\s+print/u.test(clean)) {
-    failures.push(`${dir}: 缺 @media print`);
+    failures.push(`${dir}: missing @media print`);
   }
   const hasMotion = /\btransition\b|\banimation\b|@keyframes/u.test(clean);
   const hasReducedMotion = /prefers-reduced-motion/u.test(clean);
   if (hasMotion && !hasReducedMotion) {
-    failures.push(`${dir}: 有动效但无 prefers-reduced-motion`);
+    failures.push(`${dir}: has motion but no prefers-reduced-motion`);
   }
   rows.push(
-    `| ${dir} | - | reduced-motion | ${hasMotion ? (hasReducedMotion ? "guarded" : "MISSING") : "n/a (无动效)"} | - | ${hasMotion && !hasReducedMotion ? "FAIL" : "ok"} |`,
+    `| ${dir} | - | reduced-motion | ${hasMotion ? (hasReducedMotion ? "guarded" : "MISSING") : "n/a (no motion)"} | - | ${hasMotion && !hasReducedMotion ? "FAIL" : "ok"} |`,
   );
   rows.push(
     `| ${dir} | - | @media print | ${/@media\s+print/u.test(clean) ? "present" : "MISSING"} | - | ${/@media\s+print/u.test(clean) ? "ok" : "FAIL"} |`,
   );
   for (const chrome of SHELL_CHROME) {
     if (clean.includes(chrome)) {
-      failures.push(`${dir}: 选择器泄漏到应用外壳 ${chrome}`);
+      failures.push(`${dir}: selector leaks into app chrome ${chrome}`);
     }
   }
 }
@@ -231,8 +236,8 @@ process.stdout.write("|---|---|---|---|---|---|\n");
 for (const row of rows) process.stdout.write(`${row}\n`);
 
 if (failures.length > 0) {
-  process.stderr.write("\n主题可访问性检查失败：\n");
+  process.stderr.write("\nTheme accessibility checks failed:\n");
   for (const f of failures) process.stderr.write(`  ✗ ${f}\n`);
   process.exit(1);
 }
-process.stdout.write(`\n${String(rows.length)} 项检查全部通过。\n`);
+process.stdout.write(`\nAll ${String(rows.length)} checks passed.\n`);

@@ -1,6 +1,8 @@
-/* Deck Noir：暗色演示主题。16:9 版心用 --du 单位制（min(100vw/16, 100vh/9)）随视口等比缩放；
-   打印时 vw/vh 相对页框计算，同一份尺寸在横版页面上等比复现，故打印块只补分页规则。
-   演示态状态属性由阅读器提供：data-hr-present、data-hr-slide-state、data-hr-step-state。 */
+/* Deck Noir: dark presentation theme. The 16:9 stage uses the --du unit system
+   (min(100vw/16, 100vh/9)) so the whole page scales with the viewport; in print, vw/vh resolve
+   against the page box and the same sizes reproduce proportionally on landscape paper, so the
+   print block only adds pagination rules. Presentation-state attributes come from the reader:
+   data-hr-present, data-hr-slide-state, data-hr-step-state. */
 
 :root {
   --hr-bg: #0a0d14;
@@ -36,7 +38,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ---------- 非 slides 形态：普通阅读版式 ---------- */
+/* ---------- non-slides form: normal reading layout ---------- */
 
 .hr-layout {
   display: grid;
@@ -140,7 +142,7 @@ article[data-hr-id] blockquote {
   color: var(--hr-muted);
 }
 
-/* ---------- 组件（阅读态与 slide 共用一套骨架，slide 内只改字号） ---------- */
+/* ---------- components (reading state and slides share one skeleton; inside a slide only font sizes change) ---------- */
 
 [data-hr-component="kpi-bento"] {
   display: grid;
@@ -211,7 +213,7 @@ article[data-hr-id] blockquote {
   margin-top: 0;
 }
 
-/* 备注位：演示态隐藏、纸面隐藏，只在阅读态出现的"讲给自己听"的部分。 */
+/* Speaker-note slot: hidden in presentation and on paper, visible only in the reading state — the "notes to self" part. */
 [data-hr-component="deep-dive"] {
   margin: 1.5rem 0;
   padding: 0.5rem 1rem;
@@ -340,10 +342,11 @@ article[data-hr-id] blockquote {
   color: var(--hr-muted);
 }
 
-/* ---------- slides 阅读态：16:9 版心、滚动吸附翻页 ---------- */
+/* ---------- slides reading state: 16:9 stage, scroll-snap paging ---------- */
 
-/* --du 是版心单位：16du 恒等于视口宽、9du 恒等于视口高（取小者），
-   页内尺寸全用它写，视口变化时整页等比缩放。 */
+/* --du is the stage unit: 16du always equals the viewport width and 9du the height (whichever is
+   smaller), and all in-page sizes are written in it, so the whole page scales with the
+   viewport. */
 article[data-hr-kind="slides"] {
   --du: min(calc(100vw / 16), calc(100vh / 9));
   max-width: none;
@@ -391,7 +394,7 @@ article[data-hr-kind="slides"] > section::after {
   font-variant-numeric: tabular-nums;
 }
 
-/* 封面页（h1）也是一页：页码口径与 section 一致，和阅读器 pager（1 / N）对齐。 */
+/* The cover page (h1) is a page too: same page-count convention as sections, aligned with the reader's pager (1 / N). */
 article[data-hr-kind="slides"] > h1::before {
   content: counter(hr-deck-page);
   position: absolute;
@@ -403,7 +406,7 @@ article[data-hr-kind="slides"] > h1::before {
   font-variant-numeric: tabular-nums;
 }
 
-/* 标题页：h1 本身是一页，居中放大 + 底部 accent 条。 */
+/* Title page: h1 itself is a page — centered and enlarged with a bottom accent bar. */
 article[data-hr-id][data-hr-kind="slides"] > h1 {
   margin: 0 auto calc(0.3 * var(--du));
   align-items: center;
@@ -443,7 +446,7 @@ article[data-hr-kind="slides"] > section > h2::after {
   background: var(--hr-accent);
 }
 
-/* slide 内的组件只改相对字号，结构复用上面同一套骨架。 */
+/* Components inside a slide only change relative font sizes; the structure reuses the same skeleton above. */
 article[data-hr-kind="slides"] [data-hr-component="kpi-bento"] > * > p:first-child {
   font-size: 2.4em;
 }
@@ -456,9 +459,9 @@ article[data-hr-kind="slides"] [data-hr-component="step-timeline"] > li::before 
   left: calc(-1.5rem - 0.7em);
 }
 
-/* ---------- 演示态：页状态与逐条出现 ---------- */
+/* ---------- presentation state: slide states and stepwise reveal ---------- */
 
-/* 带状态的页脱离文档流、全屏居中叠放；状态值由阅读器维护。 */
+/* State-marked slides leave the flow and stack centered fullscreen; state values are maintained by the reader. */
 article[data-hr-kind="slides"] > h1[data-hr-slide-state],
 article[data-hr-kind="slides"] > section[data-hr-slide-state] {
   position: fixed;
@@ -485,32 +488,37 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
   z-index: 1;
 }
 
-/* 演示态兜底：没被标记状态的页一律藏住，宁缺不叠。 */
+/* Presentation fallback: slides with no state are hidden outright — better missing than stacked. */
 [data-hr-present] article[data-hr-kind="slides"] > h1:not([data-hr-slide-state]),
 [data-hr-present] article[data-hr-kind="slides"] > section:not([data-hr-slide-state]) {
   visibility: hidden;
   opacity: 0;
 }
 
-/* 演示态下非当前页由阅读器 display:none 掉，CSS 计数器会跳过它们，每页都数成 1；
-   这时页码交给阅读器自己的 pager（N / 总数），主题这份关掉。 */
+/* In presentation, non-current slides are display:none'd by the reader; the CSS counter skips
+   them and every slide counts as 1 — so page numbering is handed to the reader's own pager (N /
+   total) and the theme's is off. */
 [data-hr-present] article[data-hr-kind="slides"] > section::after,
 [data-hr-present] article[data-hr-kind="slides"] > h1::before {
   content: none;
 }
 
-/* deep-dive 是讲者备注：演示与投影都不该出现。 */
+/* deep-dive is a speaker note: it must appear in neither presentation nor projection. */
 [data-hr-present] [data-hr-component="deep-dive"],
 [data-hr-slide-state] [data-hr-component="deep-dive"] {
   display: none;
 }
 
-/* ---------- 阅读器宿主内的协作：寻址描边、当前块高亮、演示壳内边距 ----------
-   以下选择器只在 #hr-doc（阅读器正文区）里生效；standalone/打印稿没有 #hr-doc，自然不命中。 */
+/* ---------- cooperation inside the reader host: addressable outline, current-block highlight,
+   presentation-shell padding ----------
+   The selectors below only apply inside #hr-doc (the reader's body area); standalone/print files
+   have no #hr-doc and naturally never match. */
 
-/* 阅读器给每个可寻址块加左侧透明描边 + 8px 内缩（阅读辅助）；slides 里是噪声，压掉。
-   注意用「页的后代」而不是「页内的可寻址块」做选择器：页根（h1/section）自己也是
-   [data-hr-id]，命中它会把页的内边距清零。组件根本身留着（callout 的 accent 描边归主题）。 */
+/* The reader adds a left transparent outline + 8px inset to every addressable block (reading
+   aid); inside slides that is noise, so suppress it.
+   Note the selector uses "slide descendants", not "addressable blocks inside a slide": the slide
+   root (h1/section) is itself a [data-hr-id], and matching it would zero the slide's padding.
+   Component roots keep theirs (a callout's accent outline belongs to the theme). */
 #hr-doc article[data-hr-kind="slides"] > h1 [data-hr-id]:not(article):not([data-hr-component]),
 #hr-doc
   article[data-hr-kind="slides"]
@@ -520,8 +528,9 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
   border-left: 0;
 }
 
-/* 「当前块」高亮（.doc__block--on）会把命中的块涂成浅色：落在页内元素上恢复透明，
-   落在「页」本身（h1/section）上恢复页本身的深色渐变底。 */
+/* The "current block" highlight (.doc__block--on) paints the matched block light: restore
+   transparency on in-slide elements, and restore the slide's own dark gradient when the hit is the
+   slide itself (h1/section). */
 #hr-doc article[data-hr-kind="slides"] .doc__block--on {
   background: transparent;
 }
@@ -531,14 +540,15 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
   background: linear-gradient(155deg, var(--hr-surface), #0d1119 65%);
 }
 
-/* 演示壳给 current 页套 8vh/8vw 内边距与 100vh 最小高（为普通文档设计）；
-   slides 版心用 --du 定死，内边距与高度都按主题自己的口径来。 */
+/* The presentation shell pads the current slide with 8vh/8vw and a 100vh min-height (designed
+   for ordinary documents); the slides stage is fixed by --du, so padding and height follow the
+   theme's own convention. */
 #hr-doc article[data-hr-kind="slides"] > [data-hr-slide-state] {
   min-height: 0;
   padding: calc(0.55 * var(--du)) calc(0.8 * var(--du));
 }
 
-/* 逐条出现：future 占位不撤（版面不跳），只是不可见。 */
+/* Stepwise reveal: `future` placeholders keep their space (no layout jump) — only invisible. */
 [data-hr-present] [data-hr-step-state="future"],
 [data-hr-slide-state] [data-hr-step-state="future"] {
   visibility: hidden;
@@ -546,11 +556,12 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
   transform: translateY(0.45em);
 }
 
-/* ---------- 动画：全部只挂在 no-preference 下；reduced-motion 走上面的静态态 ---------- */
+/* ---------- animation: everything hangs only on no-preference; reduced-motion uses the static states above ---------- */
 
 @media (prefers-reduced-motion: no-preference) {
-  /* 翻页：离场页向反方向退并缩小，进场页从同侧漂入。visibility 延迟到动画结束才生效，
-     反向（入场）用零延迟版本，两条成对才有"漂出去又漂进来"。 */
+  /* Paging: the leaving slide retreats backward and shrinks while the entering one drifts in
+     from the same side. visibility waits until the animation ends; the reverse (entering) uses a
+     zero-delay variant — the pair is what makes "drift out, drift in". */
   article[data-hr-kind="slides"] > [data-hr-slide-state] {
     transition:
       opacity 0.55s cubic-bezier(0.2, 0.65, 0.2, 1),
@@ -572,8 +583,8 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
       visibility 0s linear 0.4s;
   }
 
-  /* current 是刚放出的那一条：visibility 零延迟，opacity/transform 照常播；
-     past 已播完，同样不能被 0.4s 的 visibility 延迟再藏一次。 */
+  /* `current` is the just-revealed item: visibility zero-delayed, opacity/transform play as
+     usual; `past` already finished and must not be hidden again by the 0.4s visibility delay. */
   [data-hr-step-state="current"],
   [data-hr-step-state="past"] {
     transition:
@@ -582,8 +593,9 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
       visibility 0s;
   }
 
-  /* 阅读态入场：元素随 slide 进入视口错落浮起；滚动驱动的纯 CSS 动画，
-     不支持的引擎会在加载时一次播完，仍是完整静止稿。 */
+  /* Reading-state entrance: elements float up staggered as the slide scrolls into view; a
+     scroll-driven pure-CSS animation that engines without support finish once at load, still
+     yielding a complete static page. */
   article[data-hr-kind="slides"] > section:not([data-hr-slide-state]) > * {
     animation: hr-noir-rise 0.7s cubic-bezier(0.2, 0.7, 0.25, 1) both;
     animation-timeline: view();
@@ -594,8 +606,10 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
     animation-range: entry 5% entry 55%;
   }
 
-  /* 滚动进度条：只在 slides 阅读态出现；演示态下页没有滚动，:has 直接关掉它。
-     不支持滚动时间线的引擎（WKWebView）里 0s 动画会停在终态、变成一条满宽色条，所以整条规则按能力开启。 */
+  /* Scroll progress bar: appears only in slides reading state; in presentation there is no
+     scroll, and :has turns it off outright. On engines without scroll-timeline support (WKWebView)
+     a 0s animation sticks at its end state as a full-width bar, so the whole rule is
+     capability-gated. */
   @supports (animation-timeline: scroll()) {
     html:has(article[data-hr-kind="slides"]):not(:has([data-hr-slide-state])) body::before {
       content: "";
@@ -633,7 +647,7 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
   }
 }
 
-/* ---------- 窄屏：非 slides 形态折叠成单列 ---------- */
+/* ---------- narrow screens: the non-slides form collapses to one column ---------- */
 
 @media (max-width: 420px) {
   .hr-layout {
@@ -647,9 +661,9 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
   }
 }
 
-/* ---------- 打印 ---------- */
+/* ---------- print ---------- */
 
-/* 命名页只管 slides：全出血 16:9 横版；非 slides 文档的纸张由打印骨架决定。 */
+/* The named page covers slides only: full-bleed 16:9 landscape; non-slides documents take their paper from the print skeleton. */
 @page hr-deck-slide {
   size: 13.333in 7.5in;
   margin: 0;
@@ -687,15 +701,16 @@ article[data-hr-kind="slides"] > [data-hr-slide-state="current"] {
     page-break-inside: avoid;
   }
 
-  /* 演示态的隐藏状态在纸面上不生效：打印稿里所有内容都该在。 */
+  /* Presentation hidden states do not apply on paper: every piece of content belongs in the printout. */
   [data-hr-step] {
     visibility: visible;
     opacity: 1;
     transform: none;
   }
 
-  /* 纸面永远是日间配色（仅非 slides 文档）：slides 本身就是深色稿，强行转浅色
-     等于换了一份主题；阅读型文档则与 atelier 同口径回落到纸面。 */
+  /* Paper always uses the day palette (non-slides documents only): slides are natively a dark
+     page, and forcing light would amount to a different theme; reading documents fall back to
+     paper by the same convention as atelier. */
   html:not(:has(article[data-hr-kind="slides"])) {
     --hr-bg: #ffffff;
     --hr-surface: #f7f8fa;

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 启动窗口期：父进程在 `hr serve` 刚 spawn、还没 ready 时被 kill -9。
-# 期望：0.03s 杀 = 根本起不来；0.3s / 0.6s 杀 = daemon 发现自己 ppid 已是 1，立刻失败退出，
-# 不写 daemon.json、不占端口。三条时间线各跑一遍，输出机器可读的一行。
-# 用法：launch-window.sh [杀点秒数...]（默认 0.03 0.3 0.6）
+# The startup window: the parent is kill -9'd just after `hr serve` spawns, before it is ready.
+# Expected: a 0.03s kill = never comes up; a 0.3s / 0.6s kill = the daemon notices ppid is
+# already 1 and fails out at once, writing no daemon.json, holding no port. Three timelines
+# each run once, emitting one machine-readable line. Usage: launch-window.sh [seconds...]
 
 set -u
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
@@ -25,13 +25,13 @@ echo \$! > "$root/serve.pid"
 sleep 300
 INNER
   chmod +x "$root/parent.sh"
-  # 全断开 stdio：否则调用方的管道要等这个后台任务退出才 EOF。
+  # Fully detach stdio: otherwise the caller's pipe waits for this background task before EOF.
   "$root/parent.sh" > "$root/parent.log" 2>&1 < /dev/null &
   parent=$!
   sleep "$delay"
   echo "=== kill point ${delay}s: parent=$parent ppid-of-parent=$parent"
   kill -9 "$parent"
-  # 给 daemon 最多 6s 自己收尸
+  # Give the daemon at most 6s to reap itself
   for _ in $(seq 1 60); do
     [ -f "$root/serve.pid" ] && daemon=$(cat "$root/serve.pid") || daemon=""
     if [ -n "$daemon" ] && [ "$(alive "$daemon")" = no ]; then break; fi

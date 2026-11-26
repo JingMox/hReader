@@ -1,11 +1,11 @@
-// 这层管：全仓静态检查（类型感知规则 + 模块边界）；不管格式化（交给 Prettier）。
+// Repo-wide static checks (type-aware rules + module boundaries); formatting belongs to Prettier.
 import js from "@eslint/js";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import importPlugin from "eslint-plugin-import";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-// 根目录配置文件（vitest.config.ts）已纳入 tsconfig.json 的 include，与源码同一个工程。
+// The root config file (vitest.config.ts) is in tsconfig.json's include, same project as the sources.
 const TS_FILE_PATTERNS = ["**/*.{ts,tsx,mts,cts}"];
 
 const sharedRules = {
@@ -30,8 +30,9 @@ export default tseslint.config(
     ],
   },
   {
-    // 豁免注释的规则与主流项目一致：可以 eslint-disable，但必须有界（禁裸的全局关闭）、
-    // 有主（禁无说明豁免）、不重复不聚合。
+    // Exemption-comment rules follow mainstream projects: eslint-disable is allowed but must be
+    // bounded (no bare global disable), owned (no unexplained exemption), and never duplicated or
+    // aggregated.
     plugins: { "@eslint-community/eslint-comments": eslintComments },
     rules: {
       "@eslint-community/eslint-comments/disable-enable-pair": ["error", { allowWholeFile: true }],
@@ -58,14 +59,16 @@ export default tseslint.config(
     },
     rules: {
       ...sharedRules,
-      // TS 自己检查未定义变量与未使用变量，核心规则会误报类型专用导入。
+      // TS itself checks undefined and unused variables; the core rule false-positives on
+      // type-only imports.
       "no-undef": "off",
       "no-unused-vars": "off",
 
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-non-null-assertion": "error",
-      // typescript-eslint 语义上的默认形态：允许 `as` 断言，禁止对象字面量断言
-      // （字面量已经是最具体的类型，断言只会写错不会写对）。
+      // typescript-eslint's semantic default shape: `as` assertions allowed, object-literal
+      // assertions banned (a literal is already the most specific type — an assertion can only be
+      // wrong, never righter).
       "@typescript-eslint/consistent-type-assertions": [
         "error",
         { assertionStyle: "as", objectLiteralTypeAssertions: "never" },
@@ -90,7 +93,8 @@ export default tseslint.config(
           patterns: [
             {
               group: ["@hreader/*/src/*", "@hreader/*/dist/*"],
-              message: "跨包只能走 @hreader/<name> 的公开入口，禁止深层导入。",
+              message:
+                "cross-package imports must go through the public entry of @hreader/<name>; deep imports are forbidden.",
             },
           ],
         },
@@ -98,17 +102,37 @@ export default tseslint.config(
     },
   },
   {
-    // 纯层（状态/按键/主题切换/SSE/存储/守卫）不得碰浏览器全局。
-    // depcruise 管"模块依赖"，这条管"名字解析"——两条一起才算把分层规则写进配置。
+    // The pure layer (state/keys/theme switching/SSE/storage/guards) must not touch browser
+    // globals. depcruise governs "module dependencies"; this one governs "name resolution" —
+    // together they put the layering rule into config.
     files: ["packages/app/src/{keys,state,style-switch,sse,store,guard}.ts"],
     rules: {
       "no-restricted-globals": [
         "error",
-        { name: "document", message: "纯层不得碰 DOM：全局只允许出现在 main.ts / dom.ts。" },
-        { name: "window", message: "纯层不得碰 DOM：全局只允许出现在 main.ts / dom.ts。" },
-        { name: "fetch", message: "纯层不得发请求：IO 由 boot/main 经注入的 deps 提供。" },
-        { name: "EventSource", message: "纯层不得建连接：SSE 走注入的 SourceLike。" },
-        { name: "localStorage", message: "纯层不得持久化：状态集中在 state.ts，不做浏览器存储。" },
+        {
+          name: "document",
+          message:
+            "the pure layer must not touch the DOM: globals are only allowed in main.ts / dom.ts.",
+        },
+        {
+          name: "window",
+          message:
+            "the pure layer must not touch the DOM: globals are only allowed in main.ts / dom.ts.",
+        },
+        {
+          name: "fetch",
+          message:
+            "the pure layer must not make requests: IO comes from boot/main through injected deps.",
+        },
+        {
+          name: "EventSource",
+          message:
+            "the pure layer must not open connections: SSE goes through the injected SourceLike.",
+        },
+        {
+          name: "localStorage",
+          message: "the pure layer must not persist: state lives in state.ts; no browser storage.",
+        },
       ],
       "no-restricted-imports": [
         "error",
@@ -117,18 +141,21 @@ export default tseslint.config(
             {
               name: "../dom.ts",
               importNames: ["createDomHost"],
-              message: "纯层只认 Host 类型，不得进 DOM 适配器。",
+              message:
+                "the pure layer only knows the Host type; it must not reach into DOM adapters.",
             },
             {
               name: "./dom.ts",
               importNames: ["createDomHost"],
-              message: "纯层只认 Host 类型，不得进 DOM 适配器。",
+              message:
+                "the pure layer only knows the Host type; it must not reach into DOM adapters.",
             },
           ],
           patterns: [
             {
               group: ["@hreader/*/src/*", "@hreader/*/dist/*"],
-              message: "跨包只能走 @hreader/<name> 的公开入口，禁止深层导入。",
+              message:
+                "cross-package imports must go through the public entry of @hreader/<name>; deep imports are forbidden.",
             },
           ],
         },
@@ -136,8 +163,8 @@ export default tseslint.config(
     },
   },
   {
-    // widget 可以 `import type { Host }`，但不许拿适配器实现；
-    // eslint 只看得到名字，故按 importNames 收窄。
+    // A widget may `import type { Host }` but must not take the adapter implementation; eslint
+    // only sees names, so narrow by importNames.
     files: ["packages/app/src/widgets/**/*.ts"],
     rules: {
       "no-restricted-imports": [
@@ -147,18 +174,21 @@ export default tseslint.config(
             {
               name: "../dom.ts",
               importNames: ["createDomHost"],
-              message: "widget 只依赖 Host 接口，不得进适配器实现。",
+              message:
+                "widgets only depend on the Host interface; they must not reach into adapter implementations.",
             },
             {
               name: "./dom.ts",
               importNames: ["createDomHost"],
-              message: "widget 只依赖 Host 接口，不得进适配器实现。",
+              message:
+                "widgets only depend on the Host interface; they must not reach into adapter implementations.",
             },
           ],
           patterns: [
             {
               group: ["@hreader/*/src/*", "@hreader/*/dist/*"],
-              message: "跨包只能走 @hreader/<name> 的公开入口，禁止深层导入。",
+              message:
+                "cross-package imports must go through the public entry of @hreader/<name>; deep imports are forbidden.",
             },
           ],
         },
@@ -166,12 +196,12 @@ export default tseslint.config(
     },
   },
   {
-    // 构建/测试配置必须 default export，白名单只覆盖这些文件。
+    // Build/test configs must default-export; the whitelist covers only these files.
     files: ["**/*.config.ts"],
     rules: { "import/no-default-export": "off" },
   },
   {
-    // Pi 只能加载单文件扩展，`export default (pi) => void` 是该形态的唯一入口。
+    // Pi only loads single-file extensions; `export default (pi) => void` is the only entry for that shape.
     files: ["packages/pi-extension/pi-hreader.ts"],
     rules: { "import/no-default-export": "off" },
   },

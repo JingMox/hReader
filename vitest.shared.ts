@@ -1,12 +1,13 @@
-// 这层管：根目录 vitest.config.ts 与各包 vitest.config.ts 共用的测试约定；
-// 单包 `pnpm -F <pkg> test` 与根目录 `pnpm test` 走同一份解析与超时。
+// Test conventions shared by the root vitest.config.ts and each package's vitest.config.ts;
+// single-package `pnpm -F <pkg> test` and root `pnpm test` share the same resolution and
+// timeouts.
 import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";
 
 const fromRepoRoot = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
 
-// 包名 → 源码入口：测试与运行期都解析到同一份源码，避免 dist 产物与源码类身份不一致。
+// package name → source entry: tests and runtime resolve to the same source, avoiding class-identity drift between dist artifacts and sources.
 const ALIASES = [
   "@hreader/core",
   "@hreader/renderer-html",
@@ -27,9 +28,10 @@ export const packageAliases: Record<string, string> = Object.fromEntries(
 // misses worker RPC deadlines ("Timeout calling onTaskUpdate"). This is a throughput cap,
 // not a relaxed gate.
 const MAX_WORKERS = 2;
-// CLI 用例的超时由 tests/harness.ts 自己管：每次 runCli 10s 硬超时、withTempDir 10s 兜底。
-// vitest 默认 5s 低于这两道守卫，并行有负载时总是它先触发，把可辨认的诊断盖成一句
-// "Test timed out in 5000ms"。30s = 约 3 次 CLI 调用的合法预算。
+// CLI-case timeouts are managed by tests/harness.ts itself: a 10s hard timeout per runCli plus a
+// 10s withTempDir backstop. The vitest default 5s sits below both guards, so under parallel load it
+// always fires first and buries a diagnosable failure under "Test timed out in 5000ms". 30s ≈ the
+// legal budget of ~3 CLI calls.
 const TEST_TIMEOUT_MS = 30_000;
 
 export const packageTest = {

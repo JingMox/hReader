@@ -1,13 +1,13 @@
 name: Mutation
-# 变异测试太贵，不进 PR 门禁：每周定期跑 + 手动触发。防退化阈值在 stryker.config.mjs 的 thresholds.break。
+# Mutation testing is too expensive for the PR gate: weekly schedule + manual trigger. The anti-regression threshold is thresholds.break in stryker.config.mjs.
 
 on:
   schedule:
-    - cron: "0 18 * * 0" # UTC 周日 18:00
+    - cron: "0 18 * * 0" # 18:00 UTC Sundays
   workflow_dispatch:
     inputs:
       mutate:
-        description: "限定变异范围的 glob（逗号分隔）；留空跑 stryker.config.mjs 里的全量范围"
+        description: "glob that limits the mutation scope (comma-separated); leave empty to run the full scope from stryker.config.mjs"
         required: false
         default: ""
 
@@ -23,7 +23,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 跑变异测试（全量或指定范围）
+      - name: Run mutation tests (full or scoped)
         run: |
           if [ -n "${{ inputs.mutate }}" ]; then
             pnpm test:mutation --mutate "${{ inputs.mutate }}"
