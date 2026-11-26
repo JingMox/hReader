@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>对比 · Markdown 渲染</title>
+<style>
+body { margin: 0; background: #fff; color: #1f2328; font: 16px/1.6 -apple-system, "PingFang SC", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 32px 24px; }
+h1 { font-size: 2em; border-bottom: 1px solid #d1d9e0; padding-bottom: .3em; }
+h2 { font-size: 1.5em; border-bottom: 1px solid #d1d9e0; padding-bottom: .3em; margin-top: 24px; }
+audio { display: block; margin: 8px 0; }
+code { background: #eff1f3; padding: .2em .4em; border-radius: 6px; font-size: 85%; }
+blockquote { margin: 0; padding: 0 1em; color: #59636e; border-left: .25em solid #d1d9e0; }
+</style>
+</head>
+<body>
+<main>
+<h1>产品周会纪要</h1>
+<p>2026-11-20</p>
+<p>结论：这周只修导出 PDF；音频笔记先做卡片 + 折叠逐字稿；首页改推 MCP / Skill。</p>
+<h2>议题一：导出 PDF</h2>
+<p><a href="../examples/assets/r1.m4a">录音1.m4a</a></p>
+<audio controls src="../examples/assets/r1.m4a"></audio>
+<p>用户反馈里约三分之一和导出 PDF 有关，主要是超长标题被截断。本周先绕过，根治放到下周。</p>
+<p><strong>逐字稿：</strong>先说结论吧。导出 PDF 这周必须修好，用户反馈里有三分之一都在说这件事。我建议先把超长标题的问题绕过去，下周再彻底解决。</p>
+<h2>议题二：音频笔记</h2>
+<audio controls src="../examples/assets/r2.m4a"></audio>
+<p>录音2 - 设计</p>
+<p>方案 A：先做实时转写。功能亮眼，但两周内做不完。</p>
+<p>方案 B：先统一呈现格式（采纳）。一周可交付。</p>
+<blockquote><p>逐字稿：关于音频笔记，我的看法是不要一上来就做实时转写。先把音频卡片和逐字稿的折叠做出来，排版整齐了，用户自己就会用起来。</p></blockquote>
+<h2>议题三：安装门槛</h2>
+<p>⚠️ 风险：桌面版要求 Node 22。</p>
+<p><a href="../examples/assets/r3.m4a">r3.m4a</a></p>
+<p>风险在于安装门槛。现在桌面版要求本机有 Node 二十二，很多非开发者会卡在第一步。我建议首页优先推荐 MCP 和 Skill 的安装方式。</p>
+<h2>待办</h2>
+<ul>
+<li>周二 工程：导出目录截短超长标题</li>
+<li>周三 设计：定稿录音卡片样式</li>
+<li>周四 产品：首页优先展示 MCP / Skill</li>
+<li>周五 全员：用新格式重写上周纪要</li>
+</ul>
+</main>
+</body>
+</html>

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { nodePatchDeps, patchFile } from "../../src/io";
 import { encodeUtf8 } from "../../src/io/bytes";
-import { applyPatch } from "../../src/ops/patchNode";
+import { applyPatch } from "../../src/ops/patch-node";
 import { ARTICLE_DOC, DOC_FILE } from "./fixtures";
 import { childIds, elementById } from "./tree-probe";
 import {

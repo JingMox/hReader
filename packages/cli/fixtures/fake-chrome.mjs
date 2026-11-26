@@ -9,7 +9,7 @@ const pidFile = process.env.FAKE_CHROME_PID_FILE;
 if (pidFile !== undefined) writeFileSync(pidFile, String(process.pid));
 
 // `FAKE_CHROME_GRANDCHILD=1`：再 fork 一个孙进程（同一进程组），每 40ms 往标记文件追加一个字节。
-// 杀进程组会连它一起收；只杀主 pid 会留它继续 tick —— 这就是 M04 的判别点。
+// 杀进程组会连它一起收；只杀主 pid 会留它继续 tick —— 判别点就在这里。
 const markerFile = process.env.FAKE_CHROME_MARKER_FILE;
 if (process.env.FAKE_CHROME_GRANDCHILD === "1" && markerFile !== undefined) {
   const script = `setInterval(() => require("node:fs").appendFileSync(${JSON.stringify(markerFile)}, "x"), 40)`;
@@ -38,7 +38,7 @@ if (process.env.FAKE_CHROME_SLEEP === "1") {
     port = typeof address === "object" && address !== null ? address.port : 0;
     const listening = `DevTools listening on ws://127.0.0.1:${String(port)}/devtools/browser/fake\n`;
     process.stderr.write(listening);
-    // `FAKE_MODE=flood` 只在 DevTools 行之后喷 5 MB：行必须仍能从前缀里解析出来（§15.3）。
+    // `FAKE_MODE=flood` 只在 DevTools 行之后喷 5 MB：行必须仍能从前缀里解析出来。
     if (process.env.FAKE_MODE === "flood") process.stderr.write("x".repeat(5 * 1024 * 1024));
   });
 }

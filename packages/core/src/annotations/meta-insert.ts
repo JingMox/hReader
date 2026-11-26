@@ -1,5 +1,5 @@
-// 这层管：**没有 meta 脚本时插到哪**（裁定 #17）——优先 `<article>` 末尾，其次 `<body>` 末尾，都没有就追加。
-// 全部用解析器的 span 定位：正文里的字面 `</body>` 文本节点不会影响插入点（P1-6）。
+// 这层管：**没有 meta 脚本时插到哪**——优先 `<article>` 末尾，其次 `<body>` 末尾，都没有就追加。
+// 全部用解析器的 span 定位：正文里的字面 `</body>` 文本节点不会影响插入点。
 // 只做纯字符串拼接；"插什么 script"由调用方（store 的完整 meta / server 的首条批注）决定。
 
 import { type HtmlElementNode, type HtmlNode } from "../html/constants";

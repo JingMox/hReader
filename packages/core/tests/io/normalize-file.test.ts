@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { nodePatchDeps } from "../../src/io/node-fs";
-import { normalizeFile } from "../../src/ops/normalizeFile";
+import { normalizeFile } from "../../src/ops/normalize-file";
 import { withWorkspace, writeTextAt } from "./harness";
 
 const DRAFT = "<article><h1>第一章</h1><p>正文。</p></article>";
@@ -59,7 +59,7 @@ describe("normalizeFile · --write", () => {
       await writeTextAt(join(dir, "doc.html"), DRAFT);
 
       const first = await normalizeAt(dir, true);
-      // `needsNormalize` 描述的是写完之后磁盘的状态（P1-1：报 true 会让用户以为写回没生效）。
+      // `needsNormalize` 描述的是写完之后磁盘的状态（报 true 会让用户以为写回没生效）。
       expect(Reflect.get(Object(first), "needsNormalize")).toBe(false);
       expect(Reflect.get(Object(first), "changed")).toBe(true);
       const written = readFileSync(join(dir, "doc.html"), "utf8");

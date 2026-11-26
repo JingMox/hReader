@@ -28,7 +28,7 @@ const TARGET = `${ROOT}/out/corpus.yaml`;
 
 const OLD = "旧内容";
 
-/** 假 fs 只认精确目录集合：种一个文件让 `out/` 成为已存在的目录（AC-6 不代建判据的前提）。 */
+/** 假 fs 只认精确目录集合：种一个文件让 `out/` 成为已存在的目录（不代建判据的前提）。 */
 const envWithOut = () => styleEnv({ ...builtinSeed(), [`${ROOT}/out/seed.txt`]: "" });
 
 const failureOf = async (promise: Promise<unknown>): Promise<string> => {

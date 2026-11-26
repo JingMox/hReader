@@ -1,4 +1,4 @@
-// 这层管：`hr_outline` 的字数规则（卡片 M1.3 契约 3）；口径全部按卡片定义，不照抄实现值。
+// 这层管：`hr_outline` 的字数规则；口径按契约定义，不照抄实现值。
 
 import { describe, expect, it } from "vitest";
 
@@ -36,18 +36,18 @@ const WORD_CASES: readonly WordCase[] = [
     why: "`-` 不是字母数字，切成 4 串",
   },
   { name: "千分位小数", text: "1,234.56", expected: 3, why: "`,`/`.` 断串：1 / 234 / 56" },
-  // v2 #13 追加：撇号/中点都是分隔符。
+  // 撇号/中点都是分隔符。
   { name: "撇号缩写", text: "l'été", expected: 2, why: "`'` 断串：l / été" },
   { name: "单码点 emoji", text: "😀", expected: 0, why: "emoji 不是 L/N，也不属 CJK" },
   { name: "ZWJ 家庭 emoji", text: "👨‍👩‍👧‍👦", expected: 0, why: "连接符与 emoji 都不计字" },
   { name: "CJK 扩展 B", text: "𠀀𠀁", expected: 2, why: "astral 汉字按 1 个码点计" },
-  // 卡片 v2 #13 已裁定：只有 CJK（Han/假名/谚文）逐字符计 1，其余字母（含全角 Ａ = Script=Latin、
+  // 只有 CJK（Han/假名/谚文）逐字符计 1，其余字母（含全角 Ａ = Script=Latin、
   // 希腊、西里尔、带变音符字母）一律"整串 1"。所以这条不再是缺陷（D6 已由 v2 关闭）。
   {
     name: "全角字母",
     text: "ＡＢＣ",
     expected: 1,
-    why: "v2 #13：全角 Ａ 属 Script=Latin，非 CJK → 整串 1",
+    why: "全角 Ａ 属 Script=Latin，非 CJK → 整串 1",
   },
   { name: "假名", text: "ひらがな", expected: 4, why: "假名属 CJK 计数范围，逐字符 1" },
   { name: "希伯来 RTL", text: "שלום", expected: 1, why: "RTL 不影响计数；非 CJK 字母连串算 1 词" },
@@ -76,7 +76,7 @@ describe("hr_outline · 字数规则", () => {
     expect(wordsOf("<pre>raft leader</pre><code>leader == proposer</code>")).toBe(4);
   });
 
-  // D2（已登记，见报告）：拉丁串被内联标签切断时，`countWords` 按文本节点分别起算，一个词变两个。
+  // 已登记缺陷：拉丁串被内联标签切断时，`countWords` 按文本节点分别起算，一个词变两个。
   // KD-03
   it.fails("should count a latin run split by inline markup once (spec: 连续串 = 1)", () => {
     expect(wordsOf("<p>distri<b>buted</b></p>")).toBe(1);
@@ -105,7 +105,7 @@ describe("hr_outline · 字数规则 · 续 1", () => {
     ).toBe(2);
   });
 
-  // v2 #12：`<noscript>` 是兜底可见内容，必须计字（脚本禁用时用户真的会看到它）。
+  // `<noscript>` 是兜底可见内容，必须计字（脚本禁用时用户真的会看到它）。
   it("should count <noscript> text as visible content", () => {
     expect(wordsOf("<noscript>需要启用脚本</noscript><p>正文</p>")).toBe(8);
   });

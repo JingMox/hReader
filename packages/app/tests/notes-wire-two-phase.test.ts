@@ -1,6 +1,6 @@
 // 这层测：`wireNotes` 的两相出口（`before` 守卫 / `after` 副作用）本身——
 // 直接拿 `wireNotes` 的返回对象与一个空 store，不经过 `boot()` 的按键路由。
-// 这是 §7 那七条里第 6 条的要求：两相必须能分开调，否则测不出"守卫读到 dispatch 之后的状态"。
+// 两相必须能分开调，否则测不出"守卫读到 dispatch 之后的状态"。
 import { describe, expect, it } from "vitest";
 
 import { initialState } from "../src/state.ts";

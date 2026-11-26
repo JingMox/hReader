@@ -68,7 +68,7 @@ const droppedSummaryOf = (dropped: readonly Dropped[]): string =>
 /**
  * 纯统计 → 提示词 → 一次补全 → 建议 → 合并 → 重新序列化 → 回读校验。
  * 建议不可用就整份失败（R23）：半统计半模型的产物比一次明确的失败更难查。
- * `stats` 原样透传统计层的结果，LLM 不参与任何统计口径（D3）。
+ * `stats` 原样透传统计层的结果，LLM 不参与任何统计口径。
  */
 export const extractStyleWithLlm = async (
   input: ExtractStyleLlmInput,

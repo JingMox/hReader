@@ -10,6 +10,18 @@
   },
   "devDependencies": {
     "@hreader/core": "workspace:*",
-    "vitest": "3.2.4"
+    "vitest": "catalog:",
+    "@types/node": "catalog:"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JingMox/hReader.git",
+    "directory": "packages/renderer-html"
   }
 }

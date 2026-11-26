@@ -3,7 +3,7 @@
 import { HrError } from "@hreader/core";
 
 import { escapeAttribute, escapeText, utf8LengthOf } from "./markup";
-import { printCssOf } from "./print-css";
+import { printCssOf, slidesPrintCssOf } from "./print-css";
 import type { PaperSize } from "./print-css";
 import type { TocEntry } from "./numbering";
 
@@ -40,7 +40,7 @@ const tocItemOf = (item: TocItem): string =>
 
 /**
  * 封面与目录标题都用 `<p>` 而非 `h1`/`h2`：产物里 `<h1..h6>` 的总数必须与 outline 的标题数逐条相等，
- * 多出来的这两个标题会把这个计数污染掉（AC-4）。
+ * 多出来的这两个标题会把这个计数污染掉。
  */
 const coverOf = (title: string): readonly string[] => [
   '<header class="cover">',
@@ -61,20 +61,20 @@ const tocOf = (
 ];
 
 /**
- * `</style` 在打印层先兜一层（§12.3）：CLI 的 `assertThemeSafe` 仍会拒绝并给 `invalid_theme`，
+ * `</style` 在打印层先兜一层：CLI 的 `assertThemeSafe` 仍会拒绝并给 `invalid_theme`，
  * 这里只保证即使那股力量被绕过，主题也打不破 `<style>` 边界。`\/` 在 CSS 字符串里就是 `/`。
  */
 const escapedThemeCssOf = (css: string): string => css.replaceAll(/<\/(style)/giu, "<\\/$1");
 
-const headOf = (sheet: PrintSheet): readonly string[] => [
+const headOf = (sheet: PrintSheet, printCss: string): readonly string[] => [
   "<head>",
   '<meta charset="utf-8">',
   `<meta name="hr-doc-id" content="${escapeAttribute(sheet.docId)}">`,
   `<meta name="hr-visual" content="${escapeAttribute(sheet.visualId)}">`,
   `<title>${escapeText(sheet.title)}</title>`,
-  // 主题在前、骨架在后：两者特异度相同时**印刷骨架压主题**（物理层优先，§13.4）。
+  // 主题在前、骨架在后：两者特异度相同时**印刷骨架压主题**（物理层优先）。
   `<style class="hr-theme">${escapedThemeCssOf(sheet.themeCss)}</style>`,
-  `<style class="hr-print">${printCssOf(sheet.paper)}</style>`,
+  `<style class="hr-print">${printCss}</style>`,
   "</head>",
 ];
 
@@ -84,7 +84,7 @@ const bodyOpenOf = (bodyClass: string | undefined): string =>
     : `<body class="${escapeAttribute(bodyClass)}">`;
 
 /**
- * 4 MiB 上限（§11.4）：**产物最终字节数 > 4 MiB 才拒**，等于 4194304 是合格的（契约写的是 `>`）。
+ * 4 MiB 上限：**产物最终字节数 > 4 MiB 才拒**，等于 4194304 是合格的（契约写的是 `>`）。
  * 在拼接前逐段累加 UTF-8 字节，超了就不分配整串；`reduce` 补上 `join("\n")` 的 `n-1` 个换行字节，
  * 所以这个数是**精确值**，不是上界——它与 `utf8LengthOf(返回值)` 恒等。
  * 不能拿 `part.length` 代替：CJK 一个码元 3 字节，"长度没超、字节超了"的稿子会被静默放行。
@@ -106,10 +106,28 @@ export const printSheetOf = (sheet: PrintSheet): string =>
   productOf([
     "<!DOCTYPE html>",
     '<html lang="zh-CN">',
-    ...headOf(sheet),
+    ...headOf(sheet, printCssOf(sheet.paper)),
     bodyOpenOf(sheet.bodyClass),
     ...coverOf(sheet.title),
     ...tocOf(sheet.tocItems, sheet.tocIds),
+    sheet.articleOpen,
+    sheet.body,
+    "</article>",
+    "</body>",
+    "</html>",
+    "",
+  ]);
+
+/**
+ * slides 形态：没有封面与目录（标题页就是第一个 h1，多两页会让"页数 = slide 数"失约）。
+ * 分页骨架用 slides 专用 CSS——纸张固定 16:9，`sheet.paper` 在这条路径上不起作用。
+ */
+export const slidesSheetOf = (sheet: PrintSheet): string =>
+  productOf([
+    "<!DOCTYPE html>",
+    '<html lang="zh-CN">',
+    ...headOf(sheet, slidesPrintCssOf()),
+    bodyOpenOf(sheet.bodyClass),
     sheet.articleOpen,
     sheet.body,
     "</article>",

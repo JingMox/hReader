@@ -5,8 +5,9 @@ import { extname } from "node:path";
 
 import { HrError, type HrErrorCode } from "../hr-error";
 import { decodeUtf8, encodeUtf8 } from "../io/bytes";
+import { jsonObject, parseJson } from "../schema";
 import { COOKIE_NAME, CSRF_HEADER, cookieOf, csrfAllowed, tokenMatches } from "./auth";
-import { MAX_BODY_BYTES, jsonBodyOf } from "./body";
+import { MAX_BODY_BYTES } from "./body";
 import type { Reply } from "./contracts";
 import type { Route } from "./routes";
 import { isServerCode, statusOf } from "./status";
@@ -94,15 +95,19 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
 export const contentTypeOf = (path: string): string =>
   CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
 
-/** 应用页只允许同源脚本与样式表：`/assets/main.js` 和 `/assets/styles.css` 同属 `'self'`（inline 样式只为主题挂载 `#hr-theme`）。 */
+/**
+ * 应用页只允许同源脚本与样式表：`/assets/main.js` 和 `/assets/styles.css` 同属 `'self'`（inline 样式只为主题挂载 `#hr-theme`）。
+ * `frame-src 'self'` 给外来文档的沙箱 iframe（`/s/<docId>`）用：框架内的隔离由 iframe 的 `sandbox`
+ * 属性和 `/s/` 响应自带的 CSP `sandbox` 指令保证，这里只是允许嵌入同源地址。
+ */
 export const APP_CSP =
-  "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:";
+  "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-src 'self'";
 
 const MAX_ASSET_PATH = 512;
 /** 文件名单段上限（多数文件系统 255）：更长的段交给内核只会拿到 `ENAMETOOLONG`。 */
 const MAX_SEGMENT_NAME = 255;
 
-/** `/assets/<path>` 的解码后白名单：空段、`.`、`..`、反斜杠、NUL、超长一律拒（AC1.2）。 */
+/** `/assets/<path>` 的解码后白名单：空段、`.`、`..`、反斜杠、NUL、超长一律拒。 */
 export const assetSegmentsOf = (rawPath: string): readonly string[] | undefined => {
   if (rawPath.length === 0 || rawPath.length > MAX_ASSET_PATH) return undefined;
   if (rawPath.includes("\0") || rawPath.includes("\\") || rawPath.startsWith("/")) return undefined;
@@ -165,16 +170,21 @@ const bodyTextOf = async (req: IncomingMessage, timeoutMs: number): Promise<stri
     joined.set(bytes, offset);
     offset += bytes.length;
   }
-  return decodeUtf8(joined, "请求体");
+  try {
+    return decodeUtf8(joined, "请求体");
+  } catch {
+    // `invalid_utf8` 是给文档文件的码（500）：请求体里的坏字节是客户端的错，按 400 走。
+    throw new HrError("invalid_request", "请求体不是合法 UTF-8");
+  }
 };
 
 export const bodyRecordOf = async (
   req: IncomingMessage,
   timeoutMs = 10_000,
 ): Promise<Readonly<Record<string, unknown>>> => {
-  const parsed = jsonBodyOf(await bodyTextOf(req, timeoutMs));
-  if (!parsed.ok) throw new HrError("invalid_request", "请求体必须是 JSON 对象");
-  return parsed.value;
+  const parsed = jsonObject.safeParse(parseJson(await bodyTextOf(req, timeoutMs)));
+  if (!parsed.success) throw new HrError("invalid_request", "请求体必须是 JSON 对象");
+  return parsed.data;
 };
 
 interface AuthOutcome {

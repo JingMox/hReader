@@ -4,6 +4,21 @@ All notable changes to **hReader** will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Reader annotations now reach agents**: `hr outline` / `hr_outline` `pendingAnnotations` previously only recognized the legacy meta schema (`targetId` / `comment` / `pending_ai`), so notes written by the reader (`nodeId` / `note` / `pending`) were invisible to agents and the annotate → patch loop was broken. Both schemas are now read.
+
+### Added
+
+- **Document kinds** (`hr new <file> --kind note|report|minutes|brief|slides`, and an optional `kind` on MCP `hr_create_doc`): start from a themed skeleton that already carries every `data-hr-id` and the right components, then patch block by block. The kind is recorded as `data-hr-kind` on `<article>`.
+- **Slides**: in a `slides` document each top-level `<section>` is one slide — scroll-snap paging in any browser and landscape one-slide-per-page printing, with no scripts.
+- **Write-time layout checks**: `hr check <file>` reports component-structure problems (`component_root`, `component_shape`), inline `style` attributes (`inline_style`), and document-level diagnostics. The same checks run on every patch; findings are returned as `warnings` by `hr patch` and `hr_patch_node` (the fragment is still written).
+- **`media-card` component**: one shell for audio/video with a caption and an optional collapsible transcript.
+- `atelier-editorial` theme: emphasized KPI figures, numbered timeline markers, sidebar metadata styling, and audio/video sizing inside `diagram-stage`.
+- GitHub Pages gallery (`site/`) with example documents, a Markdown vs. free-form HTML vs. hReader comparison, and `scripts/build-site.sh` to regenerate it.
+
 ## [1.0.0] - 2026-11-21
 
 Initial open-source release of **hReader**.

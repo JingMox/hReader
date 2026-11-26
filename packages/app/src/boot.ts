@@ -18,11 +18,20 @@ import { renderNotes, wireNotes, type NotesDeps } from "./notes-wire.ts";
 import { missingAnchorsOf, reportMissingAnchors } from "./anchors.ts";
 import type { RawSelection } from "./widgets/selection.ts";
 import { COPY } from "./widgets/copy.ts";
+import { mountPresent, type PresentShell, type PresentWidget } from "./widgets/present.ts";
+import {
+  mountForeign,
+  type ForeignHandle,
+  type ForeignInput,
+  type TrustLevel,
+} from "./widgets/foreign.ts";
 import { syncView } from "./wiring.ts";
 
 export interface ModelResponse {
   readonly revision: string;
-  readonly model: { readonly children?: readonly { readonly id?: string }[] };
+  readonly model: {
+    readonly children?: readonly { readonly id?: string; readonly tag?: string }[];
+  };
 }
 
 export interface OutlineResponse {
@@ -34,12 +43,12 @@ export interface BootDeps {
   readonly store: Store;
   /** 由 boot 传入 handler 后返回连接对象（`main.ts` 负责把真 `EventSource` 塞进去）。 */
   readonly openSse: (handlers: SseHandlers) => Sse;
-  /** 闪烁的计时器（AC4.3）；缺省用真 `setTimeout`（`main.ts` 不传即真实现）。 */
+  /** 闪烁的计时器；缺省用真 `setTimeout`（`main.ts` 不传即真实现）。 */
   readonly schedule?: Schedule;
   readonly style: StyleSwitch;
   /** 文档正文 HTML（`GET /s/<docId>`）。 */
   readonly documentHtml: string;
-  /** 服务器给的清单与默认名（裁定 #2：客户端不硬编码主题）。 */
+  /** 服务器给的清单与默认名：客户端不硬编码主题名。 */
   readonly themes: readonly string[];
   /** 服务器给的默认名；缺省取清单第一项（测试可省略，源码里没有魔法字符串）。 */
   readonly defaultTheme?: string;
@@ -48,8 +57,10 @@ export interface BootDeps {
   readonly fetchOutline: () => Promise<OutlineResponse>;
   /** 键盘事件源（真实实现是 `window`，由 `main.ts` 注入）。 */
   readonly keySource: (handler: (event: KeyLike) => void) => () => void;
-  /** M2.3：批注与 diff 的接线；缺省时批注相关意图全部无副作用（M2.2 的用例不受影响）。 */
+  /** 批注与 diff 的接线；缺省时批注相关意图全部无副作用。 */
   readonly notes?: NotesDeps;
+  /** 演示模式的浏览器环境（全屏 / hash）；缺省 = 这两项副作用退化为 no-op。 */
+  readonly present?: PresentShell;
   /** 诊断出口（缺锚点等"必须可见地失败"的消息）；`main.ts` 接 `console.error`。 */
   readonly logger?: (message: string) => void;
 }
@@ -60,10 +71,61 @@ export interface Booted {
   readonly selection?: (selection: RawSelection) => void;
 }
 
+/** `GET /api/doc/<id>/info`：启动分流唯一依据；`trust`/`scripts` 只对外来文档有意义。 */
+export interface DocInfo {
+  readonly revision: string;
+  readonly cls: "managed" | "normalizable" | "foreign";
+  readonly reason?: string;
+  readonly kind?: string;
+  readonly trust?: TrustLevel;
+  readonly scripts?: boolean;
+}
+
+/** managed 路径才需要的页面数据（主题清单 + 正文 HTML）；iframe 路径不拉正文。 */
+export interface ManagedPage {
+  readonly themes: readonly string[];
+  readonly defaultTheme?: string;
+  readonly documentHtml: string;
+}
+
+export interface ClassifiedBootDeps extends Omit<
+  BootDeps,
+  "documentHtml" | "themes" | "defaultTheme"
+> {
+  /** `GET /api/doc/<id>/info`：先分档再决定走 `boot` 还是 iframe 路径。 */
+  readonly fetchInfo: () => Promise<DocInfo>;
+  /** managed 分支的数据源：foreign/normalizable 首屏不调它（iframe 自己加载 `/s/`）。 */
+  readonly fetchPage: () => Promise<ManagedPage>;
+  /** `POST /trust`；resolve 的值为服务端确认的档位。 */
+  readonly postTrust: (level: TrustLevel) => Promise<TrustLevel>;
+  /** `POST /normalize`；响应体不读——成功后靠 `bootDocument` 重取 info 分流。 */
+  readonly postNormalize: () => Promise<unknown>;
+  /** `GET /api/theme`：外来壳的主题下拉也要清单（managed 从 `fetchPage` 一起拿）。 */
+  readonly fetchThemes: () => Promise<{
+    readonly themes: readonly string[];
+    readonly default: string;
+  }>;
+  /** `POST /api/style {docId, visualId}`：外来文档的主题写进文件里的 `<style id="hr-theme">`。 */
+  readonly postStyle: (visualId: string) => Promise<unknown>;
+}
+
 const ROOT = "#hr-root";
 
 const blocksOfModel = (model: ModelResponse): readonly string[] =>
   (model.model.children ?? []).flatMap((node) => (node.id === undefined ? [] : [node.id]));
+
+/**
+ * 演示页 = 顶层 `h1`（封面）+ 顶层 `section`（一页一节），保持文档序。
+ * 一节都没有时退化为全部顶层块——外来文档没有 section，逐块分页仍讲得完。
+ */
+const pagesOfModel = (model: ModelResponse): readonly string[] => {
+  const children = model.model.children ?? [];
+  const hasSection = children.some((node) => node.tag === "section");
+  if (!hasSection) return blocksOfModel(model);
+  return children.flatMap((node) =>
+    node.id !== undefined && (node.tag === "h1" || node.tag === "section") ? [node.id] : [],
+  );
+};
 
 /** 一次只跑一个刷新，后到的排队（同一个文档的 patch 会连发多条事件）。 */
 const createPump = (): ((task: () => Promise<void>) => void) => {
@@ -73,20 +135,36 @@ const createPump = (): ((task: () => Promise<void>) => void) => {
   };
 };
 
-const mountAll = (deps: BootDeps, forward: (intent: ReaderIntent) => void): readonly Widget[] => {
+interface Mounted {
+  readonly widgets: readonly Widget[];
+  /** 演示 widget 单独拎出来：`before` 要在 dispatch 前拦 `presentAdvanced`（放步进不翻页）。 */
+  readonly present: PresentWidget;
+}
+
+const mountAll = (deps: BootDeps, forward: (intent: ReaderIntent) => void): Mounted => {
   const state = deps.store.get();
-  return [
-    mountLibrary(deps.host, ROOT, state, forward),
-    mountCanvas({
-      host: deps.host,
-      parent: ROOT,
-      state,
-      input: { html: deps.documentHtml, themes: deps.themes },
-      onIntent: forward,
-    }),
-    mountSidenotes(deps.host, ROOT),
-    mountStatusbar(deps.host, ROOT),
-  ];
+  const present = mountPresent({
+    host: deps.host,
+    parent: ROOT,
+    shell: deps.present ?? {},
+    onIntent: forward,
+  });
+  return {
+    widgets: [
+      mountLibrary(deps.host, ROOT, state, forward),
+      mountCanvas({
+        host: deps.host,
+        parent: ROOT,
+        state,
+        input: { html: deps.documentHtml, themes: deps.themes },
+        onIntent: forward,
+      }),
+      mountSidenotes(deps.host, ROOT),
+      mountStatusbar(deps.host, ROOT),
+      present,
+    ],
+    present,
+  };
 };
 
 /** 主题选择落地的唯一出口（`@internal` 导出：测试可 `await settleTheme(...)`，不必黑盒等泵）。 */
@@ -122,6 +200,7 @@ const dispatchLoaded = (
     outline: outline.outline.nodes,
     revision: model.revision,
     html,
+    pages: pagesOfModel(model),
   });
   return blocks;
 };
@@ -153,7 +232,10 @@ const keyHandlerOf =
   (store: Store, dispatchIntent: (intent: ReaderIntent) => void) =>
   (raw: KeyLike): void => {
     const intent = intentOf(raw, store.get());
-    if (intent !== undefined) dispatchIntent(intent);
+    if (intent === undefined) return;
+    // 事件已消费就要拦默认行为：空格/方向键会滚动、F5 会刷新、`/` 会触发快速查找。
+    raw.preventDefault?.();
+    dispatchIntent(intent);
   };
 
 const applyFirstTheme = (deps: BootDeps, pump: (task: () => Promise<void>) => void): void => {
@@ -176,22 +258,33 @@ const sseHandlersOf = (
   store: Store,
   pump: (task: () => Promise<void>) => void,
   hooks: { readonly reload: () => Promise<void>; readonly flash: { stop?: () => void } },
-): SseHandlers => ({
-  onEvent: (event: SseEvent): void => {
-    if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
-    // 上一次闪烁的计时器先收掉：连发 `doc.changed` 时不留下孤儿定时器（也因此 `clearTimeout` 可达）。
-    hooks.flash.stop?.();
-    hooks.flash.stop = flashChanged(
-      deps.host,
-      changedNodesOf(event.payload),
-      deps.schedule ?? defaultSchedule,
-    );
-    pump(hooks.reload);
-  },
-  onState: (conn: ConnState): void => {
-    store.dispatch({ kind: "conn", conn });
-  },
-});
+): SseHandlers => {
+  // 连发 doc.changed 合并：reload 是"全量重取"，排队未跑的那一个一定会取到
+  // 最新状态——事件落在已排队段就不再叠泵；落在执行段则新排一个（其变更晚于在途取数）。
+  // 不合并的话，一串补丁在泵上积成多次全量重取，高负载下末次刷新会拖过等待时限。
+  let reloadQueued = false;
+  return {
+    onEvent: (event: SseEvent): void => {
+      if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
+      // 上一次闪烁的计时器先收掉：连发 `doc.changed` 时不留下孤儿定时器（也因此 `clearTimeout` 可达）。
+      hooks.flash.stop?.();
+      hooks.flash.stop = flashChanged(
+        deps.host,
+        changedNodesOf(event.payload),
+        deps.schedule ?? defaultSchedule,
+      );
+      if (reloadQueued) return;
+      reloadQueued = true;
+      pump(async () => {
+        reloadQueued = false;
+        await hooks.reload();
+      });
+    },
+    onState: (conn: ConnState): void => {
+      store.dispatch({ kind: "conn", conn });
+    },
+  };
+};
 
 const bootedOf = (wired: ReturnType<typeof wireNotes> | undefined, stop: () => void): Booted => ({
   ...(wired === undefined
@@ -263,9 +356,12 @@ export const boot = (deps: BootDeps): Booted => {
   const pump = createPump();
   const selectTheme = themeSwitcher(deps, pump);
   const wiredRef: { current: ReturnType<typeof wireNotes> | undefined } = { current: undefined };
+  const presentRef: { current: PresentWidget | undefined } = { current: undefined };
   function dispatchIntent(intent: ReaderIntent): void {
-    // 守卫必须在 dispatch **之前**求值：`w` 的可用性取决于"此刻"面板是否开着（P0-2 的根因）。
+    // 守卫必须在 dispatch **之前**求值：`w` 的可用性取决于"此刻"面板是否开着，
+    // `presentAdvanced` 要不要翻页取决于"此刻"页内还有没有没放出的步进。
     if (wiredRef.current !== undefined && !wiredRef.current.before(intent)) return;
+    if (presentRef.current !== undefined && !presentRef.current.before(intent)) return;
     store.dispatch(intent);
     if (intent.kind === "themeSelected") selectTheme(intent);
     // `/` 只给可见提示：搜索框模板里是 `disabled`（不聚焦死控件）；同一句文案也写在它的 `title` 上。
@@ -276,18 +372,138 @@ export const boot = (deps: BootDeps): Booted => {
     await wiredRef.current?.load();
   });
   const scope: FlowScope = { deps, store, pump, dispatch: dispatchIntent, reload };
-  const widgets = mountAll(deps, dispatchIntent);
+  const mounted = mountAll(deps, dispatchIntent);
+  presentRef.current = mounted.present;
   const wired = wiredOf(scope);
   wiredRef.current = wired;
   host.attr(`${ROOT} #hr-search`, "title", COPY.searchDeferred);
   if (host.has !== undefined) {
     reportMissingAnchors(host, deps.logger ?? (() => undefined), missingAnchorsOf(host));
   }
-  const unsubscribe = subscribeOf(deps, widgets);
+  const unsubscribe = subscribeOf(deps, mounted.widgets);
   if (wired !== undefined) pump(wired.load);
   const stopFlows = startFlows(scope);
   return bootedOf(wired, () => {
     unsubscribe();
     stopFlows();
   });
+};
+
+const foreignSseOf = (store: Store, foreign: ForeignHandle, resync: () => void): SseHandlers => ({
+  onEvent: (event: SseEvent): void => {
+    if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
+    const revision = event.payload["revision"];
+    foreign.refresh(typeof revision === "string" ? revision : undefined);
+    // 写盘/换 sha 之后服务端的 trust/cls 都可能变：异步回拉 info 对账，不只换 src。
+    resync();
+  },
+  onState: (conn: ConnState): void => {
+    store.dispatch({ kind: "conn", conn });
+  },
+});
+
+/**
+ * 外来/未规范化路径：iframe + 横幅 + 主题下拉 + 状态栏是全部 UI——model 系功能（编辑、批注、
+ * 大纲、演示、快捷键）不接线，而不是"接了再禁用"。`doc.changed` 重载 iframe 并回拉 info。
+ */
+const bootForeign = (
+  deps: ClassifiedBootDeps,
+  cls: ForeignInput["cls"],
+  info: DocInfo,
+  themes: { readonly themes: readonly string[]; readonly default: string },
+): Booted => {
+  const { host, store } = deps;
+  const pump = createPump();
+  let inner: Booted | undefined;
+  let stopped = false;
+
+  const foreign = mountForeign({
+    host,
+    parent: ROOT,
+    docId: store.get().docId,
+    info: {
+      cls,
+      trust: info.trust ?? "off",
+      scripts: info.scripts === true,
+    },
+    setTrust: deps.postTrust,
+    normalize: async () => {
+      await deps.postNormalize();
+      await reboot();
+    },
+    theme:
+      themes.themes.length === 0
+        ? undefined
+        : {
+            themes: themes.themes,
+            current: themes.default,
+            apply: async (id) => {
+              await deps.postStyle(id);
+            },
+          },
+  });
+  const statusbar = mountStatusbar(host, ROOT);
+  host.text(`${ROOT} #hr-shortcuts`, COPY.foreignShortcuts);
+  const unsubscribe = deps.store.subscribe(syncView({ host, widgets: [statusbar] }));
+  const sse = deps.openSse(
+    foreignSseOf(store, foreign, () => {
+      pump(async () => {
+        const next = await deps.fetchInfo();
+        if (stopped) return;
+        // 外部把文档写成了托管形态：整壳重进分流，和 normalize 一条路径。
+        if (next.cls === "managed") {
+          await reboot();
+          return;
+        }
+        foreign.syncInfo({
+          cls: next.cls,
+          trust: next.trust ?? "off",
+          scripts: next.scripts === true,
+        });
+      });
+    }),
+  );
+  sse.start();
+
+  // 重走完整分流而不是就地拼 managed：normalize 或 cls 重分档后 info/主题/正文全部要重取。
+  // 至多跑一次：destroy 置 stopped 后续跑走早退，成功后 destroy 转给 inner。
+  async function reboot(): Promise<void> {
+    const next = await bootDocument(deps);
+    if (stopped) {
+      next.destroy();
+      return;
+    }
+    teardown();
+    inner = next;
+  }
+
+  // 点击回调只可能晚于装配完成，hoist 的函数声明让 normalize/reboot 能向前引用它。
+  function teardown(): void {
+    sse.close();
+    unsubscribe();
+    foreign.destroy();
+  }
+
+  return {
+    destroy: () => {
+      if (stopped) return;
+      stopped = true;
+      if (inner === undefined) {
+        teardown();
+        return;
+      }
+      inner.destroy();
+    },
+  };
+};
+
+/** 启动分流：先 `info` 分档——managed 原样走 `boot`；normalizable/foreign 走 iframe 壳。 */
+export const bootDocument = async (deps: ClassifiedBootDeps): Promise<Booted> => {
+  const info = await deps.fetchInfo();
+  if (info.cls === "managed") {
+    const page = await deps.fetchPage();
+    return boot({ ...deps, ...page });
+  }
+  const themes = await deps.fetchThemes();
+  return bootForeign(deps, info.cls, info, themes);
 };

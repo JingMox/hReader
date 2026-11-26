@@ -1,7 +1,7 @@
 //! 子进程归属记账：只有本进程 `own` 过的 pid 才允许 kill。
 //!
 //! `daemon.json` 里的 pid 可能是**用户自己**起的 daemon（壳重启后复用），那不是壳的孩子。
-//! 没有这份账就会在退出时误杀用户进程——这是本卡最关键的一条（AC-15）。
+//! 没有这份账就会在退出时误杀用户进程——这是最关键的一条。
 
 #[derive(Debug, Default)]
 pub struct ChildRegistry {
@@ -41,14 +41,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ac5_spawned_child_is_killable() {
+    fn spawned_child_is_killable() {
         let mut registry = ChildRegistry::default();
         registry.own(1);
         assert!(registry.should_kill(1));
     }
 
     #[test]
-    fn ac5_adopted_external_is_never_killable() {
+    fn adopted_external_is_never_killable() {
         let mut registry = ChildRegistry::default();
         registry.adopt_external(2);
         assert!(!registry.should_kill(2));
@@ -57,7 +57,7 @@ mod tests {
     }
 
     #[test]
-    fn ac5_repeated_own_is_idempotent() {
+    fn repeated_own_is_idempotent() {
         let mut registry = ChildRegistry::default();
         registry.own(1);
         registry.own(1);
@@ -65,7 +65,7 @@ mod tests {
     }
 
     #[test]
-    fn ac5_own_then_adopt_does_not_downgrade() {
+    fn own_then_adopt_does_not_downgrade() {
         let mut registry = ChildRegistry::default();
         registry.own(1);
         registry.adopt_external(1);
@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn ac5_unknown_pid_is_not_killable() {
+    fn unknown_pid_is_not_killable() {
         let registry = ChildRegistry::default();
         assert!(!registry.should_kill(9));
     }

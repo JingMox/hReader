@@ -4,7 +4,7 @@
 export const ARTICLE_DOC = [
   '<!DOCTYPE html><html lang="zh-CN"><head>',
   '<meta charset="utf-8">',
-  "<title>M1.5 夹具</title>",
+  "<title>测试夹具</title>",
   "</head><body>",
   '<article data-hr-id="root" class="post" data-site="hr">',
   '<h2 data-hr-id="h1">标题</h2>',

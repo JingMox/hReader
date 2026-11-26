@@ -1,5 +1,5 @@
-// 这层管：`Range` 的最小包装（块内字符偏移与跨块判定，裁定 #11）。
-// 放独立文件是为了让 `main.ts` 守住 `max-lines: 300` 与 `complexity: 10`。
+// 这层管：`Range` 的最小包装（块内字符偏移与跨块判定）。
+// 放独立文件：`Range` 的适配只有划词链路需要，`main.ts` 不必背这份声明。
 
 import type { DocumentLike } from "./dom.ts";
 import type { BlockElementLike, MeasureLike } from "./widgets/selection.ts";

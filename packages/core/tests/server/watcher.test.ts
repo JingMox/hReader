@@ -18,7 +18,7 @@ const append = async (port: number, token: string, text: string): Promise<number
       docId: "doc.html",
       action: "append",
       targetId: "hr-d",
-      // 行内片段才能落在 <p>（hr-d）里；块级会被 F6 的内容模型校验拒掉。
+      // 行内片段才能落在 <p>（hr-d）里；块级会被内容模型校验拒掉。
       fragment: `<b>${text}</b>`,
     }),
   });
@@ -94,14 +94,24 @@ describe("watcher · 外部改动", () => {
 describe("watcher · 外部改动（续）", () => {
   it("should survive an atomic replace (rm + recreate) without crashing", async () => {
     await withServer(async (ctx) => {
+      const opened = await httpCall(ctx.port, {
+        path: "/api/doc/doc.html/model",
+        headers: { cookie: cookieOf(ctx.token) },
+      });
+      expect(opened.status).toBe(200);
+      const sse = openSse(ctx.port, "/api/events", { Cookie: cookieOf(ctx.token) });
+      await sse.waitFor(1);
       const temp = join(ctx.workspace, "swap.tmp");
       writeText(temp, readFileSync(ctx.file, "utf8").replace(">正文二<", ">换掉<"));
       renameSync(temp, ctx.file);
+      // 等 doc.changed 到达 = watcher 已经把 unlink+add 这对事件完整处理完且没崩，
+      // 比"睡 250ms 再探头看"多证了一层（原来那次 httpCall 只证明盘上有文件）。
+      await sse.waitForEvent("doc.changed");
       const response = await httpCall(ctx.port, {
         path: "/api/doc/doc.html/model",
         headers: { cookie: cookieOf(ctx.token) },
       });
-      await settle(250);
+      sse.close();
 
       expect(response.status).toBe(200);
       expect(readFileSync(ctx.file, "utf8")).toContain("换掉");
@@ -110,17 +120,26 @@ describe("watcher · 外部改动（续）", () => {
 
   it("should keep serving when the document is missing, and recover after it returns", async () => {
     await withServer(async (ctx) => {
+      const opened = await httpCall(ctx.port, {
+        path: "/api/doc/doc.html/model",
+        headers: { cookie: cookieOf(ctx.token) },
+      });
+      expect(opened.status).toBe(200);
+      const sse = openSse(ctx.port, "/api/events", { Cookie: cookieOf(ctx.token) });
+      await sse.waitFor(1);
       rmSync(ctx.file);
       const missing = await httpCall(ctx.port, {
         path: "/api/doc/doc.html/model",
         headers: { cookie: cookieOf(ctx.token) },
       });
       writeText(ctx.file, '<article data-hr-id="hr-a"><p>回来了</p></article>');
-      await settle(250);
+      // 文件回来后的 doc.changed 证明监听链在 unlink→add 之后照常工作。
+      await sse.waitForEvent("doc.changed");
       const back = await httpCall(ctx.port, {
         path: "/api/doc/doc.html/model",
         headers: { cookie: cookieOf(ctx.token) },
       });
+      sse.close();
 
       expect(missing.status).toBe(404);
       expect(back.status).toBe(200);

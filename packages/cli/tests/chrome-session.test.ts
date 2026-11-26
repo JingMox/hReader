@@ -4,9 +4,15 @@ import { join } from "node:path";
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-import { renderPdfOf } from "../src/chrome/session";
-import { VERSION_TEXT, depsWithOf, fakeChromeOf, responderOf } from "./chrome-helpers";
-import { DEVTOOLS_LINE, inputOf, renderSetupOf, type SessionSetup } from "./chrome-session-setup";
+import { renderPdfOf, renderPngOf } from "../src/chrome/session";
+import { depsWithOf, fakeBrowserOf, fakeChromeOf, fakePageOf } from "./chrome-helpers";
+import {
+  DEVTOOLS_LINE,
+  inputOf,
+  NEVER,
+  renderSetupOf,
+  type SessionSetup,
+} from "./chrome-session-setup";
 
 const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
   try {
@@ -18,19 +24,27 @@ const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
   throw new Error("预期抛出 HrError");
 };
 
-/** 造一个"非 Error 的拒绝值"：`prefer-promise-reject-errors` 只准拒绝 Error，绕开它才不会让 lint 逼着删掉兜底分支。 */
-const rejectionOf = (reason: string): Promise<string> =>
-  new Promise<string>((_resolve, reject) => {
-    Reflect.apply(reject, undefined, [reason]);
-  });
-
 const sleepOf = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 
+/** 有界条件等待：渲染/信号升级都落在可观察的假对象上，等状态不猜毫秒。 */
+const until = async (ready: () => boolean, what: string): Promise<void> => {
+  const deadline = Date.now() + 3_000;
+  while (!ready() && Date.now() < deadline) {
+    await sleepOf(1);
+  }
+  if (!ready()) throw new Error(`等「${what}」超时`);
+};
+
 const renderWithOf = (setup: SessionSetup, timeoutMs = 1000): Promise<Uint8Array> =>
   renderPdfOf(inputOf(setup.deps, { html: "<p>hi</p>", timeoutMs })).then((result) => result.bytes);
+
+const connectToPageOf =
+  (options = {}) =>
+  () =>
+    Promise.resolve(fakeBrowserOf(fakePageOf(options)));
 
 describe("renderPdfOf · chrome_missing", () => {
   it("HREADER_CHROME 不存在时直接报 chrome_missing", async () => {
@@ -38,7 +52,7 @@ describe("renderPdfOf · chrome_missing", () => {
     const deps = depsWithOf({
       chrome: fakeChromeOf().chrome,
       dirs,
-      connect: () => responderOf({}).transport,
+      connect: connectToPageOf(),
       env: { HREADER_CHROME: "/nope/chrome" },
       exists: () => false,
     });
@@ -52,7 +66,7 @@ describe("renderPdfOf · chrome_missing", () => {
     const deps = depsWithOf({
       chrome: fakeChromeOf().chrome,
       dirs: [],
-      connect: () => responderOf({}).transport,
+      connect: connectToPageOf(),
       env: {},
       exists: () => false,
     });
@@ -69,7 +83,7 @@ describe("renderPdfOf · 系统 Chrome 候选", () => {
     const deps = depsWithOf({
       chrome: fake.chrome,
       dirs: [],
-      connect: () => responderOf({ pages: 2 }).transport,
+      connect: connectToPageOf({ pages: 2 }),
       env: {},
       exists: (path) => path === "/usr/bin/chromium",
       onSpawn: () => {
@@ -89,7 +103,7 @@ describe("renderPdfOf · 启动失败", () => {
     const deps = depsWithOf({
       chrome: fake.chrome,
       dirs: [],
-      connect: () => responderOf({}).transport,
+      connect: connectToPageOf(),
       env: { HREADER_CHROME: "/nope/chrome" },
       exists: (path) => path === "/usr/bin/google-chrome",
     });
@@ -104,7 +118,7 @@ describe("renderPdfOf · 启动失败", () => {
     const deps = depsWithOf({
       chrome: fake.chrome,
       dirs,
-      connect: () => responderOf({}).transport,
+      connect: connectToPageOf(),
       spawnError: "spawn EACCES",
     });
     const error = await failureOf(renderPdfOf(inputOf(deps)));
@@ -116,16 +130,6 @@ describe("renderPdfOf · 启动失败", () => {
 });
 
 describe("renderPdfOf · DevTools 端点", () => {
-  it("DevTools 地址没有端口时报 chrome_failed", async () => {
-    const setup = renderSetupOf();
-    const pending = renderWithOf(setup);
-    setup.fake.stderr("DevTools listening on ws://127.0.0.1/devtools/browser/x\n");
-    const error = await failureOf(pending);
-    expect(error.message).toContain("没有端口");
-    await sleepOf(20);
-    expect(setup.fake.signals).toContain("SIGKILL");
-  });
-
   it("Chrome 提前退出时带 stderr 首行", async () => {
     const setup = renderSetupOf();
     const pending = renderWithOf(setup);
@@ -146,51 +150,21 @@ describe("renderPdfOf · DevTools 端点", () => {
   });
 });
 
-describe("renderPdfOf · 版本端点", () => {
-  it("/json/version 拉取失败映射成 chrome_failed", async () => {
+describe("renderPdfOf · connect 失败", () => {
+  it("connect 拒绝时错误原样透出、临时目录照收", async () => {
     const dirs: string[] = [];
     const fake = fakeChromeOf();
     const deps = depsWithOf({
       chrome: fake.chrome,
       dirs,
-      connect: () => responderOf({}).transport,
-      fetchText: () => Promise.reject(new Error("ECONNREFUSED")),
+      connect: () => Promise.reject(new HrError("chrome_failed", "连接 Chrome 失败：refused")),
     });
     const pending = renderPdfOf(inputOf(deps));
     fake.stderr(DEVTOOLS_LINE);
     const error = await failureOf(pending);
-    expect(error.message).toContain("读取 /json/version 失败：ECONNREFUSED");
+    expect(error.code).toBe("chrome_failed");
+    expect(error.message).toContain("连接 Chrome 失败");
     expect(existsSync(dirs[0] ?? "")).toBe(false);
-  });
-
-  it("没有 webSocketDebuggerUrl 时报 chrome_failed", async () => {
-    const fake = fakeChromeOf();
-    const deps = depsWithOf({
-      chrome: fake.chrome,
-      dirs: [],
-      connect: () => responderOf({}).transport,
-      fetchText: () => Promise.resolve(JSON.stringify({ Browser: "Fake" })),
-    });
-    const pending = renderPdfOf(inputOf(deps));
-    fake.stderr(DEVTOOLS_LINE);
-    const error = await failureOf(pending);
-    expect(error.message).toContain("没有 webSocketDebuggerUrl");
-  });
-});
-
-describe("renderPdfOf · 非 Error 的拒绝值", () => {
-  it("读成一行而不是 [object Object]", async () => {
-    const fake = fakeChromeOf();
-    const deps = depsWithOf({
-      chrome: fake.chrome,
-      dirs: [],
-      connect: () => responderOf({}).transport,
-      fetchText: () => rejectionOf("plain-string"),
-    });
-    const pending = renderPdfOf(inputOf(deps));
-    fake.stderr(DEVTOOLS_LINE);
-    const error = await failureOf(pending);
-    expect(error.message).toContain("读取 /json/version 失败：plain-string");
   });
 });
 
@@ -201,14 +175,14 @@ describe("renderPdfOf · 超时", () => {
     const error = await failureOf(pending);
     expect(error.code).toBe("render_timeout");
     expect(error.message).toContain("渲染超时（0s）");
-    await sleepOf(40);
+    await until(() => setup.fake.signals.length === 2, "SIGKILL 升级");
     expect(setup.fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
     expect(setup.dirs.every((dir) => existsSync(dir))).toBe(false);
   });
 });
 
 describe("renderPdfOf · 成功路径", () => {
-  it("按 /json/version 的端口拼 URL，并清掉临时目录", async () => {
+  it("按 DevTools 行里的 ws 端点直连，并清掉临时目录", async () => {
     const setup = renderSetupOf();
     const pending = renderWithOf(setup);
     // 分两段喂 stderr：覆盖“缓冲区还没凑齐整行”的分支。
@@ -216,66 +190,98 @@ describe("renderPdfOf · 成功路径", () => {
     setup.fake.stderr("ws://127.0.0.1:9222/devtools/browser/fake\n");
     const bytes = await pending;
     expect(bytes.length).toBeGreaterThan(0);
-    expect(setup.requestedUrls).toEqual(["http://127.0.0.1:9222/json/version"]);
     expect(setup.spawnedArgs[0] ?? []).toContain("--headless=new");
     expect(setup.spawnedArgs[0]?.some((arg) => arg.startsWith("--user-data-dir="))).toBe(true);
     const dir = setup.dirs[0] ?? "";
     expect(setup.spawnedArgs[0] ?? []).toContain(`--user-data-dir=${join(dir, "profile")}`);
     expect(existsSync(dir)).toBe(false);
-    await sleepOf(20);
+    await until(() => setup.fake.signals.length === 2, "SIGKILL 升级");
     expect(setup.fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
 });
 
 describe("renderPdfOf · 中断", () => {
   it("stop 一到就报 chrome_failed，且照样收掉进程组与临时目录", async () => {
-    const setup = renderSetupOf({ print: "hang" });
+    const setup = renderSetupOf({ pdf: "hang" });
     let stop: () => void = () => undefined;
     const stopping = new Promise<void>((resolve) => {
       stop = resolve;
     });
     const pending = renderPdfOf(inputOf(setup.deps, { html: "<p>x</p>", stop: stopping }));
     setup.fake.stderr(DEVTOOLS_LINE);
-    await sleepOf(10);
+    // 等渲染真的走到 page.pdf（hang 档记录调用后永不返回）再 stop——
+    // 否则 stop 可能抢在 spawn/connect 之前，中断的根本不是"渲染中"这条路径。
+    await until(() => setup.page.pdfCalls.length > 0, "渲染开始");
     stop();
     const error = await failureOf(pending);
     expect(error.code).toBe("chrome_failed");
     expect(error.message).toContain("渲染被中断");
-    await sleepOf(20);
+    await until(() => setup.fake.signals.length === 2, "SIGKILL 升级");
     expect(setup.fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
     expect(existsSync(setup.dirs[0] ?? "")).toBe(false);
   });
 });
 
-describe("renderPdfOf · 晚绑定 transport", () => {
-  it("超时赢下竞赛后才接上的 transport 会当场关闭", async () => {
+describe("renderPngOf · 长图路径", () => {
+  it("成功路径：长图回传 IHDR 尺寸，进程组与临时目录照收", async () => {
+    const setup = renderSetupOf({ contentHeight: 900 });
+    const pending = renderPngOf({
+      html: "<p>x</p>",
+      width: 800,
+      scale: 2,
+      maxHeight: 20_000,
+      timeoutMs: 1000,
+      stop: NEVER,
+      deps: setup.deps,
+    });
+    setup.fake.stderr(DEVTOOLS_LINE);
+    const image = await pending;
+    expect([image.width, image.height, image.clipped]).toEqual([1600, 1800, false]);
+    expect(existsSync(setup.dirs[0] ?? "")).toBe(false);
+    await until(() => setup.fake.signals.length === 2, "SIGKILL 升级");
+    expect(setup.fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
+  });
+
+  it("渲染失败时错误透出、临时目录照收", async () => {
+    const setup = renderSetupOf({ png: "not-png" });
+    const pending = renderPngOf({
+      html: "<p>x</p>",
+      width: 800,
+      scale: 1,
+      maxHeight: 20_000,
+      timeoutMs: 1000,
+      stop: NEVER,
+      deps: setup.deps,
+    });
+    setup.fake.stderr(DEVTOOLS_LINE);
+    const error = await failureOf(pending);
+    expect(error.code).toBe("render_empty");
+    expect(existsSync(setup.dirs[0] ?? "")).toBe(false);
+  });
+});
+
+describe("renderPdfOf · 晚绑定 browser", () => {
+  it("超时赢下竞赛后才接上的 browser 会当场 disconnect", async () => {
     const fake = fakeChromeOf();
     const dirs: string[] = [];
-    const responder = responderOf({});
-    let closed = 0;
-    const transport = {
-      ...responder.transport,
-      close: () => {
-        closed += 1;
-        responder.transport.close();
-      },
-    };
-    let release: (text: string) => void = () => undefined;
+    const browser = fakeBrowserOf(fakePageOf({}));
+    let release: () => void = () => undefined;
     const deps = depsWithOf({
       chrome: fake.chrome,
       dirs,
-      connect: () => transport,
-      fetchText: () =>
-        new Promise<string>((resolve) => {
-          release = resolve;
+      connect: () =>
+        new Promise((resolve) => {
+          release = () => {
+            resolve(browser);
+          };
         }),
     });
     const pending = renderPdfOf(inputOf(deps, { timeoutMs: 20 }));
     fake.stderr(DEVTOOLS_LINE);
     const error = await failureOf(pending);
     expect(error.code).toBe("render_timeout");
-    release(VERSION_TEXT);
-    await sleepOf(20);
-    expect(closed).toBe(1);
+    release();
+    await until(() => browser.disconnected.count === 1, "迟到的 browser 被 disconnect");
+    expect(browser.disconnected.count).toBe(1);
   });
 });

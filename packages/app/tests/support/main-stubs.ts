@@ -13,6 +13,7 @@ export interface KeyboardLike {
   /** 真 `KeyboardEvent` 必带；`Shift+D` 的 diff 路由靠它（`keys.ts` 读 `shiftKey === true`）。 */
   readonly shiftKey?: boolean;
   readonly target?: unknown;
+  readonly preventDefault?: () => void;
 }
 
 export interface BrowserStubs {
@@ -180,12 +181,15 @@ export const install = (
 export const themes = { themes: ["atelier-editorial", "manuscript"], default: "atelier-editorial" };
 export const model = { revision: "r1", model: { children: [{ id: "hr-a" }] } };
 export const outline = { outline: { nodes: [{ id: "hr-a", level: 1, text: "一" }] } };
+/** `GET /info` 的分流桩：默认 managed（旧行为），外来/未规范化用例自己叠 `info` 应答。 */
+export const info = { revision: "r1", cls: "managed" };
 export const ARTICLE = "<article data-hr-id='hr-a'><p>一</p></article>";
 export const CSS = ":root{--ink:#111}";
 
 export const happy = (url: string): Response => {
   if (url === "/api/theme") return jsonOf(themes);
   if (url.startsWith("/api/theme/")) return textOf(CSS);
+  if (url.endsWith("/info")) return jsonOf(info);
   if (url.endsWith("/model")) return jsonOf(model);
   if (url.endsWith("/outline")) return jsonOf(outline);
   if (url.endsWith("/annotations"))
@@ -216,6 +220,15 @@ export const happy = (url: string): Response => {
 
 export const flush = async (ms = 0): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+/** 有界条件等待：桩的副作用（fetched/calls/bySelector 写入）同步可见，等它出现而不是睡固定毫秒。 */
+export const until = async (ready: () => boolean, what: string): Promise<void> => {
+  const deadline = Date.now() + 3_000;
+  while (!ready() && Date.now() < deadline) {
+    await flush();
+  }
+  if (!ready()) throw new Error(`等「${what}」超时`);
 };
 
 export const load = async (): Promise<void> => {

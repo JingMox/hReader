@@ -1,0 +1,471 @@
+<!DOCTYPE html><html lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>产品周会纪要 · 带录音的笔记</title>
+<style id="hr-theme">/* Atelier Editorial：纸感日间 / 暗夜双模（自动 + 手动覆盖），正文 68ch、侧栏 280px、≤420px 折叠单列。 */
+/* 对比度按 WCAG 2.1 公式（sRGB → 相对亮度 → (L1+0.05)/(L2+0.05)）计算，正文/背景均 ≥ 4.5:1。 */
+
+:root,
+:root[data-hr-mode="light"] {
+  --hr-bg: #faf8f5;
+  --hr-fg: #1b1a17; /* 正文/背景 = 16.42:1 */
+  --hr-muted: #6a645d; /* 次要文字/背景 = 5.51:1 */
+  --hr-accent: #8a4a22; /* 强调色/背景 = 6.43:1 */
+  --hr-warning: #a3341a; /* 警示色/背景 = 6.47:1 */
+  --hr-border: #ddd6cb;
+  --hr-code-bg: #f0ece3;
+  --hr-measure: 68ch;
+  --hr-sidebar: 280px;
+  --hr-space-1: 0.5rem;
+  --hr-space-2: 0.75rem;
+  --hr-space-3: 1rem;
+  --hr-space-4: 1.5rem;
+  --hr-space-5: 2.5rem;
+  --hr-radius: 0.5rem;
+  --hr-serif: "Iowan Old Style", "Songti SC", Georgia, serif;
+  --hr-sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  --hr-mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+/* 手动深色：`data-hr-mode="dark"` 优先于系统偏好（三条路径之一）。 */
+:root[data-hr-mode="dark"] {
+  --hr-bg: #121316;
+  --hr-fg: #e9e6e1; /* 正文/背景 = 14.92:1 */
+  --hr-muted: #9d968c; /* 次要文字/背景 = 6.35:1 */
+  --hr-accent: #e0a97a; /* 强调色/背景 = 8.96:1 */
+  --hr-warning: #ff9b73; /* 警示色/背景 = 9.01:1 */
+  --hr-border: #2b2d33;
+  --hr-code-bg: #1b1d22;
+}
+
+/* 自动深色：`prefers-color-scheme` 只在没有手动声明浅色时生效（第三条路径）。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-hr-mode="light"]) {
+    --hr-bg: #121316;
+    --hr-fg: #e9e6e1;
+    --hr-muted: #9d968c;
+    --hr-accent: #e0a97a;
+    --hr-warning: #ff9b73;
+    --hr-border: #2b2d33;
+    --hr-code-bg: #1b1d22;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--hr-bg);
+  color: var(--hr-fg);
+  font-family: var(--hr-serif);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  text-rendering: optimizeLegibility;
+}
+
+.hr-layout {
+  display: grid;
+  grid-template-columns: minmax(0, var(--hr-measure)) var(--hr-sidebar);
+  gap: var(--hr-space-5);
+  justify-content: center;
+  padding: var(--hr-space-5) var(--hr-space-3);
+}
+
+/* 没有 min-width: 0，长 token 会把 280px 侧栏撑破 → 320px 视宽必然横滚。 */
+.hr-layout > * {
+  min-width: 0;
+}
+
+.hr-sidebar {
+  width: var(--hr-sidebar);
+  font-family: var(--hr-sans);
+  font-size: 0.875rem;
+  color: var(--hr-muted);
+}
+
+article[data-hr-id] {
+  max-width: 68ch; /* = --hr-measure：结构断言要认字面量，令牌留给 grid */
+  overflow-wrap: anywhere;
+}
+
+article[data-hr-id] h1,
+article[data-hr-id] h2,
+article[data-hr-id] h3 {
+  line-height: 1.3;
+  margin: var(--hr-space-5) 0 var(--hr-space-2);
+  letter-spacing: -0.01em;
+}
+
+article[data-hr-id] h2 {
+  border-bottom: 1px solid var(--hr-border);
+  padding-bottom: var(--hr-space-1);
+}
+
+article[data-hr-id] a {
+  color: var(--hr-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+article[data-hr-id] code,
+article[data-hr-id] pre {
+  font-family: var(--hr-mono);
+  font-size: 0.9em;
+  background: var(--hr-code-bg);
+  border-radius: var(--hr-radius);
+}
+
+article[data-hr-id] code {
+  padding: 0.1em 0.35em;
+}
+
+article[data-hr-id] pre {
+  padding: var(--hr-space-3);
+  overflow-x: auto;
+}
+
+article[data-hr-id] blockquote {
+  margin: var(--hr-space-4) 0;
+  padding-left: var(--hr-space-3);
+  border-left: 3px solid var(--hr-border);
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--hr-space-3);
+  margin: var(--hr-space-4) 0;
+}
+
+[data-hr-component="kpi-bento"] > * {
+  padding: var(--hr-space-3);
+  background: var(--hr-code-bg);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="callout-insight"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border-left: 3px solid var(--hr-accent);
+  background: var(--hr-code-bg);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="callout-warning"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border-left: 3px solid var(--hr-warning);
+  background: var(--hr-code-bg);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="split-compare"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--hr-space-3);
+  margin: var(--hr-space-4) 0;
+}
+
+[data-hr-component="split-compare"] > * {
+  min-width: 0;
+  padding: var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="deep-dive"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-2) var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="deep-dive"] > summary {
+  cursor: pointer;
+  font-family: var(--hr-sans);
+  color: var(--hr-muted);
+}
+
+[data-hr-component="step-timeline"] {
+  margin: var(--hr-space-4) 0;
+  padding-left: var(--hr-space-4);
+  border-left: 1px solid var(--hr-border);
+  counter-reset: hr-step;
+}
+
+[data-hr-component="step-timeline"] > li {
+  counter-increment: hr-step;
+  list-style: none;
+  margin-bottom: var(--hr-space-3);
+}
+
+[data-hr-component="diagram-stage"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  background: var(--hr-code-bg);
+  overflow-x: auto;
+}
+
+[data-hr-component="diagram-stage"] figcaption {
+  font-family: var(--hr-sans);
+  font-size: 0.8125rem;
+  color: var(--hr-muted);
+}
+
+/* 组件细节：KPI 大数字、时间线节点、标题层级、侧栏卡片（只增不改，上面的结构规则保持原样）。 */
+article[data-hr-id] > h1 {
+  font-size: 2.25rem;
+  line-height: 1.2;
+  margin-top: 0;
+}
+
+article[data-hr-id] > header p {
+  font-family: var(--hr-sans);
+  font-size: 0.875rem;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] > * > p {
+  margin: 0;
+  font-family: var(--hr-sans);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] > * > p:first-child {
+  margin-bottom: var(--hr-space-1);
+  font-family: var(--hr-serif);
+  font-size: 1.875rem;
+  line-height: 1.15;
+  color: var(--hr-accent);
+}
+
+[data-hr-component="callout-insight"] > p,
+[data-hr-component="callout-warning"] > p {
+  margin: 0;
+}
+
+[data-hr-component="split-compare"] > * > p:first-child {
+  margin-top: 0;
+  font-family: var(--hr-sans);
+}
+
+[data-hr-component="deep-dive"][open] > summary {
+  margin-bottom: var(--hr-space-2);
+}
+
+[data-hr-component="step-timeline"] > li {
+  position: relative;
+}
+
+[data-hr-component="step-timeline"] > li::before {
+  content: counter(hr-step);
+  position: absolute;
+  left: calc(-1 * var(--hr-space-4) - 0.75rem);
+  top: 0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--hr-bg);
+  border: 1px solid var(--hr-accent);
+  color: var(--hr-accent);
+  font-family: var(--hr-sans);
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+[data-hr-component="step-timeline"] > li > p:first-child {
+  margin-bottom: 0;
+}
+
+[data-hr-component="diagram-stage"] {
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="diagram-stage"] img,
+[data-hr-component="diagram-stage"] svg,
+[data-hr-component="diagram-stage"] video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+[data-hr-component="diagram-stage"] audio {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--hr-space-2);
+}
+
+.hr-sidebar > * {
+  position: sticky;
+  top: var(--hr-space-5);
+}
+
+.hr-sidebar dl {
+  margin: 0;
+}
+
+.hr-sidebar dt {
+  margin-top: var(--hr-space-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hr-sidebar dd {
+  margin: 0;
+  color: var(--hr-fg);
+}
+
+.hr-sidebar a {
+  color: var(--hr-accent);
+  text-underline-offset: 0.2em;
+}
+
+/* ≤420px 视宽折叠成单列：结构断言只查这条断点与 grid-template-columns 的单值。 */
+@media (max-width: 420px) {
+  .hr-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--hr-space-3);
+    padding: var(--hr-space-3) var(--hr-space-2);
+  }
+
+  .hr-sidebar {
+    width: auto;
+  }
+}
+
+@media print {
+  .hr-sidebar,
+  .hr-toc-toggle,
+  .hr-mode-toggle,
+  button {
+    display: none;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  [data-hr-component="callout-insight"],
+  [data-hr-component="callout-warning"],
+  [data-hr-component="kpi-bento"] {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
+
+/* M4.3 打印稿：纸面永远是日间配色（AC-6「深色变量覆盖」）。
+   打印稿是独立文件，读者的 `prefers-color-scheme: dark` 与 `data-hr-mode` 都可能命中，
+   故这里用比上面三条路径更高的选择器优先级强制回落成日间值；只影响 print 介质。 */
+@media print {
+  :root,
+  :root[data-hr-mode="dark"],
+  :root:not([data-hr-mode="light"]) {
+    --hr-bg: #ffffff;
+    --hr-fg: #000000;
+    --hr-muted: #4a4a4a;
+    --hr-accent: #6b3a1a;
+    --hr-warning: #8a2a12;
+    --hr-border: #b8b8b8;
+    --hr-code-bg: #f4f4f4;
+  }
+}
+</style></head>
+<body>
+<main class="hr-layout">
+<article data-hr-id="root">
+<header data-hr-id="hr-d777b42a">
+<p data-hr-id="hr-208d2610">示例文档 · 会议纪要 · 2026-11-20 · 3 段录音共 43 秒</p>
+</header>
+<h1 data-hr-id="hr-46c65c7b">产品周会纪要：导出、音频笔记与安装门槛</h1>
+
+<aside data-hr-component="callout-insight" data-hr-id="hr-6dcad21b">
+<p data-hr-id="hr-62bb968e">结论先行：这周只修导出 PDF；音频笔记先做“卡片 + 折叠逐字稿”，不做实时转写；首页改推 MCP / Skill 安装方式，降低第一步的门槛。</p>
+</aside>
+
+<section data-hr-component="kpi-bento" data-hr-id="hr-cac9ffe5">
+<div data-hr-id="hr-d360a9e9"><p data-hr-id="hr-5d2f5674">3 项</p><p data-hr-id="hr-b6e9c302">本次会议拍板的决定</p></div>
+<div data-hr-id="hr-e5ac356d"><p data-hr-id="hr-91df8717">4 条</p><p data-hr-id="hr-795d3b40">带负责人与截止日的待办</p></div>
+<div data-hr-id="hr-ace928b6"><p data-hr-id="hr-c71a07ed">43 秒</p><p data-hr-id="hr-de5fcced">3 段录音，每段都配了摘要和逐字稿</p></div>
+</section>
+
+<section data-hr-id="hr-dfbce8cf">
+<h2 data-hr-id="hr-ddbbdcef">议题一：导出 PDF 必须本周修好</h2>
+<figure data-hr-component="diagram-stage" data-hr-id="hr-6b9e3e63">
+<audio controls="" preload="metadata" src="assets/r1.m4a"></audio>
+<figcaption data-hr-id="hr-c631b287">录音 1 · 00:15 · 发言：产品负责人</figcaption>
+</figure>
+<p data-hr-id="hr-99b9cff8">用户反馈里约三分之一和导出 PDF 有关，主要是超长标题被截断。本周先绕过：标题超过阈值时在目录里截短，正文保留全文；根治方案放到下周。</p>
+<details data-hr-component="deep-dive" data-hr-id="hr-d3c57c43">
+<summary>展开逐字稿</summary>
+<p data-hr-id="hr-c7f9fb9f">先说结论吧。导出 PDF 这周必须修好，用户反馈里有三分之一都在说这件事。我建议先把超长标题的问题绕过去，下周再彻底解决。</p>
+</details>
+</section>
+
+<section data-hr-id="hr-7896e55f">
+<h2 data-hr-id="hr-fa5b2975">议题二：音频笔记先做“整齐”，再做“智能”</h2>
+<figure data-hr-component="diagram-stage" data-hr-id="hr-48194f31">
+<audio controls="" preload="metadata" src="assets/r2.m4a"></audio>
+<figcaption data-hr-id="hr-e8f2d663">录音 2 · 00:13 · 发言：设计</figcaption>
+</figure>
+<p data-hr-id="hr-32748a91">大家同意：笔记里音频一多就乱，根因是每段音频的呈现方式都不一样。先统一成“录音卡片 + 一段摘要 + 折叠的逐字稿”，这份纪要本身就是这个格式。</p>
+<section data-hr-component="split-compare" data-hr-id="hr-6041c25e">
+<div data-hr-id="hr-5f78a289">
+<p data-hr-id="hr-cb1d3862"><strong>方案 A：先做实时转写</strong></p>
+<p data-hr-id="hr-bd5168c0">功能亮眼，但依赖语音模型和计费，两周内做不完；排版问题依旧没解决。</p>
+</div>
+<div data-hr-id="hr-104e27c8">
+<p data-hr-id="hr-1c64d227"><strong>方案 B：先统一呈现格式（采纳）</strong></p>
+<p data-hr-id="hr-d4831e27">一周可交付；逐字稿先由 AI 离线生成，格式稳定后再接实时转写。</p>
+</div>
+</section>
+<details data-hr-component="deep-dive" data-hr-id="hr-3ed1096d">
+<summary>展开逐字稿</summary>
+<p data-hr-id="hr-2ad74cec">关于音频笔记，我的看法是不要一上来就做实时转写。先把音频卡片和逐字稿的折叠做出来，排版整齐了，用户自己就会用起来。</p>
+</details>
+</section>
+
+<section data-hr-id="hr-3eaf05d5">
+<h2 data-hr-id="hr-078c6057">议题三：安装门槛</h2>
+<figure data-hr-component="diagram-stage" data-hr-id="hr-eb8b0a2f">
+<audio controls="" preload="metadata" src="assets/r3.m4a"></audio>
+<figcaption data-hr-id="hr-db8e315d">录音 3 · 00:15 · 发言：工程</figcaption>
+</figure>
+<aside data-hr-component="callout-warning" data-hr-id="hr-9afbc5c2">
+<p data-hr-id="hr-8fc19435">风险：桌面版要求本机装有 Node 22，非开发者很可能卡在第一步。首页先推 MCP / Skill，桌面版标注为“开发者预览”。</p>
+</aside>
+<details data-hr-component="deep-dive" data-hr-id="hr-d7330f03">
+<summary>展开逐字稿</summary>
+<p data-hr-id="hr-38bf62f8">风险在于安装门槛。现在桌面版要求本机有 Node 二十二，很多非开发者会卡在第一步。我建议首页优先推荐 MCP 和 Skill 的安装方式。</p>
+</details>
+</section>
+
+<section data-hr-id="hr-a2fa41c2">
+<h2 data-hr-id="hr-84653692">待办</h2>
+<ol data-hr-component="step-timeline" data-hr-id="hr-0d39879d">
+<li data-hr-id="hr-d2bf99eb"><p data-hr-id="hr-bcb6a308"><strong>周二 · 工程</strong></p><p data-hr-id="hr-97efba03">导出目录里的超长标题截短，正文保留全文。</p></li>
+<li data-hr-id="hr-a51a16d7"><p data-hr-id="hr-d3f78b07"><strong>周三 · 设计</strong></p><p data-hr-id="hr-7280bcf5">定稿“录音卡片”的样式，覆盖浅色和深色两套配色。</p></li>
+<li data-hr-id="hr-7baa7f58"><p data-hr-id="hr-7756616b"><strong>周四 · 产品</strong></p><p data-hr-id="hr-1a72cd1f">首页改为优先展示 MCP / Skill 一行安装。</p></li>
+<li data-hr-id="hr-42c150bc"><p data-hr-id="hr-5bfbbd68"><strong>周五 · 全员</strong></p><p data-hr-id="hr-3030cbd7">用这个格式重写上周的三份会议纪要，验证是否真的更好读。</p></li>
+</ol>
+</section>
+</article>
+<aside class="hr-sidebar">
+<div>
+<dl>
+<dt>文档类型</dt><dd>会议纪要（虚构示例）</dd>
+<dt>生成方式</dt><dd>AI 起草，只使用 hReader 的语义组件</dd>
+<dt>录音</dt><dd>3 段，文件与 HTML 放在同一目录</dd>
+<dt>主题</dt><dd>atelier-editorial，自动跟随深浅色</dd>
+</dl>
+</div>
+</aside>
+</main>
+
+
+</body></html>

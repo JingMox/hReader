@@ -29,7 +29,7 @@ export const validIdOf = (node: HtmlElementNode): string => {
   return id !== undefined && HR_ID_PATTERN.test(id) ? id : "";
 };
 
-/** 白名单内的 component 才进模型；非法值留空（诊断由 M1.1 解析层发，不重复发）。 */
+/** 白名单内的 component 才进模型；非法值留空（诊断由解析层发，不重复发）。 */
 export const componentOf = (node: HtmlElementNode): string | undefined => {
   const value = attributeOf(node, COMPONENT_ATTRIBUTE);
   return value !== undefined && COMPONENT_WHITELIST.includes(value) ? value : undefined;

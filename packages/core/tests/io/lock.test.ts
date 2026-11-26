@@ -27,27 +27,25 @@ const OWNER = "others000001";
 const payloadOf = (at: number, overrides: Record<string, unknown> = {}): string =>
   JSON.stringify({ pid: process.pid, nonce: OWNER, at, ...overrides });
 
-const clock = fixedClock(NOW);
-
-const depsAt = (fake: FakeFs, sleep: (ms: number) => Promise<void>): PatchDeps =>
-  depsOf(fake.port, clock.clock, sleep);
+/** 每个用例一座钟 + 推进这座钟的 sleep：acquireLock 的截止与重试步进必须同源；
+ *  共用模块级时钟会让先跑用例的重试把时间推进到后跑用例的断言里（乱序即炸）。 */
+const rigged = (
+  fake: FakeFs,
+): { readonly deps: PatchDeps; readonly sleep: ReturnType<typeof recordingSleep> } => {
+  const local = fixedClock(NOW);
+  const sleep = recordingSleep(local);
+  return { deps: depsOf(fake.port, local.clock, sleep.sleep), sleep };
+};
 
 const seeded = (content: string): FakeFs => fakeFs({ "/ws/a.html": "x", [LOCK_PATH]: content });
 
-const lockedWith = async (
-  fake: FakeFs,
-  timeoutMs: number,
-  sleep = recordingSleep(clock),
-): Promise<string> =>
-  codeOfAsync(() => acquireLock({ path: LOCK_PATH, timeoutMs }, depsAt(fake, sleep.sleep)));
+const lockedWith = async (fake: FakeFs, timeoutMs: number, deps?: PatchDeps): Promise<string> =>
+  codeOfAsync(() => acquireLock({ path: LOCK_PATH, timeoutMs }, deps ?? rigged(fake).deps));
 
 describe("acquireLock · 创建与释锁", () => {
   it("should write an owner payload and delete the lock on release", async () => {
     const fake = fakeFs({ "/ws/a.html": "x" });
-    const handle = await acquireLock(
-      { path: LOCK_PATH, timeoutMs: 0 },
-      depsAt(fake, recordingSleep(clock).sleep),
-    );
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps);
     const payload: unknown = JSON.parse(fake.textAt(LOCK_PATH));
 
     expect(Reflect.get(Object(payload), "pid")).toBe(process.pid);
@@ -59,10 +57,7 @@ describe("acquireLock · 创建与释锁", () => {
 
   it("should keep a lock that was taken over while we held it", async () => {
     const fake = fakeFs({ "/ws/a.html": "x" });
-    const handle = await acquireLock(
-      { path: LOCK_PATH, timeoutMs: 0 },
-      depsAt(fake, recordingSleep(clock).sleep),
-    );
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps);
     fake.state.files.set(LOCK_PATH, encodeUtf8(payloadOf(NOW)));
     await handle.release();
 
@@ -71,10 +66,7 @@ describe("acquireLock · 创建与释锁", () => {
 
   it("should swallow release read errors so the real error survives", async () => {
     const fake = fakeFs({ "/ws/a.html": "x" });
-    const handle = await acquireLock(
-      { path: LOCK_PATH, timeoutMs: 0 },
-      depsAt(fake, recordingSleep(clock).sleep),
-    );
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps);
     fake.fail("readFile", systemError("EACCES"));
     await expect(handle.release()).resolves.toBeUndefined();
 
@@ -83,9 +75,9 @@ describe("acquireLock · 创建与释锁", () => {
 });
 describe("acquireLock · 重试超时", () => {
   it("should retry every 25ms for the default 2000ms budget and then report locked", async () => {
-    const sleep = recordingSleep(clock);
     const fake = seeded(payloadOf(NOW));
-    expect(await lockedWith(fake, DEFAULT_LOCK_TIMEOUT_MS, sleep)).toBe("locked");
+    const { deps, sleep } = rigged(fake);
+    expect(await lockedWith(fake, DEFAULT_LOCK_TIMEOUT_MS, deps)).toBe("locked");
 
     expect(sleep.calls).toHaveLength(Math.ceil(DEFAULT_LOCK_TIMEOUT_MS / LOCK_RETRY_MS));
     expect(sleep.calls).toHaveLength(80);
@@ -95,10 +87,9 @@ describe("acquireLock · 重试超时", () => {
 
   it("should name the lock path in the locked error", async () => {
     const fake = seeded(payloadOf(NOW));
-    const failure = await acquireLock(
-      { path: LOCK_PATH, timeoutMs: 0 },
-      depsAt(fake, recordingSleep(clock).sleep),
-    ).catch((error: unknown) => error);
+    const failure = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps).catch(
+      (error: unknown) => error,
+    );
 
     expect(failure).toBeInstanceOf(HrError);
     expect(String(Reflect.get(Object(failure), "message"))).toContain(LOCK_PATH);
@@ -120,10 +111,10 @@ describe("acquireLock · 陈旧判定边界", () => {
   });
 
   it("should take over a lock one millisecond past the live-pid window", async () => {
-    const sleep = recordingSleep(clock);
     const fake = seeded(payloadOf(NOW - 120_000 - 1));
+    const { deps, sleep } = rigged(fake);
     fake.state.mtimes.set(LOCK_PATH, NOW - 120_000 - 1);
-    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, depsAt(fake, sleep.sleep));
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, deps);
 
     expect(sleep.calls).toEqual([]);
     expect(fake.state.files.has(LOCK_PATH)).toBe(true);
@@ -140,8 +131,7 @@ describe("acquireLock · 接管各种残骸", () => {
   ])("should take over a lock from %s", async (_label, content) => {
     const fake = seeded(content);
     fake.state.mtimes.set(LOCK_PATH, NOW - 60_000);
-    const sleep = recordingSleep(clock);
-    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, depsAt(fake, sleep.sleep));
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps);
 
     expect(fake.textAt(LOCK_PATH)).not.toBe(content);
     await handle.release();
@@ -149,12 +139,11 @@ describe("acquireLock · 接管各种残骸", () => {
   });
 
   it("should refuse a second takeover so two writers cannot livelock", async () => {
-    const sleep = recordingSleep(clock);
     const fake = seeded(payloadOf(NOW - 120_000 - 1));
     fake.state.mtimes.set(LOCK_PATH, NOW - 120_000 - 1);
     fake.fail("rename", systemError("EACCES"), (path) => path === LOCK_PATH);
 
-    expect(await lockedWith(fake, 0, sleep)).toBe("locked");
+    expect(await lockedWith(fake, 0)).toBe("locked");
     expect(fake.textAt(LOCK_PATH)).toBe(payloadOf(NOW - 120_000 - 1));
   });
 });
@@ -188,7 +177,7 @@ describe("runLocked · 释锁时机", () => {
     storeDir: `${WS}/.hreader`,
     lockPath: LOCK_PATH,
   };
-  const depsFor = (fake: FakeFs): PatchDeps => depsAt(fake, recordingSleep(clock).sleep);
+  const depsFor = (fake: FakeFs): PatchDeps => rigged(fake).deps;
 
   it("should release after the work resolves", async () => {
     const fake = fakeFs({ "/ws/a.html": "x" });
@@ -241,5 +230,79 @@ describe("acquireLock · 接管 CAS 不符（读完之后锁被换掉）", () =>
     await handle.release();
     expect(fake.state.files.has(lock)).toBe(false);
     expect([...fake.state.files.keys()].some((path) => path.includes(".steal-"))).toBe(false);
+  });
+});
+
+describe("acquireLock · 坏锁体按'不可解析'口径处理", () => {
+  // 坏载荷只有一条陈旧窗口（STALE_UNPARSABLE 5s）：窗口内是"活着的锁"，
+  // 守卫放错方向会把坏锁当活锁（永远抢不走）或当新锁等满 120s。
+  it.each([
+    ["pid 负数", payloadOf(NOW, { pid: -5 })],
+    ["pid 非整数", payloadOf(NOW, { pid: 1.5 })],
+    ["pid 是字符串", payloadOf(NOW, { pid: "7" })],
+    ["nonce 空串", payloadOf(NOW, { nonce: "" })],
+    ["nonce 非字符串", payloadOf(NOW, { nonce: 1 })],
+    ["at 非数字", payloadOf(NOW, { at: "x" })],
+    ["JSON 标量", "5"],
+    ["JSON null", "null"],
+  ])("should treat a young malformed lock (%s) as held, not stealable", async (_label, content) => {
+    const local = fixedClock(NOW);
+    const sleep = recordingSleep(local);
+    const fake = seeded(content);
+    fake.state.mtimes.set(LOCK_PATH, NOW - 1_000);
+
+    const code = await codeOfAsync(() =>
+      acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, depsOf(fake.port, local.clock, sleep.sleep)),
+    );
+
+    expect(code).toBe("locked");
+  });
+
+  it("should take over a malformed lock once past the unparsable window", async () => {
+    const fake = seeded('{"pid":"x","nonce":1,"at":"y"}');
+    fake.state.mtimes.set(LOCK_PATH, NOW - 5_001);
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps);
+
+    expect(fake.textAt(LOCK_PATH)).not.toBe('{"pid":"x","nonce":1,"at":"y"}');
+    await handle.release();
+  });
+
+  it("should keep a malformed lock still inside the unparsable window", async () => {
+    const local = fixedClock(NOW);
+    const sleep = recordingSleep(local);
+    const fake = seeded('{"pid":"x","nonce":1,"at":"y"}');
+    fake.state.mtimes.set(LOCK_PATH, NOW - 5_000);
+
+    const code = await codeOfAsync(() =>
+      acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, depsOf(fake.port, local.clock, sleep.sleep)),
+    );
+
+    expect(code).toBe("locked");
+  });
+
+  it("should take over a young lock whose owner pid is already dead", async () => {
+    // pid 死透了就没有窗口期可谈：立刻接管，不等 120s 活锁窗口。
+    const fake = seeded(payloadOf(NOW, { pid: 2_147_400_000 }));
+    fake.state.mtimes.set(LOCK_PATH, NOW - 1_000);
+    const handle = await acquireLock({ path: LOCK_PATH, timeoutMs: 0 }, rigged(fake).deps);
+
+    expect(fake.state.files.has(LOCK_PATH)).toBe(true);
+    await handle.release();
+  });
+});
+
+describe("acquireLock · 超时与报文", () => {
+  it("should name the wait budget and the path in the timeout message", async () => {
+    const fake = seeded(payloadOf(NOW));
+    fake.state.mtimes.set(LOCK_PATH, NOW);
+    const error = await acquireLock({ path: LOCK_PATH, timeoutMs: 3 }, rigged(fake).deps).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+
+    expect(error).toBeInstanceOf(HrError);
+    expect(Reflect.get(Object(error), "code")).toBe("locked");
+    expect(Reflect.get(Object(error), "message")).toContain("3ms");
+    expect(Reflect.get(Object(error), "message")).toContain(LOCK_PATH);
   });
 });

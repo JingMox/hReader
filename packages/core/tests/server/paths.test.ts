@@ -72,10 +72,7 @@ describe("paths · 编码逃逸（续）", () => {
     });
   });
 
-  // 真 bug：NUL 落到 `resolveTarget` 后由 `realpath` 抛 ERR_INVALID_ARG_VALUE（非 HrError），
-  // 被兜底成 500 `io_failure`；语义上这是坏输入，应为 400 `invalid_request`（且不触碰磁盘）。
-  // KD-06
-  it.fails("should reject a NUL byte as invalid_request (400)", async () => {
+  it("should reject a NUL byte as invalid_request (400)", async () => {
     await withServer(async (ctx) => {
       const response = await httpCall(ctx.port, {
         path: "/api/doc/a%00b.html/model",
@@ -83,6 +80,7 @@ describe("paths · 编码逃逸（续）", () => {
       });
 
       expect(response.status).toBe(400);
+      expect(jsonCodeOf(response.body)).toBe("invalid_request");
     });
   });
 });
@@ -97,6 +95,18 @@ describe("paths · 编码逃逸（续）（续）", () => {
 
       expect(response.status).toBeGreaterThanOrEqual(400);
       expect(existsSync(join(ctx.workspace, "..", OUTSIDE))).toBe(false);
+    });
+  });
+
+  it("should answer not_a_file (404) for a name over the fs segment limit", async () => {
+    await withServer(async (ctx) => {
+      const response = await httpCall(ctx.port, {
+        path: `/api/doc/${"a".repeat(300)}.html/model`,
+        headers: { cookie: cookieOf(ctx.token) },
+      });
+
+      expect(response.status).toBe(404);
+      expect(jsonCodeOf(response.body)).toBe("not_a_file");
     });
   });
 });

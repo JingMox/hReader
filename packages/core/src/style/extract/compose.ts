@@ -11,7 +11,7 @@ const RULE_WORDS = 5;
 
 const wordsOf = (words: readonly string[]): string => words.slice(0, TOP_WORDS).join("、");
 
-/** 各分段都是定长模板，最长不超过 100 字（卡 §4 的 200 字上限由此结构性成立，无需截断）。 */
+/** 各分段都是定长模板，最长不超过 100 字（200 字上限由此结构性成立，无需截断）。 */
 const personaOf = (stats: ExtractStats, recommended: readonly string[]): string => {
   const head = `以 ${String(stats.averageSentenceChars)} 字左右的句子写作，每段不超过 ${String(stats.maxParagraphSentences)} 句`;
   const tail = recommended.length === 0 ? "" : `，常用词：${wordsOf(recommended)}`;
@@ -48,7 +48,7 @@ export const styleSpecOf = (
       style: `平均句长约 ${String(stats.averageSentenceChars)} 字`,
     },
     vocabulary: { forbidden, recommended },
-    // 纯统计版给不出正反例（卡 D2）：LLM 路径才填 `examples`。
+    // 纯统计版给不出正反例：LLM 路径才填 `examples`。
     examples: [],
   },
 });

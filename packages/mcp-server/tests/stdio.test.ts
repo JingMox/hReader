@@ -1,4 +1,4 @@
-// 这层管：被交付的那个产物——AC-4 要求的高风险面。
+// 这层管：被交付的那个产物——高风险面。
 // 测的是 `package.json` 的 `bin` 指向的 `dist/main.js`（宿主唯一会 spawn 的东西），不是 src：
 // 真子进程、真 stdio，逐行验证 stdout 只有 JSON-RPC 帧；错误路径同样不许往 stdout 漏一个字符。
 // 坏输入与超限帧在 `stream.test.ts`，探针本身在 `probe.ts`。
@@ -63,6 +63,7 @@ describe("dist/main.js · tool surface", () => {
     expect([...toolNamesOf(frames)].sort()).toEqual([
       "hr_apply_style",
       "hr_create_doc",
+      "hr_import_doc",
       "hr_outline",
       "hr_patch_node",
       "hr_read_node",
@@ -114,7 +115,7 @@ const injectedThemeOf = (html: string): string =>
   /<style id="hr-theme">([\s\S]*?)<\/style>/u.exec(html)?.[1] ?? "";
 
 describe("dist/main.js · 风格三出口", () => {
-  // G3 P0-2：内置预设的 theme.css 在源码布局里找得到、在 bundle 里找不到——只有真产物能证明这件事。
+  // 内置预设的 theme.css 在源码布局里找得到、在 bundle 里找不到——只有真产物能证明这件事。
   it("should serve a builtin preset through the tool, the resource and the prompt alike", async () => {
     const styleDir = await mkdtemp(join(tmpdir(), "hreader-mcp-style-"));
     await writeFile(join(styleDir, "a.html"), ANNOTATED_DOC, "utf8");

@@ -15,7 +15,7 @@ export interface ResolvedTarget {
   readonly realPath: string;
   /** 相对 workspace 的正斜杠路径：history 目录名与锁文件名都由它派生。 */
   readonly relative: string;
-  /** workspace 的真实路径：原子写每次落盘前都要拿它复核父目录（P0-1）。 */
+  /** workspace 的真实路径：原子写每次落盘前都要拿它复核父目录。 */
   readonly workspace: string;
   readonly storeDir: string;
   /** 该文件的锁文件路径：编排层用它加锁，锁的粒度是"一个文件"。 */
@@ -60,7 +60,7 @@ const storeErrorOf = (relativePath: string, file: string): HrError | undefined =
 /**
  * 两道校验各管一类逃逸：词法拦 `..`/绝对路径（文件不存在也要拦得住），
  * realpath 拦"父目录是指向 workspace 外的符号链接"（词法看不出来）。
- * 这里只是第一道；写盘前的两道复核在 `atomic.ts`（P0-1）。
+ * 这里只是第一道；写盘前的两道复核在 `atomic.ts`。
  *
  * `file` 也是 `serve` 的 docId、`/api/doc/:docId/*` 的路径参数：这里的三条就是它全部的合法面
  * （不是 workspace 绝对路径、不靠 `..` 逃跑、不进 `.hreader/**`），平铺目录里的 `a.html` 属于合法，
@@ -74,6 +74,9 @@ export const resolveTarget = async (
     throw new HrError("invalid_input", `workspace 必须是绝对路径：${input.workspace}`);
   }
   if (input.file.length === 0) throw new HrError("not_a_file", "file 不能为空");
+  // NUL 永远过不了任何 fs 调用（ERR_INVALID_ARG_VALUE 不是 HrError，会兜底成 500）：
+  // 在触碰磁盘前按坏输入拒掉。
+  if (input.file.includes("\0")) throw new HrError("invalid_request", "file 不能含 NUL 字节");
   if (isAbsolute(input.file)) throw outside("不接受绝对路径", input.file);
   const workspaceAbs = resolve(input.workspace);
   const lexical = resolve(workspaceAbs, input.file);

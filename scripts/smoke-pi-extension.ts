@@ -1,4 +1,4 @@
-// 这层管：D10 的手工烟测门——扩展的 Pi 类型是手抄的窄接口（本仓没有编译器盯着它），
+// 这层管：Pi 扩展的手工烟测门——扩展的 Pi 类型是手抄的窄接口（本仓没有编译器盯着它），
 // 唯一的真验证是让真 `pi` 加载这个文件一次。**不进 CI**（需要本机装 pi、要起真进程）。
 // 用法：`pnpm smoke:pi`。
 //
@@ -104,7 +104,7 @@ check(
   `退出码 ${String(control.status)}；事件：${controlTypes.join(",") || "无"}；输出：${control.output}`,
 );
 
-// AC-5 也要一条真加载的证据：`/hr-style` 同样必须是**命令**（print 模式下静默结束，不进模型回合）。
+// 也要一条真加载的证据：`/hr-style` 同样必须是**命令**（print 模式下静默结束，不进模型回合）。
 const styled = runPi([...BASE, "--extension", EXTENSION, "--print", "/hr-style"]);
 const styledTypes = eventTypesOf(styled.output);
 check(

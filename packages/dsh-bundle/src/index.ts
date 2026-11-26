@@ -145,7 +145,7 @@ const depsOf = (workspace: string): StyleDeps => ({
 const promptOf = async (deps: StyleDeps, styleId: string): Promise<string> => {
   const ids = await availableIdsOf(deps);
   if (!ids.includes(styleId)) {
-    // 文案必须列出可用 id：拼错的 styleId 若退默认风格，作者永远发现不了（D9 取 fail-fast）。
+    // 文案必须列出可用 id：拼错的 styleId 若退默认风格，作者永远发现不了（取 fail-fast）。
     throw new HrError(
       "unknown_style",
       `未知 styleId：${styleId}；已查内置预设、${deps.projectRoot} 的项目风格、~/.hreader/styles；` +

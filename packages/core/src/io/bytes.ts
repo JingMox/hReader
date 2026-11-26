@@ -6,7 +6,7 @@ import type { FileSystem } from "./ports";
 
 const encoder = new TextEncoder();
 
-/** `ignoreBOM: true` 让 BOM 留在文本里：默认会吞掉它，往返就少 3 字节（AC4 要求逐字节一致）。 */
+/** `ignoreBOM: true` 让 BOM 留在文本里：默认会吞掉它，往返就少 3 字节（往返要求逐字节一致）。 */
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 export const encodeUtf8 = (text: string): Uint8Array => encoder.encode(text);

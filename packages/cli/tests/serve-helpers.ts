@@ -1,6 +1,6 @@
 // 这层管：serve 系测试共享的真临时目录与"怎么让它停下"（无断言决策）。
 
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -47,11 +47,14 @@ export const stopHandle = (): StopHandle => {
   return { stop, stopped: stopped };
 };
 
-/** `serveCommand` 收完尸体是 `await stop` 之后的微任务，等一小段再断言"文件没了"。 */
-export const settle = async (): Promise<void> => {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 50);
-  });
+/** 收尾清 daemon.json 是 `await stop` 之后的异步链：轮询到文件真的没了再断言（3s 上界），不猜固定毫秒。 */
+export const waitGone = async (path: string): Promise<void> => {
+  const deadline = Date.now() + 3_000;
+  while (existsSync(path) && Date.now() < deadline) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  }
 };
 
 /** 固定 `launchParentPid` 是个真 pid（本进程的父）；要演"父已死"的用例自己 spread 覆盖。 */

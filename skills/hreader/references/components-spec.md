@@ -114,6 +114,35 @@
 </figure>
 ```
 
+## 8. 媒体卡片 `media-card`
+
+录音或视频的统一外壳：播放器 + 图注（时长、发言人、来源）+ 可选的折叠逐字稿，三样永远在同一个位置。`<figure>` 里必须有 `<audio>` 或 `<video>`，也必须有 `<figcaption>`；逐字稿用一个普通的 `<details>` 放在最后。
+
+```html
+<figure data-hr-component="media-card">
+  <audio controls preload="metadata" src="assets/weekly-01.m4a"></audio>
+  <figcaption>录音 1 · 00:15 · 发言：产品负责人</figcaption>
+  <details>
+    <summary>展开逐字稿</summary>
+    <p>先说结论：导出 PDF 这周必须修好，用户反馈里有三分之一都在说这件事。</p>
+  </details>
+</figure>
+```
+
+## 结构规约（`hr check` 与 `hr patch` 会查）
+
+| 组件                                 | 根标签                      | 直接子元素                                   |
+| ------------------------------------ | --------------------------- | -------------------------------------------- |
+| `kpi-bento`                          | `section` / `div` / `ul`    | 3–6 个                                       |
+| `callout-insight`、`callout-warning` | `aside` / `div` / `section` | 不限                                         |
+| `split-compare`                      | `section` / `div`           | 恰好 2 个                                    |
+| `deep-dive`                          | `details`                   | 必须有 `summary`                             |
+| `step-timeline`                      | `ol`                        | 必须有 `li`                                  |
+| `diagram-stage`                      | `figure`                    | 必须有 `figcaption`                          |
+| `media-card`                         | `figure`                    | 必须有 `audio` 或 `video`，且有 `figcaption` |
+
+不合规不会被拒写：片段照常落盘，问题随 `hr patch` 回执的 `warnings` 给出（`component_root` / `component_shape` / `inline_style`），整篇用 `hr check <file>` 复查。看到 warning 就再 patch 一次改掉，再说“完成”。
+
 ## 反面清单
 
 - 不要给组件加内联 `style`、`class` 之外的自定义属性：主题只认 `data-hr-component`。

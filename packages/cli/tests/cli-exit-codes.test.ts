@@ -40,7 +40,7 @@ describe("退出码 1 · 业务失败", () => {
 
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      // F19 起报文只有一句：`hr-nope` 是合规 id 形态、文档里没有，报 node_not_found 那一句。
+      // 报文只有一句：`hr-nope` 是合规 id 形态、文档里没有，报 node_not_found 那一句。
       expect(result.stderr).toContain('文档里没有 id 为 "hr-nope" 的节点。');
       expect(sha(path)).toBe(before);
     });
@@ -123,7 +123,9 @@ describe("退出码 2 · 用法错误", () => {
 
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("缺少命令：normalize | outline | read | patch | style");
+    expect(result.stderr).toContain(
+      "缺少命令：new | import | normalize | outline | read | patch | check",
+    );
     expect(result.stderr).toContain("用法：");
   });
 

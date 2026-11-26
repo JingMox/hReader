@@ -6,7 +6,6 @@ import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
 import { pdfCommand, type PdfCommandInput, type RenderPdf } from "../src/commands/pdf";
-import { fieldOf } from "../src/chrome/protocol";
 import { pdfOf } from "./chrome-helpers";
 import {
   bytesOf,
@@ -15,7 +14,7 @@ import {
   pdfWithBookmarksOf,
   withOutlinesOf,
 } from "./helpers/pdf-fixtures";
-import { withTempDir } from "./harness";
+import { fieldOf, withTempDir } from "./harness";
 
 /** 打印稿里的 heading 数（4）与产物书签数刻意不等：报告值只许来自产物。 */
 const HEADINGS =
@@ -39,6 +38,7 @@ const inputOf = (dir: string, overrides: Overrides = {}): PdfCommandInput => ({
   timeoutMs: 60_000,
   outline: true,
   outlineConflict: false,
+  visual: "atelier-editorial",
   out: join(dir, "out.pdf"),
   force: false,
   workspace: dir,

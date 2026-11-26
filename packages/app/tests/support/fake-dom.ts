@@ -1,5 +1,5 @@
 // 这层管：`dom.ts` 需要的最小假 `document`——按选择器查元素、记属性/文本/监听器。
-// 不够格当浏览器用，够格断言"哪个 API 被调用了几次"（AC2.2/AC2.4 的序列断言在 fake-host）。
+// 不够格当浏览器用，够格断言"哪个 API 被调用了几次"（"只写变化"的序列断言在 fake-host）。
 
 import type { ElementLike, TargetLike } from "../../src/dom.ts";
 
@@ -37,7 +37,10 @@ export interface FakeDocument {
   readonly body: { getAttribute: (name: string) => string | null };
   readonly created: FakeElement[];
   readonly bySelector: Map<string, FakeElement>;
+  /** `querySelectorAll` 的命中表（`Host.all` 的输入）。 */
+  readonly bySelectorAll: Map<string, readonly FakeElement[]>;
   readonly querySelector: (selector: string) => FakeElement | null;
+  readonly querySelectorAll: (selector: string) => readonly ElementLike[];
   createElement: (tag: string) => FakeElement;
   readonly listenersOf: (selector: string) => readonly string[];
   readonly fire: (selector: string, type: string, target: TargetLike) => void;
@@ -164,12 +167,15 @@ export const fakeElement = (tag: string, withHandles = true): FakeElement => {
 /** 假 document：`bySelector` 就是"页面上有哪些元素"的全部真相。 */
 export const createFakeDocument = (): FakeDocument => {
   const bySelector = new Map<string, FakeElement>();
+  const bySelectorAll = new Map<string, readonly FakeElement[]>();
   const created: FakeElement[] = [];
   const doc: FakeDocument = {
     body: { getAttribute: () => null },
     created,
     bySelector,
+    bySelectorAll,
     querySelector: (selector) => bySelector.get(selector) ?? null,
+    querySelectorAll: (selector) => bySelectorAll.get(selector) ?? [],
     createElement: (tag) => {
       const element = fakeElement(tag);
       created.push(element);

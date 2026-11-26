@@ -2,7 +2,7 @@
 
 import type { HtmlElementNode, HtmlNode } from "../../src/html/constants";
 import { parseHtml } from "../../src/html/parse";
-import { attributeValue } from "../../src/ops/patchNode/attrs";
+import { attributeValue } from "../../src/ops/patch-node/attrs";
 
 export interface LocatedElement {
   readonly node: HtmlElementNode;

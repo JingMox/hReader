@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>hReader 示例库</title>
+    <meta
+      name="description"
+      content="hReader：让 AI 写出的笔记和文档既有 HTML 的表现力，又始终整齐统一。本地文件，任何 Agent 都能读写。"
+    />
+    <style>
+      :root {
+        --bg: #faf8f5;
+        --fg: #1b1a17;
+        --muted: #6a645d;
+        --accent: #8a4a22;
+        --border: #ddd6cb;
+        --card: #f0ece3;
+        --serif: "Iowan Old Style", "Songti SC", Georgia, serif;
+        --sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+        --mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #121316;
+          --fg: #e9e6e1;
+          --muted: #9d968c;
+          --accent: #e0a97a;
+          --border: #2b2d33;
+          --card: #1b1d22;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--sans);
+        line-height: 1.6;
+      }
+      a {
+        color: var(--accent);
+        text-underline-offset: 0.2em;
+      }
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 0 16px;
+      }
+      header {
+        padding: 72px 0 40px;
+      }
+      .eyebrow {
+        font-size: 14px;
+        color: var(--muted);
+        margin: 0 0 12px;
+      }
+      h1 {
+        font-family: var(--serif);
+        font-size: clamp(32px, 5vw, 52px);
+        line-height: 1.15;
+        margin: 0 0 16px;
+        letter-spacing: -0.01em;
+      }
+      .lede {
+        font-size: 18px;
+        color: var(--muted);
+        max-width: 46em;
+        margin: 0 0 28px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .btn {
+        display: inline-block;
+        padding: 10px 18px;
+        border-radius: 999px;
+        border: 1px solid var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 15px;
+      }
+      .btn.primary {
+        background: var(--accent);
+        color: var(--bg);
+      }
+      section {
+        padding: 32px 0;
+      }
+      h2 {
+        font-family: var(--serif);
+        font-size: 26px;
+        margin: 0 0 8px;
+      }
+      .sub {
+        color: var(--muted);
+        margin: 0 0 20px;
+      }
+      .compare img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        display: block;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--fg);
+        text-decoration: none;
+      }
+      .card:hover {
+        border-color: var(--accent);
+      }
+      .card .kind {
+        font-size: 12px;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+      }
+      .card h3 {
+        font-family: var(--serif);
+        font-size: 20px;
+        margin: 6px 0 8px;
+      }
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      pre {
+        margin: 0;
+        padding: 16px;
+        border-radius: 10px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 16px;
+      }
+      .steps h3 {
+        font-size: 15px;
+        margin: 0 0 8px;
+      }
+      footer {
+        padding: 40px 0 64px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <p class="eyebrow">hReader · 开源 · MIT</p>
+        <h1>让 AI 写出的笔记，<br />既有 HTML 的表现力，又像 Markdown 一样整齐。</h1>
+        <p class="lede">
+          AI 写 HTML 和写 Markdown 一样便宜，但它排版太自由，每次都不一样。hReader 用 7
+          个语义组件和一套主题约束 AI 的排版，用稳定的块 id 让 Agent
+          只改你批注的那一段。文档就是你硬盘上的一个
+          <code>.html</code> 文件，任何 Agent 都能读写。
+        </p>
+        <div class="actions">
+          <a class="btn primary" href="https://github.com/JingMox/hReader">GitHub</a>
+          <a class="btn" href="examples/why-html.html">为什么是 HTML</a>
+        </div>
+      </header>
+
+      <section class="compare">
+        <h2>指哪改哪</h2>
+        <p class="sub">
+          选中一句话、写下批注，Agent 通过 MCP 只改这一段，阅读器自动刷新，批注自动归档。
+        </p>
+        <img
+          src="img/demo.gif"
+          width="1100"
+          height="688"
+          alt="演示：在 hReader 阅读器里选中一句话并写批注，Agent 只替换这一段，页面自动刷新"
+        />
+      </section>
+
+      <section class="compare">
+        <h2>同一份会议纪要，三种写法</h2>
+        <p class="sub">
+          内容完全相同，都包含 3 段录音。<a href="compare/index.html">打开可交互的对比页</a>
+        </p>
+        <a href="compare/index.html"
+          ><img
+            src="img/compare.png"
+            width="1800"
+            height="1320"
+            alt="左：Markdown 版本，音频是裸链接；中：AI 自由生成的 HTML，每块风格不同；右：hReader 版本，录音卡片、摘要和逐字稿格式统一"
+        /></a>
+      </section>
+
+      <section>
+        <h2>示例文档</h2>
+        <p class="sub">每一份都是一个普通的 HTML 文件，用 hReader 的组件和主题排版，点开就能看。</p>
+        <div class="grid">
+          <a class="card" href="examples/meeting-notes.html">
+            <span class="kind">会议纪要 · 含录音</span>
+            <h3>产品周会纪要</h3>
+            <p>3 段录音，每段配摘要和折叠逐字稿；方案对比、风险提示、待办时间线。</p>
+          </a>
+          <a class="card" href="examples/why-html.html">
+            <span class="kind">观点文章</span>
+            <h3>AI 时代，笔记为什么该用 HTML</h3>
+            <p>Markdown 赢在“不让你排版”；AI 付掉了排版成本，但需要约束。</p>
+          </a>
+          <a class="card" href="examples/how-it-works.html">
+            <span class="kind">技术说明</span>
+            <h3>Agent 怎样只改一段</h3>
+            <p>大纲 → 读一块 → 改一块 → 自动刷新；原子写入，可撤销。</p>
+          </a>
+        </div>
+      </section>
+
+      <section>
+        <h2>一分钟试用</h2>
+        <p class="sub">
+          推荐从 MCP 或 Agent Skill 开始，需要 Node.js 22 以上。安装包在 GitHub Releases。
+        </p>
+        <div class="steps">
+          <div>
+            <h3>MCP（Claude Desktop、Cursor 等）</h3>
+            <pre><code>{
+  "mcpServers": {
+    "hreader": {
+      "command": "node",
+      "args": [
+        "/path/to/hreader-mcp-server/dist/main.js",
+        "--workspace", "/path/to/your/docs"
+      ]
+    }
+  }
+}</code></pre>
+          </div>
+          <div>
+            <h3>Agent Skill（Claude Code 等）</h3>
+            <pre><code># 下载 hreader-skill.zip 并解压到 skills 目录
+unzip hreader-skill.zip -d ~/.claude/skills/
+
+# 然后对 Agent 说：
+# “用 hreader 把这次会议整理成一份纪要”</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        hReader v1.0 刚刚开源，还很早期：组件只有 8 个、主题只有 1 套。欢迎在
+        <a href="https://github.com/JingMox/hReader/issues">GitHub Issues</a>
+        告诉我你想往文档里插什么。
+      </footer>
+    </div>
+  </body>
+</html>

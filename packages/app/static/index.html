@@ -21,9 +21,24 @@
           <label id="hr-theme-label" for="hr-theme-select"></label>
           <select id="hr-theme-select"></select>
           <span id="hr-focus-label"></span>
+          <!-- 与 `#hr-note-btn` 同一兜底：无 JS 首帧先藏着，widget 按文档形态摘/挂 `hidden`。 -->
+          <button id="hr-present-btn" type="button" hidden></button>
         </div>
         <article id="hr-doc" class="doc"></article>
+        <!-- 外来/未规范化文档的横幅与 iframe：默认 `hidden`，由 foreign widget 按 cls 摘/挂。
+             iframe 只接 `src`——外来 HTML 绝不进本页 DOM；sandbox 档位由 widget 写。 -->
+        <div id="hr-foreign" class="foreign-banner" hidden>
+          <span id="hr-foreign-text"></span>
+          <button id="hr-foreign-action" type="button" hidden></button>
+          <span id="hr-foreign-error" class="foreign-error" role="alert"></span>
+        </div>
+        <iframe id="hr-foreign-frame" class="foreign-frame" referrerpolicy="no-referrer" hidden>
+        </iframe>
       </main>
+      <div id="hr-present">
+        <span id="hr-present-pager" role="status"></span>
+        <button id="hr-present-exit" type="button"></button>
+      </div>
       <aside id="hr-notes" class="sidenotes">
         <h3 id="hr-notes-title"></h3>
         <div id="hr-notes-actions" class="notes-actions">

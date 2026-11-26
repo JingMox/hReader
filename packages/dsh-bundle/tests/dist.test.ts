@@ -71,15 +71,15 @@ describe("dist：宿主能直接加载", () => {
 describe("dist：主题 CSS 跟着产物走", () => {
   it("`dist/styles/<visual>/theme.css` 三件内置主题都解析得到", () => {
     // 期望值由 `BUILTIN_STYLES` 推出（不手抄）：目录名是 `inheritsVisual`（`resolveThemePath` 的
-    // 口径，见 `packages/core/src/style/resource.ts` 的 `builtinThemeDir`）。自前的内置主题共享同一
-    // 个 visual，所以目录集合去重后只有一个；build 少掉 `cp -R ../../styles dist/styles` 就红。
+    // 口径，见 `packages/core/src/style/resource.ts` 的 `builtinThemeDir`）。前三个预设共享 atelier
+    // 一个 visual，deck-noir 独立成目录；build 少掉 `cp -R ../../styles dist/styles` 就红。
     const visualIds = [...new Set(BUILTIN_STYLES.map((style) => style.inheritsVisual))];
     const stylesDir = join(DIST_DIR, "styles");
 
     // 下界写死字面量：`visualIds` 若被推成空数组，下面的 `for` 空转、`arrayContaining([])` 恒真，
     // 整个用例就退化成只剩 `existsSync(stylesDir)`（删掉 `theme.css` 也照样绿）。
     // 不写 `length > 0`：推导口径一变（多出 visual 或少掉）也要在断言里现形。
-    expect(visualIds).toEqual(["atelier-editorial"]);
+    expect(visualIds).toEqual(["atelier-editorial", "deck-noir"]);
     expect(existsSync(stylesDir)).toBe(true);
     expect(readdirSync(stylesDir)).toEqual(expect.arrayContaining(visualIds));
     for (const id of visualIds) {

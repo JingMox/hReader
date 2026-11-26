@@ -154,7 +154,7 @@ const isAsciiPeriodEnd = (text: string, index: number): boolean => {
   return next === "" || SPACE.test(next);
 };
 
-/** 分号不算句末（卡 §10 R6）：`；` 连的是小句，`。！？!?…` 与行尾句点才结束一句。
+/** 分号不算句末：`；` 连的是小句，`。！？!?…` 与行尾句点才结束一句。
  *
  * @internal 仅供统计层与边界测试使用；对外只经 `statisticsOf` 露出汇总量。
  */

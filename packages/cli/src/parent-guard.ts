@@ -14,7 +14,7 @@ export const PARENT_POLL_MS = 1_000;
 
 /**
  * 启动时父进程已经是 init：壳在 spawn 之后、我们跑到这里之前就死了。
- * 这种现场改看父进程发现不了——`process.ppid` 现在就是 1，而它会被当成"正常的父 pid"记下来（B5）。
+ * 这种现场改看父进程发现不了——`process.ppid` 现在就是 1，而它会被当成"正常的父 pid"记下来。
  */
 export const orphanedAtLaunch = (parentPid: number): boolean => parentPid === 1;
 

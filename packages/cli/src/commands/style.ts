@@ -19,7 +19,8 @@ import {
 } from "@hreader/core";
 import type { LintReport, StyleDeps } from "@hreader/core";
 
-import type { StyleMode } from "../args";
+import type { StrictLevel, StyleMode } from "../args";
+import { StrictFailure } from "../errors";
 import { readTextFile } from "../input";
 import { dataLint, dataStyle, dataTone, humanLint, humanStyle, humanTone, jsonOk } from "../output";
 
@@ -28,11 +29,13 @@ export interface StyleInput {
   readonly mode: StyleMode;
   readonly workspace: string;
   readonly json: boolean;
+  /** 只有 `--lint` 会用：命中禁用词即以 invalid_document 失败（报告先走 stdout）。 */
+  readonly strict?: StrictLevel | undefined;
   /** 回执里印的路径（用户视角）：不给就印结果里的真实路径。 */
   readonly displayPath?: string | undefined;
 }
 
-/** `--lint` 没有风格参数：用默认风格的禁用词表（卡片 §1 的唯一 id）。 */
+/** `--lint` 没有风格参数：用默认风格的禁用词表（默认风格的唯一 id）。 */
 const lintReportOf = async (file: string, workspace: string): Promise<LintReport> => {
   const style = await loadStyle({ id: DEFAULT_STYLE_ID }, nodeStyleDeps(workspace));
   const injected = injectNodeIds(parseHtml(await readTextFile(join(workspace, file))));
@@ -56,7 +59,7 @@ const isToneId = async (id: string, deps: StyleDeps): Promise<boolean> => {
   return [...BUILTIN_STYLES, ...discovered.styles].some((style) => style.id === id);
 };
 
-/** `--visual` 与 `--tone` 是两套 id 空间：把 tone id 交给 `--visual` 会静默换错主题（B-16）。
+/** `--visual` 与 `--tone` 是两套 id 空间：把 tone id 交给 `--visual` 会静默换错主题。
  * 既不是 visual 也不是 tone 的 id 不在这里拦：交给 `applyStyle` 报既有的 `unknown_style`（四个来源都找不到）。 */
 const assertVisualId = async (id: string, deps: StyleDeps): Promise<void> => {
   if ((await hasVisualTheme(id, deps)) || !(await isToneId(id, deps))) return;
@@ -74,7 +77,15 @@ export const styleCommand = async (input: StyleInput): Promise<string> => {
   }
   if (input.mode.kind === "lint") {
     const report = await lintReportOf(input.path, input.workspace);
-    return input.json ? jsonOk(dataLint(report)) : humanLint(report);
+    const output = input.json ? jsonOk(dataLint(report)) : humanLint(report);
+    // 命中没有 error/warning 分档：两种 `--strict` 同一门槛——有命中就失败。
+    if (input.strict !== undefined && report.hits.length > 0) {
+      throw new StrictFailure(
+        `${input.displayPath ?? input.path}：${String(report.hits.length)} 条禁用词命中（--strict）`,
+        output,
+      );
+    }
+    return output;
   }
   await assertVisualId(input.mode.id, deps);
   const result = await applyStyle(

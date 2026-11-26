@@ -6,7 +6,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { styleIdsOf } from "./resources";
-import { styleDepsOf } from "./styleDeps";
+import { styleDepsOf } from "./style-deps";
 
 export const USE_STYLE_PROMPT = "use-hreader-style";
 

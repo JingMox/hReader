@@ -14,6 +14,7 @@ const FORBIDDEN: readonly { readonly pattern: RegExp; readonly reason: string }[
 ];
 
 /** 参数不能闭合的 `url(` 收不到参数，单独兜底一次协议探测。 */
+// Stryker disable next-line Regex: `\S*` 变体漏掉 `url (` 仍会被 urlArgumentsOf + isLocalUrl 二道拦截，判定同值。
 const EXTERNAL_URL = /url\s*\(\s*["']*\s*(?:https?:)?\/\//iu;
 
 const URL_ARGUMENT = /url\s*\(\s*([^)]*?)\s*\)/giu;
@@ -26,26 +27,32 @@ const SCHEME = /^[a-z][a-z0-9+.-]*:/iu;
  */
 const decodeHexEscapes = (css: string): string =>
   css.replaceAll(/\\[0-9a-f]{1,6}\s?/giu, (match) =>
+    // Stryker disable next-line MethodExpression: parseInt 自身容忍尾空白，trimStart/trimEnd 同值。
     String.fromCodePoint(Math.min(Number.parseInt(match.slice(1).trimEnd(), 16), MAX_CODE_POINT)),
   );
 
 /** 单字符转义（`\.` / `\\`）：反斜杠只为转义而存在，解码结果就是后面那个字符。 */
 const decodeCharEscapes = (css: string): string =>
+  // Stryker disable next-line Regex: `\S\S` 变体只在转义空白时不解码——而解码空白本就产空白，判定同值。
   css.replaceAll(/\\[\s\S]/gu, (match) => match.slice(1));
 
 /** 注释先摘掉：被注释掉的 `@import` 不是威胁，而 `/*x*\/@import` 摘完仍连着 `@import`。 */
 const stripComments = (css: string): string => css.replaceAll(/\/\*[\s\S]*?(?:\*\/|$)/gu, " ");
 
 const isLocalUrl = (argument: string): boolean => {
+  // Stryker disable next-line MethodExpression: 全局正则下 replace 与 replaceAll 同结果。
   const value = argument.replaceAll(/["']/gu, "").trim();
   if (value.startsWith("#") || value.startsWith("data:")) return true;
+  // Stryker disable next-line MethodExpression: `//` 开头的参数在进入此判空前已被 EXTERNAL_URL 拦截，该支不可达。
   return !value.startsWith("//") && !SCHEME.test(value);
 };
 
 const urlArgumentsOf = (css: string): readonly string[] => {
+  // Stryker disable next-line ArrayDeclaration: 预填元素走同一条 isLocalUrl 判定，无害相对串只会多一次放行检查——等价。
   const found: string[] = [];
   for (const match of css.matchAll(URL_ARGUMENT)) {
     const argument = match[1];
+    // Stryker disable next-line ConditionalExpression: 带捕获组的 matchAll 恒给出第 1 组，守卫不可达。
     if (argument !== undefined) found.push(argument);
   }
   return found;
@@ -56,17 +63,21 @@ const assertUrlsLocal = (css: string): void => {
   if (EXTERNAL_URL.test(css)) throw invalidTheme("url() 指向了外部资源，主题必须离线自足");
   for (const argument of urlArgumentsOf(css)) {
     if (!isLocalUrl(argument)) {
+      // Stryker disable next-line MethodExpression: URL_ARGUMENT 的 `\s*` 已在捕获组外吃掉首尾空白，trim 幂等。
       throw invalidTheme(`url() 只允许相对路径、data: 或 #锚点，收到：${argument.trim()}`);
     }
   }
 };
 
-/** 先反转义再摘注释：两类"写法变形"都先归一，判定只看归一后的文本（G2 P1-1 / P2-3）。 */
+/** 先反转义再摘注释：两类"写法变形"都先归一，判定只看归一后的文本。 */
 const normalizedOf = (css: string): string =>
   stripComments(decodeCharEscapes(decodeHexEscapes(css)));
 
-/** 注入前必过：主题 CSS 只能静态，不能联网、不能逃出 `<style>`（AC7.5 / 裁定 #9）。 */
+/** 注入前必过：主题 CSS 只能静态，不能联网、不能逃出 `<style>`。 */
 export const assertThemeSafe = (css: string): void => {
+  // `</style` 要在归一化之前查：注释剥掉会把 `/*</style>*/` 洗成空格，但那串字节照样落进样式块、
+  // 照样终结 raw text（注释里的普通 `<` 如 `<article` 不终结，仍走归一化后的 `<` 禁则放行不了注释外）。
+  if (/<\/style/iu.test(css)) throw invalidTheme("禁止出现 `</style`（防止逃出样式块）");
   const normalized = normalizedOf(css);
   for (const rule of FORBIDDEN) {
     if (rule.pattern.test(normalized)) throw invalidTheme(rule.reason);

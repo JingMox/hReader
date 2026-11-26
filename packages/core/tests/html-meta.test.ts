@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseHtml } from "../src/index";
-import { codesOf, messagesOf, requireElement } from "./html-support.test";
+import { codesOf, messagesOf, requireElement } from "./html-support";
 
 const META = (payload: string): string =>
   `<article><p>x</p></article><script id="hr-meta" type="application/json">${payload}</script>`;

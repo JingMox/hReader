@@ -28,8 +28,8 @@ pnpm -C packages/mcp-server build
 | ----------------------- | ----------------------------------------------------------- |
 | `hr_outline`            | Inspect compact heading/node IDs, word counts & annotations |
 | `hr_read_node`          | Read a single subtree by CSS selector or `data-hr-id`       |
-| `hr_create_doc`         | Create a new semantic HTML document inside `--workspace`    |
-| `hr_patch_node`         | Atomic `replace`, `insert_before`, `insert_after`, `append`, or `delete` |
+| `hr_create_doc`         | Create a new semantic HTML document inside `--workspace`; optional `kind` (`note` / `report` / `minutes` / `brief` / `slides`) starts from that kind's skeleton |
+| `hr_patch_node`         | Atomic `replace`, `insert_before`, `insert_after`, `append`, or `delete`; layout problems in the fragment come back as `warnings` |
 | `hr_apply_style`        | Apply visual theme CSS or check tone / forbidden words      |
 | `hr_resolve_annotation` | Mark reader annotations resolved / replied                  |
 | `hr_undo`               | Roll back the previous write snapshot                       |
@@ -71,7 +71,7 @@ Download `hreader-skill.tar.gz` or `hreader-skill.zip` from Releases (or run `pn
 
 It contains:
 - `SKILL.md` — Agent operating instructions and the 5-primitive workflow (`outline` -> `read` -> temp fragment -> `patch` -> verify)
-- `references/components-spec.md` — Copy-ready HTML patterns for all 7 semantic components
+- `references/components-spec.md` — Copy-ready HTML patterns for all 8 semantic components, plus the structure rules that `hr check` / `hr patch` enforce
 - `references/style-authoring.md` — Authoring custom `style.yaml` voice specs
 - `scripts/hr.mjs` — Launcher wrapping bundled `scripts/cli.mjs` and `scripts/styles/`
 
@@ -89,7 +89,7 @@ Single-file extension [`packages/pi-extension/pi-hreader.ts`](../packages/pi-ext
 
 - `/hreader <doc.html>` — Start/attach to `hr serve`, show local reader link, and subscribe to live reader SSE annotations.
 - `/hr-style <style-id>` — Switch or inspect active writing-style rules (`atelier-editorial` or `.hreader/style.yaml`).
-- Pending `pending_ai` annotations made in the browser or desktop app are formatted into the agent session context automatically.
+- Pending annotations made in the browser or desktop app are formatted into the agent session context automatically.
 
 Smoke test in repo:
 

@@ -2,13 +2,13 @@
 // 规则按**元素性质**分层：零引用的静态标题/标签本来就不该有写点（不算缺陷），
 // 但零引用的按钮/输入框/选择框一定是漏接线——这正是 `#hr-diff-accept` 那类死按钮能躲过“零引用即放行”的原因。
 //
-// R1 `src` 引用的每个 id，必须在模板里且出现在 `REQUIRED_ANCHORS`（防止模板改名后源码指向空气）。
-// R2 `REQUIRED_ANCHORS` 里除 `CONTAINER_ANCHORS` 外的每条 id，必须有写点或事件绑定（防止清单自我认证）。
-// R3 模板里每个**交互元素**（button/input/select/textarea/a[href]，`<input type="hidden">` 不算——
+// ① `src` 引用的每个 id，必须在模板里且出现在 `REQUIRED_ANCHORS`（防止模板改名后源码指向空气）。
+// ② `REQUIRED_ANCHORS` 里除 `CONTAINER_ANCHORS` 外的每条 id，必须有写点或事件绑定（防止清单自我认证）。
+// ③ 模板里每个**交互元素**（button/input/select/textarea/a[href]，`<input type="hidden">` 不算——
 //    用户根本看不见它）必须有绑定写点，或有 `disabled`/`aria-disabled` 声明（抓死控件）。
 //    判据一句话：能看见 + 能点 + 没有 `disabled`/`aria-disabled` 声明 = 死控件。
 //    声明是显式延期，不是放行：既没接线、又没让用户看见"它还不能用"的控件，就是缺陷。
-// R4 `host.cls` 挂的每个类名必须在 `styles.css` 里有规则（抓“挂 class 但没人画”）。
+// ④ `host.cls` 挂的每个类名必须在 `styles.css` 里有规则（抓“挂 class 但没人画”）。
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -88,7 +88,7 @@ const tagsOf = (html: string): readonly TemplateTag[] =>
 
 const INTERACTIVE_TAGS: readonly string[] = ["button", "input", "select", "textarea"];
 
-/** `<input type="hidden">` 在标签层面是输入框，但对用户不存在：它压根不是交互控件，不进 R3。 */
+/** `<input type="hidden">` 在标签层面是输入框，但对用户不存在：它压根不是交互控件，不进 ③。 */
 const isHiddenInput = (tag: TemplateTag): boolean =>
   tag.tag === "input" && /\btype\s*=\s*["']?hidden/i.test(tag.attrs);
 
@@ -101,7 +101,7 @@ const isInteractive = (tag: TemplateTag): boolean =>
 const isDeferred = (tag: TemplateTag): boolean =>
   /\sdisabled(?:[\s=/>]|$)/.test(tag.attrs) || /\baria-disabled\s*=\s*["']?true/i.test(tag.attrs);
 
-describe("静态接线 · R1 源码引用 → 模板 + 锚点清单", () => {
+describe("静态接线 · 源码引用 → 模板 + 锚点清单", () => {
   it("should point every id the source references at a template element listed in REQUIRED_ANCHORS", () => {
     const violations = [...referencedIds].flatMap((id) => {
       const shared = REQUIRED_ANCHORS.includes(id);
@@ -118,7 +118,7 @@ describe("静态接线 · R1 源码引用 → 模板 + 锚点清单", () => {
   });
 });
 
-describe("静态接线 · R2 锚点清单 → 写点", () => {
+describe("静态接线 · 锚点清单 → 写点", () => {
   it("should give every non-container REQUIRED_ANCHORS entry a host write point or event binding", () => {
     const unbound = REQUIRED_ANCHORS.filter((id) => !CONTAINER_ANCHORS.includes(id))
       .filter((id) => !boundIds.has(id) || !templateIds.has(id))
@@ -128,7 +128,7 @@ describe("静态接线 · R2 锚点清单 → 写点", () => {
   });
 });
 
-describe("静态接线 · R3 交互元素 → 绑定写点", () => {
+describe("静态接线 · 交互元素 → 绑定写点", () => {
   it("should bind every interactive template element to a host write point", () => {
     const dead = tagsOf(TEMPLATE)
       .filter(isInteractive)
@@ -142,7 +142,7 @@ describe("静态接线 · R3 交互元素 → 绑定写点", () => {
   });
 });
 
-describe("静态接线 · R4 host.cls 类名 ↔ styles.css", () => {
+describe("静态接线 · host.cls 类名 ↔ styles.css", () => {
   it("should style every class the source toggles", () => {
     const namedClasses = new Map(
       [...SOURCE.matchAll(/const\s+([A-Z][A-Z0-9_]*)\s*=\s*"([^"]+)"/g)].flatMap((match) =>

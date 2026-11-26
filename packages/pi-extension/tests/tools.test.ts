@@ -1,4 +1,4 @@
-// 这层管：三个工具的契约（AC-6）——名字/参数 schema/成功形状 `{ content, details.revision }`、
+// 这层管：三个工具的契约——名字/参数 schema/成功形状 `{ content, details.revision }`、
 // 失败不抛裸异常（错误码来自 daemon）、`delete` 不发片段、参数校验前就挡掉越界路径。
 
 import { describe, expect, it } from "vitest";

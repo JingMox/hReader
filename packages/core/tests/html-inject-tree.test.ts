@@ -9,7 +9,7 @@ import {
   collectElements,
   findElement,
   requireElement,
-} from "./html-support.test";
+} from "./html-support";
 
 const HR_ID = "data-hr-id";
 
@@ -77,7 +77,7 @@ describe("injectNodeIds · 手搓树", () => {
 
     const injected = injectNodeIds({ root, diagnostics: [] });
 
-    // M1.2 v2：article 自身 + 其中的 p；文本/注释/doctype 不是注入目标。
+    // article 自身 + 其中的 p；文本/注释/doctype 不是注入目标。
     expect(injected.injected).toHaveLength(2);
     expect(childrenOf(injected.parsed.root).map((node) => node.kind)).toEqual([
       "doctype",

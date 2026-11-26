@@ -1,58 +1,145 @@
 // 这层管：`style.yaml` → `StyleSpec`（严格模式：任何层级未知键都报，报文按层列合法键）；不碰 IO。
 
 import { parseDocument } from "yaml";
+import { z } from "zod";
 
 import { HrError } from "../hr-error";
-import type { ExampleSpec, LanguageSpec, SentenceRhythmSpec, StyleSpec } from "./contracts";
+import type { LanguageSpec, StyleSpec } from "./contracts";
 import { foldWord } from "./words";
 
-/** 裁定 #5：`sentence_rhythm` 缺省时按"三段一视觉法则"取 3，"不约束"用空串表示。 */
+/** `sentence_rhythm` 缺省时按"三段一视觉法则"取 3，"不约束"用空串表示。 */
 const DEFAULT_MAX_SENTENCES = 3;
 
 const DEFAULT_VISUAL = "atelier-editorial";
 
 const STYLE_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/u;
 
-interface SchemaNode {
-  readonly keys?: Readonly<Record<string, SchemaNode>>;
-  readonly items?: SchemaNode;
-}
+const NON_EMPTY = "必须是非空字符串";
+const POSITIVE_INT = "必须是正整数";
+const MAPPING = "必须是映射（YAML 的 key: value 结构）";
 
-const LEAF: SchemaNode = {};
+/**
+ * 严格映射：多余的键由 zod 的 `unrecognized_keys` 报出。issue 的 `message` 借来携带这一层的合法键集，
+ * 报文才能提示"它那一层"而不是顶层。
+ */
+const mapping = <Shape extends z.ZodRawShape>(shape: Shape) =>
+  z
+    .object(shape, {
+      // 对象自己只会报这两种 issue：类型不对，或多出未知键。
+      errorMap: (issue) => ({
+        message: issue.code === "unrecognized_keys" ? Object.keys(shape).join("、") : MAPPING,
+      }),
+    })
+    .strict();
 
-const EXAMPLE_SCHEMA: SchemaNode = { keys: { bad: LEAF, good: LEAF } };
+/** 整块可省略）：`sentence_rhythm:`（空值）与不写它等价，都走内置缺省。 */
+const optionalMapping = <Schema extends z.ZodTypeAny>(schema: Schema) =>
+  z.preprocess((value) => value ?? {}, schema);
 
-const RHYTHM_SCHEMA: SchemaNode = { keys: { max_paragraph_sentences: LEAF, style: LEAF } };
+const nonEmptyText = z
+  .string({ invalid_type_error: NON_EMPTY, required_error: NON_EMPTY })
+  .refine((value) => value.trim().length > 0, NON_EMPTY);
 
-const VOCABULARY_SCHEMA: SchemaNode = { keys: { forbidden: LEAF, recommended: LEAF } };
+/** id 会拼进磁盘路径，所以只放行 kebab-case：禁止 `/` 与 `..` 逃出风格目录。 */
+const styleId = nonEmptyText.pipe(
+  z.string().regex(STYLE_ID, `id 必须匹配 ${STYLE_ID.source}（禁止 / 与 ..：会逃出风格目录）`),
+);
 
-const LANGUAGE_SCHEMA: SchemaNode = {
-  keys: {
-    persona: LEAF,
-    narrative_rules: LEAF,
-    sentence_rhythm: RHYTHM_SCHEMA,
-    vocabulary: VOCABULARY_SCHEMA,
-    examples: { items: EXAMPLE_SCHEMA },
-  },
+/** `{单值 | 列表}` 都收；缺省与 `[]` 合法（空列表 = 不约束）。 */
+const stringList = z.preprocess(
+  (value) => (value === undefined ? [] : typeof value === "string" ? [value] : value),
+  z.array(nonEmptyText, { invalid_type_error: "必须是字符串或字符串列表" }),
+);
+
+/** 叙事规则是编译产物的骨架，空表只能得到"没有规则"的空壳：这里要求至少一条。 */
+const requiredList = stringList.pipe(z.array(z.string()).min(1, "必须至少给一条叙事规则"));
+
+const rhythmSchema = optionalMapping(
+  mapping({
+    max_paragraph_sentences: z
+      .number({ invalid_type_error: POSITIVE_INT })
+      .int(POSITIVE_INT)
+      .positive(POSITIVE_INT)
+      .default(DEFAULT_MAX_SENTENCES),
+    // `style: ''` 是"不约束句式"的哨兵：显式空串合法，只拒非字符串。
+    style: z.string({ invalid_type_error: "必须是字符串" }).default(""),
+  }),
+);
+
+/**
+ * 同一禁词写两遍会让 lint 对每处命中报两遍（用户看到的是重复项，不是加强警告）。
+ * 与匹配同口径：折叠后去重保序，落盘值取 NFC——`e` + 组合重音与 `é` 是同一个词。
+ */
+const uniqueWordsOf = (words: readonly string[]): readonly string[] => {
+  const seen = new Set<string>();
+  return words
+    .map((word) => word.normalize("NFC"))
+    .filter((word) => {
+      const folded = foldWord(word);
+      const first = !seen.has(folded);
+      seen.add(folded);
+      return first;
+    });
 };
 
-const STYLE_SCHEMA: SchemaNode = {
-  keys: {
-    id: LEAF,
-    name: LEAF,
-    description: LEAF,
-    inherits_visual: LEAF,
-    language_style: LANGUAGE_SCHEMA,
+const vocabularySchema = optionalMapping(
+  mapping({ forbidden: stringList.transform(uniqueWordsOf), recommended: stringList }),
+);
+
+const exampleSchema = mapping({ bad: nonEmptyText, good: nonEmptyText });
+
+const languageSchema = mapping({
+  persona: nonEmptyText,
+  narrative_rules: requiredList,
+  sentence_rhythm: rhythmSchema,
+  vocabulary: vocabularySchema,
+  examples: z.array(exampleSchema, { invalid_type_error: "必须是映射列表" }).default([]),
+}).transform((language): LanguageSpec => ({
+  persona: language.persona,
+  narrativeRules: language.narrative_rules,
+  rhythm: {
+    maxParagraphSentences: language.sentence_rhythm.max_paragraph_sentences,
+    style: language.sentence_rhythm.style,
   },
+  vocabulary: language.vocabulary,
+  examples: language.examples,
+}));
+
+const styleSchema = mapping({
+  id: styleId,
+  name: nonEmptyText,
+  description: nonEmptyText,
+  inherits_visual: styleId.default(DEFAULT_VISUAL),
+  language_style: languageSchema,
+}).transform((spec): StyleSpec => ({
+  id: spec.id,
+  name: spec.name,
+  description: spec.description,
+  inheritsVisual: spec.inherits_visual,
+  language: spec.language_style,
+}));
+
+/** 路径写法与 YAML 一致：键用 `.`，列表项用 `[i]`。 */
+const pathText = (path: readonly (string | number)[]): string =>
+  path
+    .map((segment) => (typeof segment === "number" ? `[${String(segment)}]` : `.${segment}`))
+    .join("");
+
+/** 一次列全所有层级的未知键：用户改键名时不该被"修一个报一个"来回折腾；其余错误只报第一条。 */
+const failureOf = (error: z.ZodError, at: string): HrError => {
+  const messageOf = (issue: z.ZodIssue): string => `${at}${pathText(issue.path)}：${issue.message}`;
+  const unknown = error.issues.flatMap((issue) =>
+    issue.code === "unrecognized_keys"
+      ? issue.keys.map(
+          (key) => `${at}${pathText(issue.path)}.${key}（这一层的合法键：${issue.message}）`,
+        )
+      : [],
+  );
+  if (unknown.length > 0) {
+    return new HrError("invalid_style", `${at}：未知键 ${unknown.join("、")}`);
+  }
+  return new HrError("invalid_style", error.issues.slice(0, 1).map(messageOf).join(""));
 };
-
-const invalid = (at: string, detail: string): HrError =>
-  new HrError("invalid_style", `${at}：${detail}`);
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const isList = (value: unknown): value is readonly unknown[] => Array.isArray(value);
 
 interface Positioned {
   readonly message: string;
@@ -75,184 +162,6 @@ export const syntaxErrorOf = (error: Positioned, at: string, text: string): HrEr
   });
 };
 
-interface UnknownKey {
-  readonly path: string;
-  /** 它那一层的合法键集：报顶层的键集会把用户带偏（G2 P1-5）。 */
-  readonly legal: string;
-}
-
-const collectUnknown = (
-  value: unknown,
-  at: string,
-  schema: SchemaNode,
-  unknown: UnknownKey[],
-): void => {
-  const { keys, items } = schema;
-  if (keys !== undefined && isRecord(value)) {
-    const legal = Object.keys(keys).join("、");
-    for (const [key, child] of Object.entries(value)) {
-      const childSchema = keys[key];
-      if (childSchema === undefined) {
-        unknown.push({ path: `${at}.${key}`, legal });
-        continue;
-      }
-      collectUnknown(child, `${at}.${key}`, childSchema, unknown);
-    }
-    return;
-  }
-  if (items !== undefined && isList(value)) {
-    value.forEach((item, index) => {
-      collectUnknown(item, `${at}[${String(index)}]`, items, unknown);
-    });
-  }
-};
-
-/** 一次列全所有层级的未知键：用户改键名时不该被"修一个报一个"来回折腾。 */
-const assertKnownKeys = (value: unknown, at: string, schema: SchemaNode): void => {
-  const unknown: UnknownKey[] = [];
-  collectUnknown(value, at, schema, unknown);
-  if (unknown.length === 0) return;
-  const listed = unknown.map((one) => `${one.path}（这一层的合法键：${one.legal}）`).join("、");
-  throw invalid(at, `未知键 ${listed}`);
-};
-
-const recordOf = (value: unknown, at: string): Readonly<Record<string, unknown>> => {
-  if (!isRecord(value)) throw invalid(at, "必须是映射（YAML 的 key: value 结构）");
-  return value;
-};
-
-/** 整块可省略（裁定 #5）：`sentence_rhythm:`（空值）与不写它等价，都走内置缺省。 */
-const mappingAt = (
-  mapping: Readonly<Record<string, unknown>>,
-  key: string,
-  at: string,
-): Readonly<Record<string, unknown>> => recordOf(mapping[key] ?? {}, `${at}.${key}`);
-
-const nonEmpty = (value: unknown, at: string): string => {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw invalid(at, "必须是非空字符串");
-  }
-  return value;
-};
-
-const textOf = (mapping: Readonly<Record<string, unknown>>, key: string, at: string): string =>
-  nonEmpty(mapping[key], `${at}.${key}`);
-
-/** `style: ''` 是裁定 #5 的"不约束"哨兵：显式空串合法，只拒非字符串。 */
-const scalarAt = (
-  mapping: Readonly<Record<string, unknown>>,
-  key: string,
-  at: string,
-  fallback: string,
-): string => {
-  const value = mapping[key];
-  if (value === undefined) return fallback;
-  if (typeof value !== "string") throw invalid(`${at}.${key}`, "必须是字符串");
-  return value;
-};
-
-const idOf = (value: unknown, at: string): string => {
-  const id = nonEmpty(value, at);
-  if (!STYLE_ID.test(id)) {
-    throw invalid(at, `id 必须匹配 ${STYLE_ID.source}（禁止 / 与 ..：会逃出风格目录）`);
-  }
-  return id;
-};
-
-/** `{单值 | 列表}` 都收；`[]` 合法（裁定 #5：空列表 = 不约束）。 */
-const stringsOf = (
-  mapping: Readonly<Record<string, unknown>>,
-  key: string,
-  at: string,
-): readonly string[] => {
-  const value = mapping[key];
-  if (value === undefined) return [];
-  if (typeof value === "string") return [nonEmpty(value, `${at}.${key}`)];
-  if (!isList(value)) throw invalid(`${at}.${key}`, "必须是字符串或字符串列表");
-  return value.map((item) => nonEmpty(item, `${at}.${key}`));
-};
-
-/** 叙事规则是编译产物的骨架，空表只能得到"没有规则"的空壳：这里要求至少一条。 */
-const requiredListOf = (
-  mapping: Readonly<Record<string, unknown>>,
-  key: string,
-  at: string,
-): readonly string[] => {
-  const items = stringsOf(mapping, key, at);
-  if (items.length === 0) throw invalid(`${at}.${key}`, "必须至少给一条叙事规则");
-  return items;
-};
-
-const positiveIntOf = (
-  mapping: Readonly<Record<string, unknown>>,
-  key: string,
-  at: string,
-  fallback: number,
-): number => {
-  const value = mapping[key];
-  if (value === undefined) return fallback;
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw invalid(`${at}.${key}`, "必须是正整数");
-  }
-  return value;
-};
-
-const rhythmOf = (mapping: Readonly<Record<string, unknown>>, at: string): SentenceRhythmSpec => ({
-  maxParagraphSentences: positiveIntOf(
-    mapping,
-    "max_paragraph_sentences",
-    at,
-    DEFAULT_MAX_SENTENCES,
-  ),
-  style: scalarAt(mapping, "style", at, ""),
-});
-
-/**
- * 同一禁词写两遍会让 lint 对每处命中报两遍（用户看到的是重复项，不是加强警告）。
- * 与匹配同口径：折叠后去重保序，落盘值取 NFC——`e` + 组合重音与 `é` 是同一个词。
- */
-const uniqueWordsOf = (words: readonly string[]): readonly string[] => {
-  const seen = new Set<string>();
-  return words
-    .map((word) => word.normalize("NFC"))
-    .filter((word) => {
-      const folded = foldWord(word);
-      const first = !seen.has(folded);
-      seen.add(folded);
-      return first;
-    });
-};
-
-const vocabularyOf = (mapping: Readonly<Record<string, unknown>>, at: string) => ({
-  forbidden: uniqueWordsOf(stringsOf(mapping, "forbidden", at)),
-  recommended: stringsOf(mapping, "recommended", at),
-});
-
-const examplesOf = (
-  mapping: Readonly<Record<string, unknown>>,
-  at: string,
-): readonly ExampleSpec[] => {
-  const value = mapping["examples"];
-  if (value === undefined) return [];
-  if (!isList(value)) throw invalid(`${at}.examples`, "必须是映射列表");
-  return value.map((item, index) => {
-    const itemAt = `${at}.examples[${String(index)}]`;
-    const example = recordOf(item, itemAt);
-    return { bad: textOf(example, "bad", itemAt), good: textOf(example, "good", itemAt) };
-  });
-};
-
-const languageOf = (value: unknown, at: string): LanguageSpec => {
-  const mapping = recordOf(value, at);
-  return {
-    persona: textOf(mapping, "persona", at),
-    narrativeRules: requiredListOf(mapping, "narrative_rules", at),
-    rhythm: rhythmOf(mappingAt(mapping, "sentence_rhythm", at), `${at}.sentence_rhythm`),
-    vocabulary: vocabularyOf(mappingAt(mapping, "vocabulary", at), `${at}.vocabulary`),
-    examples: examplesOf(mapping, at),
-  };
-};
-
 /** `parseDocument` 对任意字符串只回填 `errors`、不抛异常：错误路径只有一条。 */
 const parseYamlOf = (text: string, at: string): unknown => {
   const document = parseDocument(text, { prettyErrors: false });
@@ -263,17 +172,7 @@ const parseYamlOf = (text: string, at: string): unknown => {
 };
 
 export const parseStyleText = (text: string, at: string): StyleSpec => {
-  const value = parseYamlOf(text, at);
-  assertKnownKeys(value, at, STYLE_SCHEMA);
-  const mapping = recordOf(value, at);
-  return {
-    id: idOf(mapping["id"], `${at}.id`),
-    name: textOf(mapping, "name", at),
-    description: textOf(mapping, "description", at),
-    inheritsVisual:
-      mapping["inherits_visual"] === undefined
-        ? DEFAULT_VISUAL
-        : idOf(mapping["inherits_visual"], `${at}.inherits_visual`),
-    language: languageOf(mapping["language_style"], `${at}.language_style`),
-  };
+  const parsed = styleSchema.safeParse(parseYamlOf(text, at));
+  if (!parsed.success) throw failureOf(parsed.error, at);
+  return parsed.data;
 };

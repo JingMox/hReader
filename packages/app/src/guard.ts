@@ -1,5 +1,5 @@
 // 这层管：运行时形状守卫。`JSON.parse` 的结果是 `unknown`，先过这里再进逻辑；
-// 不用 `Reflect`、不用 `as`——`in` 收窄与数组排除已经够用（M2.2 裁定 #5）。
+// 不用 `Reflect`、不用 `as`——`in` 收窄与数组排除已经够用。
 
 export const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -43,7 +43,7 @@ const isAnnotationCard = (value: unknown): value is WireCard =>
   isOptionalString(value["resolutionNote"]) &&
   (value["lost"] === undefined || isLostOf(value["lost"]));
 
-/** `GET /api/doc/<id>/annotations` → 卡片列表 + 失效锚点 + 诊断（AC5.2/AC5.3/P1-9）。 */
+/** `GET /api/doc/<id>/annotations` → 卡片列表 + 失效锚点 + 诊断。 */
 export const isAnnotationList = (
   value: unknown,
 ): value is {
@@ -57,7 +57,7 @@ export const isAnnotationList = (
   (value["lost"] === undefined || isStringArray(value["lost"])) &&
   (value["diagnostics"] === undefined || isStringArray(value["diagnostics"]));
 
-/** `GET /api/doc/<id>/notes/<anId>/diff` → 服务端算好的 chunk（裁定 #8）。 */
+/** `GET /api/doc/<id>/notes/<anId>/diff` → 服务端算好的 chunk。 */
 export const isDiffResponse = (
   value: unknown,
 ): value is {

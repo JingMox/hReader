@@ -1,4 +1,4 @@
-// 这层管：`ops/annotationOps.ts` + `ops/revertOp.ts` 的落盘编排（AC2.1/AC2.3/AC2.5）。
+// 这层管：`ops/annotation-ops.ts` + `ops/revert-op.ts` 的落盘编排。
 // 全部走真盘：篇幅断言用 sha256，不靠"看起来没变"。
 
 import { join } from "node:path";
@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { readAnnotations } from "../../src/annotations";
+import { normalizeAnchor } from "../../src/annotations/model";
 import { patchFile } from "../../src/io";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import {
@@ -13,8 +14,8 @@ import {
   listAnnotations,
   reopenAnnotation,
   resolveAnnotation,
-} from "../../src/ops/annotationOps";
-import { revertLast } from "../../src/ops/revertOp";
+} from "../../src/ops/annotation-ops";
+import { revertLast } from "../../src/ops/revert-op";
 import {
   codeOfAsync,
   fixedClock,
@@ -36,7 +37,7 @@ const DOC = [
 ].join("\r\n");
 
 const ANCHOR = { exact: "正文一", prefix: "", suffix: "", start: 0 };
-// 快照名按时间戳排序：注入时钟必须比真实时钟"更新"，否则 undo 会挑到旧快照（见报告待裁定）。
+// 快照名按时间戳排序：注入时钟必须比真实时钟"更新"，否则 undo 会挑到旧快照。
 const AT = Date.now() + 60_000;
 const AT_ISO = new Date(AT).toISOString();
 
@@ -66,7 +67,7 @@ const addOne = async (dir: string): Promise<string> => {
   return added.annotation.id;
 };
 
-describe("addAnnotation · 正文包络（AC2.5）", () => {
+describe("addAnnotation · 正文包络", () => {
   it("should keep every body byte and add exactly one meta entry", async () => {
     await withWorkspace(async (dir) => {
       const path = await seed(dir);
@@ -109,7 +110,7 @@ describe("addAnnotation · 重复提交与拒绝", () => {
       const first = await addAnnotation(addInput({ workspace: dir }), depsAt());
       const second = await addAnnotation(addInput({ workspace: dir }), depsAt());
 
-      // 裁定 #5：同位置同句也必须是两条（重复提交不能被吞）。
+      // 同位置同句也必须是两条（重复提交不能被吞）。
       expect(second.annotation.id).not.toBe(first.annotation.id);
       const listed = await listAnnotations({ workspace: dir, file: FILE }, depsAt());
       expect(listed.annotations.map((item) => item.id)).toEqual([
@@ -277,6 +278,104 @@ describe("addAnnotation · anchor 结构缺失", () => {
       );
 
       expect(await historyNamesOf(dir, FILE)).toEqual([]);
+    });
+  });
+});
+
+const DOC_TWO_PARA = [
+  "<!doctype html>",
+  '<html><body><article data-hr-id="hr-a"><p data-hr-id="hr-b">正文一</p><p data-hr-id="hr-c">正文二</p></article>',
+  META,
+  "</body></html>",
+].join("\n");
+
+const seedTwoPara = async (dir: string): Promise<string> => {
+  const path = join(dir, FILE);
+  await writeTextAt(path, DOC_TWO_PARA);
+  return path;
+};
+
+const input = (patch: Readonly<Record<string, unknown>> = {}) => ({
+  workspace: "",
+  file: FILE,
+  nodeId: "hr-b",
+  anchor: ANCHOR,
+  note: "第一条",
+  ...patch,
+});
+
+describe("normalizeAnchor · 形状拒绝", () => {
+  it("should return undefined when exact is not a string", () => {
+    // `stringOf` 只认字符串：数字/对象/null 都不是"作者写短了"，而是**输入形状错**。
+    expect(normalizeAnchor({ exact: 42 })).toBeUndefined();
+    expect(normalizeAnchor({ exact: null })).toBeUndefined();
+    expect(normalizeAnchor({ exact: { text: "x" } })).toBeUndefined();
+  });
+
+  it("should return undefined when the record has no exact at all", () => {
+    expect(normalizeAnchor({ prefix: "a" })).toBeUndefined();
+  });
+});
+
+describe("addAnnotation · anchor 不是对象", () => {
+  it("should reject a string anchor with invalid_payload and keep the bytes", async () => {
+    await withWorkspace(async (dir) => {
+      const path = await seedTwoPara(dir);
+      const before = sha256Of(await readBytesAt(path));
+
+      const code = await codeOfAsync(() =>
+        addAnnotation(input({ workspace: dir, anchor: "e30=" }), depsAt()),
+      );
+
+      expect(code).toBe("invalid_payload");
+      expect(sha256Of(await readBytesAt(path))).toBe(before);
+    });
+  });
+});
+
+describe("resolveAnnotation · 多条批注里只动目标那条", () => {
+  it("should leave the other annotations byte-identical", async () => {
+    await withWorkspace(async (dir) => {
+      await seedTwoPara(dir);
+      const first = await addAnnotation(input({ workspace: dir }), depsAt());
+      const second = await addAnnotation(
+        input({
+          workspace: dir,
+          nodeId: "hr-c",
+          anchor: { exact: "正文二", prefix: "", suffix: "", start: 0 },
+          note: "第二条",
+        }),
+        depsAt(),
+      );
+
+      const result = await resolveAnnotation(
+        { workspace: dir, file: FILE, id: second.annotation.id },
+        depsAt(),
+      );
+
+      expect(result.changed).toBe(true);
+      expect(result.annotation.id).toBe(second.annotation.id);
+      expect(result.annotation.status).toBe("resolved");
+      // 第一条必须原样保留（不是"整体重写后碰巧一样"）：id/note/anchor 逐字段比对。
+      const text = (await readBytesAt(join(dir, FILE))).toString("utf8");
+      const meta = text.slice(text.indexOf(META.slice(0, 24)));
+      expect(meta).toContain(`"id":"${first.annotation.id}"`);
+      expect(meta).toContain('"note":"第一条"');
+      expect(meta).toContain('"status":"pending"');
+    });
+  });
+});
+
+describe("revertLast · 非 undo 错误原样抛出", () => {
+  it("should rethrow a path error untouched instead of masking it as nothing_to_undo", async () => {
+    await withWorkspace(async (dir) => {
+      await seedTwoPara(dir);
+
+      const code = await codeOfAsync(() =>
+        revertLast({ workspace: dir, file: "../escape.html" }, nodePatchDeps),
+      );
+
+      expect(code).toBe("path_outside_workspace");
     });
   });
 });

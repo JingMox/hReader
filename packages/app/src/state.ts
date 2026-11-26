@@ -25,16 +25,26 @@ export type ConnState = "connecting" | "live" | "reconnecting" | "offline";
 
 export type Panel = "closed" | "sidenote";
 
+/** 演示模式的全部状态：只记"开没开 + 第几页"；页内步进是 DOM 事实，由 widget 自己记账。 */
+export interface PresentMode {
+  readonly active: boolean;
+  /** 0 基页码；退出后保留，再次进入时续上。 */
+  readonly page: number;
+}
+
 export interface ReaderState extends NoteSlice, DiffSlice {
   readonly docId: string;
   readonly revision: string;
   /** 真实生效的主题（`themeSettled ok:true` 才更新）。 */
   readonly theme: string;
-  /** `<select>` 显示的主题：用户刚点的那个，失败时回退到 `theme`（裁定 #3）。 */
+  /** `<select>` 显示的主题：用户刚点的那个，失败时回退到 `theme`。 */
   readonly themeRequested: string;
   readonly outline: readonly OutlineNode[];
   /** 文档顺序的块 id（`data-hr-id`），`j`/`k` 与 TOC 高亮都按它走。 */
   readonly blocks: readonly string[];
+  /** 演示页（文档序的 `data-hr-id`）：顶层 `h1`/`section`；两者都没有时退化为全部顶层块。 */
+  readonly pages: readonly string[];
+  readonly present: PresentMode;
   readonly activeId: string | undefined;
   readonly sidenoteId: string | undefined;
   readonly panel: Panel;
@@ -55,6 +65,8 @@ export type ReaderIntent =
       readonly outline: readonly OutlineNode[];
       readonly revision?: string;
       readonly html?: string;
+      /** 缺省表示"沿用现有页表"：首屏记账那次 dispatch 没有模型，不能清空页表。 */
+      readonly pages?: readonly string[];
     }
   | { readonly kind: "outlineLoaded"; readonly outline: readonly OutlineNode[] }
   | { readonly kind: "move"; readonly delta: 1 | -1 }
@@ -73,6 +85,11 @@ export type ReaderIntent =
   | { readonly kind: "conn"; readonly conn: ConnState }
   | { readonly kind: "themeSelected"; readonly theme: string }
   | { readonly kind: "themeSettled"; readonly theme: string; readonly ok: boolean }
+  | { readonly kind: "presentEntered"; readonly page?: number }
+  | { readonly kind: "presentExited" }
+  | { readonly kind: "presentMoved"; readonly page: number }
+  | { readonly kind: "presentAdvanced" }
+  | { readonly kind: "presentBack" }
   | NoteIntent
   | DiffIntent;
 
@@ -85,6 +102,8 @@ export const initialState = (docId: string, theme: string): ReaderState => ({
   themeRequested: theme,
   outline: [],
   blocks: [],
+  pages: [],
+  present: { active: false, page: 0 },
   activeId: undefined,
   sidenoteId: undefined,
   panel: "closed",
@@ -122,16 +141,30 @@ type DocIntent = IntentOf<"blocksLoaded"> | IntentOf<"documentChanged"> | Intent
 type NavIntent = IntentOf<"move"> | IntentOf<"scrollTo"> | IntentOf<"toggleFocus">;
 type PanelIntent = IntentOf<"openSidenote"> | IntentOf<"panelClosed"> | IntentOf<"searchOpened">;
 
+/** 页表收缩时把演示态收回合法区间：没有页就退出演示（空屏演示比"按了没反应"更糟）。 */
+const presentOfPages = (present: PresentMode, pages: readonly string[]): PresentMode => {
+  if (pages.length === 0) return present.active ? { ...present, active: false } : present;
+  if (present.page < pages.length) return present;
+  return { ...present, page: pages.length - 1 };
+};
+
 const reduceBlocks = (state: ReaderState, intent: IntentOf<"blocksLoaded">): ReaderState => {
-  const same = sameList(state.blocks, intent.blocks) && state.outline === intent.outline;
+  const pages = intent.pages ?? state.pages;
+  const same =
+    sameList(state.blocks, intent.blocks) &&
+    state.outline === intent.outline &&
+    sameList(state.pages, pages);
   const html = intent.html ?? state.documentHtml;
-  if (same && html === state.documentHtml) return state;
+  const present = presentOfPages(state.present, pages);
+  if (same && html === state.documentHtml && present === state.present) return state;
   return {
     ...state,
     revision: intent.revision ?? state.revision,
     blocks: intent.blocks,
     outline: intent.outline,
+    pages,
     documentHtml: html,
+    present,
     activeId: state.activeId ?? intent.blocks[0],
   };
 };
@@ -180,6 +213,48 @@ const reducePanel = (state: ReaderState, intent: PanelIntent): ReaderState => {
 const reduceConn = (state: ReaderState, intent: IntentOf<"conn">): ReaderState =>
   state.conn === intent.conn ? state : { ...state, conn: intent.conn };
 
+type PresentIntent =
+  | IntentOf<"presentEntered">
+  | IntentOf<"presentExited">
+  | IntentOf<"presentMoved">
+  | IntentOf<"presentAdvanced">
+  | IntentOf<"presentBack">;
+
+const isPresentIntent = (intent: ReaderIntent): intent is PresentIntent =>
+  intent.kind === "presentEntered" ||
+  intent.kind === "presentExited" ||
+  intent.kind === "presentMoved" ||
+  intent.kind === "presentAdvanced" ||
+  intent.kind === "presentBack";
+
+/** 页码恒收敛到 `[0, pages.length-1]`：Home/End 与越界 hash 共用这一个钳制点。 */
+const clampPage = (state: ReaderState, page: number): number =>
+  Math.min(Math.max(page, 0), state.pages.length - 1);
+
+const reducePresent = (state: ReaderState, intent: PresentIntent): ReaderState => {
+  if (intent.kind === "presentExited")
+    return state.present.active
+      ? { ...state, present: { ...state.present, active: false } }
+      : state;
+  if (intent.kind === "presentEntered") {
+    // 没有可分页的内容就不进演示态——进了一块空屏比"按了没反应"更糟。
+    if (state.pages.length === 0 || state.present.active) return state;
+    return {
+      ...state,
+      present: { active: true, page: clampPage(state, intent.page ?? state.present.page) },
+    };
+  }
+  if (!state.present.active) return state;
+  const target =
+    intent.kind === "presentMoved"
+      ? intent.page
+      : intent.kind === "presentAdvanced"
+        ? state.present.page + 1
+        : state.present.page - 1;
+  const page = clampPage(state, target);
+  return page === state.present.page ? state : { ...state, present: { ...state.present, page } };
+};
+
 const reduceTheme = (
   state: ReaderState,
   intent: IntentOf<"themeSelected"> | IntentOf<"themeSettled">,
@@ -219,6 +294,7 @@ export const reduce = (state: ReaderState, intent: ReaderIntent): ReaderState =>
   }
   if (isNavIntent(intent)) return reduceNav(state, intent);
   if (isPanelIntent(intent)) return reducePanel(state, intent);
+  if (isPresentIntent(intent)) return reducePresent(state, intent);
   if (intent.kind === "conn") return reduceConn(state, intent);
   return reduceTheme(state, intent);
 };

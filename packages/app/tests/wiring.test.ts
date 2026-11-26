@@ -6,7 +6,9 @@
 import { describe, expect, it } from "vitest";
 
 import { closedDiff } from "../src/notes.ts";
+import type { ElementLike } from "../src/dom.ts";
 import { syncView } from "../src/wiring.ts";
+import { fakeElement } from "./support/fake-dom.ts";
 import { createFakeHost, stateOf } from "./support/fake-host.ts";
 
 const ROOT = "#hr-root";
@@ -51,5 +53,34 @@ describe("syncView · 面板开合类", () => {
     sync(stateOf({ panel: "closed", sidenoteId: undefined, diff: { ...closedDiff, open: false } }));
 
     expect(openWrites(fake)).toEqual(["1", "1", "0"]);
+  });
+
+  it("should sweep every stale hr-note-target outline once the selection is gone", () => {
+    const fake = createFakeHost();
+    const sync = syncView({ host: fake.host, widgets: [] });
+    // 先后划过两个块 → 两处描边都挂着；`cls` 只改第一个命中，清扫必须逐块点名。
+    const marked = (id: string): ElementLike => {
+      const element = fakeElement("p");
+      element.setAttribute("data-hr-id", id);
+      return element;
+    };
+    fake.all.set(`${ROOT} .hr-note-target`, [marked("hr-a"), marked('b"]')]);
+
+    sync(
+      stateOf({
+        noteTarget: {
+          nodeId: "hr-a",
+          anchor: { exact: "x", prefix: "", suffix: "", start: 0 },
+        },
+      }),
+    );
+    sync(stateOf({ noteTarget: undefined }));
+
+    const cleared = fake.calls
+      .filter(
+        (call) => call.op === "cls" && call.args[1] === "hr-note-target" && call.args[2] === "0",
+      )
+      .map((call) => call.args[0]);
+    expect(cleared).toEqual([`${ROOT} [data-hr-id="hr-a"]`, `${ROOT} [data-hr-id="b\\"\\]"]`]);
   });
 });

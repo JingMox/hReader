@@ -1,5 +1,5 @@
 // 这层测：`measureSelection()`（`packages/app/src/measure.ts`）——浏览器 `Range` 的最小包装。
-// 直接替换全局 `document` / `window`：偏移换算只依赖这两个全局，不需要真 DOM（裁定 #11）。
+// 直接替换全局 `document` / `window`：偏移换算只依赖这两个全局，不需要真 DOM。
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BlockElementLike, MeasureLike, SelectionLike } from "../src/widgets/selection.ts";

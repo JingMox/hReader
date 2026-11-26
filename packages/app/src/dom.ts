@@ -2,6 +2,8 @@
 // **不引用 DOM lib**（本仓库 tsconfig 的 `lib` 只有 ES2023）：这里只声明"用到的那几个成员"的结构类型，
 // `main.ts` 传入真实 `document`；widgets 因此只依赖 `Host`/`NodeSpec`，不碰实现。
 
+import { escapeAttr } from "./escape-attr.ts";
+
 export interface NodeSpec {
   readonly tag: string;
   readonly attrs?: Readonly<Record<string, string>>;
@@ -41,11 +43,11 @@ export interface Host {
   readonly html: (selector: string, markup: string) => void;
   readonly cls: (selector: string, name: string, on: boolean) => void;
   readonly children: (selector: string, specs: readonly NodeSpec[]) => void;
-  /** 把整篇 HTML 按 `data-hr-id` 拆成"块 id → 块 innerHTML"（正文增量更新的输入，AC2.4）。 */
+  /** 把整篇 HTML 按 `data-hr-id` 拆成"块 id → 块 innerHTML"（正文增量更新的输入）。 */
   readonly blocks: (markup: string) => ReadonlyMap<string, string>;
   /** 只替换某一块的 innerHTML（不整篇重载，滚动位置因此不丢）。 */
   readonly blockHtml: (id: string, markup: string) => void;
-  /** 块在新文档里不存在了：从 DOM 真正删掉（裁定 #8；**必选**，缺实现就是漏删块）。 */
+  /** 块在新文档里不存在了：从 DOM 真正删掉（**必选**，缺实现就是漏删块）。 */
   readonly removeBlock: (id: string) => void;
   /** 同步整篇 HTML 中新增、改标签或重排的块，保留未改动块与选区。 */
   readonly syncBlocks?: (markup: string) => void;
@@ -55,7 +57,9 @@ export interface Host {
     handler: (target: TargetLike) => void,
   ) => () => void;
   readonly scrollTo: (selector: string) => void;
-  /** 锚点是否存在（裁定 #1：模板缺锚点必须**可见地失败**，不能静默跳过）。可选：假 host 可省。 */
+  /** 文档序取全部命中元素（演示模式的步进元素枚举）；**必选**，缺实现就是步进永远不出现。 */
+  readonly all: (selector: string) => readonly ElementLike[];
+  /** 锚点是否存在：模板缺锚点必须**可见地失败**，不能静默跳过。可选：假 host 可省。 */
   readonly has?: (selector: string) => boolean;
   readonly destroy: () => void;
 }
@@ -64,8 +68,16 @@ export interface Host {
 export interface DocumentLike {
   readonly body: { readonly getAttribute: (name: string) => string | null };
   readonly querySelector: (selector: string) => ElementLike | null;
+  /** `Host.all` 的唯一来源；缺省表示环境不支持枚举（`all` 返回空）。 */
+  readonly querySelectorAll?: (selector: string) => readonly ElementLike[];
   readonly createElement: (tag: string) => ElementLike;
-  /** `Range` 的最小声明（裁定 #11 的字符偏移）；缺省表示不量偏移。 */
+  /** Fullscreen API 三段（进入 / 退出 / 当前态）：任一缺席即整体退化，演示模式落回"铺满视口"。 */
+  readonly documentElement?: { readonly requestFullscreen?: () => Promise<void> };
+  readonly exitFullscreen?: () => Promise<void>;
+  readonly fullscreenElement?: unknown;
+  readonly addEventListener?: (type: string, handler: () => void) => void;
+  readonly removeEventListener?: (type: string, handler: () => void) => void;
+  /** `Range` 的最小声明（块内字符偏移的度量）；缺省表示不量偏移。 */
   readonly createRange?: () => {
     readonly selectNodeContents: (node: unknown) => void;
     readonly setEnd: (node: unknown, offset: number) => void;
@@ -112,9 +124,18 @@ const paint = (root: DocumentLike, spec: NodeSpec): ElementLike => {
   return element;
 };
 
+/** 主题 CSS 的注释里会出现字面 `<article …>`（如 slides 分页注释）：先把这些非正文区段
+ *  抹成等长空白（保住索引）再定位文章起点，否则截出来的"正文"会从 CSS 注释中间开始，
+ *  注释尾巴和后面的规则文本会被解析成游离元素、直接渲染在正文顶部。 */
 const stripHeadOf = (markup: string): string => {
-  const match = /<article\b[\s\S]*<\/article>/iu.exec(markup);
-  return match === null ? markup : match[0];
+  const masked = markup.replace(
+    /<style\b[\s\S]*?<\/style>|<script\b[\s\S]*?<\/script>|<!--[\s\S]*?-->/giu,
+    (region) => " ".repeat(region.length),
+  );
+  const start = masked.indexOf("<article");
+  if (start === -1) return markup;
+  const end = markup.lastIndexOf("</article>");
+  return start <= end ? markup.slice(start, end + "</article>".length) : markup;
 };
 
 const syncHeadTheme = (root: DocumentLike, markup: string): void => {
@@ -140,7 +161,7 @@ const parsedBlocksOf = (
   topOnly = false,
 ): Map<string, ElementLike> => {
   const box = root.createElement("div");
-  // 游离 `<div>` 解析：不进活动文档（裁定 #7 的三处之一）。
+  // 游离 `<div>` 解析：不进活动文档（`innerHTML` 的受控使用点之一）。
   box.innerHTML = stripHeadOf(markup);
   const direct = topOnly ? box.querySelectorAll("article[data-hr-id] > [data-hr-id]") : [];
   // 跳过根 `<article>` 自身，索引文档内所有可寻址块（整块同步时优先取 `<article>` 直接子块以保住包装容器）。
@@ -179,7 +200,7 @@ const syncAllBlocks = (root: DocumentLike, markup: string): void => {
   const freshEntries = [...parsedBlocksOf(root, markup, true).entries()].reverse();
   let anchor: ElementLike | null = null;
   for (const [id, fresh] of freshEntries) {
-    anchor = placeBlock(container, found(root, `[data-hr-id="${id}"]`), fresh, anchor);
+    anchor = placeBlock(container, found(root, `[data-hr-id="${escapeAttr(id)}"]`), fresh, anchor);
   }
 };
 
@@ -197,12 +218,12 @@ const paintOps = (
     return index;
   },
   blockHtml: (id, markup) => {
-    const element = found(root, `[data-hr-id="${id}"]`);
+    const element = found(root, `[data-hr-id="${escapeAttr(id)}"]`);
     // 第二处：块级替换（内容来自服务器，已过白名单；不整篇重载所以滚动位置不丢）。
     if (element !== undefined && element.innerHTML !== markup) element.innerHTML = markup;
   },
   removeBlock: (id) => {
-    found(root, `[data-hr-id="${id}"]`)?.remove?.();
+    found(root, `[data-hr-id="${escapeAttr(id)}"]`)?.remove?.();
   },
   syncBlocks: (markup) => {
     syncAllBlocks(root, markup);
@@ -212,7 +233,7 @@ const paintOps = (
 /** 只碰文本/属性/类名的那些。 */
 const textOps = (
   root: DocumentLike,
-): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "has"> => ({
+): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "all" | "has"> => ({
   text: (selector, value) => {
     const element = found(root, selector);
     if (element === undefined) return;
@@ -237,6 +258,7 @@ const textOps = (
   scrollTo: (selector) => {
     found(root, selector)?.scrollIntoView?.({ block: "start" });
   },
+  all: (selector) => root.querySelectorAll?.(selector) ?? [],
   has: (selector) => found(root, selector) !== undefined,
 });
 

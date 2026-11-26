@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { HrError } from "@hreader/core";
 
 import { PRINT_CSS } from "../src/index";
-import { printCssOf } from "../src/print-css";
+import { printCssOf, slidesPrintCssOf } from "../src/print-css";
 
 /** 空白归一化后再比对规则体：格式化改动（缩行、换行）不该弄红规则级测试。 */
 const flat = PRINT_CSS.replaceAll(/\s+/gu, " ");
@@ -17,7 +17,7 @@ interface RuleCase {
   readonly body: readonly string[];
 }
 
-/** AC-6 逐条（卡 §6：规则"存在"由单测钉，"生效"必须真 Chrome）。 */
+/** 出版级规则逐条钉"存在"；"生效"必须真 Chrome 验。 */
 const RULE_CASES: readonly RuleCase[] = [
   { name: "A4 纸与页边距", selector: "@page {", body: ["size: A4;", "margin: 20mm 18mm;"] },
   { name: "首页无边距", selector: "@page :first {", body: ["margin: 0;"] },
@@ -58,7 +58,7 @@ const declarationsOf = (selector: string): string => {
   return flat.slice(open, flat.indexOf("}", open));
 };
 
-describe("AC-6 出版级规则存在", () => {
+describe("出版级规则存在", () => {
   it.each(RULE_CASES.map((item) => [item.name, item] as const))("%s", (_name, item) => {
     expect(flat).toContain(item.selector);
     const body = declarationsOf(item.selector);
@@ -97,7 +97,7 @@ describe("AC-6 出版级规则存在", () => {
   });
 });
 
-describe("AC-2 / §4 约束", () => {
+describe("骨架体积与自含约束", () => {
   it("≤ 8 KiB", () => {
     expect(Buffer.byteLength(PRINT_CSS, "utf8")).toBeLessThanOrEqual(8192);
   });
@@ -117,7 +117,7 @@ describe("AC-2 / §4 约束", () => {
   });
 });
 
-describe("printCssOf · 纸张守卫（§17.1）", () => {
+describe("printCssOf · 纸张守卫", () => {
   /** 类型层已收窄，只有在运行期绕过它才能复现"CLI 传了个字典外的纸型"：`Reflect.apply` 不写 `as`。 */
   const failureOf = (paper: string): unknown => {
     try {
@@ -146,5 +146,20 @@ describe("printCssOf · 纸张守卫（§17.1）", () => {
       (paper) => /size: ([^;]+);/u.exec(printCssOf(paper))?.[1],
     );
     expect(sizes).toEqual(["A4", "letter", "A5"]);
+  });
+});
+
+describe("slidesPrintCssOf · 一页一屏的保底骨架", () => {
+  const css = slidesPrintCssOf();
+
+  it("页框写死 16:9：没有纸张参数是刻意的（slides 不接受 --page-size）", () => {
+    expect(css).toContain("size: 13.333in 7.5in;");
+    expect(css).not.toContain("@@paper@@");
+  });
+
+  it("顶层 slide 元素（首个 h1 与其余 section）都强制分页", () => {
+    expect(css).toContain("article > h1");
+    expect(css).toContain("article > section");
+    expect(css).toContain("break-after: page;");
   });
 });

@@ -12,6 +12,7 @@ export type RouteKind =
   | "themes"
   | "healthz"
   | "document"
+  | "docInfo"
   | "model"
   | "outline"
   | "patch"
@@ -22,6 +23,8 @@ export type RouteKind =
   | "annotationResolve"
   | "annotationDiff"
   | "undo"
+  | "docTrust"
+  | "docNormalize"
   | "events";
 
 const DOC_PARAM = ":docId";
@@ -59,13 +62,14 @@ const route = (
 ): Route => Object.freeze({ method, segments: Object.freeze(segments), auth, kind });
 
 export const ROUTES: readonly Route[] = Object.freeze([
-  // `/` 也吃 token：`hr serve` 打印的就是 `/?token=…`，首访落 cookie 后 302 回干净的 `/`（BUG-01）。
+  // `/` 也吃 token：`hr serve` 打印的就是 `/?token=…`，首访落 cookie 后 302 回干净的 `/`。
   route("GET", [], "token", "home"),
   route("GET", ["assets", REST_PARAM], "none", "assets"),
   route("GET", ["api", "theme"], "none", "themes"),
   route("GET", ["api", "theme", ":styleId"], "none", "theme"),
   route("GET", ["healthz"], "none", "healthz"),
   route("GET", ["s", DOC_PARAM], "token", "document"),
+  route("GET", ["api", "doc", DOC_PARAM, "info"], "cookie", "docInfo"),
   route("GET", ["api", "doc", DOC_PARAM, "model"], "cookie", "model"),
   route("GET", ["api", "doc", DOC_PARAM, "outline"], "cookie", "outline"),
   route("POST", ["api", "patch"], "cookie+csrf", "patch"),
@@ -81,6 +85,8 @@ export const ROUTES: readonly Route[] = Object.freeze([
   ),
   route("GET", ["api", "doc", DOC_PARAM, "notes", AN_PARAM, "diff"], "cookie", "annotationDiff"),
   route("POST", ["api", "doc", DOC_PARAM, "undo"], "cookie+csrf", "undo"),
+  route("POST", ["api", "doc", DOC_PARAM, "trust"], "cookie+csrf", "docTrust"),
+  route("POST", ["api", "doc", DOC_PARAM, "normalize"], "cookie+csrf", "docNormalize"),
   route("GET", ["api", "events"], "cookie", "events"),
 ]);
 
@@ -119,12 +125,12 @@ const paramsOf = (
 export const matchRoute = (method: string, pathname: string): RouteLookup => {
   const segments = segmentsOf(pathname);
   if (segments === undefined) return { kind: "none" };
-  const upper = method.toUpperCase();
+  // RFC 9110 §9.1：method token 区分大小写——`get` 不是 `GET`，不许静默大写放行。
   const allowed: HttpMethod[] = [];
   for (const candidate of ROUTES) {
     const params = paramsOf(candidate, segments);
     if (params === undefined) continue;
-    if (candidate.method === upper) return { kind: "route", route: candidate, params };
+    if (candidate.method === method) return { kind: "route", route: candidate, params };
     allowed.push(candidate.method);
   }
   return allowed.length === 0
@@ -135,7 +141,7 @@ export const matchRoute = (method: string, pathname: string): RouteLookup => {
 /**
  * 具名参数取值：命中就返回，缺失才用 `fallback`。
  * 写成循环而不是 `params[key] ?? fallback`，是因为后者在"路由保证一定有这个参数"的地方
- * 会留下一条**永远取不到**的默认值臂（M2.3 R3 覆盖率裁定）；循环的两条臂共享同一行，都是真实路径。
+ * 会留下一条**永远取不到**的默认值臂；循环的两条臂共享同一行，都是真实路径。
  */
 export const paramOf = (
   params: Readonly<Record<string, string>>,

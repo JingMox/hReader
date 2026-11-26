@@ -26,6 +26,29 @@ describe("parseArgs · style", () => {
     expectFailure(argv, message, "style");
   });
 
+  it.each([["--strict"], ["--strict=warning"]] as const)("should accept %s with --lint", (flag) => {
+    expect(parse(["style", "a.html", "--lint", flag])).toMatchObject({
+      ok: true,
+      intent: { kind: "style", mode: { kind: "lint" } },
+    });
+  });
+
+  it("should reject --strict without --lint", () => {
+    expectFailure(
+      ["style", "a.html", "--visual", "x", "--strict"],
+      "--strict 只与 --lint 同用",
+      "style",
+    );
+  });
+
+  it("should reject an unknown --strict value", () => {
+    expectFailure(
+      ["style", "a.html", "--lint", "--strict=foo"],
+      "未知的 --strict：foo（可选：error | warning）",
+      "style",
+    );
+  });
+
   it("should reject mode flags that are combined", () => {
     expectFailure(
       ["style", "a", "--lint", "--visual", "x"],

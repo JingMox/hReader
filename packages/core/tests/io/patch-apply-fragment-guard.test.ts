@@ -5,14 +5,14 @@
 // `{from, to}` 交给用户。真片段走不到这条路（`parseFragment` 只放行单个元素），
 // 所以用 mock 把片段换成文本节点，直接把这条兜底走一遍。
 //
-// 注：F11 之后 `apply.ts` 的内部调用点是 `parseFragmentWithDiagnostics`（自带 `warnings` 上浮），
+// 注：`apply.ts` 的内部调用点是 `parseFragmentWithDiagnostics`（自带 `warnings` 上浮），
 // `parseFragment` 只剩对外外壳；mock 必须打在内部调用点上，否则它静默失效。
 
 import { describe, expect, it, vi } from "vitest";
 
-import { applyPatch } from "../../src/ops/patchNode";
+import { applyPatch } from "../../src/ops/patch-node";
 
-vi.mock("../../src/ops/patchNode/fragment", async (importOriginal) => {
+vi.mock("../../src/ops/patch-node/fragment", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,

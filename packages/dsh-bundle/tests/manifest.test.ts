@@ -1,4 +1,4 @@
-// 这层管：包清单契约——dsh 靠这几个字段发现并写下这个包（AC-1），外加 D4 的 import 纪律。
+// 这层管：包清单契约——dsh 靠这几个字段发现并写下这个包，外加 import 纪律。
 // 解析结果的类型是 unknown：只做 `toMatchObject`/`stringMatching` 断言，不走 `as`（本仓禁断言）。
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -11,8 +11,9 @@ import { parse } from "yaml";
 const PKG_DIR = fileURLToPath(new URL("../", import.meta.url));
 const SRC_DIR = join(PKG_DIR, "src");
 
-/** 精确版本：`1.2.3` 或 `1.2.3-rc.1`；`^`/`~`/`*`/`latest`/`workspace:*` 都不匹配。 */
-const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u;
+/** 精确版本：`1.2.3`、`1.2.3-rc.1` 或 `catalog:`（版本收敛在 pnpm-workspace.yaml 的 catalog 里，
+ *  同样是精确版本单一真源）；`^`/`~`/`*`/`latest`/`workspace:*` 都不匹配。 */
+const EXACT_VERSION = /^(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?|catalog:)$/u;
 
 /** 一条**行首**的 import 语句的模块名是 `@deepseek-ai/*`（跨行也要认得出，注释里的 `import` 不算）。 */
 const DEEPSEEK_IMPORT = /^import\s+([\s\S]*?)\s+from\s+["']@deepseek-ai\/[^"']+["']/gmu;
@@ -55,7 +56,7 @@ describe("package.json", () => {
   });
 
   it("devDeps 是精确版本（不带 ^ 或 ~）", () => {
-    for (const name of ["@deepseek-ai/cordis", "@deepseek-ai/dsh-system-prompt", "esbuild"]) {
+    for (const name of ["@deepseek-ai/cordis", "@deepseek-ai/dsh-system-prompt"]) {
       expect(textOf(manifest, "devDependencies", name)).toMatch(EXACT_VERSION);
     }
   });
@@ -91,13 +92,13 @@ describe("cordis.patch.yml", () => {
   });
 });
 
-describe("import 纪律（D4）：扫荡真的扫到了东西", () => {
+describe("import 纪律：扫荡真的扫到了东西", () => {
   it("扫到的 src 文件非空：目录一改名，下面两条 `违规数为 0` 就会恒绿", () => {
     expect(SRC_FILES).toEqual(expect.arrayContaining(["index.ts", "events.ts"]));
   });
 });
 
-describe("import 纪律（D4）", () => {
+describe("import 纪律", () => {
   it("src 里对 @deepseek-ai/* 只有 import type，没有任何值导入", () => {
     const valueImports = SRC_FILES.flatMap((file) => {
       const text = readText(join(SRC_DIR, file));

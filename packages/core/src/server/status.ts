@@ -2,10 +2,10 @@
 
 import type { HrErrorCode } from "../hr-error";
 
-/** 服务端**会抛**的码；`anchor_lost` 是客户端的"锚点失效"reason，服务端永不抛（裁定 #14）。
+/** 服务端**会抛**的码；`anchor_lost` 是客户端的"锚点失效"reason，服务端永不抛。
  *  `llm_failure` / `file_exists` 只由 CLI 侧的风格提取抛出（提取不经 HTTP），同样不进本表；
  *  `empty_document` 同理只由 `hr export print` 在本地渲染层抛出；
- *  M4.4 的四个 Chrome 码同属 CLI 本地渲染（不起/超时/空产物），HTTP 层永不抛。
+ *  四个 Chrome 码同属 CLI 本地渲染（不起/超时/空产物），HTTP 层永不抛。
  */
 export type ServerCode = Exclude<
   HrErrorCode,
@@ -67,7 +67,7 @@ const STATUS: Readonly<Record<ServerCode, number>> = {
   daemon_already_running: 409,
   invalid_payload: 400,
   nothing_to_undo: 409,
-  // M4.8：文档缺 `data-hr-id` 与服务端口被占都是“可一步修好的状态”，不是请求本身写错了。
+  // 文档缺 `data-hr-id` 与服务端口被占都是“可一步修好的状态”，不是请求本身写错了。
   needs_normalize: 409,
   port_in_use: 409,
 };

@@ -21,13 +21,6 @@ module.exports = {
       severity: "error",
       comment: "@hreader/core 不得依赖任何其他 @hreader/* 包（依赖方向单向）。",
       from: { path: "^packages/core/(src|tests)" },
-      to: { path: "^packages/(protocol|renderer-html|app)/" },
-    },
-    {
-      name: "protocol-depends-on-core-only",
-      severity: "error",
-      comment: "@hreader/protocol 只允许依赖 @hreader/core。",
-      from: { path: "^packages/protocol/(src|tests)" },
       to: { path: "^packages/(renderer-html|app)/" },
     },
     {
@@ -56,8 +49,8 @@ module.exports = {
       name: "cli-parse-and-commands-stay-pure",
       severity: "error",
       comment:
-        "args.ts 与 commands/* 不得碰进程、文件系统或子进程：进程边界只允许在 main.ts / run.ts（M1.8 §0）。",
-      from: { path: "^packages/cli/src/(args|commands/)" },
+        "args/* 与 commands/* 不得碰进程、文件系统或子进程：进程边界只允许在 main.ts / run.ts。",
+      from: { path: "^packages/cli/src/(args/|commands/)" },
       to: {
         path: "^(node:)?(process|fs|fs/promises|child_process|os)$",
         dependencyTypes: ["core"],

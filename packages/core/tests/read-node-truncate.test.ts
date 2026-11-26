@@ -126,7 +126,7 @@ describe("truncate · codepoint boundaries", () => {
     }
   });
 
-  // D-P2（见报告）：只在码点边界停手，NFD 的 `e`+U+0301 会被切出“没带重音的空壳 e”。
+  // 只在码点边界停手，NFD 的 `e`+U+0301 会被切出“没带重音的空壳 e”。
   // KD-05
   it.fails("should never leave an orphan combining mark for any budget", () => {
     const nfd = "e\u0301".repeat(2_000);
@@ -163,7 +163,7 @@ describe("truncate · multi-codepoint clusters", () => {
     expectBalanced(result.html, "section");
   });
 
-  // D-族（P2，见报告）：截断只在码点边界停手，ZWJ 家族会被切出"半个家庭"。
+  // 截断只在码点边界停手，ZWJ 家族会被切出"半个家庭"。
   // KD-05
   it.fails("should never cut a ZWJ family apart", () => {
     const result = readIn(`<section data-hr-id="s1">${"👨‍👩‍👧‍👦".repeat(600)}</section>`, "#s1", 2003);
@@ -181,7 +181,7 @@ describe("truncate · multi-codepoint clusters", () => {
   });
 });
 
-describe("truncate · enterable elements (v2 #10)", () => {
+describe("truncate · enterable elements", () => {
   const big = (count: number): string =>
     `<article data-hr-id="post">${Array.from(
       { length: count },
@@ -274,8 +274,8 @@ describe("truncate · diagnostics", () => {
   });
 });
 
-describe("truncate · a non-empty prefix is still a partial read (v3 #20)", () => {
-  // v3 #20 删掉了 `truncate.ts` 里“前缀放不下就 none”的死臂；这条把新暴露的 `"partial"` 路径锁住。
+describe("truncate · a non-empty prefix is still a partial read", () => {
+  // 实现删掉了 `truncate.ts` 里“前缀放不下就 none”的死臂；这条把新暴露的 `"partial"` 路径锁住。
   it("should keep the open tag plus a non-empty text prefix instead of collapsing to a shell", () => {
     const html = `<section data-hr-id="s1">${"文".repeat(8)}</section>`;
     const minimal = 35;

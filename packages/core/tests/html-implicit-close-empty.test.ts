@@ -1,11 +1,11 @@
-// F20 / BLOCKER-2（docs/05:55「隐含结束产生的空段落同样获得 id」+ :56「已有 `data-hr-id` 保持不变」）：
+// 隐含结束产生的空段落同样获得 id；已有 `data-hr-id` 保持不变。
 // quirks 文档里 `<p data-hr-id="p-1"><table>…</table></p>` 的**首段没有行内内容**。整段丢弃会让
 // 作者写在 `<p>` 上的 `data-hr-id` 无处承接、静默消失（`hr read #p-1` 直接 `node_not_found`），
 // 因此首段补成零长 span 的空 `<p>` 把原 attrs 留住；**其余**空段没有自己的 id，仍丢弃。
 //
 // 这层管：解析产树（id 留在哪个 `<p>` 上、零长 span 长什么样、二次收尾不变）、落盘字节、
 // `read` 可寻址、`outline` 不列无文本块、以及"第二个无 id 的空段照旧消失"。
-// 落盘后的 CLI 删除语义在 `packages/cli/tests/r2-implicit-close-empty.test.ts`。
+// 落盘后的 CLI 删除语义在 `packages/cli/tests/implicit-end-tags.test.ts`。
 
 import { describe, expect, it } from "vitest";
 
@@ -18,9 +18,9 @@ import {
   readNode,
   serializeHtml,
 } from "../src/index";
-import { closeImplicitParagraphs } from "../src/html/implicitClose";
+import { closeImplicitParagraphs } from "../src/html/implicit-close";
 import type { HtmlElementNode, HtmlNode, ParsedHtml } from "../src/index";
-import { attributeValue, childrenOf, collectElements, requireElement } from "./html-support.test";
+import { attributeValue, childrenOf, collectElements, requireElement } from "./html-support";
 
 const HR_ID = "data-hr-id";
 const DOC_WITH_IDS = [
@@ -90,7 +90,7 @@ const idsOf = (parsed: ParsedHtml): readonly string[] =>
 const codesOf = (parsed: ParsedHtml): readonly string[] =>
   injectNodeIds(parsed).parsed.diagnostics.map((diagnostic) => diagnostic.code);
 
-describe("implicitClose · 空首段的 id 归属（F20 / BLOCKER-2）", () => {
+describe("implicitClose · 空首段的 id 归属", () => {
   it("should keep the author id on an empty first piece instead of dropping the paragraph", () => {
     const parsed = quirks(DOC_WITH_IDS);
 
@@ -118,7 +118,7 @@ describe("implicitClose · 空首段的 id 归属（F20 / BLOCKER-2）", () => {
   });
 });
 
-describe("implicitClose · 空段过滤与幂等（F20 / BLOCKER-2）", () => {
+describe("implicitClose · 空段过滤与幂等", () => {
   it("should drop an id-less empty piece so the fix does not keep every empty paragraph", () => {
     const parsed = quirks(DOC_WITH_ID_LESS_EMPTY);
 
@@ -135,7 +135,7 @@ describe("implicitClose · 空段过滤与幂等（F20 / BLOCKER-2）", () => {
   });
 });
 
-describe("implicitClose · 块级判据的深度（F20 / BLOCKER-2 顺带补齐的覆盖）", () => {
+describe("implicitClose · 块级判据的深度", () => {
   it("should find a block nested below an inline wrapper and move the wrapper out", () => {
     const parsed = quirks(DOC_WITH_DEEP_BLOCK);
 
@@ -154,7 +154,7 @@ describe("implicitClose · 块级判据的深度（F20 / BLOCKER-2 顺带补齐�
   });
 });
 
-describe("落盘 · 空首段的 id（F20 / BLOCKER-2）", () => {
+describe("落盘 · 空首段的 id", () => {
   it("should write the id back on a paragraph and never report id_reassigned", () => {
     const html = injectedHtml(DOC_WITH_IDS);
 
@@ -179,7 +179,7 @@ describe("落盘 · 空首段的 id（F20 / BLOCKER-2）", () => {
     const parsed = parseHtml(injectedHtml(DOC_WITH_HEADING));
     const outlined = collectOutlinedIds(buildOutline(parsed).nodes);
 
-    // docs/05:55 的另一半：拿到 id ≠ 出现在目录里，无文本块不列。
+    // 规则的另一半：拿到 id ≠ 出现在目录里，无文本块不列。
     expect(outlined).toEqual(["p-h"]);
   });
 });
@@ -192,7 +192,7 @@ interface OutlinedNode {
 const collectOutlinedIds = (nodes: readonly OutlinedNode[]): readonly string[] =>
   nodes.flatMap((node) => [node.id, ...collectOutlinedIds(node.children)]);
 
-describe("applyPatch · 未 normalize 的零长空首段（F20 / assertByteSpan）", () => {
+describe("applyPatch · 未 normalize 的零长空首段", () => {
   it("should reject delete on a zero-span empty paragraph with needs_normalize", () => {
     expect(() => applyPatch(DOC_WITH_IDS, { targetId: "p-1", action: "delete" })).toThrowError(
       HrError,

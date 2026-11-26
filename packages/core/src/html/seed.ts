@@ -47,7 +47,7 @@ const pushSeedTasks = (task: SeedTask, stack: SeedTask[]): void => {
 /**
  * 复算某节点如果在文档里被注入时拿到的种子；找不到返回 `undefined`。
  * 走与 `injectNodeIds` 同一条先序 + 同一张 `childSlots` 表，否则 `replace` 算出的 ID 会与 normalize 错开。
- * 调用面（`ops/patchNode/apply.ts` 的 `replaceScopeOf`）传的 `target` 就是刚从 `root` 里 locate 到的节点，
+ * 调用面（`ops/patch-node/apply.ts` 的 `replaceScopeOf`）传的 `target` 就是刚从 `root` 里 locate 到的节点，
  * 遍历必命中；`undefined` 只用于与 `replace` 根目标的 `seed: undefined` 合并类型，是跑不到的口子。
  */
 export const injectSeedOf = (root: HtmlNode, target: HtmlNode): InjectSeed | undefined => {
@@ -58,7 +58,7 @@ export const injectSeedOf = (root: HtmlNode, target: HtmlNode): InjectSeed | und
     }
     pushSeedTasks(task, stack);
     // 防御兜底（只靠变异证明跑不到）：调用面传的 `target` 就是刚从同一棵 `root` 里 locate 到的节点，
-    // 先序遍历必命中；`undefined` 仅用于与“根目标无种子”合并类型（`ops/patchNode/apply.ts` 的 `replaceScopeOf`）。
+    // 先序遍历必命中；`undefined` 仅用于与“根目标无种子”合并类型（`ops/patch-node/apply.ts` 的 `replaceScopeOf`）。
     /* v8 ignore start */
   }
   return undefined;

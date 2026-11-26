@@ -1,14 +1,15 @@
-// 这层管：七个工具的注册表（名字 → 入参 schema → core 原语调用）；工具实现各自一个文件。
+// 这层管：八个工具的注册表（名字 → 入参 schema → core 原语调用）；工具实现各自一个文件。
 // 拆成三组只是为了让每个函数短到能一眼读完：读写（看清现状 + 开篇）、改动（落盘 + 结批注）、撤销。
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import { applyStyleCall, applyStyleShape } from "./applyStyle";
-import { createDocCall, createDocShape } from "./createDoc";
+import { applyStyleCall, applyStyleShape } from "./apply-style";
+import { createDocCall, createDocShape } from "./create-doc";
+import { importDocCall, importDocShape } from "./import-doc";
 import { outlineCall, outlineShape } from "./outline";
-import { patchNodeCall, patchNodeShape } from "./patchNode";
-import { readNodeCall, readNodeShape } from "./readNode";
-import { resolveAnnotationCall, resolveAnnotationShape } from "./resolveAnnotation";
+import { patchNodeCall, patchNodeShape } from "./patch-node";
+import { readNodeCall, readNodeShape } from "./read-node";
+import { resolveAnnotationCall, resolveAnnotationShape } from "./resolve-annotation";
 import { undoCall, undoShape } from "./undo";
 
 export const registerTools = (server: McpServer): void => {
@@ -23,7 +24,7 @@ const registerReadingTools = (server: McpServer): void => {
     {
       title: "读文档大纲",
       description:
-        "写稿前先看结构：返回标题层级、每节字数与未处理的 `pending_ai` 批注。不知道文档里有什么、或要挑一个节点改时先调它",
+        "写稿前先看结构：返回标题层级、每节字数与未处理的批注。不知道文档里有什么、或要挑一个节点改时先调它",
       inputSchema: outlineShape,
     },
     outlineCall,
@@ -43,10 +44,20 @@ const registerReadingTools = (server: McpServer): void => {
     {
       title: "新建文档",
       description:
-        "在给定路径新建一份最小合法文档（`<article>` + `<h1>` + `<section>`）并返回阅读视图。要凭空开一篇新稿时用它",
+        "在给定路径新建文档并返回阅读视图。不给 kind 是最小合法文档（`<article>` + `<h1>` + `<section>`）；给 kind（note/report/minutes/brief/slides）则按形态起稿。要凭空开一篇新稿时用它",
       inputSchema: createDocShape,
     },
     createDocCall,
+  );
+  server.registerTool(
+    "hr_import_doc",
+    {
+      title: "导入外来 HTML",
+      description:
+        "把外来 HTML（网页另存、带脚本的演示稿）转成托管文档并落盘：剥脚本/事件/内联样式，按标题分节并补齐 data-hr-id。想让一份外来文档能被按块编辑、批注、换主题时用它；返回的 report 说明哪些内容被丢弃及原因",
+      inputSchema: importDocShape,
+    },
+    importDocCall,
   );
 };
 
@@ -56,7 +67,7 @@ const registerEditingTools = (server: McpServer): void => {
     {
       title: "改一个节点",
       description:
-        "对某个节点做 replace/insert_before/insert_after/append/delete。要动正文时用它，别整篇重写；写盘走原子替换并留 undo 快照",
+        "对某个节点做 replace/insert_before/insert_after/append/delete。要动正文时用它，别整篇重写；写盘走原子替换并留 undo 快照。返回里的 warnings 含排版约束问题（组件结构不对、内联 style），看到就再 patch 一次改掉",
       inputSchema: patchNodeShape,
     },
     patchNodeCall,
@@ -76,7 +87,7 @@ const registerEditingTools = (server: McpServer): void => {
     {
       title: "结掉一条批注",
       description:
-        "把某条 `pending_ai` 批注标成 resolved（可附一句话说明）。真正改完正文之后再调它，否则清单里会显示已处理但正文没变",
+        "把某条未处理的批注标成 resolved（可附一句话说明）。真正改完正文之后再调它，否则清单里会显示已处理但正文没变",
       inputSchema: resolveAnnotationShape,
     },
     resolveAnnotationCall,

@@ -209,6 +209,118 @@ article[data-hr-id] blockquote {
   color: var(--hr-muted);
 }
 
+/* 组件细节：KPI 大数字、时间线节点、标题层级、侧栏卡片（只增不改，上面的结构规则保持原样）。 */
+article[data-hr-id] > h1 {
+  font-size: 2.25rem;
+  line-height: 1.2;
+  margin-top: 0;
+}
+
+article[data-hr-id] > header p {
+  font-family: var(--hr-sans);
+  font-size: 0.875rem;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] > * > p {
+  margin: 0;
+  font-family: var(--hr-sans);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] > * > p:first-child {
+  margin-bottom: var(--hr-space-1);
+  font-family: var(--hr-serif);
+  font-size: 1.875rem;
+  line-height: 1.15;
+  color: var(--hr-accent);
+}
+
+[data-hr-component="callout-insight"] > p,
+[data-hr-component="callout-warning"] > p {
+  margin: 0;
+}
+
+[data-hr-component="split-compare"] > * > p:first-child {
+  margin-top: 0;
+  font-family: var(--hr-sans);
+}
+
+[data-hr-component="deep-dive"][open] > summary {
+  margin-bottom: var(--hr-space-2);
+}
+
+[data-hr-component="step-timeline"] > li {
+  position: relative;
+}
+
+[data-hr-component="step-timeline"] > li::before {
+  content: counter(hr-step);
+  position: absolute;
+  left: calc(-1 * var(--hr-space-4) - 0.75rem);
+  top: 0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--hr-bg);
+  border: 1px solid var(--hr-accent);
+  color: var(--hr-accent);
+  font-family: var(--hr-sans);
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+[data-hr-component="step-timeline"] > li > p:first-child {
+  margin-bottom: 0;
+}
+
+[data-hr-component="diagram-stage"] {
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="diagram-stage"] img,
+[data-hr-component="diagram-stage"] svg,
+[data-hr-component="diagram-stage"] video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+[data-hr-component="diagram-stage"] audio {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--hr-space-2);
+}
+
+.hr-sidebar > * {
+  position: sticky;
+  top: var(--hr-space-5);
+}
+
+.hr-sidebar dl {
+  margin: 0;
+}
+
+.hr-sidebar dt {
+  margin-top: var(--hr-space-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hr-sidebar dd {
+  margin: 0;
+  color: var(--hr-fg);
+}
+
+.hr-sidebar a {
+  color: var(--hr-accent);
+  text-underline-offset: 0.2em;
+}
+
 /* ≤420px 视宽折叠成单列：结构断言只查这条断点与 grid-template-columns 的单值。 */
 @media (max-width: 420px) {
   .hr-layout {
@@ -243,7 +355,101 @@ article[data-hr-id] blockquote {
   }
 }
 
-/* M4.3 打印稿：纸面永远是日间配色（AC-6「深色变量覆盖」）。
+/* 媒体卡片：音频 / 视频 + 图注 + 可选的折叠逐字稿，统一一个外壳（只增不改）。 */
+[data-hr-component="media-card"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+  background: var(--hr-code-bg);
+}
+
+[data-hr-component="media-card"] > audio {
+  display: block;
+  width: 100%;
+}
+
+[data-hr-component="media-card"] > video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="media-card"] > figcaption {
+  margin-top: var(--hr-space-2);
+  font-family: var(--hr-sans);
+  font-size: 0.8125rem;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="media-card"] > details {
+  margin-top: var(--hr-space-2);
+  font-size: 0.9375rem;
+}
+
+[data-hr-component="media-card"] > details > summary {
+  cursor: pointer;
+  font-family: var(--hr-sans);
+  color: var(--hr-muted);
+}
+
+/* 幻灯片形态（<article data-hr-kind="slides">）：标题页与每个顶层 section 各占一屏，
+   靠滚动吸附翻页（空格 / PageDown / 方向键都行），不需要任何脚本。 */
+html:has(article[data-hr-kind="slides"]) {
+  scroll-snap-type: y mandatory;
+}
+
+article[data-hr-id][data-hr-kind="slides"] {
+  max-width: none;
+}
+
+article[data-hr-kind="slides"] > h1,
+article[data-hr-kind="slides"] > section {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100vh;
+  margin: 0;
+  padding: 8vh 8vw;
+  scroll-snap-align: start;
+}
+
+article[data-hr-id][data-hr-kind="slides"] > h1 {
+  font-size: clamp(2.5rem, 6vw, 5rem);
+}
+
+article[data-hr-kind="slides"] > section {
+  border-top: 1px solid var(--hr-border);
+  font-size: clamp(1.125rem, 1.2vw + 0.75rem, 1.75rem);
+}
+
+article[data-hr-id][data-hr-kind="slides"] > section > h2 {
+  margin-top: 0;
+  border-bottom: 0;
+  font-size: 1.8em;
+}
+
+/* 打印 / 导出 PDF：横版，一页一张。命名页只作用于幻灯片，不影响其它形态的纸张方向。 */
+@page hr-slide {
+  size: 13.333in 7.5in;
+  margin: 0.5in;
+}
+
+@media print {
+  article[data-hr-kind="slides"] > h1,
+  article[data-hr-kind="slides"] > section {
+    page: hr-slide;
+    min-height: 0;
+    padding: 0;
+    border-top: 0;
+    break-after: page;
+    break-inside: avoid;
+  }
+}
+
+/* 打印稿：纸面永远是日间配色（不允许深色变量覆盖）。
    打印稿是独立文件，读者的 `prefers-color-scheme: dark` 与 `data-hr-mode` 都可能命中，
    故这里用比上面三条路径更高的选择器优先级强制回落成日间值；只影响 print 介质。 */
 @media print {

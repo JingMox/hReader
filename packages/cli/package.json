@@ -13,12 +13,35 @@
     "styles"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@hreader/core": "workspace:*",
     "@hreader/renderer-html": "workspace:*",
-    "esbuild": "0.28.2",
-    "vitest": "3.2.4"
+    "vitest": "catalog:",
+    "@types/node": "catalog:"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "puppeteer-core": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JingMox/hReader.git",
+    "directory": "packages/cli"
+  },
+  "description": "hr — standalone CLI for hReader single-file HTML documents (outline, patch, undo, print export).",
+  "keywords": [
+    "hreader",
+    "html",
+    "cli",
+    "document"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

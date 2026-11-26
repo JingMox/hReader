@@ -79,7 +79,7 @@ export const isNoteIntent = (intent: { readonly kind: string }): intent is NoteI
 export const isDiffIntent = (intent: { readonly kind: string }): intent is DiffIntent =>
   DIFF_KINDS.includes(intent.kind);
 
-/** 已加载的批注 + `lost` 的 id 列表 → 标灰的卡片（AC5.3；只标不改数据）。 */
+/** 已加载的批注 + `lost` 的 id 列表 → 标灰的卡片（只标不改数据）。 */
 export const withLost = (
   cards: readonly AnnotationCard[],
   lostIds: readonly string[],
@@ -93,7 +93,7 @@ const keyOf = (card: AnnotationCard): string => `${card.nodeId}\u0000${card.note
 
 /**
  * 整表落地时：服务端卡优先（乐观卡让位），还没有对应物的乐观卡必须留住
- * —— POST resolve 前它只存在于本地，不能被首屏清单覆盖（P1-1 时序）。
+ * —— POST resolve 前它只存在于本地，不能被首屏清单覆盖。
  */
 const pendingOf = (
   state: NoteSlice,

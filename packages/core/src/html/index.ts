@@ -4,6 +4,15 @@ export { hasArticle } from "./article";
 export { injectNodeIds } from "./inject";
 export type { InjectedNodeIds } from "./inject";
 export { parseHtml } from "./parse";
+export {
+  attributeOf,
+  hasExecutableContent,
+  hasExternalResource,
+  isCountedImage,
+  isDroppedNode,
+  sanitizedAttributesOf,
+} from "./sanitize";
+export type { SanitizePreset } from "./sanitize";
 export { serializeHtml } from "./serialize";
 export type {
   Diagnostic,

@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import { delayOf, subscribeOf, type DaemonInfo, type HreaderEvent } from "../pi-hreader.ts";
-import { fakeDepsOf } from "./fakes.ts";
+import { daemonJsonOf, fakeDepsOf } from "./fakes.ts";
 import {
   holdDelayOf,
   scriptedFetchOf,
@@ -145,6 +145,54 @@ describe("subscribeOf 的断线重连", () => {
     subscription.stop();
     expect(downs).toHaveLength(1);
     expect(calls).toHaveLength(2);
+  });
+
+  it("daemon 重启换 port/token：断线窗口重读 daemon.json，重连走新地址", async () => {
+    // 旧 info 在 subscribeOf 时定格；daemon.json 已被新进程重写成 :7332/tok-2。
+    // 不重读的话第二次连接会带着 tok-1 打 :7331 永远 401——这条就是那次事故的回归。
+    const readFile = (file: string): Promise<Uint8Array> =>
+      file === "/home/.hreader/daemon.json"
+        ? Promise.resolve(new TextEncoder().encode(daemonJsonOf({ port: 7332, token: "tok-2" })))
+        : Promise.reject(new Error(`ENOENT: ${file}`));
+    const script = scriptedFetchOf([
+      { chunks: [DOC_CHANGED] }, // 先收到 id=7 再断：旧游标对**新**环无效
+      { chunks: [], keepOpen: true },
+    ]);
+    const subscription = subscribeOf(
+      { home: "/home", readFile, fetch: script.fetch, delay: steppedDelayOf(1) },
+      INFO,
+      {
+        onEvent: () => undefined,
+        onStale: () => undefined,
+        onDown: () => undefined,
+        onBadFrame: () => undefined,
+      },
+    );
+    await settleOf();
+    subscription.stop();
+    expect(script.calls.at(-1)?.url).toBe("http://127.0.0.1:7332/api/events");
+    expect(script.calls.at(-1)?.request.headers["cookie"]).toBe("hr=tok-2");
+    expect(script.calls.at(-1)?.request.headers["last-event-id"]).toBeUndefined();
+  });
+
+  it("daemon.json 没换（同 port+token）：保持旧 info 与 `Last-Event-ID` 游标", async () => {
+    const readFile = (): Promise<Uint8Array> =>
+      Promise.resolve(new TextEncoder().encode(daemonJsonOf({ port: 7331, token: "tok-1" })));
+    const script = scriptedFetchOf([{ chunks: [DOC_CHANGED] }, { chunks: [], keepOpen: true }]);
+    const subscription = subscribeOf(
+      { home: "/home", readFile, fetch: script.fetch, delay: steppedDelayOf(1) },
+      INFO,
+      {
+        onEvent: () => undefined,
+        onStale: () => undefined,
+        onDown: () => undefined,
+        onBadFrame: () => undefined,
+      },
+    );
+    await settleOf();
+    subscription.stop();
+    expect(script.calls.at(-1)?.url).toBe("http://127.0.0.1:7331/api/events");
+    expect(script.calls.at(-1)?.request.headers["last-event-id"]).toBe("7");
   });
 });
 

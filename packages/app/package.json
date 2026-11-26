@@ -6,12 +6,21 @@
   "type": "module",
   "sideEffects": false,
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-static.mjs"
+    "build": "tsc -p tsconfig.json && node scripts/build-static.mjs",
+    "test": "vitest run"
   },
   "exports": {
     ".": "./dist/assets/index.js"
   },
   "devDependencies": {
-    "vitest": "^3.2.4"
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JingMox/hReader.git",
+    "directory": "packages/app"
   }
 }

@@ -3,7 +3,7 @@
 import { realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { exportPrintCommand, type ExportPrintInput } from "../src/commands/exportPrint";
+import { exportPrintCommand, type ExportPrintInput } from "../src/commands/export-print";
 
 export const LIMIT = 4 * 1024 * 1024;
 

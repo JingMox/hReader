@@ -8,7 +8,7 @@ import type { Dropped, Suggestions } from "./suggest";
 const nfcOf = (text: string): string => text.normalize("NFC");
 
 /**
- * 统计命中表在前、追加按响应顺序、首次出现为准（卡 §10 R5/D3）。总额与统计层共享 24 条，
+ * 统计命中表在前、追加按响应顺序、首次出现为准。总额与统计层共享 24 条，
  * 满额后不再追加并聚合记一条 `too_long`——不静默截断，用户能从 `--json` 看见被压掉的建议。
  */
 const forbiddenOf = (
@@ -47,7 +47,7 @@ const languageOf = (
   persona: suggestions.persona ?? stat.persona,
   narrativeRules: firstNonEmpty(suggestions.narrativeRules, stat.narrativeRules),
   rhythm: {
-    // D3：句数上限只认统计值，模型给的同名字段在 `suggestionsOf` 就已按 `not_owned` 丢掉。
+    // 句数上限只认统计值，模型给的同名字段在 `suggestionsOf` 就已按 `not_owned` 丢掉。
     maxParagraphSentences: stat.rhythm.maxParagraphSentences,
     style: suggestions.rhythmStyle ?? stat.rhythm.style,
   },
@@ -60,7 +60,7 @@ const languageOf = (
 
 /**
  * 合并不抛：模型建议再离谱，最坏结果也只是"仍是统计版"。
- * 产物是否可救由调用方写盘前过 `parseStyleText` 判定（AC-3②），这里不造第二套校验。
+ * 产物是否可救由调用方写盘前过 `parseStyleText` 判定，这里不造第二套校验。
  */
 export const mergeSuggestions = (
   stat: StyleSpec,

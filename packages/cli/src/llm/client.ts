@@ -6,13 +6,13 @@ import type { ExtractStyleLlmInput } from "@hreader/core";
 /** 传输层接口不单独公开：cli 只取 `ExtractStyleLlmInput` 上那个字段的形状，不复制 core 的接口。 */
 export type LlmPort = ExtractStyleLlmInput["llm"];
 
-/** 卡 D7：单次请求的硬上限，且**不自动重试**（写盘非幂等 + 费用不可控）。 */
+/** 单次请求的硬上限，且**不自动重试**（写盘非幂等 + 费用不可控）。 */
 export const LLM_TIMEOUT_MS = 30_000;
 
 /** 错误消息里只留这么长的响应片段：够定位，又不至于把整份响应灌进日志与 `--json`。 */
 const SNIPPET_CHARS = 200;
 
-/** 与 `PROMPT_MAX_CORPUS_BYTES`（64 KiB）同一量级，防止一次调用撑成天价（卡 §10 R6）。 */
+/** 与 `PROMPT_MAX_CORPUS_BYTES`（64 KiB）同一量级，防止一次调用撑成天价。 */
 const MAX_TOKENS = 2048;
 
 export interface LlmClientConfig {
@@ -59,7 +59,7 @@ const contentOf = (body: unknown): string | undefined => {
 const headersOf = (config: LlmClientConfig): Readonly<Record<string, string>> => ({
   authorization: `Bearer ${config.apiKey}`,
   "content-type": "application/json",
-  // OpenCode Zen 的路由要求：缺了这个头直接 400，不是可选的遥测字段（D6）。
+  // OpenCode Zen 的路由要求：缺了这个头直接 400，不是可选的遥测字段。
   "x-opencode-session": config.sessionId,
 });
 

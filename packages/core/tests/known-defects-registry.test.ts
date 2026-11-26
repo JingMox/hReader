@@ -1,5 +1,5 @@
 // 这层管：**已知缺陷登记表（KD）的机器校验**——仓库不许出现"没有登记的 it.fails"，
-// 也不许出现"用普通 it 断言坏行为"的负向钉住（M2.3 起）。
+// 也不许出现"用普通 it 断言坏行为"的负向钉住。
 // 规则见 `docs/known-defects.md`：每条 `it.fails` 必须带 `// KD-nn`，
 // 每个编号必须在表里出现，且唯一编号数不得超过表头 `CAP`（只减不增）。
 
@@ -111,7 +111,7 @@ describe("KD 登记表 · 上限", () => {
   });
 });
 
-// ---- M2.3：负向钉住禁令 ----
+// ---- 负向钉住禁令 ----
 // 缺陷只能走 `it.fails` + KD 表；普通 `it` 里"断言坏行为还在"一律违规。
 // 机器可判的部分：用例标题带"现状/today/钉住缺陷"这类标记词，却写成普通 `it`。
 const NEGATIVE_TITLE = /today|现状|钉住缺陷|仍是坏的|仍然是坏的/iu;
@@ -125,7 +125,7 @@ const plainTitlesOf = (file: string): { file: string; line: number; title: strin
   });
 };
 
-describe("M2.3 · 负向钉住禁令", () => {
+describe("负向钉住禁令", () => {
   it("should never pin a defect with a plain it(): use it.fails + KD instead", () => {
     const offences = testFilesOf(PACKAGES)
       .flatMap(plainTitlesOf)

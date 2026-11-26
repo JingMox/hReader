@@ -1,4 +1,4 @@
-// P1-6/P1-7：写批注的插入点不能被"隐式 body 的零宽 span"或正文里的字面 `</body>` 带偏。
+// 写批注的插入点不能被"隐式 body 的零宽 span"或正文里的字面 `</body>` 带偏。
 // `appendAnnotation` 是纯函数（不落盘、不加锁），片段输入在这里可直接构造；
 // HTTP 层会先拒绝"文档里没有 <article>"，所以片段路径只有在纯函数这一层才可达。
 
@@ -25,7 +25,7 @@ const inputOf = (body: string): Parameters<typeof appendAnnotation>[1] => ({
   status: "pending_ai",
 });
 
-describe("片段文档 · 插入点（P1-7）", () => {
+describe("片段文档 · 插入点", () => {
   it("should append the meta script after the fragment instead of before it", () => {
     const html = '<p data-hr-id="hr-c">片段正文</p>';
 
@@ -81,7 +81,7 @@ const postNote = async (ctx: TestServer): Promise<void> => {
   expect(response.status).toBe(201);
 };
 
-describe("正文里的字面 </body> · 插入点（P1-6）", () => {
+describe("正文里的字面 </body> · 插入点", () => {
   it("should keep the block bytes and put the meta before the real body end", async () => {
     await withServer(async (ctx) => {
       const before = blockDigestOf(readFileSync(ctx.file, "utf8"));

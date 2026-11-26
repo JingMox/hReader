@@ -42,7 +42,7 @@ describe("reduce · 引用语义（intent 级别的空操作）", () => {
     expect(reduce(state, { kind: "themeSelected", theme: "manuscript" })).toBe(state);
   });
 
-  it("should only move themeRequested until the switch settles (裁定 #3)", () => {
+  it("should only move themeRequested until the switch settles", () => {
     const pending = reduce(stateOf({ theme: "a", themeRequested: "a" }), {
       kind: "themeSelected",
       theme: "b",

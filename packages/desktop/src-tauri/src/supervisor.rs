@@ -2,26 +2,70 @@
 //! 判断逻辑在 `spawn_decision`/`child_registry`，这里只负责"真的去做"。
 
 use std::ffi::OsString;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use serde::de::IgnoredAny;
+use serde::Deserialize;
 
 use crate::child_registry::ChildRegistry;
 use crate::daemon_file::DaemonInfo;
 use crate::spawn_decision::Probe;
 
+#[derive(Deserialize)]
+struct HealthResponse {
+    ok: bool,
+    pid: Option<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum MaybeData<T> {
+    Valid(T),
+    #[allow(dead_code)]
+    Invalid(IgnoredAny),
+}
+
+impl<T> MaybeData<T> {
+    fn valid(self) -> Option<T> {
+        match self {
+            Self::Valid(value) => Some(value),
+            Self::Invalid(_) => None,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ServeEnvelope {
+    ok: Option<bool>,
+    code: Option<String>,
+    data: Option<MaybeData<ServeEnvelopeData>>,
+}
+
+#[derive(Deserialize)]
+struct ServeEnvelopeData {
+    port: NonZeroU16,
+    token: String,
+    workspace: PathBuf,
+}
+
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_INTERVAL: Duration = Duration::from_millis(100);
+/// 启动信封必须在 10s 内、64KB 以内出现：坏 CLI 静默挂死或吐洪流都不能让壳跟着死等。
+const ENVELOPE_TIMEOUT: Duration = Duration::from_secs(10);
+const ENVELOPE_MAX_BYTES: usize = 64 * 1024;
 
 #[derive(Debug)]
 pub enum SuperviseError {
     CannotSpawn(String),
     NoEnvelope,
+    /// 子进程还在但迟迟不打印启动信封：杀掉，否则壳永远卡在启动。
+    EnvelopeTimeout,
     BadEnvelope,
     /// `hr serve` 自己拒绝了这份文档（信封里带着原因码）；这不是壳解析错了，别混成一句。
     Rejected(String),
@@ -33,6 +77,10 @@ impl std::fmt::Display for SuperviseError {
         match self {
             Self::CannotSpawn(detail) => write!(formatter, "拉不起 hr serve：{detail}"),
             Self::NoEnvelope => write!(formatter, "hr serve 没打印启动信息就退出了"),
+            Self::EnvelopeTimeout => write!(
+                formatter,
+                "hr serve {ENVELOPE_TIMEOUT:?} 内没打印启动信息，已终止"
+            ),
             Self::BadEnvelope => write!(formatter, "hr serve 的启动信息不是预期形状"),
             Self::Rejected(code) => write!(formatter, "hr serve 拒绝了这份文档：{code}"),
             Self::NotReady(port) => write!(
@@ -83,17 +131,20 @@ impl Probe for SystemProbe {
         let mut response = String::new();
         stream.read_to_string(&mut response).ok()?;
         let body = response.split_once("\r\n\r\n")?.1;
-        let parsed: Value = serde_json::from_str(body).ok()?;
-        if parsed.get("ok")?.as_bool()? {
-            u32::try_from(parsed.get("pid")?.as_u64()?).ok()
-        } else {
-            None
-        }
+        let parsed: HealthResponse = serde_json::from_str(body).ok()?;
+        parsed.ok.then_some(parsed.pid).flatten()
     }
 }
 
 fn address(port: u16) -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], port))
+}
+
+/// `spawn_inner` 的两段等待时限：生产路径用模块常量，测试用小值。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SpawnTimeouts {
+    pub envelope: Duration,
+    pub ready: Duration,
 }
 
 /// 壳持有的一段 daemon 关系。`child` 为 `None` 表示复用文件里已有的 daemon（不是壳的孩子）。
@@ -143,7 +194,7 @@ impl Daemon {
         &self.info
     }
 
-    /// 复用别人起的 daemon：只记账为外部，退出时绝不 kill（AC-15）。
+    /// 复用别人起的 daemon：只记账为外部，退出时绝不 kill。
     pub fn adopted(info: DaemonInfo) -> Self {
         let mut registry = ChildRegistry::default();
         registry.adopt_external(info.pid);
@@ -155,7 +206,7 @@ impl Daemon {
     }
 
     /// `pub(crate)`：拉 daemon 的入口只能被本 crate 的壳（`lib.rs`/`smoke.rs`）用，
-    /// 且必须先把 `SignalSubscription` 交给 `connect_with`——这一层是 M2 类型闸要守住的那道门。
+    /// 且必须先把 `SignalSubscription` 交给 `connect_with`——这一层是类型闸要守住的那道门。
     pub(crate) fn spawn(
         cli: &Path,
         doc_id: &str,
@@ -173,6 +224,30 @@ impl Daemon {
         home: &Path,
         port: Option<u16>,
         app_dir: Option<&Path>,
+    ) -> Result<Self, SuperviseError> {
+        Self::spawn_inner(
+            cli,
+            doc_id,
+            workspace,
+            home,
+            port,
+            app_dir,
+            SpawnTimeouts {
+                envelope: ENVELOPE_TIMEOUT,
+                ready: READY_TIMEOUT,
+            },
+        )
+    }
+
+    /// 两个等待都带超时参数：测试用小超时，生产路径走模块常量。
+    pub(crate) fn spawn_inner(
+        cli: &Path,
+        doc_id: &str,
+        workspace: &Path,
+        home: &Path,
+        port: Option<u16>,
+        app_dir: Option<&Path>,
+        timeouts: SpawnTimeouts,
     ) -> Result<Self, SuperviseError> {
         let mut command = cli_command(cli);
         command.args(serve_args(doc_id, workspace, home, port));
@@ -192,8 +267,8 @@ impl Daemon {
         let pid = child.id();
 
         // 信封/就绪任一失败都要先收尸：`Child` 的 Drop 不会 kill，否则失败一次就漏一个 daemon。
-        let info = match read_envelope(&mut child, pid).and_then(|info| {
-            wait_ready(&info)?;
+        let info = match read_envelope(&mut child, pid, timeouts.envelope).and_then(|info| {
+            wait_ready(&info, timeouts.ready)?;
             Ok(info)
         }) {
             Ok(info) => info,
@@ -246,51 +321,74 @@ impl Drop for Daemon {
 
 /// `hr serve --json` 把 `{"ok":true,"data":{port,token,pid,workspace}}` 打在 stdout 第一行
 /// （`packages/cli/src/output.ts:dataServe`）；token 只留在这份结构里，绝不打印。
-fn read_envelope(child: &mut Child, pid: u32) -> Result<DaemonInfo, SuperviseError> {
+///
+/// 第一行的读取必须同时有界有时限：坏 CLI 不打换行/不停吐字节不能让壳无限缓冲，
+/// 一个字节都不写也不能让壳死等。
+fn read_envelope(
+    child: &mut Child,
+    pid: u32,
+    timeout: Duration,
+) -> Result<DaemonInfo, SuperviseError> {
     let stdout = child.stdout.take().ok_or(SuperviseError::NoEnvelope)?;
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-    let read = reader
-        .read_line(&mut line)
-        .map_err(|_| SuperviseError::NoEnvelope)?;
-    if read == 0 {
+    let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<u8>, ()>>();
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let result = loop {
+            if buf.contains(&b'\n') || buf.len() > ENVELOPE_MAX_BYTES {
+                break Ok(buf);
+            }
+            match reader.read(&mut chunk) {
+                Ok(0) => break Ok(buf),
+                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                Err(_) => break Err(()),
+            }
+        };
+        let _ = tx.send(result);
+        // 信封之后 stdout 剩下的内容（正常为空）排空到 sink，防子进程写满管道卡死；零内存代价。
+        let _ = std::io::copy(&mut reader, &mut std::io::sink());
+    });
+    let buf = match rx.recv_timeout(timeout) {
+        Ok(Ok(buf)) => buf,
+        Ok(Err(())) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            return Err(SuperviseError::NoEnvelope)
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            return Err(SuperviseError::EnvelopeTimeout)
+        }
+    };
+    let end = buf
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map(|at| at + 1)
+        .unwrap_or(buf.len());
+    if buf.is_empty() {
         return Err(SuperviseError::NoEnvelope);
     }
-    let parsed: Value =
-        serde_json::from_str(line.trim()).map_err(|_| SuperviseError::BadEnvelope)?;
-    if parsed.get("ok").and_then(Value::as_bool) != Some(true) {
-        let code = parsed
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        return Err(SuperviseError::Rejected(code.to_string()));
+    if end == buf.len() && buf.len() > ENVELOPE_MAX_BYTES {
+        // 有界缓冲内没等到换行：这不是合法信封。
+        return Err(SuperviseError::BadEnvelope);
     }
-    let payload = parsed.get("data").ok_or(SuperviseError::BadEnvelope)?;
-    let port = payload
-        .get("port")
-        .and_then(Value::as_u64)
-        .and_then(|value| u16::try_from(value).ok())
-        .filter(|value| *value != 0)
+    let line = String::from_utf8_lossy(&buf[..end]);
+    let parsed: ServeEnvelope =
+        serde_json::from_str(line.trim()).map_err(|_| SuperviseError::BadEnvelope)?;
+    if parsed.ok != Some(true) {
+        let code = parsed.code.unwrap_or_else(|| "unknown".to_string());
+        return Err(SuperviseError::Rejected(code));
+    }
+    let payload = parsed
+        .data
+        .and_then(MaybeData::valid)
         .ok_or(SuperviseError::BadEnvelope)?;
-    let token = payload
-        .get("token")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or(SuperviseError::BadEnvelope)?;
-    let workspace = payload
-        .get("workspace")
-        .and_then(Value::as_str)
-        .ok_or(SuperviseError::BadEnvelope)?;
-    // stdout 剩下的内容（正常为空）由后台线程清空，避免子进程写满管道后卡死；内容一律丢弃。
-    std::thread::spawn(move || {
-        let mut sink = Vec::new();
-        let _ = reader.read_to_end(&mut sink);
-    });
+    if payload.token.is_empty() {
+        return Err(SuperviseError::BadEnvelope);
+    }
     Ok(DaemonInfo {
-        port,
-        token: token.to_string(),
+        port: payload.port.get(),
+        token: payload.token,
         pid,
-        workspace: workspace.into(),
+        workspace: payload.workspace,
     })
 }
 
@@ -314,8 +412,10 @@ fn serve_args(doc_id: &str, workspace: &Path, home: &Path, port: Option<u16>) ->
     ]
 }
 
-fn wait_ready(info: &DaemonInfo) -> Result<(), SuperviseError> {
-    let deadline = Instant::now() + READY_TIMEOUT;
+fn wait_ready(info: &DaemonInfo, timeout: Duration) -> Result<(), SuperviseError> {
+    let deadline = Instant::now()
+        .checked_add(timeout)
+        .unwrap_or_else(Instant::now);
     while Instant::now() < deadline {
         if SystemProbe.health_pid(info.port) == Some(info.pid) {
             return Ok(());
@@ -423,7 +523,7 @@ pub fn enriched_path_env() -> OsString {
     std::env::join_paths(dirs).unwrap_or_default()
 }
 
-/// 同步执行一条短 CLI 子命令（`normalize` / `style` / `pdf` / `png` / `export`）。
+/// 同步执行一条短 CLI 子命令（`style` / `pdf` / `png` / `export`）。
 pub fn run_cli_task(cli: &Path, workspace: &Path, args: &[&str]) -> Result<String, String> {
     let output = cli_command(cli)
         .args(args)
@@ -462,7 +562,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ac14_own_daemon_is_started_with_exit_with_parent() {
+    fn own_daemon_is_started_with_exit_with_parent() {
         let args = serve_args("doc.html", Path::new("/ws"), Path::new("/appdata"), None);
         assert!(
             args.iter().any(|arg| arg == "--exit-with-parent"),
@@ -475,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn ac11_home_argument_is_the_shell_home_not_a_guess() {
+    fn home_argument_is_the_shell_home_not_a_guess() {
         let args = serve_args(
             "doc.html",
             Path::new("/ws"),
@@ -491,13 +591,122 @@ mod tests {
 
     #[test]
     fn cli_command_wraps_js_scripts_with_node() {
-        let mjs = cli_command(Path::new("/tmp/cli.mjs"));
-        assert_eq!(mjs.get_program(), "node");
-        let mjs_args: Vec<_> = mjs.get_args().collect();
-        assert_eq!(mjs_args, [std::ffi::OsStr::new("/tmp/cli.mjs")]);
+        for ext in ["mjs", "js", "cjs", "MJS", "JS", "CJS"] {
+            let mjs = cli_command(Path::new(&format!("/tmp/cli.{ext}")));
+            assert_eq!(mjs.get_program(), "node", "{ext} 必须经 node 启动");
+        }
 
         let native = cli_command(Path::new("/usr/local/bin/hr"));
         assert_eq!(native.get_program(), "/usr/local/bin/hr");
         assert_eq!(native.get_args().count(), 0);
+    }
+
+    /// 假 `hr`：一个只走 stdout 的 shell 脚本。下列用例只在 unix 上成立。
+    #[cfg(unix)]
+    mod fake_cli {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+
+        struct Fixture {
+            root: PathBuf,
+            cli: PathBuf,
+            ws: PathBuf,
+            home: PathBuf,
+        }
+
+        impl Fixture {
+            fn new(tag: &str, script: &str) -> Self {
+                let root =
+                    std::env::temp_dir().join(format!("hr-spawn-{tag}-{}", std::process::id()));
+                let _ = std::fs::remove_dir_all(&root);
+                let ws = root.join("ws");
+                let home = root.join("home");
+                std::fs::create_dir_all(&ws).expect("ws");
+                std::fs::create_dir_all(&home).expect("home");
+                let cli = root.join("fake-hr");
+                std::fs::write(&cli, format!("#!/bin/sh\n{script}")).expect("fake cli");
+                std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755))
+                    .expect("chmod");
+                Self {
+                    root,
+                    cli,
+                    ws,
+                    home,
+                }
+            }
+
+            fn spawn(&self, envelope_ms: u64, ready_ms: u64) -> Result<Daemon, SuperviseError> {
+                Daemon::spawn_inner(
+                    &self.cli,
+                    "doc.html",
+                    &self.ws,
+                    &self.home,
+                    Some(1),
+                    None,
+                    SpawnTimeouts {
+                        envelope: Duration::from_millis(envelope_ms),
+                        ready: Duration::from_millis(ready_ms),
+                    },
+                )
+            }
+        }
+
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.root);
+            }
+        }
+
+        #[test]
+        fn a_daemon_that_never_prints_is_reaped_after_the_envelope_timeout() {
+            // `sleep 60` 一个字节都不写：信封读取必须带超时，否则壳永远卡在启动。
+            let fixture = Fixture::new("hang", "sleep 60\n");
+            let error = fixture
+                .spawn(400, 100)
+                .err()
+                .expect("不写信封的 daemon 必须超时报错");
+            assert!(
+                matches!(error, SuperviseError::EnvelopeTimeout),
+                "{error:?}"
+            );
+        }
+
+        #[test]
+        fn a_daemon_that_exits_silently_is_no_envelope() {
+            let fixture = Fixture::new("silent", "exit 3\n");
+            let error = fixture.spawn(2000, 100).err().expect("静默退出必须报错");
+            assert!(matches!(error, SuperviseError::NoEnvelope), "{error:?}");
+        }
+
+        #[test]
+        fn an_endless_first_line_is_bounded_not_slurped() {
+            // 不打换行的无限输出：旧 `read_line` 会无限缓冲。有界读取必须尽快判定。
+            let fixture = Fixture::new(
+                "flood",
+                "while :; do printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; done\n",
+            );
+            let error = fixture
+                .spawn(8000, 100)
+                .err()
+                .expect("无换行的洪流必须判坏");
+            assert!(
+                matches!(
+                    error,
+                    SuperviseError::BadEnvelope | SuperviseError::NoEnvelope
+                ),
+                "{error:?}"
+            );
+        }
+
+        #[test]
+        fn a_daemon_that_never_serves_is_reported_not_ready() {
+            // 信封给了端口但端口一直没人听：wait_ready 必须在自己的超时内收口。
+            let fixture = Fixture::new(
+                "noready",
+                "printf '%s\\n' '{\"ok\":true,\"data\":{\"port\":1,\"token\":\"t\",\"workspace\":\"/ws\"}}'\nsleep 60\n",
+            );
+            let error = fixture.spawn(2000, 300).err().expect("不就绪必须报错");
+            assert!(matches!(error, SuperviseError::NotReady(1)), "{error:?}");
+        }
     }
 }

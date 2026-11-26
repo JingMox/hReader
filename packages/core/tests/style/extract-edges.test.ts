@@ -151,3 +151,43 @@ describe("styleYamlOf · 空列表与非空 examples", () => {
     expect(parseStyleText(yaml, "examples").language.examples).toEqual(spec.language.examples);
   });
 });
+
+describe("styleYamlOf · 需要转义的标量", () => {
+  const TRICKY = [
+    '带"引号',
+    "反斜杠\\",
+    "换行\n第二行",
+    "# 不是注释",
+    "a: b",
+    "  首尾空格  ",
+    "😀",
+  ];
+
+  it("should read special characters back unchanged", () => {
+    const spec: StyleSpec = {
+      ...SPEC,
+      language: { ...SPEC.language, narrativeRules: TRICKY },
+    };
+
+    const yaml = styleYamlOf(spec);
+
+    expect(parseStyleText(yaml, "转义").language.narrativeRules).toEqual(TRICKY);
+  });
+
+  it("should not turn a shared list into an anchor/alias", () => {
+    const shared = ["同一个数组"];
+    const spec: StyleSpec = {
+      ...SPEC,
+      language: {
+        ...SPEC.language,
+        narrativeRules: shared,
+        vocabulary: { forbidden: shared, recommended: shared },
+      },
+    };
+
+    const yaml = styleYamlOf(spec);
+
+    expect(yaml).not.toMatch(/[&*]a\d/u);
+    expect(parseStyleText(yaml, "共享").language.vocabulary.recommended).toEqual(shared);
+  });
+});

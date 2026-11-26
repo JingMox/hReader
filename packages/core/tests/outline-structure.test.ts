@@ -1,4 +1,4 @@
-// 这层管：`hr_outline` 的包含范围、层级推导与排序（卡片 M1.3 契约 1/2/8）。
+// 这层管：`hr_outline` 的包含范围、层级推导与排序。
 
 import { describe, expect, it } from "vitest";
 
@@ -162,7 +162,7 @@ describe("hr_outline · 结构 · 续 2", () => {
     expect(outline.wordCount).toBe(2);
   });
 
-  // 无 id 的标题自己不入树，但它的层级仍决定外层 section 的 level/text（卡片 AC1：section 取“其首个标题”，
+  // 无 id 的标题自己不入树，但它的层级仍决定外层 section 的 level/text（section 取“其首个标题”，
   // 未要求标题必须有 id）。这是个容易反向实现的口径，单独立一条。
 });
 describe("hr_outline · 结构 · 续 2 · 续 1", () => {
@@ -223,7 +223,7 @@ describe("hr_outline · 结构 · 续 3 · 续 1", () => {
     expect(outline.wordCount).toBe(5);
   });
 
-  // D3（已登记，见报告）：`firstArticleOf` 在 LIFO 栈上按文档序 push，实际先看到**最后一个** article。
+  // 已登记缺陷：`firstArticleOf` 在 LIFO 栈上按文档序 push，实际先看到**最后一个** article。
 });
 describe("hr_outline · 结构 · 续 3 · 续 1", () => {
   // KD-04

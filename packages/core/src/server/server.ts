@@ -8,9 +8,9 @@ import type { PatchDeps } from "../io/ports";
 import type { StyleDeps } from "../style";
 import { COOKIE_NAME, hostAllowed, originAllowed } from "./auth";
 import { HttpFault } from "./http-io";
-import type { DaemonInfo, Reply, ServerOptions } from "./contracts";
+import type { Reply, ServerOptions } from "./contracts";
 import { ensureNoDaemon } from "./daemon-guard";
-import { removeDaemonOf, writeDaemonOf } from "./daemon";
+import { removeDaemonOf, writeDaemonOf, type DaemonInfo } from "./daemon";
 import { healthzReply } from "./handlers";
 import { bindErrorOf, ipv6Occupied, listen } from "./listen";
 import { authOf, errorReply, headerOf, jsonOf, methodNotAllowed, sendResult } from "./http-io";
@@ -82,7 +82,7 @@ const gateOf = (env: ServeEnv, req: IncomingMessage): Reply | undefined => {
   const port = env.port();
   const hostOk =
     hostAllowed(headerOf(req, "host"), port, env.allowHosts) &&
-    originAllowed(headerOf(req, "origin"), port);
+    originAllowed(headerOf(req, "origin"), port, env.allowHosts);
   return hostOk ? undefined : jsonOf(403, { code: "forbidden_origin" });
 };
 

@@ -1,6 +1,6 @@
 //! 全局快捷键配置的解析：可解析、可关闭（`null`）、默认值必含修饰键。
 
-use serde_json::Value;
+use std::collections::BTreeMap;
 
 /// 唯一真源：`packages/desktop/accels.json`（JS 侧的冲突检查也读同一份文件）。
 const ACCELS_JSON: &str = include_str!("../../accels.json");
@@ -89,17 +89,15 @@ pub fn parse_accel(text: &str) -> Result<Accel, AccelError> {
 
 /// `null` 配置 = 关闭全部全局快捷键（返回空列表，不是错误、也不许因此起不来）。
 pub fn accels_from_json(text: &str) -> Result<Vec<(String, Accel)>, AccelError> {
-    let value: Value = serde_json::from_str(text).map_err(|_| AccelError::InvalidConfig)?;
-    if value.is_null() {
+    let entries: Option<BTreeMap<String, String>> =
+        serde_json::from_str(text).map_err(|_| AccelError::InvalidConfig)?;
+    let Some(entries) = entries else {
         return Ok(Vec::new());
+    };
+    let mut accels = Vec::with_capacity(entries.len());
+    for (name, raw) in entries {
+        accels.push((name, parse_accel(&raw)?));
     }
-    let object = value.as_object().ok_or(AccelError::InvalidConfig)?;
-    let mut accels = Vec::new();
-    for (name, raw) in object {
-        let text = raw.as_str().ok_or(AccelError::InvalidConfig)?;
-        accels.push((name.clone(), parse_accel(text)?));
-    }
-    accels.sort_by(|left, right| left.0.cmp(&right.0));
     reject_duplicates(&accels)?;
     Ok(accels)
 }
@@ -129,7 +127,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ac7_parses_a_normal_accelerator() {
+    fn parses_a_normal_accelerator() {
         assert_eq!(
             parse_accel("CmdOrCtrl+Shift+H"),
             Ok(Accel {
@@ -140,13 +138,13 @@ mod tests {
     }
 
     #[test]
-    fn ac7_rejects_unmodified_keys() {
+    fn rejects_unmodified_keys() {
         assert_eq!(parse_accel("H"), Err(AccelError::MissingModifier));
         assert_eq!(parse_accel("Shift+H"), Err(AccelError::MissingModifier));
     }
 
     #[test]
-    fn ac7_rejects_empty_and_dangling_plus() {
+    fn rejects_empty_and_dangling_plus() {
         assert_eq!(parse_accel(""), Err(AccelError::Empty));
         assert_eq!(parse_accel("CmdOrCtrl+"), Err(AccelError::MissingKey));
         assert_eq!(
@@ -156,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn ac7_rejects_unknown_modifier_and_escape() {
+    fn rejects_unknown_modifier_and_escape() {
         assert_eq!(
             parse_accel("Hyper+H"),
             Err(AccelError::UnknownModifier("Hyper".to_string()))
@@ -168,12 +166,12 @@ mod tests {
     }
 
     #[test]
-    fn ac7_null_config_means_no_shortcuts() {
+    fn null_config_means_no_shortcuts() {
         assert_eq!(accels_from_json("null"), Ok(Vec::new()));
     }
 
     #[test]
-    fn ac7_bad_config_is_an_error_not_silence() {
+    fn bad_config_is_an_error_not_silence() {
         assert_eq!(accels_from_json("{"), Err(AccelError::InvalidConfig));
         assert_eq!(accels_from_json("[]"), Err(AccelError::InvalidConfig));
         assert_eq!(
@@ -187,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn ac7_duplicate_accelerator_is_rejected_with_both_aliases() {
+    fn duplicate_accelerator_is_rejected_with_both_aliases() {
         assert_eq!(
             accels_from_json(
                 "{\"showWindow\":\"CmdOrCtrl+Shift+H\",\"showWindowAlt\":\"Shift+CmdOrCtrl+H\"}"
@@ -200,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn ac7_distinct_keys_are_not_duplicates() {
+    fn distinct_keys_are_not_duplicates() {
         let accels = accels_from_json(
             "{\"a\":\"CmdOrCtrl+Shift+H\",\"b\":\"CmdOrCtrl+Shift+K\",\"c\":\"Ctrl+Shift+H\"}",
         )
@@ -209,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn ac7_default_accels_all_have_a_real_modifier() {
+    fn default_accels_all_have_a_real_modifier() {
         let accels = default_accels().expect("accels.json 必须可解析");
         assert!(!accels.is_empty());
         for (name, accel) in &accels {

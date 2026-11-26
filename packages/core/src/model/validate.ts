@@ -225,7 +225,7 @@ const dedupe = (diagnostics: readonly Diagnostic[]): readonly Diagnostic[] => {
   return result;
 };
 
-/** 与 M1.1 的诊断合并：同一 code 空间，按 `code|path|message` 去重，保留首次出现的位置。 */
+/** 与解析层的诊断合并：同一 code 空间，按 `code|path|message` 去重，保留首次出现的位置。 */
 export const validateDocument = (parsed: ParsedHtml): readonly Diagnostic[] => {
   const state: State = {
     tasks: [
@@ -245,7 +245,7 @@ export const validateDocument = (parsed: ParsedHtml): readonly Diagnostic[] => {
   for (const task of drainStack(state.tasks)) {
     enterNode(task, state);
   }
-  // 只对本模块自己的诊断做段内稳定排序；跨段顺序固定为"M1.1 诊断在前、本模块在后"。
+  // 只对本模块自己的诊断做段内稳定排序；跨段顺序固定为"解析诊断在前、本模块在后"。
   const derived = [
     ...state.ownDiagnostics,
     ...duplicateDiagnostics(state),

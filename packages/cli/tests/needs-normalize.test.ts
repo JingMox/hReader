@@ -1,8 +1,9 @@
-// 这层管：`needs_normalize` 的**所有入口**（B-01/B-02/B-03 的共同根因）。
+// 这层管：`needs_normalize` 的**所有入口**。
 //
 // 判据来自用户症状，不是实现形状：手写文档（无 `data-hr-id`）交给任何一条读命令，
 // 都必须**报同一个码、给同一句可执行的下一步**，不许一个入口静默空转、另一个换一句措辞。
-// 入口 = outline / read / patch；serve 另有一条 HTTP 侧（409）。
+// 入口 = outline / read / patch；serve 不再拒绝未 normalize 的文档（外来文档能开能看），
+// HTTP 侧的 409 收缩到 `model`/`outline` 这类托管读面。
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -87,10 +88,10 @@ interface SiblingAnswer {
   body: unknown;
 }
 
-// 同一 workspace 下再点开一份手写文档：HTTP 侧必须与 CLI 同码，页面才能显示"先 normalize"。
-const askSibling = async (serve: { url: string; token: string }): Promise<SiblingAnswer> => {
+// 同一 workspace 下再点开一份手写文档：托管读面（model）仍与 CLI 同码，阅读器才能给出"先 normalize"的提示。
+const askSiblingModel = async (serve: { url: string; token: string }): Promise<SiblingAnswer> => {
   // `serve.url` 是程序自己印的带 `?token=` 的那串：用 URL 解析拼兄弟路径，不能字符串直接接。
-  const response = await fetch(new URL("s/draft.html", serve.url), {
+  const response = await fetch(new URL("api/doc/draft.html/model", serve.url), {
     headers: { cookie: `hr=${serve.token}` },
   });
   const body: unknown = await response.json();
@@ -98,33 +99,37 @@ const askSibling = async (serve: { url: string; token: string }): Promise<Siblin
 };
 
 describe("needs_normalize · serve 的 CLI 与 HTTP 两面", () => {
-  it("should refuse to serve a handwritten document, naming the command to run", async () => {
+  it("should serve a handwritten document as viewable HTML instead of refusing", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
 
-      const result = checked(
-        await runCli(["serve", "draft.html", "--port", "0", "--home", homeOf(dir), "--json"], {
-          cwd: dir,
-        }),
-      );
+      const serve = await startServe("draft.html", {
+        json: true,
+        home: homeOf(dir),
+        cwd: dir,
+      });
+      try {
+        const response = await fetch(new URL("s/draft.html", serve.url), {
+          headers: { cookie: `hr=${serve.token}` },
+        });
+        const body = await response.text();
 
-      expect(result.code).toBe(2);
-      const envelope = parseJsonLine(result.stdout);
-      expect(fieldOf(envelope, "code")).toBe("needs_normalize");
-      // `--json` 只有一条通道（P2-3）：可粘贴的命令与文件名都在 message 里，stderr 留空。
-      expect(fieldOf(envelope, "message")).toMatch(/hr normalize \S*draft\.html --write/u);
-      expect(result.stderr).toBe("");
-      // 不许把内部函数名丢给用户（B-02 的原始症状）。
-      expect(fieldOf(envelope, "message")).not.toContain("injectNodeIds");
+        // 未 normalize 的文档按外来 HTML 原样展示：能开能看，但不是按块编辑的承诺。
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toContain("text/html");
+        expect(body).toContain("第一章");
+      } finally {
+        await serve.stop();
+      }
     });
   });
 
-  it("should answer 409 needs_normalize when the reader asks for a handwritten sibling", async () => {
+  it("should answer 409 needs_normalize on the model endpoint for a handwritten sibling", async () => {
     await withTempDir(async (dir) => {
       seed(dir);
       const serve = await startServe("ok.html", { json: true, home: homeOf(dir), cwd: dir });
       try {
-        const { status, body } = await askSibling(serve);
+        const { status, body } = await askSiblingModel(serve);
 
         expect(status).toBe(409);
         expect(fieldOf(body, "code")).toBe("needs_normalize");

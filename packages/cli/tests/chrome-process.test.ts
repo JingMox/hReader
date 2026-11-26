@@ -1,14 +1,14 @@
-// 这层管：`chromeDepsOf` 的真实现（真 spawn / 真 fetch / 真进程组 kill）；一个真 Chrome 都不起。
+// 这层管：`chromeDepsOf` 的真实现（真 spawn / 真进程组 kill）；一个真 Chrome 都不起。
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { chromeDepsOf, chromeProcessOf, type ChromeProcess } from "../src/chrome/session";
+import { chromeProcessOf, type ChromeProcess } from "../src/chrome/process";
+import { chromeDepsOf } from "../src/chrome/session";
 
 const FAKE_CHROME = fileURLToPath(new URL("../fixtures/fake-chrome.mjs", import.meta.url));
 
@@ -111,8 +111,8 @@ describe("chromeDepsOf · killGroup", () => {
 });
 
 describe("chromeDepsOf · killGroup 与孙进程", () => {
-  // M04 判别点：`process.kill(pid)` 也能杀掉主进程，所以“主进程死了”不能证明杀的是进程组；
-  // 只有同组孙进程也停才说明 `-pid` 没被写成 `pid`（§15.2、§16.5）。
+  // 判别点：`process.kill(pid)` 也能杀掉主进程，所以“主进程死了”不能证明杀的是进程组；
+  // 只有同组孙进程也停才说明 `-pid` 没被写成 `pid`。
   it("killGroup 收的是整个进程组：孙进程跟着停", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hr-group-"));
     const marker = join(dir, "tick");
@@ -128,7 +128,7 @@ describe("chromeDepsOf · killGroup 与孙进程", () => {
         },
       });
       await waitForOf(() => existsSync(marker));
-      await sleepOf(200);
+      // marker 是孙进程 appendFileSync 建出来的：文件在 = 至少已写过一字节，ticking>0 已定。
       const ticking = readFileSync(marker, "utf8").length;
       const exited = waitForExitOf(child);
       child.killGroup("SIGTERM");
@@ -136,31 +136,12 @@ describe("chromeDepsOf · killGroup 与孙进程", () => {
       // 主进程已退出：剩下的字节数就是孙进程是否还活着的那一票。
       const frozen = readFileSync(marker, "utf8").length;
       expect(ticking).toBeGreaterThan(0);
+      // 负向窗口：证"孙进程不再写"必须留出静默期。40ms 一跳，300ms ≈ 7 个周期的余量；
+      // 文件没有其它可观察的"写者已死"信号，这段窗是计数静止本身。
       await sleepOf(300);
       expect(readFileSync(marker, "utf8").length).toBe(frozen);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 15_000);
-});
-
-describe("chromeDepsOf · fetchText", () => {
-  it("用全局 fetch 拿 /json/version", async () => {
-    const server = createServer((request, response) => {
-      response.end(`body:${request.url ?? ""}`);
-    });
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", resolve);
-    });
-    const address = server.address();
-    const port = typeof address === "object" && address !== null ? address.port : 0;
-    try {
-      const deps = chromeDepsOf({});
-      expect(await deps.fetchText(`http://127.0.0.1:${String(port)}/json/version`)).toBe(
-        "body:/json/version",
-      );
-    } finally {
-      server.close();
-    }
-  });
 });

@@ -2,8 +2,14 @@
 
 import type { Diagnostic } from "../html/constants";
 
-/** 唯一进 `pendingAnnotations` 的状态；其余状态由上层判断。 */
-export const PENDING_ANNOTATION_STATUS = "pending_ai";
+/** 旧版 meta 的待处理状态；新版阅读器写的是 `pending`。 */
+const PENDING_ANNOTATION_STATUS = "pending_ai";
+
+/** 进 `pendingAnnotations` 的状态：旧版 `pending_ai` 与阅读器写入的 `pending` 都算（与 `annotations/model` 的两态归一同口径）。 */
+export const PENDING_ANNOTATION_STATUSES: ReadonlySet<string> = new Set([
+  PENDING_ANNOTATION_STATUS,
+  "pending",
+]);
 
 export interface MetaAnnotation {
   readonly id: string;

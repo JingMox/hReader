@@ -7,14 +7,14 @@ import { describe, expect, it } from "vitest";
 import { fieldOf, keysOf, parseJsonLine, runCli, withTempDir } from "./harness";
 import { checked, seed, sha } from "./cli-support";
 
-describe("--json 契约（AC3）", () => {
-  it("should keep the §3 key order for patch and expose historyPath", async () => {
+describe("--json 契约", () => {
+  it("should keep the frozen key order for patch and expose historyPath", async () => {
     await withTempDir(async (raw) => {
       const dir = realpathSync(raw);
       seed(dir);
       const result = checked(
         await runCli(
-          // 目标是容器 <article>：段落在它的内容模型之内（往 <p> 里 append 段落会被 F6 拒，那是另一条用例的事）。
+          // 目标是容器 <article>：段落在它的内容模型之内（往 <p> 里 append 段落会被拒，那是另一条用例的事）。
           ["patch", "a.html", "hr-a", "--action", "append", "--html", "<p>x</p>", "--json"],
           { cwd: dir },
         ),
@@ -50,7 +50,7 @@ describe("--json 单行契约", () => {
     });
   });
 
-  // 只走一条通道（P2-3）：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段。
+  // 只走一条通道：`--json` 的消费者常把 `2>&1` 当真源，再写一遍 stderr 就多出第二段。
   it("should write a parseable error JSON to stdout and nothing to stderr", async () => {
     const result = checked(await runCli(["outline", "missing.html", "--json"]));
 
@@ -138,7 +138,7 @@ describe("管道与编码 · UTF-8 拒绝", () => {
 });
 
 describe("深嵌套回归（40k 层不崩）", () => {
-  // F10 把 `div` 放进 `ADDRESSABLE_TAGS`，于是“全篇 div 都没 id”= 这份文档还没 normalize（`assertNormalized`）。
+  // `div` 在 `ADDRESSABLE_TAGS` 里，于是“全篇 div 都没 id”= 这份文档还没 normalize（`assertNormalized`）。
   // 所以先把 40k 层落盘 + `normalize --write` 过一遍，再 outline：两段都是活生生的迭代/序列化压力点。
   it("should normalize and outline a 40000-deep document without crashing", async () => {
     await withTempDir(async (raw) => {

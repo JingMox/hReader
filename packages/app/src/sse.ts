@@ -1,5 +1,5 @@
 // 这层管：SSE 连接的生命周期——指数退避（1s 起 ×2、上限 30s、±20% 抖动）、重连重置、
-// "旧 revision 丢弃"（AC4.3），以及具名事件（`doc.changed`/`library.changed`，P0-1）。
+// "旧 revision 丢弃"，以及具名事件（`doc.changed`/`library.changed`）。
 // `EventSource` 可注入，纯逻辑全部在回调里。
 
 import { isRecord, stringOf } from "./guard.ts";
@@ -97,7 +97,7 @@ const connectOf = (ctl: Ctl, url: string, deps: SseDeps, handlers: SseHandlers):
     ctl.source = opened;
     opened.setOpen(() => {
       ctl.attempt = 0;
-      ctl.cancel?.(); // 重连成功：清掉待触发的退避定时器（裁定 #14）
+      ctl.cancel?.(); // 重连成功：清掉待触发的退避定时器
       ctl.cancel = undefined;
       handlers.onState("live");
     });

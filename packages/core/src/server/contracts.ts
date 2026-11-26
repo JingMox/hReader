@@ -1,6 +1,6 @@
 // 这层管：服务端的裸类型（选项、daemon 记录、SSE 事件、HTTP 回复计划）；不含逻辑、不碰 IO。
-// 变更留痕（C1，`L-05`）：diff 响应体删掉 `originNodeId` 与 `reason`——app 侧零读取，
-// `degraded` + `degradedReason` 已把"降没降级、为什么"说完；见 `.workflow/cards/C1.md`。
+// diff 响应体删掉 `originNodeId` 与 `reason`——app 侧零读取，
+// `degraded` + `degradedReason` 已把"降没降级、为什么"说完。
 
 import type { DiffResult } from "../annotations/diff";
 
@@ -30,14 +30,6 @@ export interface ServerOptions {
   readonly timeouts?: Partial<Timeouts>;
 }
 
-/** `daemon.json` 的形状：CLI 与浏览器都靠它拿端口与一次性 token。 */
-export interface DaemonInfo {
-  readonly port: number;
-  readonly token: string;
-  readonly pid: number;
-  readonly workspace: string;
-}
-
 export interface SseEvent {
   readonly id: number;
   readonly type: string;
@@ -45,7 +37,7 @@ export interface SseEvent {
 }
 
 /**
- * `GET /api/doc/<docId>/notes/<anId>/diff` 的响应体（AC4.4）。
+ * `GET /api/doc/<docId>/notes/<anId>/diff` 的响应体。
  * `nodeId` 是**当前文档**里那块的真实 id（重识别成功时与批注记录的旧 id 不同）。
  */
 export interface AnnotationDiffBody {

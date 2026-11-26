@@ -1,16 +1,17 @@
 // 这层管：`filePath` → core 能吃的 `{workspace, file}`，以及本包唯一那道边界判定（读与建共用同一个口径）。
 
-import { readFile, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { link, mkdir, realpath, rm, readFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import { HrError, isInside, isInsideOrSelf } from "@hreader/core";
+import { HrError, isInside, isInsideOrSelf, nodePatchDeps } from "@hreader/core";
 
 import { foldedOf } from "../errors";
 
 /**
  * 七个工具的 `filePath` 描述共用这一句：**"工作区"是什么必须写出来**。
- * 本卡不提供 `--workspace`（`cli.ts` 用 `process.cwd()`），所以"工作区"就是启动时的 cwd；
- * 宿主 `cd /` 拉起时界内就是整个根，这不是 bug，但不能靠宿主自己猜（G3 P1-3）。
+ * 缺省就是启动时的 cwd（`--workspace` 可改）；宿主 `cd /` 拉起时界内就是整个根，
+ * 这不是 bug，但不能靠宿主自己猜。
  */
 export const FILE_PATH_HINT =
   "路径相对工作区（可用 --workspace <dir> 指定，缺省为启动时的 cwd）；绝对路径也必须落在工作区之内";
@@ -20,7 +21,7 @@ export interface DocumentTarget {
   readonly workspace: string;
   /** 相对 `workspace` 的路径：core 的 `resolveTarget` 自己会 realpath + 拒逃逸。 */
   readonly file: string;
-  /** 用户**原样**传进来的 `filePath`：错误文案回显它，绝不回显我们算出来的路径（F8-2）。 */
+  /** 用户**原样**传进来的 `filePath`：错误文案回显它，绝不回显我们算出来的路径。 */
   readonly input: string;
   readonly absolute: string;
 }
@@ -53,8 +54,6 @@ const codeOf = (error: unknown): unknown =>
 /**
  * 边界判定只写一处：不存在的是**祖先**目录，允许恰好就是 workspace（`isInsideOrSelf`）；
  * 存在的是**目标**本身，要求严格在界内（core 的 `isInside` 就是"在界内且不等于自身"）。
- * `L-13` 收掉的就是本文件当初逐字镜像 core `packages/core/src/io/paths.ts:34-40` 的那份复本；
- * `D6` 又收掉了一句"`!== workspace &&`"——那是重新推导 core 已内化的规则。
  */
 
 interface ExistingPath {
@@ -97,7 +96,7 @@ export const assertInsideWorkspace = async (target: DocumentTarget): Promise<voi
     ? isInside(workspace, resolved.path)
     : isInsideOrSelf(workspace, resolved.path);
   if (!accepted) {
-    // 文案用用户传进来的相对路径：绝对路径会把宿主布局泄给模型（F6-②）。
+    // 文案用用户传进来的相对路径：绝对路径会把宿主布局泄给模型。
     throw new HrError("path_outside_workspace", `目标不在工作区内：${target.input}`);
   }
 };
@@ -149,3 +148,38 @@ export const writeFailureOf = (error: unknown, target: DocumentTarget): HrError 
   error instanceof HrError
     ? error
     : failureOfFsCall(error, target, "写入失败（目录不可建或文件已存在）");
+
+const encoder = new TextEncoder();
+
+const isEexist = (error: unknown): boolean => codeOf(error) === "EEXIST";
+
+const TMP_PREFIX = ".hr-create-";
+
+/**
+ * 原子"新建"：`writeFile(wx)` 的存在闸是原子的，但写本身不是——进程死在半路会留半份
+ * "新文档"。tmp + `link(2)` 把"不存在才建"交给内核判（EEXIST 永不覆盖、不撕文件），
+ * tmp 内容由 `writeFileAtomic` 先落定（fsync + 权限沿用），任何一步失败 tmp 都被收走。
+ * mkdir 的 EEXIST（中间段是文件）与 link 的 EEXIST（目标已存在）是两回事，分开折。
+ */
+export const createNewFileOf = async (target: DocumentTarget, html: string): Promise<void> => {
+  const dir = dirname(target.absolute);
+  const tmp = join(dir, `${TMP_PREFIX}${randomUUID()}`);
+  try {
+    await mkdir(dir, { recursive: true });
+    await nodePatchDeps.fs.writeFileAtomic(tmp, encoder.encode(html));
+  } catch (error: unknown) {
+    await rm(tmp, { force: true });
+    throw writeFailureOf(error, target);
+  }
+  try {
+    await link(tmp, target.absolute);
+  } catch (error: unknown) {
+    // `file_exists` 是"目标已存在"的对外语义（与 CLI `--out` 同码），不该掉进 io_failure 的兜底。
+    // tmp 与目标同目录：除 EEXIST 外，能让 link 失败的原因会先让 writeFileAtomic 失败——防御性兜底。
+    /* v8 ignore next */
+    if (!isEexist(error)) throw writeFailureOf(error, target);
+    throw new HrError("file_exists", `目标已存在：${target.input}`, { cause: error });
+  } finally {
+    await rm(tmp, { force: true });
+  }
+};

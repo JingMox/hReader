@@ -3,10 +3,10 @@
 import { describe, expect, it } from "vitest";
 
 import * as coreEntry from "../src/index";
-import { resolveSelector } from "../src/ops/readNode/resolve";
+import { resolveSelector } from "../src/ops/read-node/resolve";
 import { HrError, injectNodeIds, parseHtml, readNode } from "../src/index";
 import type { Diagnostic } from "../src/html/constants";
-import { withinSubtree } from "../src/ops/readNode/diagnostics";
+import { withinSubtree } from "../src/ops/read-node/diagnostics";
 import type { ReadNodeResult } from "../src/index";
 
 const META =
@@ -129,11 +129,11 @@ describe("annotations · projection of hr-meta", () => {
   });
 });
 
-describe("diagnostics · the M1.1 subset inside the target subtree", () => {
+describe("diagnostics · the parser subset inside the target subtree", () => {
   const html = `<article data-hr-id="post"><section data-hr-id="s1"><div data-hr-component="bad">a</div></section><section data-hr-id="s2"><p>b</p></section></article>`;
 
-  // v2 #12 统一了 path 口径（同标签序号、不带前导 `>`），`withinSubtree` 才解得开前缀比较：
-  // 这条从 it.fails 转正，正是 D1 被修掉的证据。
+  // path 口径统一（同标签序号、不带前导 `>`），`withinSubtree` 才解得开前缀比较：
+  // 这条曾是钉住该 bug 的 it.fails，修好后就转正。
   it("should include a parse diagnostic that lands inside the target", () => {
     const result = read(html, "#s1");
 

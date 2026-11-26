@@ -1,26 +1,20 @@
 //! bootstrap URL 拼装：docId 走 path-segment、token 走 query，两者都按 RFC3986 转义。
 
-const UNRESERVED: &[u8] = b"-._~";
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 
-fn is_unreserved(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || UNRESERVED.contains(&byte)
-}
+// RFC 3986 unreserved = ALPHA / DIGIT / "-" / "." / "_" / "~"
+const RFC3986_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
 
-fn push_encoded(out: &mut String, text: &str, keep: fn(u8) -> bool) {
-    for &byte in text.as_bytes() {
-        if is_unreserved(byte) || keep(byte) {
-            out.push(char::from(byte));
-        } else {
-            out.push('%');
-            out.push_str(&format!("{byte:02X}"));
-        }
-    }
-}
+const PATH_ENCODE_SET: &AsciiSet = &RFC3986_ENCODE_SET.remove(b'/');
 
 /// `docId` 是 workspace 相对路径：`/` 保留成路径分隔符，其余非未保留字符一律转义。
 /// `#` 尤其不能漏——它是 fragment 分隔符，漏了就轮到 `?t=` 被截断成 fragment。
 ///
-/// `.`/`..`/空段一律拒绝：daemon 侧的 `isInside`+`realpath`（`packages/core/src/io/paths.ts:76/79`）
+/// `.`/`..`/空段一律拒绝：daemon 侧的 `isInside`+`realpath`（`packages/core/src/io/paths.ts`）
 /// 已经挡住了越界，但 URL 层不该把这种路径编码出去。错误是返回值，不是 panic。
 pub fn encode_path(doc_id: &str) -> Result<String, PathError> {
     for segment in doc_id.split('/') {
@@ -31,9 +25,7 @@ pub fn encode_path(doc_id: &str) -> Result<String, PathError> {
             return Err(PathError::DotSegment);
         }
     }
-    let mut out = String::new();
-    push_encoded(&mut out, doc_id, |byte| byte == b'/');
-    Ok(out)
+    Ok(utf8_percent_encode(doc_id, PATH_ENCODE_SET).to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,9 +44,7 @@ impl std::fmt::Display for PathError {
 }
 
 pub fn encode_query(value: &str) -> String {
-    let mut out = String::new();
-    push_encoded(&mut out, value, |_| false);
-    out
+    utf8_percent_encode(value, RFC3986_ENCODE_SET).to_string()
 }
 
 /// 壳**唯一**的认证入口：webview 自己加载这个 URL，服务端 302 到同路径并 `Set-Cookie`，
@@ -84,23 +74,13 @@ pub fn doc_reader_url(port: u16, doc_id: &str) -> Result<String, PathError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use percent_encoding::percent_decode_str;
 
-    /// 最小 RFC3986 解码器：只为断言"往返相等"，不参与生产路径。
     fn decode(text: &str) -> String {
-        let bytes = text.as_bytes();
-        let mut out: Vec<u8> = Vec::new();
-        let mut index = 0;
-        while index < bytes.len() {
-            if bytes[index] == b'%' {
-                let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).expect("两位十六进制");
-                out.push(u8::from_str_radix(hex, 16).expect("十六进制"));
-                index += 3;
-            } else {
-                out.push(bytes[index]);
-                index += 1;
-            }
-        }
-        String::from_utf8(out).expect("UTF-8")
+        percent_decode_str(text)
+            .decode_utf8()
+            .expect("UTF-8")
+            .into_owned()
     }
 
     const DOC_IDS: [&str; 4] = ["a/b.html", "空格 x.html", "a#b", "a?b"];
@@ -111,7 +91,7 @@ mod tests {
     ];
 
     #[test]
-    fn ac2_slash_survives_and_reserved_bytes_are_escaped() {
+    fn slash_survives_and_reserved_bytes_are_escaped() {
         assert_eq!(encode_path("a/b.html"), Ok("a/b.html".to_string()));
         assert_eq!(encode_path("a#b"), Ok("a%23b".to_string()));
         assert_eq!(encode_path("a?b"), Ok("a%3Fb".to_string()));
@@ -121,7 +101,7 @@ mod tests {
     }
 
     #[test]
-    fn ac2_dot_segments_are_rejected_at_the_url_layer() {
+    fn dot_segments_are_rejected_at_the_url_layer() {
         assert_eq!(encode_path("../x.html"), Err(PathError::DotSegment));
         assert_eq!(encode_path("a/../x.html"), Err(PathError::DotSegment));
         assert_eq!(encode_path("./x.html"), Err(PathError::DotSegment));
@@ -137,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn ac2_round_trip_for_every_doc_id_and_token() {
+    fn round_trip_for_every_doc_id_and_token() {
         for doc_id in DOC_IDS {
             for token in TOKENS {
                 let url = bootstrap_url(8123, doc_id, token).expect("文档路径合法");
@@ -158,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn ac2_hash_in_doc_id_cannot_swallow_the_token() {
+    fn hash_in_doc_id_cannot_swallow_the_token() {
         let url = bootstrap_url(9000, "a#b.html", "tok").expect("a#b.html 在段内不算非法");
         assert!(!url.contains('#'));
         assert!(url.ends_with("?t=tok"));

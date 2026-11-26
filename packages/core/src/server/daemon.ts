@@ -4,49 +4,38 @@ import { chmod } from "node:fs/promises";
 import { connect } from "node:net";
 import { dirname, join } from "node:path";
 
+import { z } from "zod";
+
 import { encodeUtf8, decodeUtf8 } from "../io/bytes";
 import { mkdirOrFail } from "../io/atomic";
 import { nonce } from "../io/digest";
 import { failureOf, ioFailure, isMissing } from "../io/errors";
 import type { PatchDeps } from "../io/ports";
 import { isProcessAlive } from "../io/process";
-import type { DaemonInfo } from "./contracts";
+import { parseJson } from "../schema";
 
 const STORE_DIR = ".hreader";
 const DAEMON_FILE = "daemon.json";
 
 export const daemonFileOf = (home: string): string => join(home, STORE_DIR, DAEMON_FILE);
 
-const fieldOf = (value: Readonly<Record<string, unknown>>, key: string): unknown => value[key];
+const positiveInt = z.number().int().positive();
+const nonEmpty = z.string().min(1);
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/** `daemon.json` 的形状：CLI 与浏览器都靠它拿端口与一次性 token。 */
+const daemonSchema = z.object({
+  port: positiveInt,
+  token: nonEmpty,
+  pid: positiveInt,
+  workspace: nonEmpty,
+});
 
-const isPositiveInt = (value: unknown): value is number =>
-  typeof value === "number" && Number.isInteger(value) && value > 0;
-
-const isNonEmptyString = (value: unknown): value is string =>
-  typeof value === "string" && value.length > 0;
-
-const daemonOf = (record: Readonly<Record<string, unknown>>): DaemonInfo | undefined => {
-  const port = fieldOf(record, "port");
-  const token = fieldOf(record, "token");
-  const pid = fieldOf(record, "pid");
-  const workspace = fieldOf(record, "workspace");
-  if (!isPositiveInt(port) || !isPositiveInt(pid)) return undefined;
-  if (!isNonEmptyString(token) || !isNonEmptyString(workspace)) return undefined;
-  return { port, token, pid, workspace };
-};
+export type DaemonInfo = Readonly<z.infer<typeof daemonSchema>>;
 
 /** 字段类型不对就当"没有 daemon"：坏文件不能把新进程挡在门外，也不能被当成自己的。 */
 export const parseDaemon = (text: string): DaemonInfo | undefined => {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  return isRecord(value) ? daemonOf(value) : undefined;
+  const parsed = daemonSchema.safeParse(parseJson(text));
+  return parsed.success ? parsed.data : undefined;
 };
 
 export const readDaemonOf = async (

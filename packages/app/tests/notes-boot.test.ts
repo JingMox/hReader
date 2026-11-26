@@ -1,4 +1,4 @@
-// 这层管：M2.3 的 UI 端到端接线（§10.7）——从 `boot()` 的真入口进，
+// 这层管：批注/diff 的 UI 端到端接线——从 `boot()` 的真入口进，
 // 走真 `dispatchIntent` 路由，断言"按键 → 状态 → POST → 右栏"整条链，
 // 不在中间层直接调 `submitFlow` / `settleTheme` / `store.dispatch`。
 // 划词、卡片点击、闪烁在 `notes-boot-events.test.ts`（同一夹具）。
@@ -105,7 +105,7 @@ describe("diff 接线 · w 的守卫与撤销", () => {
     await flush();
 
     expect(h.posted.map((call) => call.path)).toEqual(["/api/doc/doc.html/undo"]);
-    // 撤销成功即面板关闭（P1-10）：不关的话再按一次 `w` 会再撤一次，可能把用户刚做的 patch 撤掉。
+    // 撤销成功即面板关闭：不关的话再按一次 `w` 会再撤一次，可能把用户刚做的 patch 撤掉。
     expect(h.store.get().diff.open).toBe(false);
     h.booted.destroy();
   });

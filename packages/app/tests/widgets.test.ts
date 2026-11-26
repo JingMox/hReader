@@ -1,5 +1,5 @@
-// 这层管：四个 widget 的**调用序列**契约——AC2.2（outline 没换引用就不重建 TOC）与
-// AC2.4（`doc.changed` 只写变化的块，绝不整篇 `html` 重注入）。
+// 这层管：四个 widget 的**调用序列**契约——outline 没换引用就不重建 TOC；
+// `doc.changed` 只写变化的块，绝不整篇 `html` 重注入。
 
 import { describe, expect, it } from "vitest";
 
@@ -29,7 +29,7 @@ describe("library · TOC 只在 outline 换引用时重建", () => {
     expect(widget).toBeDefined();
   });
 
-  it("should not rebuild when the outline reference is unchanged (AC2.2)", () => {
+  it("should not rebuild when the outline reference is unchanged", () => {
     const outline = outlineOf();
     const fake = createFakeHost();
     const widget = mountLibrary(fake.host, ROOT, stateOf({ outline }), () => undefined);
@@ -46,7 +46,7 @@ describe("library · TOC 只在 outline 换引用时重建", () => {
   });
 });
 
-describe("canvas · 正文只注入一次，之后按块 diff（AC2.4）", () => {
+describe("canvas · 正文只注入一次，之后按块 diff", () => {
   it("should inject the document once and paint theme options", () => {
     const fake = createFakeHost();
     mountCanvas({
@@ -79,7 +79,7 @@ describe("canvas · 块级 diff 只写变化的块", () => {
       input: { html: "old", themes: [] },
       onIntent: () => undefined,
     });
-    // 第二次渲染：revision 变了、块表少了一个（裁定 #8：块被删则 DOM 真删）。
+    // 第二次渲染：revision 变了、块表少了一个（块被删则 DOM 真删）。
     widget.update(
       stateOf({ documentHtml: "new", revision: "r2", blocks: ["hr-a"], activeId: "hr-a" }),
     );

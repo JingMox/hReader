@@ -258,7 +258,7 @@ describe("sse · 帧头 id 为空或非数字", () => {
     h.sse.close();
   });
 
-  // 已知缺陷（见报告「待裁定」#1）：`1e3` 走 `Number()` 被当成 1000，之后真帧 `12` 反而被判 stale 丢弃。
+  // 已知缺陷：`1e3` 走 `Number()` 被当成 1000，之后真帧 `12` 反而被判 stale 丢弃。
   it("should currently coerce a scientific-notation id through Number()", () => {
     const h = harness(0.5);
     h.sse.start();
@@ -284,5 +284,63 @@ describe("sse · 帧头 id 为空或非数字", () => {
     h.emit("doc.changed", JSON.stringify({ changedNodes: [] }), "4");
     expect(h.events).toEqual([{ id: 4, type: "doc.changed" }]);
     h.sse.close();
+  });
+});
+
+const namedSourceOf = (): { source: SourceLike; fire: (event: MessageEventLike) => void } => {
+  const listeners = new Map<string, (event: MessageEventLike) => void>();
+  const source: SourceLike = {
+    addEventListener: (type, listener) => {
+      listeners.set(type, listener);
+    },
+    setOpen: () => undefined,
+    setError: () => undefined,
+    close: () => undefined,
+  };
+  return {
+    source,
+    fire: (event) => {
+      listeners.get("doc.changed")?.(event);
+    },
+  };
+};
+
+describe("sse · 具名帧走事件名而不是 data.type", () => {
+  it("should use the event name when it is not `message`", () => {
+    const events: string[] = [];
+    const fake = namedSourceOf();
+    const sse = createSse(
+      "/api/events",
+      { open: () => fake.source, schedule: () => () => undefined, random: () => 0.5 },
+      { onEvent: (event) => events.push(event.type), onState: () => undefined },
+    );
+    sse.start();
+    fake.fire({ data: JSON.stringify({ changedNodes: [] }), lastEventId: "7" });
+    sse.close();
+    expect(events).toEqual(["doc.changed"]);
+  });
+});
+
+describe("sse · message 帧缺 type 时退回约定的 message", () => {
+  it("should fall back to `message` when a message frame has no type field", () => {
+    const events: string[] = [];
+    const listeners = new Map<string, (event: MessageEventLike) => void>();
+    const source: SourceLike = {
+      addEventListener: (type, listener) => {
+        listeners.set(type, listener);
+      },
+      setOpen: () => undefined,
+      setError: () => undefined,
+      close: () => undefined,
+    };
+    const sse = createSse(
+      "/api/events",
+      { open: () => source, schedule: () => () => undefined, random: () => 0.5 },
+      { onEvent: (event) => events.push(event.type), onState: () => undefined },
+    );
+    sse.start();
+    listeners.get("message")?.({ data: JSON.stringify({ foo: 1 }), lastEventId: "5" });
+    sse.close();
+    expect(events).toEqual(["message"]);
   });
 });

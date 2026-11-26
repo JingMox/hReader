@@ -1,5 +1,5 @@
 // 这层管：Resources（`hreader://styles/{id}`）与 Prompt（`use-hreader-style`）——
-// 列什么、读出来是什么、未知 id 是不是错误（AC-5 / AC-6）。
+// 列什么、读出来是什么、未知 id 是不是错误。
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
