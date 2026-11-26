@@ -52,15 +52,26 @@ const wide = (paragraphs: number): string =>
 /** 空载机器上 `buildDocument(300)` 走完整条流水线的耗时（毫秒）：校准系数的分母。 */
 const IDLE_REFERENCE_MS = 4;
 
+/**
+ * Milliseconds of CPU time burned by this process (user+system). Unlike wall
+ * time it is not inflated by scheduling stalls, so a bound on it holds under
+ * CPU contention; same-machine slowness is absorbed by the slowdown factor
+ * and the same-run reference ratio below.
+ */
+const cpuMs = (): number => {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
+};
+
 const measure = (html: string): number => {
-  const startedAt = performance.now();
+  const started = cpuMs();
   const parsed = parseHtml(html);
   const injected = injectNodeIds(parsed);
   toDocumentModel(injected.parsed);
-  return performance.now() - startedAt;
+  return cpuMs() - started;
 };
 
-/** 取最快的一次：抖动只会让单次变慢，最快样本最接近真实成本（与 html-perf 同口径）。 */
+/** Take the fastest run: noise only slows a sample, so the minimum is closest to the true cost (same convention as html-perf). */
 const fastest = (html: string, runs: number): number => {
   let best = Number.POSITIVE_INFINITY;
   for (let index = 0; index < runs; index += 1) {
@@ -187,7 +198,7 @@ describe("toDocumentModel · 深度与性能", () => {
 
     expect(
       bestBig,
-      `${String(bigHtml.length)} chars took ${bestBig.toFixed(1)}ms (reference ${bestReference.toFixed(1)}ms)`,
+      `${String(bigHtml.length)} chars took ${bestBig.toFixed(1)}ms cpu (reference ${bestReference.toFixed(1)}ms)`,
     ).toBeLessThan(200 * slowdown);
     // 体量 10 倍：线性 ≈10，平方 ≈100。
     expect(ratio, `best big/reference ratio ${ratio.toFixed(1)}`).toBeLessThan(14);
@@ -204,7 +215,7 @@ describe("toDocumentModel · 深度与性能 · 续", () => {
 
   it("should stay close to linear in the number of blocks", () => {
     fastest(wide(5_000), 1);
-    const small = Math.max(fastest(wide(10_000), 2), 2);
+    const small = fastest(wide(10_000), 2);
     const large = fastest(wide(20_000), 1);
 
     // 4 倍输入换成平方会到 ~16 倍；线性只该是 ~4 倍。

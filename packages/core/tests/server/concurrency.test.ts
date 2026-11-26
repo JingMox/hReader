@@ -78,16 +78,31 @@ describe("concurrency · 同文档", () => {
 });
 
 describe("concurrency · 跨文档", () => {
+  it("should patch another document while a doc lock is held (locks are per-document)", async () => {
+    await withServer(async (ctx) => {
+      const lockDir = join(ctx.workspace, ".hreader", "locks");
+      mkdirSync(lockDir, { recursive: true });
+      const lock = join(lockDir, `${createHash("sha1").update("doc.html").digest("hex")}.lock`);
+      writeFileSync(lock, JSON.stringify({ pid: process.pid, nonce: "held", at: Date.now() }));
+
+      // A global/single lock would answer 503 busy here; per-document locking answers 200.
+      const other = await post(ctx.port, ctx.token, "other.html", "b");
+
+      expect(other.status).toBe(200);
+      expect(readFileSync(join(ctx.workspace, "other.html"), "utf8")).toContain(">b<");
+    });
+  });
+
   it("should run two documents in parallel without blocking each other", async () => {
     await withServer(async (ctx) => {
-      const started = Date.now();
       const both = await Promise.all([
         post(ctx.port, ctx.token, "doc.html", "a"),
         post(ctx.port, ctx.token, "other.html", "b"),
       ]);
 
+      // "Do not block each other" is proven deterministically by the held-lock
+      // case above; a serializing implementation would surface as a 503 there.
       expect(both.map((result) => result.status)).toEqual([200, 200]);
-      expect(Date.now() - started).toBeLessThan(5_000);
       expect(readFileSync(ctx.file, "utf8")).toContain(">a<");
       expect(readFileSync(join(ctx.workspace, "other.html"), "utf8")).toContain(">b<");
     });

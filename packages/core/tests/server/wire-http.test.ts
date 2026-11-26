@@ -94,24 +94,28 @@ describe("wire · 体大小与半截请求", () => {
 });
 
 describe("wire · 半截请求（KD-07 记账）", () => {
-  // KD-07 记账（旧注释「只监听 data/end、Promise 永不落地」已过期）：线上真行为是**裸 400，不是 408**——
-  // ① 客户端半关（FIN）后，Node 内置 parser 先报 `HPE_INVALID_EOF_STATE`（`clientError` 的 Parse Error），
-  //    默认 clientError 直接把 `HTTP/1.1 400 Bad Request` 写死并 destroy socket；`server.ts` 没有
-  //    `clientError` 监听，所以 `chunksOf` 的 `aborted` ⇒ `HttpFault(408, "连接在请求体读完前断开")` 抢不到响应。
-  // ② 所以那条 10s 的 `408 请求体读取超时` 只对「客户端保持连接不发 FIN」成立，和本用例不是一条路径。
-  // ③ 断言只锚「400 + 快」：它测的是「不挂死」；将来若把 `clientError` 映射成 JSON 错误体，本用例仍应绿。
-  it("should answer a truncated (EOF) request close fast instead of hanging", async () => {
+  // KD-07 ledger (the old "only listens to data/end, promise never settles" note is stale):
+  // the real on-wire behavior is a **bare 400, not a 408** —
+  // ① after the client half-closes (FIN), Node's built-in parser reports
+  //    `HPE_INVALID_EOF_STATE` (a `clientError` Parse Error); the default
+  //    clientError handler writes `HTTP/1.1 400 Bad Request` verbatim and
+  //    destroys the socket. `server.ts` has no `clientError` listener, so the
+  //    `aborted` ⇒ `HttpFault(408)` path in `chunksOf` never gets to answer.
+  // ② The 10s "408 request-body read timeout" therefore only exists for
+  //    "client keeps the connection open without FIN" — a different path.
+  // ③ The assertion pins only "400": resolving with a status line at all is the
+  //    proof of "does not hang"; a real hang is caught by halfClosedExchange's
+  //    own 1500ms timer (which rejects with the buffered raw bytes) and by the
+  //    vitest testTimeout as the outer backstop — no stopwatch needed. If
+  //    `clientError` is ever mapped to a JSON error body, this case stays green.
+  it("should answer a truncated (EOF) request instead of hanging", async () => {
     await withServer(async (ctx) => {
-      const started = Date.now();
       const raw = await halfClosedExchange(
         ctx.port,
         `POST /api/patch HTTP/1.1\r\nHost: 127.0.0.1:${String(ctx.port)}\r\nCookie: ${cookieOf(ctx.token)}\r\nX-HR-CSRF: 1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"docId"`,
       );
-      const elapsed = Date.now() - started;
 
       expect(statusLineOf(raw)).toMatch(/^HTTP\/1\.1 400/u);
-      // 耗时才是杀「用 10s/4s 墙钟冒充判据」的真判据：实测 ~3ms。
-      expect(elapsed).toBeLessThan(1000);
     });
   });
 });

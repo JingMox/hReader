@@ -1,5 +1,3 @@
-import { performance } from "node:perf_hooks";
-
 import { describe, expect, it } from "vitest";
 
 import { injectNodeIds, parseHtml, serializeHtml } from "../src/index";
@@ -7,21 +5,15 @@ import { injectNodeIds, parseHtml, serializeHtml } from "../src/index";
 const BUDGET_MS = 300;
 const TIMEOUT_MS = 120_000;
 
-// 抗噪基线（300ms 绝对阈值在多测试文件并发时会假红：实测一次 1178ms）。
-// 用纯数学循环做**同进程争用探针**：它不在 `src/`，不被覆盖插桩，因此只反映 CPU 争用/降频；
-// 本机空闲实测 ~7.5ms，并发下按比例放大预算（上限 6x，再高就是环境问题而非实现问题）。
-const PROBE_IDLE_MS = 7.5;
-const PROBE_SPINS = 2_000_000;
-
-const contention = (): number => {
-  const start = performance.now();
-  let checksum = 0;
-  for (let index = 0; index < PROBE_SPINS; index += 1) {
-    checksum = (checksum + index) % 1_000_003;
-  }
-  const cost = performance.now() - start;
-  expect(checksum).toBeGreaterThanOrEqual(0);
-  return Math.min(Math.max(cost / PROBE_IDLE_MS, 1), 6);
+/**
+ * Milliseconds of CPU time burned by this process (user+system). Unlike wall
+ * time it is not inflated by scheduling stalls, so a bound on it holds under
+ * CPU contention; same-machine slowness (coverage instrumentation, weak
+ * cores) is absorbed by the same-pipeline reference below.
+ */
+const cpuMs = (): number => {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
 };
 
 const paragraph = (index: number): string =>
@@ -40,11 +32,11 @@ const buildDocument = (sections: number): string => {
   return parts.join("");
 };
 
-/** parse + inject 的总耗时（毫秒）。 */
+/** parse + inject cost in milliseconds of this process's own CPU time. */
 const measure = (html: string): number => {
-  const start = performance.now();
+  const start = cpuMs();
   injectNodeIds(parseHtml(html));
-  return performance.now() - start;
+  return cpuMs() - start;
 };
 
 const fastest = (html: string, runs: number): number => {
@@ -55,20 +47,19 @@ const fastest = (html: string, runs: number): number => {
   return best;
 };
 
-// 绝对阈值 300ms 的**自校准**：覆盖插桩会整体拖慢 `src/**`（实测 ~4x），纯绝对阈值在这种环境下必假红；
-// 因此取 `max(300 * 争用系数, 同流水线 1/4 体量成本 * 8)`。真退化成 O(n²) 时，
-// 下一条用例的 `large/small` 比值门与这里的 8x 关系都会红。
-const budgetFor = (
-  html: string,
-): { readonly cost: number; readonly budget: number; readonly factor: number } => {
+// Self-calibration of the 300ms CPU bound: coverage instrumentation slows
+// `src/**` as a whole (~4x measured), so a bare absolute bound would false-red
+// there. Budget = max(300ms, CPU cost of the same pipeline at 1/4 size * 8).
+// A real O(n^2) regression would also trip the next case's large/small ratio
+// gate and the 8x relation here.
+const budgetFor = (html: string): { readonly cost: number; readonly budget: number } => {
   fastest(buildDocument(20), 2);
-  const factor = contention();
   const quarterCost = fastest(buildDocument(750), 3);
   const cost = fastest(html, 3);
-  return { cost, budget: Math.max(BUDGET_MS * factor, quarterCost * 8), factor };
+  return { cost, budget: Math.max(BUDGET_MS, quarterCost * 8) };
 };
 
-/** 交错取样：相邻窗口各测一档再相除，两端吃同一份争用，比值才稳；返回 5 个窗口里的最小比值。 */
+/** Interleaved sampling: adjacent windows measure each size once and divide, so both ends share the same machine conditions; returns the minimum ratio over 5 windows. */
 const growthRatio = (small: string, large: string): number => {
   fastest(small, 2);
   fastest(large, 2);
@@ -87,12 +78,12 @@ describe("性能 · 1MB 文档", () => {
       const html = buildDocument(3000);
       expect(html.length).toBeGreaterThan(1_000_000);
 
-      const { cost, budget, factor } = budgetFor(html);
+      const { cost, budget } = budgetFor(html);
 
       expect(html.length, `body size ${String(html.length)}`).toBeGreaterThan(1_000_000);
       expect(
         cost,
-        `parse+inject of ${String(html.length)} chars took ${cost.toFixed(1)}ms, budget ${budget.toFixed(0)}ms (contention x${factor.toFixed(1)})`,
+        `parse+inject of ${String(html.length)} chars took ${cost.toFixed(1)}ms cpu, budget ${budget.toFixed(0)}ms`,
       ).toBeLessThanOrEqual(budget);
     },
     TIMEOUT_MS,

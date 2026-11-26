@@ -15,11 +15,21 @@ import {
 import { tagBalanceDiagnostics } from "../src/html/balance";
 import type { HtmlNode } from "../src/index";
 
-/** 挂钟计时（断言用；本仓规范允许非确定性测试里做"上限"断言——上限给的是数量级）。 */
+/**
+ * Milliseconds of CPU time burned by this process (user+system). Unlike wall
+ * time it is not inflated by scheduling stalls, so a bound on it holds under
+ * CPU contention; the bounds here are orders of magnitude above real cost.
+ */
+const cpuMs = (): number => {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
+};
+
+/** Times fn in this process's own CPU ms (assertion-only; the bound is an order of magnitude, not a precise value). */
 const timed = (fn: () => void): number => {
-  const at = performance.now();
+  const at = cpuMs();
   fn();
-  return performance.now() - at;
+  return cpuMs() - at;
 };
 
 const deepDoc = (depth: number): string =>
