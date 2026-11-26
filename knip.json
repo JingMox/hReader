@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignore": ["docs/**"],
+  "ignore": [
+    "docs/**",
+    "packages/desktop/src-tauri/resources/**",
+    "packages/desktop/src-tauri/target/**"
+  ],
   "vitest": {
     "config": ["vitest.config.ts", "packages/*/vitest.config.ts"]
   },

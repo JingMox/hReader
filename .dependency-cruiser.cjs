@@ -104,15 +104,23 @@ module.exports = {
   ],
   options: {
     // Only bounds traversal depth: node_modules is not expanded, but npm edges are still recorded
-    // (otherwise the two npm rules above never fire).
-    doNotFollow: { path: "node_modules" },
-    // Exclude only top-level artifact dirs: repo-root dist|coverage and packages/<pkg>/dist|coverage.
+    // (otherwise the two npm rules above never fire). The git-ignored desktop artifact dirs are
+    // listed too so a stray edge into a bundle never expands the whole bundled tree.
+    doNotFollow: {
+      path: "node_modules|^packages/desktop/src-tauri/(resources|target)/",
+    },
+    // Exclude only artifact dirs: repo-root dist|coverage, packages/<pkg>/dist|coverage, and the
+    // git-ignored desktop build output under src-tauri/ (resources/ holds copies of app/dist and
+    // the bundled cli.mjs whose optional imports like yauzl/proxy-agent would report false
+    // no-unresolvable reds; target/ is the cargo build tree).
     // Cannot write (^|/)(dist|coverage)/: it matches dist at any depth, including inside
     // node_modules — and excluding node_modules would remove npm edges entirely, leaving
     // no-undeclared-external-dep / no-dev-dependency-from-src dead again.
     // Nor ^(packages/[^/]+/)?(dist|coverage)/: nested quantifiers give depcruise's safe-regex a
     // star height of 2 and it refuses to run — hence two anchored branches.
-    exclude: { path: "^(dist|coverage)/|^packages/[^/]+/(dist|coverage)/" },
+    exclude: {
+      path: "^(dist|coverage)/|^packages/[^/]+/(dist|coverage)/|^packages/desktop/src-tauri/(resources|target)/",
+    },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: "tsconfig.json" },
     // A dependency's `exports` wildcard (e.g. `@modelcontextprotocol/sdk`'s "./*") resolves only
