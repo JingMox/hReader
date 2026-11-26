@@ -201,9 +201,9 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   /**
    * 不是我们发起的 load：meta refresh / target=_self / location= 把文档页带离了 /s/。
    * 「联网」是全包语义——开档时框架内导航照放；关档时拉回 /s/ 并在横幅上提示已阻止。
+   * 这里不需要 dead 检查：destroy 先解绑这个 load 监听，卸载后它不会被再派发。
    */
   const onFrameLoad = (): void => {
-    if (dead) return;
     if (expectedLoads > 0) {
       expectedLoads -= 1;
       return;
