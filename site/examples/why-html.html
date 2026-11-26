@@ -1,0 +1,471 @@
+<!DOCTYPE html><html lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 时代，笔记为什么该用 HTML，而不是 Markdown</title>
+<style id="hr-theme">/* Atelier Editorial：纸感日间 / 暗夜双模（自动 + 手动覆盖），正文 68ch、侧栏 280px、≤420px 折叠单列。 */
+/* 对比度按 WCAG 2.1 公式（sRGB → 相对亮度 → (L1+0.05)/(L2+0.05)）计算，正文/背景均 ≥ 4.5:1。 */
+
+:root,
+:root[data-hr-mode="light"] {
+  --hr-bg: #faf8f5;
+  --hr-fg: #1b1a17; /* 正文/背景 = 16.42:1 */
+  --hr-muted: #6a645d; /* 次要文字/背景 = 5.51:1 */
+  --hr-accent: #8a4a22; /* 强调色/背景 = 6.43:1 */
+  --hr-warning: #a3341a; /* 警示色/背景 = 6.47:1 */
+  --hr-border: #ddd6cb;
+  --hr-code-bg: #f0ece3;
+  --hr-measure: 68ch;
+  --hr-sidebar: 280px;
+  --hr-space-1: 0.5rem;
+  --hr-space-2: 0.75rem;
+  --hr-space-3: 1rem;
+  --hr-space-4: 1.5rem;
+  --hr-space-5: 2.5rem;
+  --hr-radius: 0.5rem;
+  --hr-serif: "Iowan Old Style", "Songti SC", Georgia, serif;
+  --hr-sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  --hr-mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+/* 手动深色：`data-hr-mode="dark"` 优先于系统偏好（三条路径之一）。 */
+:root[data-hr-mode="dark"] {
+  --hr-bg: #121316;
+  --hr-fg: #e9e6e1; /* 正文/背景 = 14.92:1 */
+  --hr-muted: #9d968c; /* 次要文字/背景 = 6.35:1 */
+  --hr-accent: #e0a97a; /* 强调色/背景 = 8.96:1 */
+  --hr-warning: #ff9b73; /* 警示色/背景 = 9.01:1 */
+  --hr-border: #2b2d33;
+  --hr-code-bg: #1b1d22;
+}
+
+/* 自动深色：`prefers-color-scheme` 只在没有手动声明浅色时生效（第三条路径）。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-hr-mode="light"]) {
+    --hr-bg: #121316;
+    --hr-fg: #e9e6e1;
+    --hr-muted: #9d968c;
+    --hr-accent: #e0a97a;
+    --hr-warning: #ff9b73;
+    --hr-border: #2b2d33;
+    --hr-code-bg: #1b1d22;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--hr-bg);
+  color: var(--hr-fg);
+  font-family: var(--hr-serif);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  text-rendering: optimizeLegibility;
+}
+
+.hr-layout {
+  display: grid;
+  grid-template-columns: minmax(0, var(--hr-measure)) var(--hr-sidebar);
+  gap: var(--hr-space-5);
+  justify-content: center;
+  padding: var(--hr-space-5) var(--hr-space-3);
+}
+
+/* 没有 min-width: 0，长 token 会把 280px 侧栏撑破 → 320px 视宽必然横滚。 */
+.hr-layout > * {
+  min-width: 0;
+}
+
+.hr-sidebar {
+  width: var(--hr-sidebar);
+  font-family: var(--hr-sans);
+  font-size: 0.875rem;
+  color: var(--hr-muted);
+}
+
+article[data-hr-id] {
+  max-width: 68ch; /* = --hr-measure：结构断言要认字面量，令牌留给 grid */
+  overflow-wrap: anywhere;
+}
+
+article[data-hr-id] h1,
+article[data-hr-id] h2,
+article[data-hr-id] h3 {
+  line-height: 1.3;
+  margin: var(--hr-space-5) 0 var(--hr-space-2);
+  letter-spacing: -0.01em;
+}
+
+article[data-hr-id] h2 {
+  border-bottom: 1px solid var(--hr-border);
+  padding-bottom: var(--hr-space-1);
+}
+
+article[data-hr-id] a {
+  color: var(--hr-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+article[data-hr-id] code,
+article[data-hr-id] pre {
+  font-family: var(--hr-mono);
+  font-size: 0.9em;
+  background: var(--hr-code-bg);
+  border-radius: var(--hr-radius);
+}
+
+article[data-hr-id] code {
+  padding: 0.1em 0.35em;
+}
+
+article[data-hr-id] pre {
+  padding: var(--hr-space-3);
+  overflow-x: auto;
+}
+
+article[data-hr-id] blockquote {
+  margin: var(--hr-space-4) 0;
+  padding-left: var(--hr-space-3);
+  border-left: 3px solid var(--hr-border);
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--hr-space-3);
+  margin: var(--hr-space-4) 0;
+}
+
+[data-hr-component="kpi-bento"] > * {
+  padding: var(--hr-space-3);
+  background: var(--hr-code-bg);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="callout-insight"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border-left: 3px solid var(--hr-accent);
+  background: var(--hr-code-bg);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="callout-warning"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border-left: 3px solid var(--hr-warning);
+  background: var(--hr-code-bg);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="split-compare"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--hr-space-3);
+  margin: var(--hr-space-4) 0;
+}
+
+[data-hr-component="split-compare"] > * {
+  min-width: 0;
+  padding: var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="deep-dive"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-2) var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="deep-dive"] > summary {
+  cursor: pointer;
+  font-family: var(--hr-sans);
+  color: var(--hr-muted);
+}
+
+[data-hr-component="step-timeline"] {
+  margin: var(--hr-space-4) 0;
+  padding-left: var(--hr-space-4);
+  border-left: 1px solid var(--hr-border);
+  counter-reset: hr-step;
+}
+
+[data-hr-component="step-timeline"] > li {
+  counter-increment: hr-step;
+  list-style: none;
+  margin-bottom: var(--hr-space-3);
+}
+
+[data-hr-component="diagram-stage"] {
+  margin: var(--hr-space-4) 0;
+  padding: var(--hr-space-3);
+  border: 1px solid var(--hr-border);
+  background: var(--hr-code-bg);
+  overflow-x: auto;
+}
+
+[data-hr-component="diagram-stage"] figcaption {
+  font-family: var(--hr-sans);
+  font-size: 0.8125rem;
+  color: var(--hr-muted);
+}
+
+/* 组件细节：KPI 大数字、时间线节点、标题层级、侧栏卡片（只增不改，上面的结构规则保持原样）。 */
+article[data-hr-id] > h1 {
+  font-size: 2.25rem;
+  line-height: 1.2;
+  margin-top: 0;
+}
+
+article[data-hr-id] > header p {
+  font-family: var(--hr-sans);
+  font-size: 0.875rem;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] > * > p {
+  margin: 0;
+  font-family: var(--hr-sans);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--hr-muted);
+}
+
+[data-hr-component="kpi-bento"] > * > p:first-child {
+  margin-bottom: var(--hr-space-1);
+  font-family: var(--hr-serif);
+  font-size: 1.875rem;
+  line-height: 1.15;
+  color: var(--hr-accent);
+}
+
+[data-hr-component="callout-insight"] > p,
+[data-hr-component="callout-warning"] > p {
+  margin: 0;
+}
+
+[data-hr-component="split-compare"] > * > p:first-child {
+  margin-top: 0;
+  font-family: var(--hr-sans);
+}
+
+[data-hr-component="deep-dive"][open] > summary {
+  margin-bottom: var(--hr-space-2);
+}
+
+[data-hr-component="step-timeline"] > li {
+  position: relative;
+}
+
+[data-hr-component="step-timeline"] > li::before {
+  content: counter(hr-step);
+  position: absolute;
+  left: calc(-1 * var(--hr-space-4) - 0.75rem);
+  top: 0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--hr-bg);
+  border: 1px solid var(--hr-accent);
+  color: var(--hr-accent);
+  font-family: var(--hr-sans);
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+[data-hr-component="step-timeline"] > li > p:first-child {
+  margin-bottom: 0;
+}
+
+[data-hr-component="diagram-stage"] {
+  border-radius: var(--hr-radius);
+}
+
+[data-hr-component="diagram-stage"] img,
+[data-hr-component="diagram-stage"] svg,
+[data-hr-component="diagram-stage"] video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+[data-hr-component="diagram-stage"] audio {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--hr-space-2);
+}
+
+.hr-sidebar > * {
+  position: sticky;
+  top: var(--hr-space-5);
+}
+
+.hr-sidebar dl {
+  margin: 0;
+}
+
+.hr-sidebar dt {
+  margin-top: var(--hr-space-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hr-sidebar dd {
+  margin: 0;
+  color: var(--hr-fg);
+}
+
+.hr-sidebar a {
+  color: var(--hr-accent);
+  text-underline-offset: 0.2em;
+}
+
+/* ≤420px 视宽折叠成单列：结构断言只查这条断点与 grid-template-columns 的单值。 */
+@media (max-width: 420px) {
+  .hr-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--hr-space-3);
+    padding: var(--hr-space-3) var(--hr-space-2);
+  }
+
+  .hr-sidebar {
+    width: auto;
+  }
+}
+
+@media print {
+  .hr-sidebar,
+  .hr-toc-toggle,
+  .hr-mode-toggle,
+  button {
+    display: none;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  [data-hr-component="callout-insight"],
+  [data-hr-component="callout-warning"],
+  [data-hr-component="kpi-bento"] {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
+
+/* M4.3 打印稿：纸面永远是日间配色（AC-6「深色变量覆盖」）。
+   打印稿是独立文件，读者的 `prefers-color-scheme: dark` 与 `data-hr-mode` 都可能命中，
+   故这里用比上面三条路径更高的选择器优先级强制回落成日间值；只影响 print 介质。 */
+@media print {
+  :root,
+  :root[data-hr-mode="dark"],
+  :root:not([data-hr-mode="light"]) {
+    --hr-bg: #ffffff;
+    --hr-fg: #000000;
+    --hr-muted: #4a4a4a;
+    --hr-accent: #6b3a1a;
+    --hr-warning: #8a2a12;
+    --hr-border: #b8b8b8;
+    --hr-code-bg: #f4f4f4;
+  }
+}
+</style></head>
+<body>
+<main class="hr-layout">
+<article data-hr-id="root">
+<header data-hr-id="hr-46c9ffda">
+<p data-hr-id="hr-fcb5d8ac">观点 · hReader 作者 · 这篇文章本身就是用 hReader 的组件排版的</p>
+</header>
+<h1 data-hr-id="hr-e0c5e724">AI 时代，笔记为什么该用 HTML，而不是 Markdown</h1>
+
+<aside data-hr-component="callout-insight" data-hr-id="hr-59e818c5">
+<p data-hr-id="hr-9417d2f6">Markdown 赢在“不让你排版”，因为过去排版的成本由人来出。现在 AI 替人付了这份成本，HTML 的表现力等于白送。但 AI 排版太自由，所以真正需要的是一套约束：表现力交给 HTML，一致性交给约束。</p>
+</aside>
+
+<section data-hr-id="hr-192a823d">
+<h2 data-hr-id="hr-e24531f0">两个让我坐不住的瞬间</h2>
+<p data-hr-id="hr-6f218c0e">第一个瞬间：我用 AI 整理笔记，往里面插了一堆录音。Markdown 里的音频只能是一行链接，或者一个光秃秃的播放器，摘要、逐字稿、说话人各放各的。插到第五段，整份笔记已经乱到没法读。</p>
+<p data-hr-id="hr-32aaa727">第二个瞬间：参加一个黑客松，好几支队伍没用 PPT，直接打开一个 HTML 页面做汇报。页面是 AI 现场生成的，有图表、有折叠、有动效，比幻灯片好看，也比幻灯片好改。</p>
+<p data-hr-id="hr-de95dd50">这两件事让我想通了一个问题：Markdown 统治笔记和文档这么多年，到底赢在哪里？这个理由在 AI 时代还成立吗？</p>
+</section>
+
+<section data-hr-id="hr-3d8bd909">
+<h2 data-hr-id="hr-a2904f92">Markdown 赢在“不让你排版”</h2>
+<p data-hr-id="hr-26bf92ab">HTML 的排版能力全面强于 Markdown：多栏、卡片、对比布局、图文混排、折叠、音视频、内嵌图表。这一点没有争议。</p>
+<p data-hr-id="hr-ecb258ad">但过去十几年，写东西的人还是选了 Markdown。原因很简单：<strong>排版的成本是人出的</strong>。手写 HTML 太累，于是我们接受了一种“只管写字、样式交给工具”的格式。</p>
+<section data-hr-component="split-compare" data-hr-id="hr-8e9faf04">
+<div data-hr-id="hr-7d2593a2">
+<p data-hr-id="hr-80426990"><strong>过去：人来写</strong></p>
+<p data-hr-id="hr-fc133fec">排版成本由人承担，Markdown 用“放弃表现力”换来“低成本”，所以它赢了。</p>
+</div>
+<div data-hr-id="hr-3bb798d3">
+<p data-hr-id="hr-371362e1"><strong>现在：AI 来写</strong></p>
+<p data-hr-id="hr-edc735dd">对 AI 来说，写 HTML 和写 Markdown 成本几乎一样，HTML 的表现力变成了白送的。</p>
+</div>
+</section>
+</section>
+
+<section data-hr-id="hr-e137877e">
+<h2 data-hr-id="hr-3ea432cc">但 AI 排版太自由，结果是另一种乱</h2>
+<p data-hr-id="hr-6e82e33c">真这么做过的人会发现一个新问题：AI 每次排的都不一样。这一份用卡片，下一份用表格；这一份紫色渐变，下一份深蓝描边；同样是“风险提示”，十份文档有十种样子。</p>
+<aside data-hr-component="callout-warning" data-hr-id="hr-b3b571cc">
+<p data-hr-id="hr-8cf72390">单看每一份都还行，放进同一个资料库里，比 Markdown 还乱。我那份插满录音的笔记也是这个问题：不是 HTML 不够强，而是缺少约束。</p>
+</aside>
+</section>
+
+<section data-hr-id="hr-1e84d17b">
+<h2 data-hr-id="hr-aebfd201">解法：给 AI 一套受约束的排版系统</h2>
+<section data-hr-component="kpi-bento" data-hr-id="hr-a6089e31">
+<div data-hr-id="hr-af3bd77b"><p data-hr-id="hr-a28b3c48">8 个</p><p data-hr-id="hr-89ba8576">语义组件，AI 只判断内容“是什么”</p></div>
+<div data-hr-id="hr-662e5e16"><p data-hr-id="hr-8cd50d06">1 份</p><p data-hr-id="hr-662aad5f">主题决定长相，换主题不动正文</p></div>
+<div data-hr-id="hr-4532eeaa"><p data-hr-id="hr-96fc04ae">0 token</p><p data-hr-id="hr-61a21bac">换肤不经过模型，一条命令完成</p></div>
+</section>
+<p data-hr-id="hr-6933f480">组件只声明语义，比如 <code>data-hr-component="callout-warning"</code>，长相全部由主题决定。除了视觉主题，还可以给 AI 一份文风规约和禁用词表，写完用一条命令检查。</p>
+<p data-hr-id="hr-53be6495">结果是：同样让 AI 写十份会议纪要，十份长得一样整齐，录音、摘要、逐字稿永远在同一个位置。<a href="meeting-notes.html">这份带录音的会议纪要</a>就是一个例子。</p>
+</section>
+
+<section data-hr-id="hr-a60cc7d2">
+<h2 data-hr-id="hr-44cf8cd6">改，而不是重写</h2>
+<p data-hr-id="hr-d660210a">AI 生成的文档总要改。常见做法是“这段不满意，整份重新生成”，结果是改好一处，坏掉三处。hReader 给每个块都标上稳定的 <code>data-hr-id</code>，修改按下面的顺序进行：</p>
+<ol data-hr-component="step-timeline" data-hr-id="hr-4a075364">
+<li data-hr-id="hr-238c47eb"><p data-hr-id="hr-442c4d3c"><strong>人：选中一句话，写下批注</strong></p><p data-hr-id="hr-b19d3e3f">比如“这里换成具体例子”。批注存在文档内部，状态是待 AI 处理。</p></li>
+<li data-hr-id="hr-042909c9"><p data-hr-id="hr-610546e4"><strong>Agent：读大纲，只读这一块</strong></p><p data-hr-id="hr-08a40f5a">不用把整篇文档塞进上下文。</p></li>
+<li data-hr-id="hr-a510a513"><p data-hr-id="hr-5046a42f"><strong>Agent：只替换这一块</strong></p><p data-hr-id="hr-9b5520f2">原子写入，自动留下快照，随时可以撤销。</p></li>
+<li data-hr-id="hr-a0109c81"><p data-hr-id="hr-863f5f12"><strong>阅读器：自动刷新</strong></p><p data-hr-id="hr-ec623d74">人看到修改后的段落，决定接受还是继续批注。</p></li>
+</ol>
+<p data-hr-id="hr-eb3ff463">技术细节见<a href="how-it-works.html">这份原理说明</a>。</p>
+</section>
+
+<section data-hr-id="hr-8b114b23">
+<h2 data-hr-id="hr-96046852">文件是你的</h2>
+<p data-hr-id="hr-7236b071">每份文档就是一个普通的 <code>.html</code> 文件，存在你自己的硬盘上，双击就能在浏览器里打开。它也不属于任何一家 AI 厂商：Claude Code、Cursor、Codex、DeepSeek，或者任何支持 MCP 或 Skill 的 Agent，都能读写同一份文档。</p>
+</section>
+
+<section data-hr-id="hr-75680a9a">
+<h2 data-hr-id="hr-51962919">往后：不止笔记</h2>
+<p data-hr-id="hr-fb374f90">HTML 能装下的东西远比 Markdown 多：幻灯片、报告、看板、交互式讲解，甚至在财务表格旁边嵌一个计算器。这些形态都有“AI 太自由”的问题，所以解法也一样。统一的嵌入外壳（<code>media-card</code>：音频 / 视频 + 图注 + 可折叠逐字稿）已经落地；接下来是更多主题、Markdown 导入和受控的交互组件。</p>
+<details data-hr-component="deep-dive" data-hr-id="hr-26114b24">
+<summary>展开：坦白说现状</summary>
+<p data-hr-id="hr-95f03c52">hReader v1.0 刚刚开源，还很早期。组件目前 8 个，主题只有 1 套；排版约束已经在写入时检查（<code>hr check</code>、<code>hr patch</code> 回执里的 <code>warnings</code>），但只警告、不拒写；桌面版需要本机有 Node 22，安装包也还没签名，所以现阶段更推荐从 MCP 或 Skill 开始用。</p>
+</details>
+</section>
+</article>
+<aside class="hr-sidebar">
+<div>
+<dl>
+<dt>项目</dt><dd><a href="https://github.com/JingMox/hReader">github.com/JingMox/hReader</a></dd>
+<dt>本文用到的组件</dt><dd>洞察、风险提示、对比分栏、KPI 卡阵、步骤时间线、深度折叠</dd>
+<dt>更多示例</dt><dd><a href="../index.html">示例库</a></dd>
+</dl>
+</div>
+</aside>
+</main>
+
+
+</body></html>

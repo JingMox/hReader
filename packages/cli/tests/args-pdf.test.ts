@@ -98,7 +98,7 @@ describe("parseArgs · hr pdf 用法错误", () => {
   });
 
   it("不认识的开关", () => {
-    expectFailure(["pdf", "a.html", "--out", "a.pdf", "--visual", "x"], "--visual", "pdf");
+    expectFailure(["pdf", "a.html", "--out", "a.pdf", "--width", "800"], "--width", "pdf");
   });
 
   it.each(["0", "601", "1.5", "abc", "-3"])("--timeout %s 越界", (value) => {

@@ -1,6 +1,6 @@
 // 这层管：把路径换成真实路径（软链解析，缺失后缀由最深的已存在祖先补全）；不判存在性、不读内容。
 // 判定"两个路径是否同一个"必须走这里：一边 realpath、另一边只 resolve，macOS 的 `/tmp` → `/private/tmp`
-// 就会把同一个文件判成两个，提示随之说假话（R30-2）。
+// 就会把同一个文件判成两个，提示随之说假话。
 
 import { realpathSync } from "node:fs";
 import { dirname, join } from "node:path";

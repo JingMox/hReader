@@ -1,5 +1,5 @@
 // 这层管：工具结果的两副面孔（成功 = 文本载荷 + 可选 MCP-UI 元数据；失败 = `isError` 工具结果）。
-// 失败绝不抛给 SDK 层：`HrError.code` 进正文，堆栈进 stderr（AC-3）。
+// 失败绝不抛给 SDK 层：`HrError.code` 进正文，堆栈进 stderr。
 
 import { realpathSync } from "node:fs";
 
@@ -73,10 +73,10 @@ export const rootsOf = (
 };
 
 /** 把匹配的根**连同后面的分隔符**一起吃掉：否则折完会剩一个前导 `/`（`a.html` → `/a.html`）。
- * 要求根后面必须跟分隔符或行尾，所以 `root=/ws/hReader` 不会误伤 `/ws/hReader-something`（G2-R4 P2）。
+ * 要求根后面必须跟分隔符或行尾，所以 `root=/ws/hReader` 不会误伤 `/ws/hReader-something`。
  * `root === "/"` 直接跳过：那时根就是每个绝对路径的前缀，折它只会把文案拆坏。
  * 长的根先折：`cwd` 与 `realpath(cwd)` 互相包含时（macOS `/var/…` → `/private/var/…`），
- * 先折短的会命中另一串的中段，折出 `/privatedoc.html` 这种畸形（G2-R5 P2）。 */
+ * 先折短的会命中另一串的中段，折出 `/privatedoc.html` 这种畸形。 */
 export const elidedOf = (message: string, roots: readonly string[]): string =>
   [...roots]
     .sort((left, right) => right.length - left.length)
@@ -88,7 +88,7 @@ export const elidedOf = (message: string, roots: readonly string[]): string =>
 
 /**
  * 把 core/依赖层漏出来的绝对路径折掉。**只用在"文案不是我们写的"那几处**（core 的 ops、风格解析、
- * 资源读取）：用户传给我们的 `filePath` 必须原样回显（F8-2），所以这里不能退化成 `humanMessageOf`
+ * 资源读取）：用户传给我们的 `filePath` 必须原样回显，所以这里不能退化成 `humanMessageOf`
  * 里的全局兜底——那会把 `/ws/a.html` 折成 `a.html`，等于回显一条宿主没发过的路径。
  */
 export const foldedOf = (error: unknown): unknown =>

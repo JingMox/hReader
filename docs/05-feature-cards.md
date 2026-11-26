@@ -18,8 +18,8 @@
 | M1.1 | HTML 解析 / 序列化 / `data-hr-id` 注入 | M1.0 | `packages/core/src/html/**` | 容错解析、稳定 ID、最小 diff 序列化 |
 | M1.2 | 文档模型与不变量校验 | M1.1 | `packages/core/src/model/**` | 树模型、ID 唯一性、组件白名单校验 |
 | M1.3 | `hr_outline` 骨骼提取 | M1.2 | `packages/core/src/ops/outline*` | 章节树 + 字数 + 未处理批注摘要 |
-| M1.4 | `hr_read_node` 节点读取 | M1.2 | `packages/core/src/ops/readNode*` | 按 ID/CSS 选择器读取子树 + 关联批注 |
-| M1.5 | `hr_patch_node` 增量 Patch + 原子写 + undo | M1.1–1.4 | `packages/core/src/ops/patchNode*`, `packages/core/src/io/**` | 5 种 action、ID 自动注入、备份可回滚 |
+| M1.4 | `hr_read_node` 节点读取 | M1.2 | `packages/core/src/ops/read-node*` | 按 ID/CSS 选择器读取子树 + 关联批注 |
+| M1.5 | `hr_patch_node` 增量 Patch + 原子写 + undo | M1.1–1.4 | `packages/core/src/ops/patch-node*`, `packages/core/src/io/**` | 5 种 action、ID 自动注入、备份可回滚 |
 | M1.6 | 双维风格引擎（`style.yaml` + tone 编译 + 禁用词 Lint） | M1.0 | `packages/core/src/style/**` | 解析校验、prompt 编译、Lint 报告 |
 | M1.7 | `Atelier Editorial` 主题包 + `hr_apply_style` 0-Token 换肤 | M1.1, M1.6 | `styles/atelier-editorial/**`, `packages/core/src/style/apply*` | 双模 CSS 变量、7 个组件选择器、替换 `<style id="hr-theme">` |
 | M1.8 | CLI `hr`（outline/read/patch/style） | M1.3–1.7 | `packages/cli/**` | 严格退出码、`--json` 输出、错误文案 |
@@ -56,7 +56,7 @@
 - AC2 已有 `data-hr-id` 保持不变；新节点按稳定规则生成（同一输入两次运行结果一致，与文件路径无关）。
   **id 归产品所有**：`hr patch` 片段自带的 `data-hr-id` 一律忽略（片段根带了不同的 id 时给一条 `fragment_ids_ignored` warning，并在 `replacedIds` 里报成 `{from: 片段带的 id, to: 继承到的目标 id}` 这一对；片段没带 id 就不报），`replace` 的新根**继承目标自己的 id**（连续两次 replace 同一 id 都命中），片段内部其它节点由产品重新分配；`append` 保持既有 id 不变。
 - AC3 容错：无 doctype、未闭合标签、嵌套错误、`<script id="hr-meta">` 含 `</script>` 文本时，解析不抛未捕获异常，返回带 `code` 的诊断。
-  树构造按 HTML5「in body」的隐含结束补全：`<p>` 遇到 `table/div/ul/ol/dl/li/p/h1..h6/blockquote/pre/hr/section/article` 等块级开始标签即结束，块成为 `<p>` 的**兄弟**（no-quirks 下由解析器完成，quirks 文档由 `packages/core/src/html/implicitClose.ts` 补齐；再 normalize 一次必须 `unchanged`）。
+  树构造按 HTML5「in body」的隐含结束补全：`<p>` 遇到 `table/div/ul/ol/dl/li/p/h1..h6/blockquote/pre/hr/section/article` 等块级开始标签即结束，块成为 `<p>` 的**兄弟**（no-quirks 下由解析器完成，quirks 文档由 `packages/core/src/html/implicit-close.ts` 补齐；再 normalize 一次必须 `unchanged`）。
   **边界（任意深度）**：判据看的是「`<p>` 内有没有块级元素」，不是「直接子节点是不是块级」——quirks 下 `<p>a<span><table>…</table></span></p>` 的 `<table>` 仍留在 `<p>` 里，必须连那层 `<span>` 一起挪出 `<p>`（`<div>`/`<ul>` 这类解析器自己就关 `p`，无须我们动手）。分裂出来的每段各占自己的源码区间与 id：首段留原 `data-hr-id`，后续段不带 id、由注入阶段分配，因此 `hr patch <首段 id> --action delete` 只删那一段，不会连带切掉挪出去的表格。
 - AC4 序列化保留属性顺序与空白策略一致；往返（parse→serialize→parse）后 outline 结果稳定（属性级不变）。
 - AC5 1MB 文档 parse+inject ≤ 300ms（本机基线记录在报告里）。
@@ -204,7 +204,7 @@ cp packages/pi-extension/pi-hreader.ts ~/.pi/agent/extensions/   # 或：pi -e p
 - **残缺是安全的**：快照目录被手工清空后调 `hr_undo` 得到 `nothing_to_undo`，目标文件原地不动（不是半还原）。
 
 **给 Agent 的使用建议（重要）**：**换过样式之后再 undo，正文会跟样式一起回退**（`L-32`：`applyStyle` 不写快照，
-`packages/core/src/style/applyFile.ts` 全文没有 `writeSnapshot`）。所以"刚换完视觉、又想撤掉上一次小改动"时，
+`packages/core/src/style/apply-file.ts` 全文没有 `writeSnapshot`）。所以"刚换完视觉、又想撤掉上一次小改动"时，
 **不要指望 undo 只退一步**——要么先 `hr_read_node` 确认正文，再重新 `hr_patch_node` 一次；要么接受这一步会回到
 换视觉之前的整份内容。HTTP 侧 `POST /api/doc/<docId>/undo` 是同一个 `revertLast`，行为完全一样。
 
@@ -352,6 +352,7 @@ hr png notes/perf.html --out notes/huge.png --max-height 50000 --scale 1
 | 旗标 | 适用 | 行为 |
 | :--- | :--- | :--- |
 | `--out <path>` | 两者 | **必填**；必须在 `--workspace` 内（越界 `path_outside_workspace`/exit 3）；已存在需 `--force`（缺省 `file_exists`） |
+| `--visual <id>` | 两者 | 视觉主题；**缺省沿用文档内嵌 `#hr-theme`，文档没有才回落内置默认**。显式值的合法值校验在 core（`unknown_style`），与 `hr export` 同一支 |
 | `--page-size a4\|letter\|a5` | `pdf` | 默认 `a4`；非法值 `invalid_input`/exit 1。**同时改纸张与 `@page`**（只换纸不改版心会让 a5 被硬切，见下） |
 | `--width 256..4096` | `png` | CSS 像素宽，默认 `1200` |
 | `--scale 1..3` | `png` | 设备像素倍率，默认 `2`；产物宽高 = CSS 尺寸 × n |
@@ -409,7 +410,7 @@ pnpm desktop:dev -- --workspace <dir> --open <file>   # 开发时直跑
 - **父 pid 只采集一次**：`packages/cli/src/main.ts:12` 在首个 `await` 之前取 `process.ppid`，注入链 `CliIo.launchParentPid`（**必填**）→ `ServeInput.launchParentPid` → 启动前判 `ppid === 1` 即拒启（`invalid_input`，exit 1，不建服务、不写 json）。晚读 `process.ppid` 在类型层不可写。
 - **`--exit-with-parent` 的已知限制（`L-42`）**：启动时父进程已是 init（`ppid === 1`，典型：`nohup`、`setsid`、systemd 服务）会**拒启**。语义上不可实现"父消失即自杀"，只能 fail-fast；壳路径永远先采集父 pid，不受影响。不带该旗标时 ppid=1 正常启动。
 - **daemon 复用判定**：`/healthz` 回的 pid 与 `daemon.json` 一致才复用；端口被别的进程占着报错而不是接管；文件坏了按"没有"处理并重建。**用户手动跑的 `hr serve` 不会被误判、更不会被误杀。**
-- **真机脚本**：`scripts/gui/m4.2/`（`w1-signal-exit.sh` 壳收信号、`w2-parent-death.sh`/`w2-launch-window.sh` 父死与启动窗口、`w7-default-home.sh` 默认 home），`lib.sh` 提供 `mktemp_root`/`make_dirs`。`--home` 一律指向 `mktemp -d` 沙箱；**W7 是唯一例外**：它故意使用真实壳 app data 目录并在开头 `rm -rf` 它，脚本因此要求 `HREADER_GUI_REAL_HOME=1` 才继续——跑之前备份、并确认无在跑实例。无机器相关绝对路径。`pnpm lint:sh` 对它们逐个 `bash -n`。
+- **真机脚本**：`scripts/gui/`（`signal-exit.sh` 壳收信号、`parent-death.sh`/`launch-window.sh` 父死与启动窗口、`default-home.sh` 默认 home），`lib.sh` 提供 `mktemp_root`/`make_dirs`。`--home` 一律指向 `mktemp -d` 沙箱；**default-home.sh 是唯一例外**：它故意使用真实壳 app data 目录并在开头 `rm -rf` 它，脚本因此要求 `HREADER_GUI_REAL_HOME=1` 才继续——跑之前备份、并确认无在跑实例。无机器相关绝对路径。`pnpm lint:sh` 对它们逐个 `bash -n`。
 - **门禁**：`pnpm verify` 八步（`format:check` → `lint` → `lint:sh` → `typecheck` → `build` → `test:coverage` → `depcruise` → `knip`）；桌面侧独立 `pnpm desktop:check`（Cargo 与 TS 不同链，不塞进 `verify` 以免无 Rust 环境者被卡）。
 
 ## 错误码表（`HrError.code` → 退出码）

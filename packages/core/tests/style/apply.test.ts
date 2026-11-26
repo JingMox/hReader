@@ -49,7 +49,9 @@ describe("replaceTheme · 注入（原文档没有主题块）", () => {
   });
 
   it("should reject an empty string (no head at all) with invalid_html", () => {
-    expect(errorOf(() => replaceTheme("", CSS)).code).toBe("invalid_html");
+    const error = errorOf(() => replaceTheme("", CSS));
+    expect(error.code).toBe("invalid_html");
+    expect(error.message).toContain("head");
   });
 });
 
@@ -61,7 +63,7 @@ const startedWithDoctype = (html: string, doctypeAtZero = true): string => {
   return result.html;
 };
 
-describe("replaceTheme · 畸形文档的 doctype 不得被挤走（R1-P0-1）", () => {
+describe("replaceTheme · 畸形文档的 doctype 不得被挤走", () => {
   it("should keep the doctype at byte 0 for a document with only <body>", () => {
     const out = startedWithDoctype("<!doctype html><body><p>x</p></body>");
 
@@ -79,7 +81,7 @@ describe("replaceTheme · 畸形文档的 doctype 不得被挤走（R1-P0-1）",
   });
 });
 
-describe("replaceTheme · doctype 与注释序（R1-P0-1）", () => {
+describe("replaceTheme · doctype 与注释序", () => {
   it("should keep the doctype at byte 0 when the document is doctype-only", () => {
     const out = startedWithDoctype("<!doctype html>");
 
@@ -102,10 +104,10 @@ describe("replaceTheme · doctype 与注释序（R1-P0-1）", () => {
     expect(out).toContain("</head><body>");
   });
 
-  it("should treat a comment-only document as an empty document (v3#15), not a 0-byte one", () => {
+  it("should treat a comment-only document as an empty document , not a 0-byte one", () => {
     const out = replaceTheme("<!-- x -->", CSS).html;
 
-    // v3#15：只有 doctype/注释的文档属合法“空文档”；0 字节才抛 invalid_html（见上一 describe）。
+    // 只有 doctype/注释的文档属合法“空文档”；0 字节才抛 invalid_html（见上一 describe）。
     expect(out.startsWith(`<head><style id="hr-theme">${CSS}</style></head>`)).toBe(true);
     expect(out).toContain("<!-- x -->");
   });
@@ -113,7 +115,7 @@ describe("replaceTheme · doctype 与注释序（R1-P0-1）", () => {
   it("should document the fragment case: no <head> in source, no doctype synthesized", () => {
     const out = replaceTheme("<div>x</div>", CSS).html;
 
-    // R1 范围只保证“已有 doctype 不被挤走”；纯片段不合成 doctype（待裁定，见报告 §G3.2）。
+    // 范围只保证“已有 doctype 不被挤走”；纯片段不合成 doctype。
     expect(out.startsWith("<head>")).toBe(true);
     expect(out).toContain(`<style id="hr-theme">${CSS}</style>`);
     expect(out).toContain("<div>x</div>");
@@ -182,7 +184,7 @@ describe("replaceTheme · 静态防线与解析模式", () => {
   });
 });
 
-describe("replaceTheme · 单锚点收敛（R2）", () => {
+describe("replaceTheme · 单锚点收敛", () => {
   it("should collapse duplicate anchors to exactly one block", () => {
     const two = DOC.replace(
       "</head>",
@@ -205,5 +207,25 @@ describe("replaceTheme · 单锚点收敛（R2）", () => {
     const one = DOC.replace("</head>", `<style id="hr-theme">a{}</style></head>`);
 
     expect(replaceTheme(one, CSS).removed).toBe(0);
+  });
+});
+
+describe("replaceTheme · 锚点身份与 prologue", () => {
+  it("should not treat a non-style element carrying id=hr-theme as an anchor", () => {
+    const doc = '<html><head></head><body><div id="hr-theme">x</div></body></html>';
+    const result = replaceTheme(doc, CSS);
+
+    expect(result.html).toContain('<div id="hr-theme">');
+    expect(result.html).toContain(`<style id="hr-theme">${CSS}</style>`);
+  });
+
+  it("should keep a comment before the doctype ahead of the injected head", () => {
+    const result = replaceTheme("<!-- note -->\n<!doctype html>\n<p>x</p>", CSS);
+    const doctypeAt = result.html.indexOf("<!doctype");
+    const headAt = result.html.indexOf("<head>");
+
+    expect(result.html.startsWith("<!-- note -->")).toBe(true);
+    expect(doctypeAt).toBeGreaterThan(0);
+    expect(headAt).toBeGreaterThan(doctypeAt);
   });
 });

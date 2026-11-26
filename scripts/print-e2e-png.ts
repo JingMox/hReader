@@ -1,11 +1,12 @@
-// 这层管：真 Chrome 的长图验收（AC-6 / AC-8）——`--scale` 与 `--max-height` 的口径只在真浏览器里成立。
+// 这层管：真 Chrome 的长图验收——`--scale` 与 `--max-height` 的口径只在真浏览器里成立。
 // 走真 CLI（不 import 渲染器）：要证的正是"仓内各层接起来还能出图"。不进 `test:unit`，跳过判据在调用方。
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { fieldOf } from "../packages/cli/src/chrome/protocol.ts";
+/** 从 `--json` 信封里按键取值，避免在脚本里写 `as` 断言。 */
+const fieldOf = (value: unknown, key: string): unknown => Reflect.get(Object(value), key);
 
 interface Pixels {
   readonly width: number;

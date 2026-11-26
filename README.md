@@ -1,29 +1,85 @@
 <div align="center">
   <img src="packages/desktop/src-tauri/icons/icon.png" width="92" height="92" alt="hReader Logo" />
   <h1>hReader</h1>
-  <p><strong>Local-First, Single-File HTML Reader, Desktop Notes Workbench &amp; Agent Authoring Protocol.</strong></p>
+  <p><strong>The document layer for AI agents: notes, reports, minutes, briefs, and slides in one tidy, reviewable, surgically editable HTML format.</strong></p>
   <p>
     <a href="https://github.com/JingMox/hReader/releases"><img src="https://img.shields.io/github/v/release/JingMox/hReader?display_name=tag&style=flat-square" alt="Release" /></a>
     <a href="https://github.com/JingMox/hReader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/JingMox/hReader/ci.yml?branch=main&label=CI&style=flat-square" alt="CI" /></a>
     <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="MIT License" /></a>
     <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen?style=flat-square" alt="Node >= 22" />
-    <img src="https://img.shields.io/badge/tauri-v2-24C8DB?style=flat-square" alt="Tauri v2" />
   </p>
   <p>
-    <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a>
+    <a href="https://jingmox.github.io/hReader/">Live gallery</a> ·
+    <a href="./docs/launch/why-html.en.md">Why HTML</a> ·
+    <a href="https://github.com/JingMox/hReader/releases">Download</a> ·
+    <a href="./README.zh-CN.md">简体中文</a>
   </p>
 </div>
 
----
+<p align="center">
+  <img src="site/img/demo.gif" width="880" alt="Demo: select a sentence in the reader, leave a note, the agent patches only that block and the page live-reloads" />
+</p>
 
-hReader turns self-contained semantic `.html` documents into both a **Typora + Obsidian inspired desktop reading & editing workbench** (`hReader`) and a **surgical, token-efficient authoring substrate for AI Agents** (CLI, MCP Server, Agent Skill, Pi Coding Agent Extension, DeepSeek Harness Bundle).
+<p align="center"><sub>Select a sentence, leave a note → the agent patches just that block over MCP → the reader live-reloads and archives the note.</sub></p>
 
-## Why Semantic HTML Instead of Markdown?
+Emitting HTML costs an AI no more than emitting Markdown — but AI layout is too free, and it changes every time. hReader constrains it with **8 semantic components and a theme**, **checks those constraints at write time**, and gives every block a **stable id** so an agent edits only the part you annotated. Every document is a plain `.html` file on your disk: double-click to open, readable and writable by any agent.
 
-- **One Self-Contained Artifact**: Layout CSS themes (`atelier-editorial`), semantic blocks (`kpi-bento`, `callout-insight`, `callout-warning`, `split-compare`, `deep-dive`, `step-timeline`, `diagram-stage`), interactive `<details>` disclosures, inline SVG charts, and reader annotations all live inside a single `.html` file that opens cleanly in any browser.
-- **Surgical DOM Patching (`data-hr-id`)**: Instead of rewriting thousands of lines to fix one section, AI agents inspect the compact outline (`hr outline` / `hr_outline`), read one node (`hr read` / `hr_read_node`), and patch that exact subtree (`hr patch` / `hr_patch_node`) with atomic writes and undo snapshots (`hr undo` / `hr_undo`).
-- **Orthogonal Visual Theme + Writing Tone**: Visual themes (`styles/atelier-editorial/theme.css`) restyle a document cleanly without touching prose; language tone specs (`hr style --tone`) and forbidden-phrase linters (`hr style --lint`) enforce editorial consistency.
-- **Human ↔ Agent Co-Editing**: Readers highlight passages and add `pending_ai` annotations in the desktop workbench or browser reader (`hr serve`); agents pull pending annotations, patch only the affected nodes, and the workbench live-reloads over SSE.
+It is not just a note-taking tool. Anything an agent hands to a human — a weekly report, a research write-up, meeting minutes, a decision brief, a slide deck — can be the same format:
+
+| Kind    | One command to start                | Skeleton                                                                                        |
+| ------- | ----------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Note    | `hr new note.html`                  | Free-form                                                                                       |
+| Report  | `hr new q4.html --kind report`      | Conclusion → key numbers → analysis → options → risks → next steps                              |
+| Minutes | `hr new weekly.html --kind minutes` | Decisions → discussion → action items → recording & transcript                                  |
+| Brief   | `hr new brief.html --kind brief`    | Recommendation → evidence → cost & risk → next steps                                            |
+| Slides  | `hr new deck.html --kind slides`    | One `<section>` per slide; scroll to advance, prints landscape one slide per page, zero scripts |
+
+## Try it in one minute
+
+Start with MCP or the Agent Skill (Node.js 22+ required).
+
+**MCP** (Claude Desktop, Cursor, …): download `hreader-mcp-server.tar.gz` from [Releases](https://github.com/JingMox/hReader/releases), extract it, and add:
+
+```json
+{
+  "mcpServers": {
+    "hreader": {
+      "command": "node",
+      "args": ["/path/to/hreader-mcp-server/dist/main.js", "--workspace", "/path/to/your/docs"]
+    }
+  }
+}
+```
+
+**Agent Skill** (Claude Code, …): download `hreader-skill.zip` and extract it into your agent's skills directory:
+
+```bash
+unzip hreader-skill.zip -d ~/.claude/skills/
+```
+
+Then ask your agent: "Use hreader to turn this meeting into notes."
+
+## Same content, three ways
+
+<p align="center">
+  <a href="https://jingmox.github.io/hReader/compare/"><img src="site/img/compare.png" width="880" alt="Left: Markdown; middle: free-form AI HTML; right: hReader" /></a>
+</p>
+
+Left: Markdown — audio is a bare link or a naked player. Middle: free-form AI HTML — pretty, but every block has its own style and the next generation looks different again. Right: hReader — same content, with recordings, summaries, and collapsible transcripts always in the same place. [See it live →](https://jingmox.github.io/hReader/)
+
+## Why HTML instead of Markdown
+
+- **Markdown won by not letting you do layout.** Humans paid the cost of layout, so we chose the least expressive, cheapest format.
+- **AI just paid that cost.** For a model, HTML is as cheap as Markdown — cards, comparisons, disclosures, audio, video, and charts come for free.
+- **But AI layout is too free.** Ten documents, ten looks; a library of them is messier than Markdown. So constrain it: components declare meaning only (`data-hr-component="callout-warning"`), the theme decides the look, and re-theming never touches prose.
+- **Patch, don't regenerate.** Every block has a stable `data-hr-id`. Agents read the outline (`hr_outline`), read one block (`hr_read_node`), and patch one block (`hr_patch_node`) with atomic writes and undo (`hr_undo`).
+- **The file is yours.** Local `.html`, no vendor lock-in; works with Claude Code, Cursor, Codex, DeepSeek, or any agent that speaks MCP or Skills.
+
+Full argument: [In the AI era, your notes should be HTML, not Markdown](./docs/launch/why-html.en.md).
+
+## Status
+
+v1.0 was just open-sourced and it's early: 8 components and 1 theme so far; layout constraints are now checked at write time (`hr check`, and `warnings` in every `hr patch` receipt) but only warn, never reject; the slides kind is a standalone-file experience in the browser for now — an in-reader presentation mode and landscape `hr pdf` export are not done yet; the desktop app needs Node 22 locally and installers aren't signed yet. Next on the roadmap: more themes, Markdown import, and controlled interactive components. Tell me what you'd want to embed in [Issues](https://github.com/JingMox/hReader/issues).
 
 ---
 
@@ -120,6 +176,9 @@ pnpm desktop:build
 `@hreader/cli` builds into a standalone single-file executable bundle (`packages/cli/dist/cli.mjs` + `styles/`, also published as `hreader-cli.tar.gz` in GitHub Releases).
 
 ```bash
+# Start a document from a kind skeleton (ids in place, themed, components pre-placed)
+hr new report.html [--kind note|report|minutes|brief|slides] [--title <title>] [--force]
+
 # Inspect structure & pending annotations
 hr outline report.html [--json]
 
@@ -132,6 +191,9 @@ hr read report.html s2-p1 [--json] [--max-bytes 65536]
 # Surgical node patch (replace | insert_before | insert_after | append | delete)
 hr patch report.html s2-p1 --action replace --html-file patch.html [--json]
 
+# Check layout constraints: component structure, inline styles, document diagnostics (read-only)
+hr check report.html [--json]
+
 # Apply visual theme, inspect tone prompt, lint forbidden phrases, or extract style.yaml
 hr style report.html --visual atelier-editorial
 hr style report.html --tone atelier-editorial
@@ -143,8 +205,8 @@ hr undo report.html [--json]
 
 # Export & Render
 hr export report.html --visual atelier-editorial --out print.html [--force]
-hr pdf report.html --out report.pdf [--page-size a4|letter|a5] [--force]
-hr png report.html --out report.png [--width 256..4096] [--scale 1..3]
+hr pdf report.html --out report.pdf [--page-size a4|letter|a5] [--visual <id>] [--force]
+hr png report.html --out report.png [--width 256..4096] [--scale 1..3] [--visual <id>]
 
 # Launch local reader server with live SSE reload
 hr serve report.html [--workspace <dir>] [--port <n>]
@@ -207,7 +269,6 @@ Cordis plugin [`packages/dsh-bundle/src/index.ts`](packages/dsh-bundle/src/index
 | Package                  | Role                                                                                      |
 | ------------------------ | ----------------------------------------------------------------------------------------- |
 | `@hreader/core`          | Semantic HTML parser, `data-hr-id` tree, outline, surgical patch, style & HTTP/SSE server |
-| `@hreader/protocol`      | Shared MCP / tool schemas and protocol contracts                                          |
 | `@hreader/renderer-html` | Print/PDF/PNG HTML renderer via headless Chromium                                         |
 | `@hreader/app`           | Browser/webview reader application bundle (`dist/`)                                       |
 | `@hreader/cli`           | Standalone `hr` CLI & local server daemon                                                 |

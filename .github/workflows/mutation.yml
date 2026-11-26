@@ -1,0 +1,38 @@
+name: Mutation
+# 变异测试太贵，不进 PR 门禁：每周定期跑 + 手动触发。防退化阈值在 stryker.config.mjs 的 thresholds.break。
+
+on:
+  schedule:
+    - cron: "0 18 * * 0" # UTC 周日 18:00
+  workflow_dispatch:
+    inputs:
+      mutate:
+        description: "限定变异范围的 glob（逗号分隔）；留空跑 stryker.config.mjs 里的全量范围"
+        required: false
+        default: ""
+
+jobs:
+  stryker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 跑变异测试（全量或指定范围）
+        run: |
+          if [ -n "${{ inputs.mutate }}" ]; then
+            pnpm test:mutation --mutate "${{ inputs.mutate }}"
+          else
+            pnpm test:mutation
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report
+          path: .reports-tmp/mutation/
+          if-no-files-found: ignore

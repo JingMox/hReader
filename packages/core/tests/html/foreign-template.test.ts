@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseHtml, serializeHtml } from "../../src/index";
-import { parseFragment } from "../../src/ops/patchNode";
+import { parseFragment } from "../../src/ops/patch-node";
 import type { HtmlElementNode, HtmlNode, SourceSpan } from "../../src/html/constants";
 
 const LOCATIONS = [false, true] as const;

@@ -68,7 +68,7 @@ describe("appendAnnotation · 首次写入", () => {
     const [start, end] = absoluteOf(DOC, "正文一");
     const outcome = appendAnnotation(DOC, input(start, end, "改一下"), "hr-note-1", CREATED_AT);
     const record = docRecordOf("hr-note-1", start, "改一下");
-    // 裁定 #17：无 meta 时插在 `<article>` 末尾（其次 body），用解析器 span 定位，不靠字面 `</body>`。
+    // 无 meta 时插在 `<article>` 末尾（其次 body），用解析器 span 定位，不靠字面 `</body>`。
     const at = DOC.indexOf("</article>");
 
     expect(outcome).toEqual({
@@ -125,7 +125,7 @@ describe("appendAnnotation · 没有 body 的片段文档", () => {
 
   it("should append at the very end when neither article nor body has a span", () => {
     // 隐式元素的 span 存在但 innerEnd=0，所以这条只能测到“有隐式 body”的情形；
-    // 真正的“无 span”分支在解析层不存在（见报告待裁定：#implicit-span）。
+    // 真正的“无 span”分支在解析层不存在。
     const outcome = appendAnnotation("纯文本无标签", input(0, 3), "hr-note-7", CREATED_AT);
 
     expect(outcome.html).toContain('"id":"hr-note-7"');

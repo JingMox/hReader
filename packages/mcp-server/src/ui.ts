@@ -1,11 +1,20 @@
 // 这层管：MCP-UI 视图资源（`ui://hreader/view/{docId}`）。docId 由相对路径可逆编码，
-// 服务重启后同一个 URI 仍能读出同一份文档；视图只**引用**已跑的 daemon，不代管进程（裁定 #4）。
+// 服务重启后同一个 URI 仍能读出同一份文档；视图只**引用**已跑的 daemon，不代管进程。
 
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { readInsideWorkspace, type DocumentTarget } from "./tools/target";
 import { homedir } from "node:os";
 import { join, normalize, sep } from "node:path";
+
+import {
+  hasExternalResource,
+  isDroppedNode,
+  parseHtml,
+  sanitizedAttributesOf,
+  serializeHtml,
+  type HtmlNode,
+} from "@hreader/core";
 
 export const UI_URI_PREFIX = "ui://hreader/view/";
 
@@ -30,8 +39,8 @@ const portOf = (value: unknown): number | undefined => {
 };
 
 /** 本仓唯一一处 `~/.hreader/daemon.json` 路径拼写：core 只导出 `startServer`，未导出 `daemonStatePath()`
- * （`daemonFileOf` 收在 `core/src/server/index.ts`，不在包入口）；M3.2 若 core 导出即改为引用，
- * 见 `.workflow/known-defects.md` 的 `L-10`。视图只读这个落点拿端口，不写它。 */
+ * （`daemonFileOf` 收在 `core/src/server/index.ts`，不在包入口）；core 若日后导出即改为引用。
+ * 视图只读这个落点拿端口，不写它。 */
 const DAEMON_STATE_FILE = join(".hreader", "daemon.json");
 
 const daemonBaseUrlOf = async (home: string): Promise<string | undefined> => {
@@ -75,10 +84,48 @@ ${body}
 </html>
 `;
 
-/** 无 daemon 不是错误（AC-7：宿主 UI 不该因为后台没开就拿不到资源）；**文档读不出来才是**——
+/**
+ * 视图里的文档不是可信 HTML：工作区里的外来文件也能走到这里。复用 core 最强的
+ * `import` 清洗口径（可执行面/事件属性/外链资源/`data-hr-*`/内联样式全剥），
+ * 再加两道视图特有规则：`<style>` 元素整删（文档级 CSS 会改写整个视图页）、
+ * 注释整删（注释 data 不转义，串行化会原样放出）。
+ */
+const sanitizeNode = (node: HtmlNode): HtmlNode | undefined => {
+  if (node.kind === "comment") return undefined;
+  if (node.kind === "element") {
+    if (
+      node.tag === "style" ||
+      isDroppedNode(node, "import") ||
+      hasExternalResource(node, "import")
+    ) {
+      return undefined;
+    }
+    return {
+      ...node,
+      attrs: sanitizedAttributesOf(node, "import"),
+      children: sanitizedNodes(node.children),
+    };
+  }
+  if (node.kind === "document") return { ...node, children: sanitizedNodes(node.children) };
+  return node;
+};
+
+const sanitizedNodes = (nodes: readonly HtmlNode[]): HtmlNode[] =>
+  nodes.flatMap((node) => {
+    const kept = sanitizeNode(node);
+    return kept === undefined ? [] : [kept];
+  });
+
+/** 文档整树净化后再包 `<article>`：剥掉的是可执行/外链/样式面，正文结构原样留下。 */
+const safeDocumentHtmlOf = (text: string): string =>
+  sanitizedNodes([parseHtml(text).root])
+    .map((node) => serializeHtml({ root: node, diagnostics: [] }))
+    .join("");
+
+/** 无 daemon 不是错误（宿主 UI 不该因为后台没开就拿不到资源）；**文档读不出来才是**——
  * 以前回一页"文档不可读"的壳，对宿主是假成功（跟 `unknown_style` 撒谎同类）。 */
 export const viewHtmlOf = async (target: DocumentTarget): Promise<string> => {
   const banner = daemonBanner(await daemonBaseUrlOf(homedir()));
   const text = await readInsideWorkspace(target);
-  return PAGE(target.file, banner, `<article>${text}</article>`);
+  return PAGE(target.file, banner, `<article>${safeDocumentHtmlOf(text)}</article>`);
 };

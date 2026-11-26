@@ -1,4 +1,4 @@
-// 这层管：M2.1 的服务器测试装置——真 `startServer` + 真 socket（`node:net` 原文）+ 真子进程外的 HTTP 客户端。
+// 这层管：服务器测试装置——真 `startServer` + 真 socket（`node:net` 原文）+ 真子进程外的 HTTP 客户端。
 //
 // 规矩：每个 socket 都有硬超时（挂住比失败更糟）；服务器一律 `finally` 关闭并删掉临时 home/workspace。
 //
@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 import { nodePatchDeps } from "../../src/io/node-fs";
 import { nodeStyleDeps } from "../../src/style";
-import { startServer, type RunningServer } from "../../src/server/server";
+import { startServer, type RunningServer, type ServerDeps } from "../../src/server/server";
 import type { ServerOptions } from "../../src/server/contracts";
 
 export const DOC = [
@@ -52,6 +52,7 @@ const contextOf = (server: RunningServer, workspace: string, home: string): Test
 export const withServer = async (
   run: (ctx: TestServer) => Promise<void>,
   tuning?: ServerOptions["timeouts"] | ((workspace: string) => void),
+  deps?: Partial<ServerDeps>,
 ): Promise<void> => {
   const seed = typeof tuning === "function" ? tuning : defaultSeed;
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "hr-srv-ws-")));
@@ -68,6 +69,7 @@ export const withServer = async (
     patch: nodePatchDeps,
     style: nodeStyleDeps(workspace),
     now: Date.now,
+    ...deps,
   });
   const ctx = contextOf(server, workspace, home);
   try {

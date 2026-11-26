@@ -138,13 +138,16 @@ flowchart LR
 * **内置视觉设计**：
   * **纸感与暗夜双模**：日间采用温暖羊皮纸白（`#FAF8F5`）与深炭墨黑，夜间自动切换为深曜石蓝灰（`#121316`），拒绝刺眼纯白与纯黑。
   * **黄金阅读人体工学**：正文区严格锁定 `68ch` 最佳阅读视宽，右侧预留 `280px` 边栏用于展示浮动目录与页边批注（Sidenotes）。
-  * **7 个内置零配置语义组件（6 类，callout 含 insight/warning 两型）**（Agent 只需写 `data-hr-component="xxx"`）：
+  * **8 个内置零配置语义组件（7 类，callout 含 insight/warning 两型）**（Agent 只需写 `data-hr-component="xxx"`）：
     1. `kpi-bento`：多维核心指标卡片网格
     2. `callout-insight / warning`：高辨识度洞察与警示框
     3. `split-compare`：左右双栏优劣/方案对比视图
     4. `deep-dive`：可折叠的底层细节/源码剖析手风琴框（`<details>` 增强）
     5. `step-timeline`：纵向编号流转步骤条
     6. `diagram-stage`：带缩放与图例说明的 SVG / Mermaid 画布容器
+    7. `media-card`：音频 / 视频 + 图注 + 可折叠逐字稿的统一外壳
+  * **文档形态（`data-hr-kind`）**：`note` / `report` / `minutes` / `brief` / `slides` 五种起稿骨架（`hr new --kind`、`hr_create_doc` 的 `kind`）；`slides` 每个顶层 `<section>` 一页，靠滚动吸附翻页、打印横版一页一张，不含脚本。
+  * **写入时排版检查**：组件结构规约（根标签 / 子元素个数 / 必备子元素）与内联 `style` 在每次 patch 时检查，问题作为 `warnings` 返回；整篇用 `hr check`。规约表在 `packages/core/src/layout/components.ts`。
 * **内置默认语言风格（社论深度剖析调性）**：
   * **结论先行（BLUF）**：每个 `<section>` 第一句必须给出明确判断，不绕圈子。
   * **反 AI 废话过滤器（Anti-Slop Lint）**：内置禁用词表（如“总而言之”、“在当今数字化时代”、“毋庸置疑”、“赋能”、“抓手”），引擎在 Patch 时甚至可对命中禁用词的段落向 Agent 发出重写警告。
@@ -184,10 +187,10 @@ language_style:
 
 | 原语名称 | 输入参数 | Token 消耗与作用说明 |
 | :--- | :--- | :--- |
-| `hr_create_doc` | `filePath`, `title` | **建稿**。写一份最小合法文档（`<article data-hr-id="root">` + `<h1>` + 一个 `<section>`），节点 id 交给 `injectNodeIds` 派生；已存在的文件不覆盖。 |
-| `hr_outline` | `filePath` | **~150 Tokens**。返回文档的 `<section>` / `<h1~h4>` 骨骼树、各节点 `data-hr-id`、字数统计、以及**所有未处理的 `pending_ai` 用户划词批注**。 |
+| `hr_create_doc` | `filePath`, `title`, `kind?` | **建稿**。不给 `kind` 时写一份最小合法文档（`<article data-hr-id="root">` + `<h1>` + 一个 `<section>`）；给 `kind`（`note` / `report` / `minutes` / `brief` / `slides`）时写对应形态的骨架（与 `hr new --kind` 同一份）。节点 id 交给 `injectNodeIds` 派生；已存在的文件不覆盖。 |
+| `hr_outline` | `filePath` | **~150 Tokens**。返回文档的 `<section>` / `<h1~h4>` 骨骼树、各节点 `data-hr-id`、字数统计、以及**所有未处理的用户划词批注**（`pending_ai` 与 `pending` 两态都算）。 |
 | `hr_read_node` | `filePath`, `nodeId` (或 CSS Selector) | **~200 Tokens**。仅提取目标节点及其子树的 HTML 源码与关联批注，避免读取整篇文件。 |
-| `hr_patch_node` | `filePath`, `nodeId`, `action` (`replace` \| `insert_after` \| `insert_before` \| `append` \| `delete`), `htmlContent` | **极速局部写入**。解析 HTML 片段，自动为新增块级元素注入 `data-hr-id`，校验标签闭合与禁用词，更新文件并触发 WebSocket 局部热更新。 |
+| `hr_patch_node` | `filePath`, `nodeId`, `action` (`replace` \| `insert_after` \| `insert_before` \| `append` \| `delete`), `htmlContent` | **极速局部写入**。解析 HTML 片段，自动为新增块级元素注入 `data-hr-id`，校验标签闭合与禁用词，更新文件并触发 WebSocket 局部热更新；回执带 `warnings`（组件结构 / 内联 `style` 的排版检查，只警告不拒写）。 |
 | `hr_apply_style` | `filePath`, `visualId?`, `toneId?` | 若仅切换 `visualId`，引擎直接替换 `<style id="hr-theme">`（**0 LLM Token**）；若切换 `toneId`，返回该语言风格的完整规约供 Agent 改写正文。 |
 | `hr_resolve_annotation` | `filePath`, `annotationId`, `resolutionNote?` | 将 `<script id="hr-meta">` 中对应的用户批注标记为 `resolved`，阅读器界面自动将该批注归档并高亮显示修改后的段落。 |
 | `hr_undo` | `filePath` | **一次调用回退一步**。取最近一份快照 → 校验**快照自身**的哈希与文件名一致（防截断/改写；不校验目标文件是否被人改过）→ 原子还原 → 删掉该快照；没有历史时返回 `nothing_to_undo`。快照链由 `patch` / 批注处理 / 新建文档共用，但 **`hr_apply_style` 不写快照**（`L-32`）：换过样式后的一次 undo 会把正文一起退，不要把“换样式”当成可单独撤销的一步。 |
@@ -343,7 +346,7 @@ flowchart LR
 * **目标**：完善独立桌面软件体验，降低用户编写自定义语言风格的门槛。
 * **核心任务**：
   - [x] **M4.1 AI 语言风格萃取器 (`hr style extract`)**：用户只需丢入 3~5 篇自己喜欢的历史文章或博客，Agent 自动分析其句式节奏、常用转折词、叙事结构与高频词汇，一键生成专属的 `style.yaml`。**已完成（2026-11-17）**：纯统计层（`packages/core/src/style/extract/`，十组 `EXTRACT_FLAGS` 可关）+ LLM 层（`LlmPort` 可注入、合并建议不覆盖统计权威值）+ cli（`--out`/`--force`/`--json`/`--no-llm`/`--tone` 发现提示）；229 文件 2527 例、四维 perFile 100%；`L-36`–`L-39` 已登记。
-  - [x] **M4.2 Tauri v2 跨平台桌面应用 (`@hreader/desktop`)**：打包 macOS / Windows / Linux 原生安装包，支持系统级全局快捷键呼出与 `.html` 文件关联打开。**已完成（2026-11-18 结卡）**：壳**不托管阅读器**，只做定位 `hr` → 读/复用/拉起 daemon → webview 导航到 `/s/<docId>?t=`（6 步链路见 `packages/desktop/README.md`）；纯逻辑模块零 syscall（`cargo test` 80 例不需网络/窗口），平台副作用集中在 `supervisor.rs`/`window.rs`。三条硬不变量：① **父 pid 只在首个 `await` 之前采集一次**（`packages/cli/src/main.ts:12` → `CliIo.launchParentPid`（必填）→ 启动前 `ppid===1` 即拒启），让“晚读 `process.ppid`”在类型层不可写；② **看门狗可撤**（`watchParent` 返回 disposer，stop 先撤再 close，`unref()` 兜底不依赖调用点自觉）——这条是被 G2″ 挖出的真缺陷：`--exit-with-parent` 的 daemon 原先收到 SIGTERM 后“服务关了进程还活着”，桌面壳的 `Drop`（`TERM`→2s→`KILL`）把它掩盖了两轮，教训入 `docs/03` §11.45；③ **信号装配用类型强制**（`SignalSubscription` 无法在 `signals` 模块外伪造、`connect_with` 按值收 ⇒ 顺序错是编译错），失败不阻塞启动且只告警一次（`FAILED`/`ANNOUNCED` + `installed()` 供 W1 断言）。home 是应用私有目录（不是 `$HOME`，否则双击 `.app` 会覆写并删除用户那份 `daemon.json`）。`L-42`：`--exit-with-parent` 在启动时 `ppid===1`（`nohup`/`setsid`/systemd）**拒启**，是有意取舍。真机脚本 `scripts/gui/m4.2/`（`--home` 一律指向 `mktemp -d` 沙箱；**W7 是唯一例外**：它故意使用真实壳 app data 目录并在开头 `rm -rf` 它，脚本因此要求 `HREADER_GUI_REAL_HOME=1` 才继续——跑之前备份、并确认无在跑实例；`pnpm lint:sh` 逐个 `bash -n`，教训入 `docs/03` §11.47：`find -exec … +` 与 `\;` 两种写法都是假绿）。265 文件 2971 例、四维 perFile 100%；`pnpm verify` 八步 + `pnpm desktop:check` 双绿。卡片见 `.workflow/cards/M4.2.md`，使用节见 `docs/05`。
+  - [x] **M4.2 Tauri v2 跨平台桌面应用 (`@hreader/desktop`)**：打包 macOS / Windows / Linux 原生安装包，支持系统级全局快捷键呼出与 `.html` 文件关联打开。**已完成（2026-11-18 结卡）**：壳**不托管阅读器**，只做定位 `hr` → 读/复用/拉起 daemon → webview 导航到 `/s/<docId>?t=`（6 步链路见 `packages/desktop/README.md`）；纯逻辑模块零 syscall（`cargo test` 80 例不需网络/窗口），平台副作用集中在 `supervisor.rs`/`window.rs`。三条硬不变量：① **父 pid 只在首个 `await` 之前采集一次**（`packages/cli/src/main.ts:12` → `CliIo.launchParentPid`（必填）→ 启动前 `ppid===1` 即拒启），让“晚读 `process.ppid`”在类型层不可写；② **看门狗可撤**（`watchParent` 返回 disposer，stop 先撤再 close，`unref()` 兜底不依赖调用点自觉）——这条是被 G2″ 挖出的真缺陷：`--exit-with-parent` 的 daemon 原先收到 SIGTERM 后“服务关了进程还活着”，桌面壳的 `Drop`（`TERM`→2s→`KILL`）把它掩盖了两轮，教训入 `docs/03` §11.45；③ **信号装配用类型强制**（`SignalSubscription` 无法在 `signals` 模块外伪造、`connect_with` 按值收 ⇒ 顺序错是编译错），失败不阻塞启动且只告警一次（`FAILED`/`ANNOUNCED` + `installed()` 供 W1 断言）。home 是应用私有目录（不是 `$HOME`，否则双击 `.app` 会覆写并删除用户那份 `daemon.json`）。`L-42`：`--exit-with-parent` 在启动时 `ppid===1`（`nohup`/`setsid`/systemd）**拒启**，是有意取舍。真机脚本 `scripts/gui/`（`--home` 一律指向 `mktemp -d` 沙箱；**default-home.sh 是唯一例外**：它故意使用真实壳 app data 目录并在开头 `rm -rf` 它，脚本因此要求 `HREADER_GUI_REAL_HOME=1` 才继续——跑之前备份、并确认无在跑实例；`pnpm lint:sh` 逐个 `bash -n`，教训入 `docs/03` §11.47：`find -exec … +` 与 `\;` 两种写法都是假绿）。265 文件 2971 例、四维 perFile 100%；`pnpm verify` 八步 + `pnpm desktop:check` 双绿。卡片见 `.workflow/cards/M4.2.md`，使用节见 `docs/05`。
   - [ ] **M4.x DSH Web 面板 (`dsh-web-app` 内嵌 hReader Tab)**：从 M3.3 移出的 (c) 项。在 DSH Web 工作台里加一个 hReader Tab，划词后 `ctx.emit('hreader/patch-request', payload)` 触发修补。冲突：DSH client 插件要求 React + `window.__ModuleLoader__.load` + `ctx.slots.inject`，与本仓"无 bundler、无框架、daemon 静态托管"的阅读器设计互斥，需先决定是"给面板单独引一套构建链"还是"复用 daemon 的 iframe + postMessage"。发送侧类型契约已由 M3.3 的 `declare module '@deepseek-ai/cordis'` 备好。
   - [x] **M4.3 出版级导出工具链**（2026-11-17/18 拆成 M4.3 + M4.4 两卡结案，见下两行；本行复选框此前漏勾）：优化 `@media print` 样式，支持一键导出带目录书签的精美 PDF 与社交媒体高清长图。
     - [x] **M4.3（已完成）**：`hr export` 产出**单文件自包含 HTML**（内联主题 CSS + 出版级打印规则集，零 `<script>`、零外部引用），用户 `⌘P` 即得 PDF；封面/目录（`1`/`1.1` 编号）/正文三段结构；`--json` 返回 `{html,bytes,droppedImages,out}`；产物 **> 4 MiB** 拦截（`invalid_input`，UTF-8 字节精确判定）；`--out` 越界 `path_outside_workspace`/exit 3（词法 `isInside` + realpath 两段复核，落盘前先判）；`pnpm test:e2e` 用真 Chrome 出 PDF 并以“抽掉分页规则后页数必须变”差分证明规则层生效。卡片见 `.workflow/cards/M4.3.md`，使用节见 `docs/05`。

@@ -28,12 +28,12 @@ const state = vi.hoisted((): MockState => ({ sources: [], throws: [] }));
 
 // 文法层一律放行，把失败全部推到 `resolveSelector` 那一跳：两跳才会各自碰到桩，
 // `state.sources` 也才数得清到底是第几跳把异常抛上来的。
-vi.mock("../src/ops/readNode/selector", async (importOriginal) => {
+vi.mock("../src/ops/read-node/selector", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return { ...actual, parseSelector: () => ({ kind: "tag", tag: "p" }) };
 });
 
-vi.mock("../src/ops/readNode/resolve", async (importOriginal) => {
+vi.mock("../src/ops/read-node/resolve", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,

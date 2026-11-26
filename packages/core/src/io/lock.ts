@@ -6,8 +6,7 @@ import { HrError } from "../hr-error";
 import { mkdirOrFail } from "./atomic";
 import { decodeUtf8, encodeUtf8 } from "./bytes";
 import { nonce as randomNonce } from "./digest";
-import { failureOf, ioFailure, isExists, isMissing } from "./errors";
-import { unlinkQuiet } from "./fs-ops";
+import { failureOf, ioFailure, isExists, isMissing, unlinkQuiet } from "./errors";
 import type { FileSystem, PatchDeps } from "./ports";
 import { isProcessAlive } from "./process";
 
@@ -44,7 +43,7 @@ const payloadOf = (value: unknown): LockPayload | undefined => {
 
 /**
  * 只有"锁已经不在了"（ENOENT）才算不存在；EACCES/EISDIR 是基础设施故障，
- * 当成"不存在"会直接把别人的锁抢掉（v3#15）。内容坏/不是 JSON 仍按"不可解析"处理。
+ * 当成"不存在"会直接把别人的锁抢掉。内容坏/不是 JSON 仍按"不可解析"处理。
  */
 const readPayloadOf = async (fsApi: FileSystem, path: string): Promise<LockPayload | undefined> => {
   let bytes: Uint8Array;
@@ -83,7 +82,7 @@ const isStale = (payload: LockPayload | undefined, age: number): boolean => {
 /** 一次 `open(wx)` + 一次写入：文件出现时内容就是完整 JSON，没有"空锁体"窗口。 */
 const tryCreate = async (deps: PatchDeps, path: string, payload: Uint8Array): Promise<boolean> => {
   try {
-    const file = await deps.fs.open(path, "wx");
+    const file = await deps.fs.open(path);
     try {
       await file.write(payload);
       await file.sync();

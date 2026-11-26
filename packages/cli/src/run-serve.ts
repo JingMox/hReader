@@ -16,7 +16,7 @@ interface ServeWiring {
   /** 当前工作目录：报错里的路径按用户视角（相对 cwd）回显，与回执同一口径。缺省取进程 cwd。 */
   readonly cwd?: string | undefined;
   readonly stop: Promise<void>;
-  /** 进程壳在首个 `await` 之前采集的父 pid；这里没有兜底——晚读 `process.ppid` 就是 B5/(W2) 那个洞。 */
+  /** 进程壳在首个 `await` 之前采集的父 pid；这里没有兜底——晚读 `process.ppid` 会漏掉"启动前父进程已死"。 */
   readonly launchParentPid: number;
   /** core 的诊断出口；不接上就等于把"`::` 上另有监听"与"清理陈旧 daemon.json"静默掉。 */
   readonly diagnose: (message: string) => void;
@@ -29,7 +29,7 @@ export const serveCommandOf = (
   paths: { readonly workspace: string; readonly file: string },
   wiring: ServeWiring,
 ): Promise<string> => {
-  // 显式 `--app-dir` 必须真实存在（exit 2）：depcruise 禁止 commands/* 碰 fs，M2.1 的缺省值仍由 core 兜底。
+  // 显式 `--app-dir` 必须真实存在（exit 2）：depcruise 禁止 commands/* 碰 fs，缺省值仍由 core 兜底。
   if (intent.appDirGiven && intent.appDir !== undefined && !existsSync(intent.appDir)) {
     throw new HrError(
       "invalid_input",

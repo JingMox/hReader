@@ -1,4 +1,4 @@
-// 这层管：G3-4 —— 并发写（core 有 `runLocked`，MCP 层从没验过它在这条路上生效）。
+// 这层管：并发写（core 有 `runLocked`，MCP 层从没验过它在这条路上生效）。
 //
 // 它会因为什么而红：去掉 `patchFile` 里的 `runLocked` 之后，两条 `readFile → 改 → writeFile`
 // 会互相覆盖——表现正是"两个响应都 `isError:false`，文件里只有一处改动"。

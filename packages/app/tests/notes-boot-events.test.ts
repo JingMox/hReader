@@ -1,4 +1,4 @@
-// M2.3 接线的另一半：划词/浮动按钮、右栏卡片点击、`doc.changed` 闪烁。
+// 批注接线的另一半：划词/浮动按钮、右栏卡片点击、`doc.changed` 闪烁。
 // 夹具在 `support/notes-harness.ts`；这里同样只从 `boot()` 真入口进。
 
 import { describe, expect, it, vi } from "vitest";

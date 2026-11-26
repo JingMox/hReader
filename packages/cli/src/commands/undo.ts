@@ -1,5 +1,5 @@
 // 这层管：`hr undo`（把文件恢复到最近一份历史快照）→ 文本/JSON；不解析参数、不读 stdin。
-// 用 `revertLast` 而不是 `undoPatch`：“没有历史”翻成对外的 `nothing_to_undo` 只有一份定义（M3.4）。
+// 用 `revertLast` 而不是 `undoPatch`：“没有历史”翻成对外的 `nothing_to_undo` 只有一份定义。
 
 import { nodePatchDeps, revertLast } from "@hreader/core";
 

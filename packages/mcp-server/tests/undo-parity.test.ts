@@ -1,9 +1,9 @@
-// 这层管：`hr_undo` 与 HTTP `POST /api/doc/<docId>/undo` 在**最反直觉的那个场景**下必须同样怪。
+// 这层管：`hr_undo` 与 HTTP `POST /api/doc/<docId>/undo` 在**样式进了撤销链之后**必须同台阶。
 //
-// 场景：`patch` → `applyStyle` → 一次 undo。`applyStyle` 不写快照（`packages/core/src/style/applyFile.ts`
-// 全文无 `writeSnapshot`，登记为 L-32），所以那唯一的快照是 patch 前的内容：一次 undo 把正文和样式一起回退。
-// 这不是本卡实现的行为，而是 `revertLast` 的行为——两条路径只要真的共用它，就必然一致；
-// 若不一致，说明 MCP 侧没走 `revertLast`（P0）。
+// 场景：`patch` → `applyStyle` → undo。`applyStyle` 自 b19ffca 起写前快照（与 patch 同一条链，
+// 登记债 L-32 已修）：第一次 undo 只退样式回到 patch 后的字节，第二次才退 patch。
+// 这不是本层实现的行为，而是 `revertLast` 的行为——两条路径只要真的共用它，就必然一致；
+// 若不一致，说明 MCP 侧没走 `revertLast`。
 //
 // 它会因为什么而红：`hr_undo` 换成 `undoPatch`/自写还原、HTTP 与 MCP 的锁等待或目标解析分叉。
 
@@ -112,33 +112,40 @@ const snapshotsOf = async (workspaceOf: string): Promise<readonly string[]> => {
 const styled = (): Promise<unknown> =>
   mcpCallOf("hr_apply_style", { filePath: FILE, visualId: PRESET });
 
-describe("hr_undo · L-32 的真实语义", () => {
-  it("换样式不留快照：一次 undo 连正文一起回退（L-32），第二次 nothing_to_undo", async () => {
+describe("hr_undo · 换样式占一个撤销台阶的语义", () => {
+  it("换样式留快照：一次 undo 只退样式，第二次退 patch，第三次 nothing_to_undo", async () => {
     const base = await bytesIn(workspace);
     await patched();
+    const afterPatch = await bytesIn(workspace);
     await styled();
-    expect(await bytesIn(workspace)).not.toBe(base);
+    expect(await bytesIn(workspace)).not.toBe(afterPatch);
 
+    // 第一次 undo 退掉的是样式那一步：回到 patch 后、样式前的字节。
     const undo = await mcpCallOf("hr_undo", { filePath: FILE });
-    // 依据：`packages/core/src/style/applyFile.ts` 全文没有 `writeSnapshot`（L-32）——
-    // 所以 undo 回到的是 patch 前那份快照，样式改动跟着一起没了。
     expect(undo.isError).toBe(false);
+    expect(await bytesIn(workspace)).toBe(afterPatch);
+
+    // 第二次 undo 退掉 patch：回到全文最初的字节。
+    const second = await mcpCallOf("hr_undo", { filePath: FILE });
+    expect(second.isError).toBe(false);
     expect(await bytesIn(workspace)).toBe(base);
 
-    const again = await mcpCallOf("hr_undo", { filePath: FILE });
-    expect(again.code).toBe("nothing_to_undo");
+    const third = await mcpCallOf("hr_undo", { filePath: FILE });
+    expect(third.code).toBe("nothing_to_undo");
   });
 });
 
-describe("hr_undo · L-32 的第二个守卫", () => {
-  it("applyStyle 不改快照数量（换样式不留撤销台阶）", async () => {
+describe("hr_undo · 快照数量的守卫", () => {
+  it("applyStyle 与 patch 各留一份快照（每步写各有一个撤销台阶）", async () => {
     await patched();
-    const before = await snapshotsOf(workspace);
-    // 非零下界：patch 那一层确实留下了快照，否则下面的相等是真空为真。
-    expect(before).toHaveLength(1);
+    const afterPatch = await snapshotsOf(workspace);
+    expect(afterPatch).toHaveLength(1);
 
     await styled();
-    expect(await snapshotsOf(workspace)).toEqual(before);
+    const afterStyle = await snapshotsOf(workspace);
+    expect(afterStyle).toHaveLength(2);
+    // 两份快照是不同内容的不同文件：patch 前字节与样式前字节不是同一份。
+    expect(afterStyle[0]).not.toBe(afterStyle[1]);
   });
 });
 
@@ -155,27 +162,36 @@ describe("hr_undo · 与 HTTP undo 的差分", () => {
       // 两条路径的 sha256（revision = sha256 前 16 位）与整份字节都必须逐字相等。
       expect(mcpRevision).toBe(httpRevision);
       expect(await bytesIn(workspace)).toBe(await bytesIn(httpWorkspace));
-      // 并且都回到了 patch 前（再次确认 L-32 的语义在两边同样怪）。
-      expect(await bytesIn(workspace)).toBe(ANNOTATED_DOC);
+      // 并且都停在 patch 后、样式前：undo 只退掉了样式那一步，两侧同台阶。
+      expect(await bytesIn(workspace)).toContain("新正文");
+      expect(await bytesIn(workspace)).not.toBe(ANNOTATED_DOC);
     } finally {
       await arm.close();
       await leaveWorkspace(httpWorkspace);
     }
   }, 30_000);
 
-  it("两侧对第二次 undo 都报 nothing_to_undo（错误码映射只有 revertLast 一份）", async () => {
+  it("两侧对第三次 undo 都报 nothing_to_undo（错误码映射只有 revertLast 一份）", async () => {
     const httpWorkspace = await workspaceIn("hreader-mcp-undo-parity-2nd-");
     await writeFile(join(httpWorkspace, "doc.html"), ANNOTATED_DOC, "utf8");
     const arm = await daemonArmOf(httpWorkspace);
 
     try {
       await httpSequenceOf(arm);
+      // 第二次 undo 退 patch：两侧都应回到全文最初的字节。
       const second = await arm.post(`/api/doc/${DOC_ID}/undo`, { docId: DOC_ID });
+      expect(second.status).toBe(200);
       await mcpSequenceOf();
       const mcpSecond = await mcpCallOf("hr_undo", { filePath: FILE });
+      expect(mcpSecond.isError).toBe(false);
 
-      expect(second.body["code"]).toBe("nothing_to_undo");
-      expect(mcpSecond.code).toBe("nothing_to_undo");
+      expect(await bytesIn(httpWorkspace)).toBe(ANNOTATED_DOC);
+      expect(await bytesIn(workspace)).toBe(ANNOTATED_DOC);
+
+      const third = await arm.post(`/api/doc/${DOC_ID}/undo`, { docId: DOC_ID });
+      const mcpThird = await mcpCallOf("hr_undo", { filePath: FILE });
+      expect(third.body["code"]).toBe("nothing_to_undo");
+      expect(mcpThird.code).toBe("nothing_to_undo");
     } finally {
       await arm.close();
       await leaveWorkspace(httpWorkspace);

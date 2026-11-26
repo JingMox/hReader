@@ -15,12 +15,12 @@ export const undoShape = {
 type UndoArgs = z.infer<z.ZodObject<typeof undoShape>>;
 
 /**
- * D8：第三参传什么由这里定死。
+ * 第三参传什么由这里定死。
  * 不传 → core 的默认 `{ lockTimeoutMs: DEFAULT_LOCK_TIMEOUT_MS = 2000 }`。
  * 不抄 HTTP 的 `LOCK_WAIT_MS`（`server/handlers.ts:49`，5000）：它不在 core 的公开面上（`index.ts` 只导出
  * `nodePatchDeps`/`patchFile`/`undoPatch`），抄数字就是同一事实的第二份拼写；更重要的是**同一个文件上
  * 两个工具必须同源**——`hr_patch_node` 用的就是默认值，undo 等 5000 而 patch 等 2000 会让并发语义分叉。
- * 2000ms ≥ 锁的实际持有时长，AC-4 的串行化照样成立。
+ * 2000ms ≥ 锁的实际持有时长，并发串行化照样成立。
  */
 export const undoCall = (args: UndoArgs): Promise<CallToolResult> =>
   guarded("hr_undo", async () => {

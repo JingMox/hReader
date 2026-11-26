@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignore": ["docs/**"],
   "vitest": {
-    "config": ["vitest.config.ts"]
+    "config": ["vitest.config.ts", "packages/*/vitest.config.ts"]
   },
   "eslint": {
     "config": ["eslint.config.mjs"]
@@ -14,13 +14,9 @@
     "packages/core": {
       "entry": ["fixtures/*.mjs", "tests/**/*.ts"]
     },
-    "packages/protocol": {
-      "entry": ["tests/**/*.ts"]
-    },
     "packages/cli": {
       "entry": [
-        "src/args.ts",
-        "src/tokens.ts",
+        "src/args/index.ts",
         "src/input.ts",
         "src/output.ts",
         "src/run.ts",
@@ -34,7 +30,12 @@
       ]
     },
     ".": {
-      "entry": ["skills/hreader/scripts/hr.mjs", "scripts/**/*.ts"]
+      "entry": [
+        "skills/hreader/scripts/hr.mjs",
+        "scripts/**/*.ts",
+        "scripts/**/*.mjs",
+        "tests/integration/**/*.ts"
+      ]
     },
     "packages/app": {
       "entry": ["src/main.ts", "scripts/*.mjs"],
@@ -48,16 +49,16 @@
       "entry": ["pi-hreader.ts", "tests/**/*.ts"]
     },
     "packages/dsh-bundle": {
-      "entry": ["tests/**/*.ts"],
+      "entry": ["src/index.ts", "tests/**/*.ts"],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@deepseek-ai/dsh-attachment", "@deepseek-ai/dsh-package-manifest"]
+    },
+    "packages/desktop": {
+      "entry": ["webview/*.js", "tests/**/*.ts"]
     }
   },
   "ignoreIssues": {
-    "packages/core/src/io/atomic.ts": ["exports"],
-    "packages/core/src/io/history.ts": ["exports"],
-    "packages/core/src/io/lock.ts": ["exports"],
-    "packages/core/src/ops/patchNode/attrs.ts": ["exports"],
+    "packages/core/src/ops/patch-node/attrs.ts": ["exports"],
     "packages/app/src/boot.ts": ["exports"],
     "packages/app/src/main.ts": ["exports"]
   }

@@ -5,7 +5,7 @@ import type { DocumentModel } from "../model";
 import type { LintHit, LintReport, VocabularySpec } from "./contracts";
 import { foldOf, type Folded } from "./words";
 
-/** 单块命中上限：与 M1.3/M1.4 的限流思路一致，禁止无限增长（AC6.4）。 */
+/** 单块命中上限：禁止无限增长。 */
 export const LINT_HIT_LIMIT = 100;
 
 const EXCERPT_RADIUS = 16;

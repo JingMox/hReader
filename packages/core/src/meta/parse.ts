@@ -1,5 +1,7 @@
 // 这层管：把 `<script id="hr-meta">` 的 JSON 读成类型化批注；不校验 targetId 是否存在（消费方做）。
 
+import { z } from "zod";
+
 import {
   type Diagnostic,
   DIAGNOSTIC_SEVERITY,
@@ -11,12 +13,8 @@ import {
 import { drainStack } from "../html/stack";
 import { textContentOf } from "../html/text";
 import { attributeOf } from "../model/attrs";
+import { jsonArray, jsonObject, looseString, parseJson } from "../schema";
 import type { MetaAnnotation, ParsedMeta } from "./constants";
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const isUnknownArray = (value: unknown): value is readonly unknown[] => Array.isArray(value);
 
 const invalidMeta = (message: string): Diagnostic => ({
   code: "invalid_meta",
@@ -24,23 +22,15 @@ const invalidMeta = (message: string): Diagnostic => ({
   message,
 });
 
-const stringFieldOf = (
-  record: Readonly<Record<string, unknown>>,
-  key: string,
-): string | undefined => {
-  const value = record[key];
-  return typeof value === "string" ? value : undefined;
-};
-
-/** `JSON.parse` 只在赋值处接触 `unknown`：不写 `as`，也不让 `any` 流向调用方。 */
-const parseJson = (text: string): unknown => {
-  try {
-    const value: unknown = JSON.parse(text);
-    return value;
-  } catch {
-    return undefined;
-  }
-};
+/** 阅读器写的是新字段（`nodeId`/`note`），旧版 meta 是 `targetId`/`comment`：两套都要读得出来。 */
+const annotationSchema = z.object({
+  id: looseString,
+  targetId: looseString,
+  nodeId: looseString,
+  comment: looseString,
+  note: looseString,
+  status: looseString,
+});
 
 const findMetaScript = (root: HtmlNode): HtmlElementNode | undefined => {
   const stack: HtmlNode[] = [root];
@@ -70,34 +60,27 @@ const annotationOf = (
   index: number,
   diagnostics: Diagnostic[],
 ): MetaAnnotation | undefined => {
-  if (!isRecord(value)) {
+  const parsed = annotationSchema.safeParse(value);
+  if (!parsed.success) {
     diagnostics.push(invalidMeta(`annotations[${String(index)}] 不是对象，已跳过`));
     return undefined;
   }
-  const id = stringFieldOf(value, "id");
-  const targetId = stringFieldOf(value, "targetId");
+  const { id, targetId = parsed.data.nodeId, comment, note, status } = parsed.data;
   if (id === undefined || targetId === undefined) {
     diagnostics.push(invalidMeta(`annotations[${String(index)}] 缺少字符串 id/targetId，已跳过`));
     return undefined;
   }
-  return {
-    id,
-    targetId,
-    comment: stringFieldOf(value, "comment") ?? "",
-    status: stringFieldOf(value, "status") ?? "",
-  };
+  return { id, targetId, comment: comment ?? note ?? "", status: status ?? "" };
 };
 
 const annotationsOf = (value: unknown): ParsedMeta => {
-  if (value === undefined) {
-    return { annotations: [], diagnostics: [] };
-  }
-  if (!isUnknownArray(value)) {
+  const list = jsonArray.optional().safeParse(value);
+  if (!list.success) {
     return { annotations: [], diagnostics: [invalidMeta("hr-meta.annotations 不是数组")] };
   }
   const diagnostics: Diagnostic[] = [];
   const annotations: MetaAnnotation[] = [];
-  value.forEach((item, index) => {
+  (list.data ?? []).forEach((item, index) => {
     const annotation = annotationOf(item, index, diagnostics);
     if (annotation !== undefined) {
       annotations.push(annotation);
@@ -120,8 +103,9 @@ export const readMeta = (parsed: ParsedHtml): ParsedMeta => {
   if (value === undefined) {
     return { annotations: [], diagnostics: [invalidMeta("hr-meta 不是合法 JSON")] };
   }
-  if (!isRecord(value)) {
+  const root = jsonObject.safeParse(value);
+  if (!root.success) {
     return { annotations: [], diagnostics: [invalidMeta("hr-meta 顶层不是对象")] };
   }
-  return annotationsOf(value["annotations"]);
+  return annotationsOf(root.data["annotations"]);
 };

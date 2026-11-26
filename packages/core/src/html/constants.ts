@@ -3,7 +3,8 @@
 
 /**
  * `docs/02-architecture-and-roadmap.md` 的 6 大组件列举出 7 个 `data-hr-component` 取值
- * （第 2 条 `callout-insight / warning` 是两个值）。白名单按取值计 7 个，冲突见 impl-M1.1.md。
+ * （第 2 条 `callout-insight / warning` 是两个值）；`media-card` 是后加的第 8 个（音视频统一外壳）。
+ * 每个取值的结构规约在 `layout/components.ts`，两边必须一一对应。
  */
 export const COMPONENT_WHITELIST: readonly string[] = [
   "kpi-bento",
@@ -13,9 +14,10 @@ export const COMPONENT_WHITELIST: readonly string[] = [
   "deep-dive",
   "step-timeline",
   "diagram-stage",
+  "media-card",
 ];
 
-/** 文档容器标签：模型根、注入目标的锚点（M1.2 v2 起 `<article>` 自身也注入）。 */
+/** 文档容器标签：模型根、注入目标的锚点（`<article>` 自身也注入）。 */
 export const ARTICLE_TAG = "article";
 
 /**
@@ -46,7 +48,7 @@ export const BLOCK_TAGS: ReadonlySet<string> = new Set([
  * = 内容模型块级（`BLOCK_TAGS`）∪ 常见块级容器 ∪ 表格结构。
  *
  * 与 `BLOCK_TAGS` 的关系（三者不是同一个集合，别合并）：`BLOCK_TAGS` 管内容模型投影，本集合管"有没有 id"，
- * `PATCHABLE_TAGS` 管"能不能被改"。加了一个块级容器却忘了加在这里，症状就是它拿不到 id、批注无处可挂（BUG-12/13）。
+ * `PATCHABLE_TAGS` 管"能不能被改"。加了一个块级容器却忘了加在这里，症状就是它拿不到 id、批注无处可挂。
  * `<article>` 放在这里是为了让 `PATCHABLE_TAGS` 能按 id 命中 `<article>`；最外层/嵌套 article 的注入判定由 `html/inject.ts:39` 的 tag 分支直接做（tag 为 article 时走第一分支，本集合的 has("article") 不被求值）。
  */
 export const ADDRESSABLE_TAGS: ReadonlySet<string> = new Set([
@@ -74,7 +76,7 @@ export const ADDRESSABLE_TAGS: ReadonlySet<string> = new Set([
 /**
  * 可作 `hr patch` 目标的标签：默认与 `ADDRESSABLE_TAGS` 同集（能拿到 id 的都能被改）。
  * "可寻址但不可作目标"只能在这里表达（从集合里减掉 + 写清理由），不许在 `isPatchableTarget` 里加 if 链。
- * 当前例外为空：目标里面能装什么由 `ops/patchNode/content.ts` 的内容模型判，与"能不能当目标"正交。
+ * 当前例外为空：目标里面能装什么由 `ops/patch-node/content.ts` 的内容模型判，与"能不能当目标"正交。
  */
 // 独立实例（不是 `ADDRESSABLE_TAGS` 的别名）：两套口径要能分开演进，减项不许传染寻址面。
 export const PATCHABLE_TAGS: ReadonlySet<string> = new Set(ADDRESSABLE_TAGS);
@@ -222,7 +224,11 @@ export type DiagnosticCode =
   | "invalid_meta"
   | "ambiguous_selector"
   | "stripped_shell"
-  | "truncated_output";
+  | "truncated_output"
+  // 排版约束（`layout/check.ts`）：组件根标签不对 / 组件结构不全 / 内联 style
+  | "component_root"
+  | "component_shape"
+  | "inline_style";
 
 export type DiagnosticSeverity = "error" | "warning";
 
@@ -251,6 +257,9 @@ export const DIAGNOSTIC_SEVERITY: Readonly<Record<DiagnosticCode, DiagnosticSeve
   ambiguous_selector: "warning",
   stripped_shell: "warning",
   truncated_output: "warning",
+  component_root: "warning",
+  component_shape: "warning",
+  inline_style: "warning",
 };
 
 export interface Diagnostic {

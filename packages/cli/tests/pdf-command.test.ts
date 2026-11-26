@@ -13,10 +13,9 @@ import { join } from "node:path";
 import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
-import { pdfCommand, pdfPagesOf, type PdfCommandInput, type RenderPdf } from "../src/commands/pdf";
-import { fieldOf } from "../src/chrome/protocol";
-import { pdfOf, pdfBase64Of } from "./chrome-helpers";
-import { keysOf, withTempDir } from "./harness";
+import { pdfCommand, type PdfCommandInput, type RenderPdf } from "../src/commands/pdf";
+import { pdfOf } from "./chrome-helpers";
+import { fieldOf, keysOf, withTempDir } from "./harness";
 
 const DOC = "<html><body><article><h1>标题</h1><p>正文</p></article></body></html>";
 
@@ -49,6 +48,7 @@ const inputOf = (dir: string, overrides: Overrides = {}): PdfCommandInput => ({
   path: join(dir, "doc.html"),
   pageSize: "a4",
   timeoutMs: 60_000,
+  visual: "atelier-editorial",
   outline: true,
   outlineConflict: false,
   out: join(dir, "out.pdf"),
@@ -129,9 +129,52 @@ describe("pdfCommand · 人读行与渲染入参", () => {
       );
       expect(seen[0]?.pageSize).toBe("letter");
       expect(seen[0]?.timeoutMs).toBe(1500);
-      // 纸必须进 `@page`：只换 printToPDF 的纸不换版心（§15.1）。
+      // 纸必须进 `@page`：只换 printToPDF 的纸不换版心。
       expect(seen[0]?.html).toContain("size: letter;");
       expect(seen[0]?.html).toContain("标题");
+    });
+  });
+
+  it("普通文档的 preferCSSPageSize 是 false（页框听 --page-size）", async () => {
+    await withDocOf(async (dir) => {
+      const seen: boolean[] = [];
+      await pdfCommand(
+        inputOf(dir, {
+          render: (input) => {
+            seen.push(input.preferCSSPageSize);
+            return Promise.resolve({ bytes: Buffer.from(pdfOf(1)) });
+          },
+        }),
+      );
+      expect(seen).toEqual([false]);
+    });
+  });
+});
+
+describe("pdfCommand · slides 打印稿", () => {
+  const SLIDES_DOC =
+    "<html><body>" +
+    '<article data-hr-kind="slides">' +
+    "<h1>封面页</h1>" +
+    "<section><h2>第二页</h2><p>要点</p></section>" +
+    "</article>" +
+    "</body></html>";
+
+  it("data-hr-kind=slides 时 preferCSSPageSize=true：页框听产物里的 @page", async () => {
+    await withRealDir(async (dir) => {
+      writeFileSync(join(dir, "doc.html"), SLIDES_DOC);
+      const seen: { readonly flag: boolean; readonly html: string }[] = [];
+      await pdfCommand(
+        inputOf(dir, {
+          render: (input) => {
+            seen.push({ flag: input.preferCSSPageSize, html: input.html });
+            return Promise.resolve({ bytes: Buffer.from(pdfOf(2)) });
+          },
+        }),
+      );
+      expect(seen[0]?.flag).toBe(true);
+      // 横版页框在打印骨架里写死，不靠 --page-size 也不靠主题。
+      expect(seen[0]?.html).toContain("size: 13.333in 7.5in;");
     });
   });
 });
@@ -214,24 +257,18 @@ describe("pdfCommand · 产物校验", () => {
   it("PDF 里没有页面报 render_empty", async () => {
     await withDocOf(async (dir) => {
       const render = (): Promise<{ bytes: Uint8Array }> =>
-        Promise.resolve({ bytes: Buffer.from("%PDF-1.4\n%%EOF\n") });
+        Promise.resolve({ bytes: Buffer.from(pdfOf(0)) });
       const error = await failureOf(pdfCommand(inputOf(dir, { render })));
       expect(error.message).toContain("没有页面");
     });
   });
 
-  it("pdfPagesOf 不把 /Pages 页树节点算成页面", () => {
-    expect(pdfPagesOf(Buffer.from(pdfOf(3)))).toBe(3);
-    expect(pdfPagesOf(Buffer.from("%PDF-1.4\n%%EOF"))).toBe(0);
-    expect(pdfPagesOf(Buffer.from(pdfBase64Of(2), "base64"))).toBe(2);
-  });
-});
-
-describe("pdfPagesOf · 页数正则边界（M12）", () => {
-  // 旧写法 `[^s]` 要求 `Page` 后面还有一个字符，字节流正好以 `/Type /Page` 结尾（无尾随换行）
-  // 时就漏掉最后一页并报 0；`\b(?!s)` 必须数得到它（§15.2）。
-  it("数得到以 `/Type /Page` 结尾的最后一页", () => {
-    expect(pdfPagesOf(Buffer.from("<< /Type /Pages /Count 1 >>\n<< /Type /Page"))).toBe(1);
-    expect(pdfPagesOf(Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Page"))).toBe(1);
+  it("结构解析不出的 PDF 字节报 render_empty", async () => {
+    await withDocOf(async (dir) => {
+      const render = (): Promise<{ bytes: Uint8Array }> =>
+        Promise.resolve({ bytes: Buffer.from("%PDF-1.4\n%%EOF\n") });
+      const error = await failureOf(pdfCommand(inputOf(dir, { render })));
+      expect(error.code).toBe("render_empty");
+    });
   });
 });

@@ -60,6 +60,13 @@ fn doc_id_of(raw: &str, workspace: &Path) -> Result<String, OpenArgError> {
     };
     let absolute = absolutize(raw, workspace);
     let relative = absolute.strip_prefix(workspace).map_err(|_| outside())?;
+    // 工作区在文件系统根时 strip_prefix 对残留的 `..` 段也放行，这里兜底。
+    if relative
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(outside());
+    }
     let doc_id = relative.to_string_lossy().replace('\\', "/");
     if doc_id.is_empty() {
         return Err(not_html());
@@ -117,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_absolute_path_inside_workspace_maps_to_relative_doc_id() {
+    fn absolute_path_inside_workspace_maps_to_relative_doc_id() {
         assert_eq!(
             doc_id_of_arg("/ws/a.html"),
             Ok(Action::OpenDocument {
@@ -127,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_nested_relative_path_keeps_its_directories() {
+    fn nested_relative_path_keeps_its_directories() {
         assert_eq!(
             doc_id_of_arg("a/b.html"),
             Ok(Action::OpenDocument {
@@ -137,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_escaping_the_workspace_is_an_error() {
+    fn escaping_the_workspace_is_an_error() {
         assert_eq!(
             doc_id_of_arg("../x.html"),
             Err(OpenArgError::OutsideWorkspace {
@@ -153,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_non_html_and_directory_inputs_are_named_errors() {
+    fn non_html_and_directory_inputs_are_named_errors() {
         assert_eq!(
             doc_id_of_arg("/ws/a.txt"),
             Err(OpenArgError::NotHtmlDocument {
@@ -169,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_percent_escaped_input_is_literal_not_decoded() {
+    fn percent_escaped_input_is_literal_not_decoded() {
         assert_eq!(
             doc_id_of_arg("/ws/a%2Fb.html"),
             Ok(Action::OpenDocument {
@@ -179,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_missing_value_and_no_argument() {
+    fn missing_value_and_no_argument() {
         assert_eq!(
             action_of(&argv(&["--open"]), ws()),
             Err(OpenArgError::MissingValue)
@@ -189,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_launch_services_positional_path_is_accepted() {
+    fn launch_services_positional_path_is_accepted() {
         assert_eq!(
             action_of(&argv(&["/ws/dir/doc.html"]), ws()),
             Ok(Action::OpenDocument {
@@ -199,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_values_of_other_flags_are_not_mistaken_for_a_document() {
+    fn values_of_other_flags_are_not_mistaken_for_a_document() {
         assert_eq!(
             action_of(
                 &argv(&["--home", "/tmp/h", "--workspace", "/ws", "--port", "8123"]),
@@ -209,8 +216,27 @@ mod tests {
         );
     }
 
+    /// 工作区在文件系统根时，`strip_prefix("/")` 对 `/../x.html` 也成功——残留的 `..`
+    /// 段会让 doc_id 越过工作区上界。残留的 ParentDir 一律按越界处理。
     #[test]
-    fn ac6_uppercase_extension_is_accepted() {
+    fn residual_parent_segments_at_root_workspace_are_rejected() {
+        let root = Path::new("/");
+        assert_eq!(
+            action_of(&["--open".to_string(), "../x.html".to_string()], root),
+            Err(OpenArgError::OutsideWorkspace {
+                path: "../x.html".to_string()
+            })
+        );
+        assert_eq!(
+            action_of(&["--open".to_string(), "/a/../../x.html".to_string()], root),
+            Err(OpenArgError::OutsideWorkspace {
+                path: "/a/../../x.html".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn uppercase_extension_is_accepted() {
         assert_eq!(
             doc_id_of_arg("A.HTML"),
             Ok(Action::OpenDocument {

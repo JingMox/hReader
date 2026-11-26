@@ -11,7 +11,7 @@ import {
 
 import { foldedOf, rpcErrorOf } from "./errors";
 import { logFailure } from "./log";
-import { styleDepsOf } from "./styleDeps";
+import { styleDepsOf } from "./style-deps";
 import { documentTargetOf } from "./tools/target";
 import { UI_MIME_TYPE, UI_URI_PREFIX, relativePathOfDocId, viewHtmlOf } from "./ui";
 

@@ -1,7 +1,7 @@
 // 这层管：`createDomHost`——把 `Host` 的每个方法映射到 `document` 的具体成员，
 // 以及"只在真的变了才写"（text/html/blockHtml 的相等短路）。
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createDomHost, type NodeSpec } from "../src/dom.ts";
 import {
@@ -183,5 +183,37 @@ describe("destroy · 一次解绑全部监听", () => {
     host.destroy();
     expect(a.listeners).toEqual([]);
     expect(b.listeners).toEqual([]);
+  });
+});
+
+describe("dom · removeBlock", () => {
+  it("should remove the block element and ignore an unknown id", () => {
+    const doc = createFakeDocument();
+    const element = { ...fakeElement("article"), remove: vi.fn() };
+    doc.bySelector.set('[data-hr-id="hr-a"]', element);
+    const host = createDomHost(doc);
+    host.removeBlock("hr-a");
+    host.removeBlock("hr-missing");
+    expect(element.remove.mock.calls).toHaveLength(1);
+  });
+});
+
+describe("dom · all", () => {
+  it("should return the registered matches in document order", () => {
+    const doc = createFakeDocument();
+    const a = fakeElement("li");
+    const b = fakeElement("li");
+    doc.bySelectorAll.set("li", [a, b]);
+    expect(createDomHost(doc).all("li")).toEqual([a, b]);
+    expect(createDomHost(doc).all("p")).toEqual([]);
+  });
+
+  it("should return an empty list when the document cannot enumerate", () => {
+    const host = createDomHost({
+      body: { getAttribute: () => null },
+      querySelector: () => null,
+      createElement: (tag) => fakeElement(tag),
+    });
+    expect(host.all("li")).toEqual([]);
   });
 });

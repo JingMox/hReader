@@ -83,6 +83,11 @@ pub fn parse(
                 let seconds = raw
                     .parse::<u64>()
                     .map_err(|_| OptionsError::BadHold(raw.clone()))?;
+                // `--hold` 是调试用开关；不设上限时 `Instant + Duration::from_secs(u64::MAX)`
+                // 会溢出 panic。
+                if seconds > 86_400 {
+                    return Err(OptionsError::BadHold(raw));
+                }
                 options.hold = Some(seconds);
             }
             "--open" => {
@@ -133,12 +138,12 @@ mod tests {
     }
 
     #[test]
-    fn ac1_no_arguments_keeps_cli_defaults() {
+    fn no_arguments_keeps_cli_defaults() {
         assert_eq!(parse_in(&[]), Ok(defaults()));
     }
 
     #[test]
-    fn ac1_flags_override_each_field() {
+    fn flags_override_each_field() {
         let parsed = parse_in(&[
             "--smoke",
             "--home",
@@ -167,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn ac1_relative_directories_resolve_against_cwd() {
+    fn relative_directories_resolve_against_cwd() {
         let parsed =
             parse_in(&["--home", ".hreader-home", "--workspace", "docs"]).expect("相对路径");
         assert_eq!(parsed.home, PathBuf::from("/cwd/.hreader-home"));
@@ -175,13 +180,13 @@ mod tests {
     }
 
     #[test]
-    fn ac1_open_value_is_not_read_as_a_directory() {
+    fn open_value_is_not_read_as_a_directory() {
         let parsed = parse_in(&["--open", "/ws/a.html", "--home", "/tmp/h"]).expect("合法参数");
         assert_eq!(parsed.home, PathBuf::from("/tmp/h"));
     }
 
     #[test]
-    fn ac1_missing_value_unknown_flag_and_bad_port_are_errors() {
+    fn missing_value_unknown_flag_and_bad_port_are_errors() {
         assert_eq!(
             parse_in(&["--home"]),
             Err(OptionsError::MissingValue("--home".to_string()))
@@ -201,6 +206,23 @@ mod tests {
         assert_eq!(
             parse_in(&["--hold", "soon"]),
             Err(OptionsError::BadHold("soon".to_string()))
+        );
+    }
+
+    #[test]
+    fn hold_is_capped_below_instant_overflow() {
+        // `--hold` 进入 `Instant::now() + Duration::from_secs(n)`：u64::MAX 直接溢出 panic。
+        assert_eq!(
+            parse_in(&["--hold", &u64::MAX.to_string()]),
+            Err(OptionsError::BadHold(u64::MAX.to_string()))
+        );
+        assert_eq!(
+            parse_in(&["--hold", "86401"]),
+            Err(OptionsError::BadHold("86401".to_string()))
+        );
+        assert_eq!(
+            parse_in(&["--hold", "86400"]).map(|o| o.hold),
+            Ok(Some(86400))
         );
     }
 }

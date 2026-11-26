@@ -6,6 +6,7 @@ import type { Clock, FileSystem, OpenFile, PatchDeps } from "../../src/io/ports"
 export type FsMethod =
   | "readFile"
   | "writeFile"
+  | "writeFileAtomic"
   | "rename"
   | "unlink"
   | "mkdir"
@@ -124,7 +125,7 @@ const handleOf = (state: FakeState, path: string): OpenFile => ({
 
 const readMethodsOf = (
   state: FakeState,
-): Omit<FileSystem, "writeFile" | "rename" | "unlink" | "mkdir"> => ({
+): Omit<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "unlink" | "mkdir"> => ({
   readFile: (path) => {
     guard(state, "readFile", path);
     const bytes = readFileOf(state, path);
@@ -164,9 +165,16 @@ const readMethodsOf = (
 
 const writeMethodsOf = (
   state: FakeState,
-): Pick<FileSystem, "writeFile" | "rename" | "unlink" | "mkdir"> => ({
+): Pick<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "unlink" | "mkdir"> => ({
   writeFile: (path, data) => {
     guard(state, "writeFile", path);
+    state.files.set(path, new Uint8Array(data));
+    state.mtimes.set(path, state.seededAt);
+    return Promise.resolve();
+  },
+  // 假 fs 的一步写天然"原子"：tmp/rename 的细节是真实实现（write-file-atomic）自己的事。
+  writeFileAtomic: (path, data) => {
+    guard(state, "writeFileAtomic", path);
     state.files.set(path, new Uint8Array(data));
     state.mtimes.set(path, state.seededAt);
     return Promise.resolve();

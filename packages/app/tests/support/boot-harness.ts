@@ -2,6 +2,7 @@
 // 测试文件只保留用例本身，规模门（≤300 行）与函数门（≤40 行）才过得去。
 
 import type { BootDeps, OutlineResponse } from "../../src/boot.ts";
+import type { KeyLike } from "../../src/keys.ts";
 import type { SseEvent, SseHandlers } from "../../src/sse.ts";
 import { initialState, type ReaderIntent, type ReaderState } from "../../src/state.ts";
 import { createStore, type Store } from "../../src/store.ts";
@@ -21,7 +22,7 @@ export interface Harness {
   readonly deps: BootDeps;
   readonly store: Store;
   readonly fake: FakeHost;
-  readonly keyHandlers: ((event: { key: string; shiftKey?: boolean }) => void)[];
+  readonly keyHandlers: ((event: KeyLike) => void)[];
   readonly selectCalls: { theme: string; current: string }[];
   readonly fetched: Counters;
   readonly closed: () => boolean;
@@ -37,7 +38,7 @@ export const outlineOf = (): OutlineResponse => ({
 interface Sink {
   readonly counters: Counters;
   readonly flags: { sseClosed: boolean; keys: number };
-  readonly keys: ((event: { key: string; shiftKey?: boolean }) => void)[];
+  readonly keys: ((event: KeyLike) => void)[];
   readonly selectCalls: { theme: string; current: string }[];
 }
 

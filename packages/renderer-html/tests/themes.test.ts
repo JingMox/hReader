@@ -11,7 +11,7 @@ const diskTheme = readFileSync(
   "utf8",
 );
 
-describe("THEMES 注册表（§12 裁定 A：只放元数据）", () => {
+describe("THEMES 注册表（只放元数据）", () => {
   it("认得 atelier-editorial，且 id 与键一致", () => {
     expect(atelier?.id).toBe("atelier-editorial");
     expect(entries.every(([key, theme]) => theme.id === key)).toBe(true);
@@ -28,7 +28,7 @@ describe("THEMES 注册表（§12 裁定 A：只放元数据）", () => {
     expect(entries.every(([, theme]) => !("css" in theme))).toBe(true);
   });
 
-  // 主题安全闸的负例（`</style>`、`url(http…)`、`@import`）在 core 的 31 例里，打印层不重复实现也不重复测（§13.6）。
+  // 主题安全闸的负例（`</style>`、`url(http…)`、`@import`）在 core 的 31 例里，打印层不重复实现也不重复测。
   it("盘上的主题里没有 @import（零外部引用的静态部分）", () => {
     expect(diskTheme).not.toContain("@import");
   });

@@ -1,34 +1,40 @@
 // 这层管：把源文档与 outline 渲染成单文件可打印 HTML（封面 / 目录 / 正文三段）；不读盘、不碰进程。
 
-import { HrError, parseHtml, serializeHtml } from "@hreader/core";
+import {
+  attributeOf,
+  hasExternalResource,
+  HrError,
+  isCountedImage,
+  isDroppedNode,
+  KIND_ATTRIBUTE,
+  parseHtml,
+  sanitizedAttributesOf,
+  serializeHtml,
+} from "@hreader/core";
 import type { HtmlElementNode, HtmlNode, OutlineNode } from "@hreader/core";
 
 import { attributeStringOf, utf8LengthOf } from "./markup";
 import { numberingOf } from "./numbering";
 import type { Numbering } from "./numbering";
 import type { PaperSize } from "./print-css";
-import { printSheetOf } from "./print-page";
+import { printSheetOf, slidesSheetOf } from "./print-page";
 import type { TocItem } from "./print-page";
-import {
-  attributeOf,
-  hasExternalResource,
-  isCountedImage,
-  isDroppedNode,
-  sanitizedAttributesOf,
-} from "./sanitize";
-import type { Attribute } from "./sanitize";
+
+type Attribute = HtmlElementNode["attrs"][number];
+
+/** 本包只有打印稿一个用途；preset 参数化是 core 给 `hr import` 预留的面，这里恒为 print。 */
+const SANITIZE_PRESET = "print" as const;
 
 /**
- * 印什么、用哪个主题、正文是什么，全部由调用方给出：包内不找文件、不读环境（D3/D7），
- * 同输入必然同字节（D2）。
+ * 印什么、用哪个主题、正文是什么，全部由调用方给出：包内不找文件、不读环境，同输入必然同字节。
  */
 export interface PrintHtmlInput {
-  /** 不传则回落：`<title>` → 首个 `h1` → `docId`（§11 之前按 §4 的优先级）。 */
+  /** 不传则回落：`<title>` → 首个 `h1` → `docId`。 */
   readonly title?: string;
   /** 稳定文档标识（源文件 basename 去扩展名）：只进 `<meta name="hr-doc-id">`，不参与排版。 */
   readonly docId: string;
   readonly visualId: string;
-  /** 纸张：必填（D7）。它直接进 `@page{size:…}`，选错纸就是版心被纸边切掉（§15.1）。 */
+  /** 纸张：必填。它直接进 `@page{size:…}`，选错纸就是版心被纸边切掉。 */
   readonly paper: PaperSize;
   /** `<body>` 的类名原样输出；不传或空串表示不加类。 */
   readonly bodyClass?: string;
@@ -43,20 +49,50 @@ export interface PrintHtmlResult {
   readonly html: string;
   /**
    * `html` 的 UTF-8 字节数，精确值：`productOf` 在拼接前算的就是它（同一个数），调用方拿它与
-   * 4 MiB 对表，并保证 `--json.bytes` 与 `statSync(out).size` 相等（§11.4）。
+   * 4 MiB 对表，并保证 `--json.bytes` 与 `statSync(out).size` 相等。
    */
   readonly bytes: number;
   /**
    * 口径只算图片：被删的 `<img>` 与 SVG `<image>`。`<video>`/`<audio>`/`<svg>`/`<iframe>` 是整删，
-   * 不计数——它们不是"图片"，算进来会让那句"已移除 N 个外部图片"说谎（§13.3）。
+   * 不计数——它们不是"图片"，算进来会让那句"已移除 N 个外部图片"说谎。
    */
   readonly droppedImages: number;
+  /**
+   * `true` = 产物是 slides 打印稿（无封面/目录、页框由 CSS `@page` 声明）。
+   * 渲染方据此决定听 CSS 的还是听命令行纸张参数的（`hr pdf` 的 `preferCSSPageSize`）。
+   */
+  readonly slides: boolean;
 }
 
 const DOC_ID_ATTRIBUTE = "data-hr-id";
 
 /** 序号 span 的类名；`print-css.ts` 用同名类排版，两处必须同一个拼写。 */
 const SECNUM_CLASS = "secnum";
+
+/**
+ * 本文件的 walker（`findElement`/`textOf`/`rewrittenChildrenOf`/`reservedIdsOf`，
+ * 还有 `numbering.ts` 的 `visit`）全是递归——输入是用户 HTML，没有天然深度上限，
+ * ~9 万层嵌套就让递归以裸 `RangeError` 退栈（L-40）。在入口量一次深度：
+ * 显式栈 DFS 自己不烧栈；超限抛结构化的 `invalid_document`，进 run.ts 的错误码映射。
+ * outline 的深度是文档深度的子集（每个 outline 节点都对应一个文档元素），同一道闸兜底。
+ */
+const DEPTH_LIMIT = 2048;
+
+/** 显式栈深度测量：只走 element/document 的孩子，文本/注释节点不产生层级。 */
+const depthOf = (root: HtmlNode): number => {
+  let max = 0;
+  const stack: { readonly node: HtmlNode; readonly depth: number }[] = [{ node: root, depth: 1 }];
+  for (let frame = stack.pop(); frame !== undefined; frame = stack.pop()) {
+    if (frame.depth > max) max = frame.depth;
+    const node = frame.node;
+    if (node.kind !== "element" && node.kind !== "document") continue;
+    for (let index = node.children.length - 1; index >= 0; index -= 1) {
+      const child = node.children[index];
+      if (child !== undefined) stack.push({ node: child, depth: frame.depth + 1 });
+    }
+  }
+  return max;
+};
 
 const textOf = (node: HtmlNode): string => {
   if (node.kind === "text") {
@@ -101,7 +137,7 @@ const coverTitleOf = (input: PrintHtmlInput, root: HtmlNode, article: HtmlElemen
 
 interface RewriteState {
   readonly numbering: Numbering;
-  /** `data-hr-id` → 文档内唯一的锚名；在全树占位后一次性分配，写树时只查表（§13.1）。 */
+  /** `data-hr-id` → 文档内唯一的锚名；在全树占位后一次性分配，写树时只查表。 */
   readonly anchorById: ReadonlyMap<string, string>;
   droppedImages: number;
 }
@@ -124,7 +160,7 @@ const anchorOf = (base: string, used: Set<string>): string => {
 
 /** 会被原样保留的 `id`（非标题/非容器的）先占位；等会儿生成的 `sec-…` 绕开它们走。 */
 const reservedIdsOf = (node: HtmlElementNode, numbering: Numbering, used: Set<string>): void => {
-  if (isDroppedNode(node) || hasExternalResource(node)) {
+  if (isDroppedNode(node, SANITIZE_PRESET) || hasExternalResource(node, SANITIZE_PRESET)) {
     return;
   }
   const sectionId = attributeOf(node, DOC_ID_ATTRIBUTE);
@@ -150,7 +186,7 @@ const attributesOf = (
   chapter: boolean,
   anchor: string | undefined,
 ): readonly Attribute[] => {
-  const kept = sanitizedAttributesOf(node).filter(
+  const kept = sanitizedAttributesOf(node, SANITIZE_PRESET).filter(
     ([name]) => !(anchor !== undefined && name === "id") && !(chapter && name === "class"),
   );
   const idAttribute: readonly Attribute[] = anchor === undefined ? [] : [["id", anchor]];
@@ -179,13 +215,13 @@ const rewrittenElementOf = (
   node: HtmlElementNode,
   state: RewriteState,
 ): HtmlElementNode | undefined => {
-  if (isDroppedNode(node)) {
+  if (isDroppedNode(node, SANITIZE_PRESET)) {
     if (isCountedImage(node)) {
       state.droppedImages += 1;
     }
     return undefined;
   }
-  if (hasExternalResource(node)) {
+  if (hasExternalResource(node, SANITIZE_PRESET)) {
     if (isCountedImage(node)) {
       state.droppedImages += 1;
     }
@@ -198,7 +234,7 @@ const rewrittenElementOf = (
   const children = rewrittenChildrenOf(node.children, state);
   return {
     kind: "element",
-    // §11.2：嵌套 `<article>` 降级为 `div`（属性原样留），产物里只许有一个 `<article>`。
+    // 嵌套 `<article>` 降级为 `div`（属性原样留），产物里只许有一个 `<article>`。
     tag: node.tag === "article" ? "div" : node.tag,
     attrs: attributesOf(node, chapter, anchor),
     children:
@@ -221,9 +257,9 @@ const rewrittenChildrenOf = (
 };
 
 /**
- * 空稿判据是**文本级**而非标记级（§12.1）：`<section></section>` 序列化后非空，但纸面上什么都没有，
+ * 空稿判据是**文本级**而非标记级：`<section></section>` 序列化后非空，但纸面上什么都没有，
  * 放了它就等于用一个空 chapter 蒙过校验。用 parseHtml 走一遍文本节点，不用正则剥标签。
- * 零宽字符（`U+200B`/`U+FEFF`/`U+180E`）在纸面上不占位，`trim()` 又不认它们，故先剥再判（§13.2）。
+ * 零宽字符（`U+200B`/`U+FEFF`/`U+180E`）在纸面上不占位，`trim()` 又不认它们，故先剥再判。
  */
 const ZERO_WIDTH = /[\u200B\uFEFF\u180E]/gu;
 const hasText = (html: string): boolean =>
@@ -244,14 +280,23 @@ const articleBodyOf = (article: HtmlElementNode, state: RewriteState): string =>
 };
 
 export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
-  // 不注入 id（BUG-02）：导出产物里只有源文档本来就有的 `data-hr-id`，
+  // 不注入 id：导出产物里只有源文档本来就有的 `data-hr-id`，
   // 否则用户从打印稿拄下来的 id 拿去 `patch` 只会得到 `node_not_found`。
   const parsed = parseHtml(input.documentHtml);
+  const depth = depthOf(parsed.root);
+  if (depth > DEPTH_LIMIT) {
+    throw new HrError(
+      "invalid_document",
+      `文档嵌套 ${String(depth)} 层，超过打印稿的深度上限 ${String(DEPTH_LIMIT)}`,
+    );
+  }
   const article = findElement(parsed.root, "article");
   if (article === undefined) {
     throw new HrError("no_article", "源文档里没有 <article>，无法导出打印稿");
   }
-  const numbering = numberingOf(input.outline);
+  const slides = attributeOf(article, KIND_ATTRIBUTE) === "slides";
+  // slides 不编号也不加 chapter 类：页标题不该带"1.2"前缀，目录页本来就没有。
+  const numbering = slides ? numberingOf([]) : numberingOf(input.outline);
   const usedIds = new Set<string>();
   reservedIdsOf(article, numbering, usedIds);
   // 条目与编号同源（都来自 outline 的顺序），故锚也只按条目分配一次。
@@ -267,7 +312,7 @@ export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
     nav: anchorOf("hr-toc", usedIds),
     title: anchorOf("hr-toc-title", usedIds),
   };
-  const html = printSheetOf({
+  const sheet = {
     paper: input.paper,
     title,
     docId: input.docId,
@@ -276,10 +321,11 @@ export const printHtmlReportOf = (input: PrintHtmlInput): PrintHtmlResult => {
     bodyClass: input.bodyClass,
     tocItems,
     tocIds,
-    articleOpen: `<article${attributeStringOf(sanitizedAttributesOf(article))}>`,
+    articleOpen: `<article${attributeStringOf(sanitizedAttributesOf(article, SANITIZE_PRESET))}>`,
     body,
-  });
-  return { html, bytes: utf8LengthOf(html), droppedImages: state.droppedImages };
+  };
+  const html = slides ? slidesSheetOf(sheet) : printSheetOf(sheet);
+  return { html, bytes: utf8LengthOf(html), droppedImages: state.droppedImages, slides };
 };
 
 export const printHtmlOf = (input: PrintHtmlInput): string => printHtmlReportOf(input).html;

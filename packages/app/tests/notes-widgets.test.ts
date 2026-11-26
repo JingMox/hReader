@@ -1,4 +1,4 @@
-// 这层管：M2.3 的纯 widget/辅助——选区、块文本、右栏卡、diff 规格、闪烁。
+// 这层管：批注/diff 的纯 widget/辅助——选区、块文本、右栏卡、diff 规格、闪烁。
 // 全是纯函数或注入式接线；真 DOM 交给 fake host 记录调用。
 // 写请求与 `coarseDiff` 在 `notes-io.test.ts`。
 

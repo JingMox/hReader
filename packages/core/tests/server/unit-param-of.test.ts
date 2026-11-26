@@ -1,5 +1,5 @@
 // 这层管：`paramOf`（`packages/core/src/server/routes.ts`）——路由具名参数取值。
-// R3 把逐点 `params[key] ?? fallback` 换成这个循环，**两条臂都必须真跑**：
+// 逐点 `params[key] ?? fallback` 收成这个循环，**两条臂都必须真跑**：
 // 命中（返回实际值）与缺失（返回 fallback）。否则等于把死码搬了个家。
 
 import { describe, expect, it } from "vitest";

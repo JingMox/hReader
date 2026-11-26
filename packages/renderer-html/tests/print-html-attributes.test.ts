@@ -23,7 +23,7 @@ const root = parseHtml(product).root;
 const article = firstTagOf(root, "article");
 const idsOf = elementsOfHtml(product).map((element) => attrOf(element, "data-hr-id"));
 
-describe("data-hr-id 幂等（AC-12）", () => {
+describe("data-hr-id 幂等", () => {
   it("源文档的合法 id 逐字保留", () => {
     for (const id of ["chapter-7", "doc-head", "legal-id", "sec-legal"]) {
       expect(idsOf).toContain(id);
@@ -47,7 +47,7 @@ describe("data-hr-id 幂等（AC-12）", () => {
   });
 });
 
-describe("chapter 只由 section 产生（§11.2）", () => {
+describe("chapter 只由 section 产生", () => {
   it("section 带 chapter 类", () => {
     const section = tagsOf(article, "section")[0];
     expect(classesOf(section ?? article)).toContain("chapter");
@@ -59,7 +59,7 @@ describe("chapter 只由 section 产生（§11.2）", () => {
   });
 });
 
-describe("生成锚不与既有 id 冲突（§13.1 / §10 裁定）", () => {
+describe("生成锚不与既有 id 冲突", () => {
   it("源文档占用 sec-1 时，生成锚让位到 sec-1-2（与既有 id 不冲突）", () => {
     const html = printHtmlOf(
       inputOf('<article><h2>甲</h2><div id="sec-1">x</div><h2>乙</h2></article>'),
@@ -75,7 +75,7 @@ describe("生成锚不与既有 id 冲突（§13.1 / §10 裁定）", () => {
     expect(html).not.toContain('<nav class="toc" id="hr-toc">');
   });
 
-  // 有意为之的已知行为（§10 裁定）：改写用户 id 会打断 `<a href="#x">` 的内部链接语义，
+  // 有意为之的已知行为：改写用户 id 会打断 `<a href="#x">` 的内部链接语义，
   // 而重复 id 本身就是非法 HTML——该修的是源文档，不是渲染层。口径仍是"生成锚不与既有 id 冲突"。
   it("source-duplicate-ids-are-preserved：源文档自带的重复 id 原样保留", () => {
     const html = printHtmlOf(
@@ -117,7 +117,7 @@ const headingOutline: readonly OutlineNode[] = [
   { id: "x", tag: "h1", level: 1, text: "标题甲", wordCount: 3, children: [] },
 ];
 
-describe("未 normalize 的树：无 data-hr-id 的既有 id 先占位（§13.1）", () => {
+describe("未 normalize 的树：无 data-hr-id 的既有 id 先占位", () => {
   // `sectionId` 为 undefined 是真实输入：元素只有 `id`、没有 `data-hr-id`。它的 `id` 必须先占位，
   // 否则随后生成的 `sec-…` 会撞上它。
   it('id="sec-1" 无 data-hr-id 时占位生效，生成锚让位到 sec-1-2', () => {
@@ -158,14 +158,14 @@ describe("未 normalize 的树：无 data-hr-id 的既有 id 先占位（§13.1�
 });
 
 describe("字节数", () => {
-  it("报告里的 bytes 等于产物的 UTF-8 字节数（AC-11 上限判据由调用方用）", () => {
+  it("报告里的 bytes 等于产物的 UTF-8 字节数（上限判据由调用方用）", () => {
     const report = printHtmlReportOf(input);
     expect(report.bytes).toBe(Buffer.byteLength(report.html, "utf8"));
     expect(report.bytes).toBeGreaterThan(report.html.length);
   });
 });
 
-describe("对打印稿再导出一次（§11.4 序号不叠）", () => {
+describe("对打印稿再导出一次（序号不叠）", () => {
   it("换掉开头的 secnum 而不是再套一层", () => {
     // 用户把导出的打印稿又喂回 `hr export`：不该变成「1 1 季度复盘」。
     const twice = printHtmlOf(inputOf(product));

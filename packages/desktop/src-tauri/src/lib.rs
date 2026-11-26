@@ -171,20 +171,34 @@ pub fn run(argv: &[String]) -> i32 {
                     cli,
                 })
             }
-            Err(cli_err) => {
-                let message = cli_err.to_string();
-                eprintln!("{message}");
-                show_native_error("hReader 启动失败", &message);
-                1
-            }
+            Err(cli_err) => fail_with_native_error(&cli_err.to_string()),
         },
-        Err(error) => {
-            let message = error.to_string();
-            eprintln!("{message}");
-            show_native_error("hReader 启动失败", &message);
-            1
-        }
+        Err(StartupError::Supervise(error)) => match locate_cli(&options) {
+            Ok(cli) => {
+                save_last_workspace(&options.home, &options.workspace);
+                // 与 connect 里同一条 document_of 路径再算一次，拿到拉不起来的那份文档。
+                // `hr serve` 失败只挡这一份：工作区照开、文件树可用。
+                let doc_id = open_arg::action_of(argv, &options.workspace)
+                    .ok()
+                    .and_then(|action| document_of(&action, &options.workspace).ok())
+                    .unwrap_or_default();
+                window::run(window::LaunchTarget::DocError {
+                    workspace: options.workspace,
+                    cli,
+                    doc_id,
+                    message: error.to_string(),
+                })
+            }
+            Err(cli_err) => fail_with_native_error(&cli_err.to_string()),
+        },
+        Err(error) => fail_with_native_error(&error.to_string()),
     }
+}
+
+fn fail_with_native_error(message: &str) -> i32 {
+    eprintln!("{message}");
+    show_native_error("hReader 启动失败", message);
+    1
 }
 
 fn has_flag(argv: &[String], flag: &str) -> bool {
@@ -254,28 +268,33 @@ fn default_gui_workspace(home: &Path) -> Option<PathBuf> {
     None
 }
 
-/// 保证手写 `.html` 已带 `data-hr-id`，避免桌面端打开即被 `hr serve` 拒收。
-pub(crate) fn ensure_doc_ready(cli: &Path, workspace: &Path, doc_id: &str) {
-    let target = workspace.join(doc_id);
-    let Ok(html) = std::fs::read_to_string(&target) else {
-        return;
-    };
-    if html.contains("data-hr-id=") {
-        return;
-    }
-    let _ = supervisor::run_cli_task(cli, workspace, &["normalize", doc_id, "--write"]);
-}
-
 /// 若桌面壳私有目录里残留着**另一个工作区**的 daemon，先停掉它，确保新打开的文档/工作区不被旧 daemon 拒收。
 pub(crate) fn clear_other_workspace_daemon(home: &Path, target_workspace: &Path) {
+    clear_other_workspace_daemon_with(home, target_workspace, &SystemProbe, &|pid| {
+        supervisor::stop_pid(pid)
+    });
+}
+
+/// 注入探针与击杀动作的实现：`daemon.json` 里的 pid 可能早被 OS 复用——只有 `/healthz`
+/// 仍由这个 pid 应答才证明那还是"我们记的那个 daemon"，否则只清残留文件、绝不向陌生进程发 SIGTERM。
+pub(crate) fn clear_other_workspace_daemon_with(
+    home: &Path,
+    target_workspace: &Path,
+    probe: &dyn Probe,
+    stop: &dyn Fn(u32),
+) {
     let file = daemon_file::daemon_file_in(home);
-    if let Ok(daemon_file::DaemonState::Present(info)) = daemon_file::read_daemon(&file) {
-        if info.workspace != target_workspace {
-            supervisor::stop_pid(info.pid);
-            let _ = std::fs::remove_file(&file);
-            std::thread::sleep(Duration::from_millis(120));
-        }
+    let Ok(daemon_file::DaemonState::Present(info)) = daemon_file::read_daemon(&file) else {
+        return;
+    };
+    if info.workspace == target_workspace {
+        return;
     }
+    if probe.health_pid(info.port) == Some(info.pid) {
+        stop(info.pid);
+        std::thread::sleep(Duration::from_millis(120));
+    }
+    let _ = std::fs::remove_file(&file);
 }
 
 fn prepare_gui_launch(argv: &[String], cwd: &Path, options: &mut ShellOptions) {
@@ -301,14 +320,6 @@ fn prepare_gui_launch(argv: &[String], cwd: &Path, options: &mut ShellOptions) {
         }
     }
     clear_other_workspace_daemon(&options.home, &options.workspace);
-    if let Ok(action) = open_arg::action_of(argv, &options.workspace) {
-        if let (Ok(doc_id), Ok(cli)) = (
-            document_of(&action, &options.workspace),
-            locate_cli(options),
-        ) {
-            ensure_doc_ready(&cli, &options.workspace, &doc_id);
-        }
-    }
 }
 
 #[cfg(target_os = "macos")]
@@ -328,7 +339,7 @@ fn show_native_error(title: &str, message: &str) {
 #[cfg(not(target_os = "macos"))]
 fn show_native_error(_title: &str, _message: &str) {}
 
-/// `--hold <secs>`：无窗口、跑满一段时间或收到 SIGTERM/SIGINT 就退出，给 AC-14 一个可测的靶子。
+/// `--hold <secs>`：无窗口、跑满一段时间或收到 SIGTERM/SIGINT 就退出，给信号处理一个可测的靶子。
 fn hold(argv: &[String], options: &ShellOptions, timeout: Duration) -> i32 {
     let session = match connect(argv, options, signals::watch()) {
         Ok(session) => session,
@@ -452,13 +463,23 @@ pub(crate) fn fallback_cli_path() -> Option<PathBuf> {
     None
 }
 
-fn locate_cli(options: &ShellOptions) -> Result<PathBuf, StartupError> {
+/// GUI 与 `--smoke` 共用的 CLI 定位：`--cli-path`/`HREADER_CLI`/PATH 都落空时回退内置资源。
+pub(crate) fn locate_cli(options: &ShellOptions) -> Result<PathBuf, StartupError> {
     let env_cli = std::env::var_os("HREADER_CLI").map(PathBuf::from);
     let path_var = std::env::var("PATH").ok();
+    locate_cli_with(options, env_cli.as_deref(), path_var.as_deref())
+}
+
+/// 环境变量可注入的实现：`--smoke` 与 GUI 对"没找到时怎么办"必须完全一致。
+pub(crate) fn locate_cli_with(
+    options: &ShellOptions,
+    env_cli: Option<&Path>,
+    path_var: Option<&str>,
+) -> Result<PathBuf, StartupError> {
     match cli_locate::locate(
         options.cli_path.as_deref(),
-        env_cli.as_deref(),
-        path_var.as_deref(),
+        env_cli,
+        path_var,
         &|candidate: &Path| candidate.is_file(),
     ) {
         Ok(located) => Ok(located.cli),
@@ -549,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn r2_home_from_env_prefers_home() {
+    fn home_from_env_prefers_home() {
         let env = test_lookup(&[("HOME", "/home/me"), ("USERPROFILE", "C:/Users/win")]);
         assert_eq!(
             home_from_env(env).expect("HOME 应当胜出"),
@@ -558,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn r2_home_from_env_falls_back_to_userprofile() {
+    fn home_from_env_falls_back_to_userprofile() {
         // Windows 常规只有 USERPROFILE：只读 HOME 的实现在那边等于"没有数据目录"。
         let env = test_lookup(&[("USERPROFILE", "C:/Users/win")]);
         let home = home_from_env(env).expect("USERPROFILE 应当兜底");
@@ -567,7 +588,7 @@ mod tests {
     }
 
     #[test]
-    fn r2_home_from_env_errors_instead_of_falling_back_to_cwd() {
+    fn home_from_env_errors_instead_of_falling_back_to_cwd() {
         // 回退 "." 会把 daemon.json 写进 cwd（可能是任意仓库），正违背 W7。
         let error = home_from_env(test_lookup(&[])).expect_err("两个变量都没有时必须失败");
         assert!(error.contains("USERPROFILE"), "错误里要说清差什么：{error}");
@@ -675,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn r1_bundle_icon_ico_is_a_valid_ico_with_four_sizes() {
+    fn bundle_icon_ico_is_a_valid_ico_with_four_sizes() {
         // Windows 的 tauri-build 直接读 `icons/icon.ico`，本机没有 windows target：这条是唯一守门人。
         assert_valid_ico(
             include_bytes!("../icons/icon.ico"),
@@ -685,7 +706,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "第 0 档没有数据")]
-    fn r7_ico_rejects_empty_directory_with_zero_sizes() {
+    fn ico_rejects_empty_directory_with_zero_sizes() {
         // 70 字节空目录：四档宽高都对，但 size/offset 全 0——旧判据靠 `offset+size<=len` 的 0+0 恒真放过它。
         let bytes = fake_ico(
             &[(16, 16, 0, 0), (32, 32, 0, 0), (48, 48, 0, 0), (0, 0, 0, 0)],
@@ -697,7 +718,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "至少 40 字节")]
-    fn r7_ico_rejects_dib_without_payload() {
+    fn ico_rejects_dib_without_payload() {
         // 目录项自洽、位域写着 32bpp，payload 却只有 4 字节 DIB 签名：旧判据读 `entry[6..8]` 照样全过。
         let bytes = fake_ico(&[(16, 16, 4, 22)], &[0x28, 0, 0, 0]);
         assert_eq!(bytes.len(), 26);
@@ -706,7 +727,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "必须以 IHDR 开头")]
-    fn r7_ico_rejects_png_marker_without_ihdr() {
+    fn ico_rejects_png_marker_without_ihdr() {
         // `PNG 签名 + IEND` 共 16 字节：签名与收尾都对，中间没有 IHDR——"判据吹得比实际贵"的样本。
         let mut payload = PNG_SIGNATURE.to_vec();
         payload.extend_from_slice(&PNG_IEND);
@@ -716,7 +737,7 @@ mod tests {
     }
 
     #[test]
-    fn r8b_ico_rejects_png_without_iend_tail() {
+    fn ico_rejects_png_without_iend_tail() {
         // 签名 8 + 合规 IHDR 块 25 + 假 IDAT 块 16 = 49 字节：IHDR 与长度门槛都过，
         // 只有"以 IEND 收尾"能拒它——否则那行断言永远红不了，等于没有。
         let mut payload = PNG_SIGNATURE.to_vec();
@@ -742,7 +763,7 @@ mod tests {
     }
 
     #[test]
-    fn r7_ico_rejects_png_under_45_bytes() {
+    fn ico_rejects_png_under_45_bytes() {
         // 签名 8 + 合法 IHDR 块 25 + IEND 序列 8 = 41 字节：IHDR 与 IEND 两侧都过
         // （IEND 判据只看 8 字节序列、不看 4 字节长度前缀），只有"至少 45 字节"能拒它。
         // 45 = 签名 8 + IHDR 块 25 + **完整 IEND 块** 12，所以这条断言判的是块结构完整。
@@ -771,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn ac11_shell_home_is_app_scoped_and_never_the_user_home() {
+    fn shell_home_is_app_scoped_and_never_the_user_home() {
         let user_home = Path::new("/Users/x");
         let shell_home = default_home_for(user_home);
         assert_ne!(shell_home, user_home, "绝不能用 $HOME 本身");
@@ -793,7 +814,7 @@ mod tests {
     }
 
     #[test]
-    fn ac11_daemon_file_lands_outside_the_user_store() {
+    fn daemon_file_lands_outside_the_user_store() {
         let user_home = Path::new("/Users/x");
         let file = daemon_file::daemon_file_in(&default_home_for(user_home));
         assert_ne!(file, user_home.join(".hreader/daemon.json"));
@@ -857,6 +878,127 @@ mod tests {
             Err(StartupError::NoDocument(_))
         ));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    /// `clear_other_workspace_daemon` 的探针/击杀注入版：daemon.json 里的 pid 可能
+    /// 已经被 OS 复用——只有 `/healthz` 仍由这个 pid 应答才允许 SIGTERM，否则只清记录。
+    #[test]
+    fn clearing_a_foreign_workspace_daemon_verifies_pid_before_killing() {
+        use crate::spawn_decision::Probe;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        struct Fake {
+            health: Option<u32>,
+        }
+        impl Probe for Fake {
+            fn port_open(&self, _port: u16) -> bool {
+                self.health.is_some()
+            }
+            fn process_alive(&self, _pid: u32) -> bool {
+                true
+            }
+            fn health_pid(&self, _port: u16) -> Option<u32> {
+                self.health
+            }
+        }
+
+        let root = std::env::temp_dir().join(format!("hr-clear-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let home = root.join("home");
+        fs::create_dir_all(home.join(".hreader")).expect("home");
+        let file = daemon_file::daemon_file_in(&home);
+        fs::write(
+            &file,
+            "{\"port\":8123,\"token\":\"t\",\"pid\":42,\"workspace\":\"/old-ws\"}",
+        )
+        .expect("write daemon.json");
+
+        let killed = Rc::new(RefCell::new(Vec::<u32>::new()));
+        let stop = {
+            let killed = Rc::clone(&killed);
+            move |pid: u32| killed.borrow_mut().push(pid)
+        };
+
+        // pid 42 被别的进程复用（healthz 应答的是 7）：不许杀，只清掉残留文件。
+        clear_other_workspace_daemon_with(
+            &home,
+            Path::new("/new-ws"),
+            &Fake { health: Some(7) },
+            &stop,
+        );
+        assert_eq!(*killed.borrow(), Vec::<u32>::new(), "pid 复用时不许误杀");
+        assert!(!file.exists(), "残留记录仍应清除");
+
+        // healthz 完全不应答（pid 42 死活未知）：同样只清文件不杀进程。
+        fs::write(
+            &file,
+            "{\"port\":8123,\"token\":\"t\",\"pid\":42,\"workspace\":\"/old-ws\"}",
+        )
+        .expect("rewrite");
+        clear_other_workspace_daemon_with(
+            &home,
+            Path::new("/new-ws"),
+            &Fake { health: None },
+            &stop,
+        );
+        assert_eq!(
+            *killed.borrow(),
+            Vec::<u32>::new(),
+            "healthz 不应答时不许误杀"
+        );
+        assert!(!file.exists());
+
+        // healthz 确认还是 42 号 daemon：这才是"我记录的那个 daemon"，可以停。
+        fs::write(
+            &file,
+            "{\"port\":8123,\"token\":\"t\",\"pid\":42,\"workspace\":\"/old-ws\"}",
+        )
+        .expect("rewrite");
+        clear_other_workspace_daemon_with(
+            &home,
+            Path::new("/new-ws"),
+            &Fake { health: Some(42) },
+            &stop,
+        );
+        assert_eq!(*killed.borrow(), vec![42], "确认是本 daemon 才允许收尸");
+
+        // 同一个工作区的 daemon 不能动。
+        fs::write(
+            &file,
+            "{\"port\":8123,\"token\":\"t\",\"pid\":42,\"workspace\":\"/new-ws\"}",
+        )
+        .expect("rewrite");
+        clear_other_workspace_daemon_with(
+            &home,
+            Path::new("/new-ws"),
+            &Fake { health: Some(42) },
+            &stop,
+        );
+        assert_eq!(*killed.borrow(), vec![42], "同工作区 daemon 不许碰");
+        assert!(file.exists(), "同工作区的记录要留着");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn locate_cli_falls_back_to_bundled_when_path_lacks_hr() {
+        let options = ShellOptions {
+            smoke: true,
+            home: PathBuf::from("/tmp/h"),
+            workspace: PathBuf::from("/tmp/ws"),
+            cli_path: None,
+            port: None,
+            hold: None,
+        };
+        // PATH 里没有任何 hr：显式指定缺失会报错，未指定时必须落到内置资源。
+        let located = locate_cli_with(&options, None, Some("/definitely/no/hr/here"));
+        let cli = located.expect("PATH 找不到时应回退到内置 CLI");
+        assert!(cli.is_file(), "{cli:?} 必须真的存在");
+        assert!(
+            cli.file_name().and_then(|n| n.to_str()) == Some("hr.mjs")
+                || cli.file_name().and_then(|n| n.to_str()) == Some("cli.mjs"),
+            "{cli:?} 应是内置 cli"
+        );
     }
 
     #[test]

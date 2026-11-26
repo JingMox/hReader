@@ -134,7 +134,7 @@ describe("目录", () => {
     expect(new Set(duplicate.map((item) => attrOf(item, "data-toc-id"))).size).toBe(2);
   });
 
-  it("层级类名来自落地标题的 tag（D6 契约）", () => {
+  it("层级类名来自落地标题的 tag", () => {
     for (const item of tocItems) {
       const target = byId.get((attrOf(firstTagOf(item, "a"), "href") ?? "").slice(1));
       expect(target === undefined ? "" : target.tag).toMatch(/^h[1-4]$/u);

@@ -15,7 +15,7 @@ import {
   userThemePath,
 } from "./resource";
 
-/** 用户目录优先、仓库内置兜底：与语言维度的"就近覆盖"同一口径（裁定 #2）。 */
+/** 用户目录优先、仓库内置兜底：与语言维度的"就近覆盖"同一口径。 */
 const themeCandidates = (visualId: string, deps: StyleDeps): readonly string[] => [
   userThemePath(visualId, deps),
   join(builtinThemeDir(visualId, deps), THEME_FILE),
@@ -32,7 +32,7 @@ export const resolveThemePath = async (visualId: string, deps: StyleDeps): Promi
   );
 };
 
-/** 注入前先过静态防线：主题只能离线自足（AC7.5 / 裁定 #9）。 */
+/** 注入前先过静态防线：主题只能离线自足。 */
 export const readThemeCss = async (path: string, deps: StyleDeps): Promise<string> => {
   const css = await readOptionalText(path, deps);
   if (css === undefined) throw styleIo("读取主题", path, undefined);

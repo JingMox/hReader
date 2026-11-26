@@ -1,4 +1,4 @@
-// 这层管：从 meta 批注里挑出 `pending_ai` 并校验 targetId 是否存在；不改文档、不写回。
+// 这层管：从 meta 批注里挑出待处理（`pending_ai` / `pending`）的批注并校验 targetId 是否存在；不改文档、不写回。
 
 import {
   type Diagnostic,
@@ -7,7 +7,7 @@ import {
   type HtmlNode,
 } from "../../html/constants";
 import { drainStack } from "../../html/stack";
-import { PENDING_ANNOTATION_STATUS, type MetaAnnotation } from "../../meta";
+import { PENDING_ANNOTATION_STATUSES, type MetaAnnotation } from "../../meta";
 import { attributeOf } from "../../model/attrs";
 import { OUTLINE_ANNOTATION_LIMIT, type PendingAnnotation } from "./constants";
 import { truncate } from "./text";
@@ -50,7 +50,7 @@ export const pendingAnnotations = (
   const pending: PendingAnnotation[] = [];
   const diagnostics: Diagnostic[] = [];
   for (const annotation of annotations) {
-    if (annotation.status !== PENDING_ANNOTATION_STATUS) {
+    if (!PENDING_ANNOTATION_STATUSES.has(annotation.status)) {
       continue;
     }
     pending.push({

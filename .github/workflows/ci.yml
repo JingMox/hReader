@@ -1,5 +1,5 @@
 name: CI
-# 与 pnpm verify 的十步一一对应：少一步就是"本地绿、CI 不查"
+# checks job 与 pnpm verify 同序：本地和 CI 跑同一套门禁。
 
 on:
   push:
@@ -21,14 +21,25 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: pnpm format:check
-      - run: pnpm check-ci-parity
       - run: pnpm lint
       - run: pnpm lint:sh
-      - run: pnpm lint-sh-selftest
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:coverage
+      # 乱序回归：顺序敏感的失败（共享状态、泄漏句柄、隐式文件依赖）只有打乱才暴露；
+      # 种子每次随机，vitest 会在输出里打出 seed，失败可按它复现。
+      - run: pnpm vitest run --sequence.shuffle
+      # ubuntu-latest 自带 Chrome：两个 e2e 自检脚本（打印稿分页、外来文档沙箱）在 CI 真跑。
+      - run: pnpm test:e2e
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+      - run: pnpm theme:check
+      # 跨包集成/用户旅程（真 dist 产物 + 真 Chrome；ubuntu runner 自带 Chrome，desktop 冒烟会自动 SKIP）。
+      - run: pnpm test:integration
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
       - run: pnpm depcruise
       - run: pnpm knip
 

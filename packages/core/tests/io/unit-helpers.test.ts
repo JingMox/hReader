@@ -12,7 +12,7 @@ import {
   attributeValueLoose,
   hasAttribute,
   hasAttributeLoose,
-} from "../../src/ops/patchNode/attrs";
+} from "../../src/ops/patch-node/attrs";
 import { isProcessAlive } from "../../src/io/process";
 import { codeOfAsync, depsOf, fakeFs, fixedClock, recordingSleep, systemError } from "./harness";
 
@@ -98,7 +98,11 @@ describe("io 端口的失败翻译（走假 fs，不碰真盘）", () => {
     for (const dir of dirs) fake.state.dirs.add(dir);
     fake.fail("lstat", systemError("EPERM"), (path) => path === tmp);
 
-    await removeStaleTmp(depsOf(fake.port, fixedClock(NOW).clock, recordingSleep().sleep), "/ws");
+    await removeStaleTmp(
+      depsOf(fake.port, fixedClock(NOW).clock, recordingSleep().sleep),
+      "/ws",
+      "a.html",
+    );
 
     expect(fake.state.files.has(tmp)).toBe(true);
     expect(fake.state.files.has("/ws/a.html")).toBe(true);
@@ -108,7 +112,7 @@ describe("io 端口的失败翻译（走假 fs，不碰真盘）", () => {
 describe("io 端口的失败翻译（续）", () => {
   // 这条曾经把"数据丢失缺陷"写成了期望：`ageOf()` 在 lstat 失败时返回 MAX_SAFE_INTEGER，
   // 于是一个刚创建、只是暂时读不动的锁会被判成陈旧并抢走 —— 两个写者同时持锁 → 丢写。
-  // 实现已改为"不可读 = 年龄 0 = 不陈旧"；断言随之翻转（改动原因见 worklog M2.1 / 裁定 R5）。
+  // 实现已改为"不可读 = 年龄 0 = 不陈旧"；断言随之翻转。
   it("should keep an unreadable lock and time out instead of stealing it", async () => {
     const lock = "/ws/.hreader/locks/lock.lock";
     const fake = fakeFs({ "/ws/a.html": "x", [lock]: "{broken" });

@@ -11,7 +11,7 @@ import {
   collectElements,
   findElement,
   requireElement,
-} from "./html-support.test";
+} from "./html-support";
 
 const HR_ID = "data-hr-id";
 
@@ -37,7 +37,7 @@ describe("injectNodeIds · 注入范围", () => {
     const injected = inject("<main><p>o</p></main><article><h2>a</h2><p>b</p></article>");
     const outside = requireElement(injected.parsed.root, "main").children[0];
 
-    // M1.2 v2：最外层 <article> 自身也进注入清单（模型根需要 data-hr-id）。
+    // 最外层 <article> 自身也进注入清单（模型根需要 data-hr-id）。
     expect(injected.injected).toHaveLength(3);
     if (outside?.kind !== "element") {
       throw new Error("expected an element below <main>");
@@ -51,10 +51,10 @@ describe("injectNodeIds · 注入范围", () => {
 });
 
 describe("injectNodeIds · 注入范围 · 续", () => {
-  it("should inject the article element itself since M1.2 v2", () => {
+  it("should inject the article element itself as the model root", () => {
     const injected = inject("<article><p>a</p></article>");
 
-    // v2 裁定 1 反转了 M1.1 的旧断言：模型根必须带 data-hr-id，所以 article 自身是注入目标。
+    // 模型根必须带 data-hr-id，所以 article 自身是注入目标。
     expect(injected.injected).toHaveLength(2);
     expect(attributeValue(requireElement(injected.parsed.root, "article"), HR_ID)).toMatch(
       ID_SHAPE,
@@ -80,7 +80,7 @@ describe("injectNodeIds · 注入范围 · 续", () => {
 });
 
 describe("injectNodeIds · div 与词表", () => {
-  // F10：`div` 无条件进 `ADDRESSABLE_TAGS` —— 批注与 patch 要能命中普通容器，
+  // `div` 无条件进 `ADDRESSABLE_TAGS` —— 批注与 patch 要能命中普通容器，
   // 不再要求 `data-hr-component`。这条用例守着“别再把它按组件属性分等级”。
   it("should give a plain div the same id treatment as a component div", () => {
     const injected = inject(
@@ -111,7 +111,7 @@ describe("injectNodeIds · div 与词表", () => {
 });
 
 describe("injectNodeIds · 块级词表", () => {
-  // 行内与未知标签仍然不拿 id；`h5`/`h6`/`div` 在 F10 之后是寻址面成员，所以都该有 id。
+  // 行内与未知标签仍然不拿 id；`h5`/`h6`/`div` 是寻址面成员，所以都该有 id。
   it("should skip inline and unknown tags but id h5, h6 and plain div", () => {
     const html =
       "<article><nav>n</nav><h5>t</h5><h6>t</h6><span>s</span><div>d</div><article><p>a</p></article></article>";
@@ -201,7 +201,7 @@ describe("injectNodeIds · 既有 ID", () => {
   });
 
   it("should append diagnostics after the parse-level ones instead of replacing them", () => {
-    // `1abc` 不合规（首位必须是字母）；`X` 在 R2-11 的新模式下是合法 id，不能当反例用。
+    // `1abc` 不合规（首位必须是字母）；`X` 在新模式下是合法 id，不能当反例用。
     const injected = inject(
       '<article><p data-hr-id="1abc">a</p><div data-hr-component="nope">b</div></article>',
     );

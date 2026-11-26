@@ -112,7 +112,7 @@ describe("watcher · 回调过滤", () => {
     const changes: string[] = [];
     let callback: ((event: string, name: string | undefined) => void) | undefined;
     const watcher = createWatcher(
-      { now: () => 0, onFileChange: (path) => changes.push(path) },
+      { onFileChange: (path) => changes.push(path) },
       (_dir, onEvent) => {
         callback = onEvent;
         return watcherLike();

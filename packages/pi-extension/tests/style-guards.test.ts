@@ -1,5 +1,5 @@
-// 这层管 `/hr-style` 的三条边角语义：风格归属（G1）、并发取代（G4）、回显净化与截断（G3）、
-// 以及 2xx 非 JSON 的文案（G2）。断言都落在"用户终端上看得见什么"上。
+// 这层管 `/hr-style` 的三条边角语义：风格归属、并发取代、回显净化与截断、
+// 以及 2xx 非 JSON 的文案。断言都落在"用户终端上看得见什么"上。
 
 import { describe, expect, it } from "vitest";
 
@@ -57,7 +57,17 @@ const sleepOf = (ms: number): Promise<void> =>
     setTimeout(done, ms);
   });
 
-describe("/hr-style 的归属（G1：风格是文档属性）", () => {
+/** 等到发往 `urlPart` 的请求数到 `min`（fetch 一发出就记进 calls，不等响应）——
+ *  用它把"第二条命令在第一条还在路上时发出"变成可观察条件，不靠 sleep 猜调度。 */
+const untilCalls = async (harness: Harness, urlPart: string, min: number): Promise<void> => {
+  const deadline = Date.now() + 3_000;
+  while (harness.calls.filter((call) => call.url.includes(urlPart)).length < min) {
+    if (Date.now() > deadline) throw new Error(`等 ${urlPart} 第 ${String(min)} 次请求超时`);
+    await sleepOf(1);
+  }
+};
+
+describe("/hr-style 的归属（风格是文档属性）", () => {
   it("换到另一个文档后，状态行不再报上一个文档的风格", async () => {
     const harness = harnessOf({
       "/api/theme": [THEMES],
@@ -88,7 +98,7 @@ describe("/hr-style 的归属（G1：风格是文档属性）", () => {
   });
 });
 
-describe("被取代的命令不得动 daemon（G4 的 POST 侧）", () => {
+describe("被取代的命令不得动 daemon（POST 侧）", () => {
   it("GET /api/theme 慢时，被取代的那条命令连 POST 都不发（不只丢结果）", async () => {
     // Arrange：第一次 GET 慢 150ms，第二次 10ms（daemon 卡一下就是这个形状）。
     const harness = harnessOf({
@@ -97,10 +107,14 @@ describe("被取代的命令不得动 daemon（G4 的 POST 侧）", () => {
       "/api/events": [EVENTS],
     });
     await harness.run("hreader", "docs/x.html");
-    // Act：先发 feynman-tech（卡在 GET），5ms 后发 atelier-editorial。
+    // Act：先发 feynman-tech（卡在 GET /api/theme 的 150ms 脚本延迟上），
+    // 等这条 GET 真的发出去了再发 atelier-editorial——"第一条在途"是可观察条件。
+    const themeCalls = harness.calls.filter((call) => call.url.includes("/api/theme")).length;
     await Promise.all([
       harness.run("hr-style", "feynman-tech"),
-      sleepOf(5).then(() => harness.run("hr-style", "atelier-editorial")),
+      untilCalls(harness, "/api/theme", themeCalls + 1).then(() =>
+        harness.run("hr-style", "atelier-editorial"),
+      ),
     ]);
     // Assert：只有后发那条落在 daemon 上；被打断的那条不得发 POST（否则盘上风格与状态行分叉）。
     expect(postsOf(harness, "/api/style").map((request) => request.body)).toEqual([
@@ -111,7 +125,7 @@ describe("被取代的命令不得动 daemon（G4 的 POST 侧）", () => {
   });
 });
 
-describe("/hr-style 的并发（G4：后发起的命令赢）", () => {
+describe("/hr-style 的并发（后发起的命令赢）", () => {
   it("后一次的结果不被前一次的慢响覆盖，被丢弃的那次也不改状态", async () => {
     // Arrange：第一条 POST 的 body 晚 150ms 才到，第二条 10ms。
     const harness = harnessOf({
@@ -123,10 +137,14 @@ describe("/hr-style 的并发（G4：后发起的命令赢）", () => {
       "/api/events": [EVENTS],
     });
     await harness.run("hreader", "docs/x.html");
+    // 第二条在第一条的 POST /api/style 还没 settle 时发出：
+    // POST 一进 calls 就证明第一条已推进到写盘阶段（其响应还压着 150ms）。
+    const styleCalls = harness.calls.filter((call) => call.url.includes("/api/style")).length;
     await Promise.all([
       harness.run("hr-style", "feynman-tech"),
-      // 第二条在第一条还没 settle 时发出。
-      sleepOf(5).then(() => harness.run("hr-style", "atelier-editorial")),
+      untilCalls(harness, "/api/style", styleCalls + 1).then(() =>
+        harness.run("hr-style", "atelier-editorial"),
+      ),
     ]);
     await harness.run("hreader", "");
     // Assert：两次都真发了 POST（不是"第二次吞掉第一次"）。
@@ -142,7 +160,7 @@ describe("/hr-style 的并发（G4：后发起的命令赢）", () => {
   });
 });
 
-describe("回显净化与截断（G3：workspace 不可信）", () => {
+describe("回显净化与截断（workspace 不可信）", () => {
   it("视觉 id 里的控制字符不原样进入列表、回显与状态行", async () => {
     const harness = harnessOf({
       // id 来自 workspace 目录名 → 不可信输入：ESC 序列、换行、都实测能进终端。
@@ -173,7 +191,7 @@ describe("回显净化与截断（G3：workspace 不可信）", () => {
   });
 });
 
-describe("回显长度上界（G3：4KB 长 id）", () => {
+describe("回显长度上界（4KB 长 id）", () => {
   it("非法 id 的回显同样净化（用户粘进来的 ESC 不得原样进终端）", async () => {
     const harness = harnessOf({ "/api/theme": [THEMES] });
     await harness.run("hr-style", `${ESC}-nope`);
@@ -208,7 +226,7 @@ describe("回显长度上界（G3：4KB 长 id）", () => {
   });
 });
 
-describe("2xx 但响应不是 JSON 的文案（G2）", () => {
+describe("2xx 但响应不是 JSON 的文案", () => {
   it("`GET /api/theme` 返回 200 但不是 JSON：不说“返回 200：未知错误”", async () => {
     const harness = harnessOf({ "/api/theme": [{ text: "<html>oops</html>" }] });
     await harness.run("hr-style", "feynman-tech");

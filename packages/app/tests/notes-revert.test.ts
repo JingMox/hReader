@@ -1,5 +1,5 @@
-// P1-10：撤销（`w`）之后面板必须关、状态必须落，否则连按 `w` 会连撤——
-// 第二下撤掉的是用户自己刚做的 patch（审计实测的损失路径）。
+// 撤销（`w`）之后面板必须关、状态必须落，否则连按 `w` 会连撤——
+// 第二下撤掉的是用户自己刚做的 patch（实测的损失路径）。
 
 import { describe, expect, it } from "vitest";
 
@@ -16,7 +16,7 @@ const openDiff = async (h: ReturnType<typeof bootedWith>): Promise<void> => {
   await flush();
 };
 
-describe("撤销 · 面板关闭与单次请求（P1-10）", () => {
+describe("撤销 · 面板关闭与单次请求", () => {
   it("should close the diff panel after a revert", async () => {
     const h = bootedWith();
     await openDiff(h);

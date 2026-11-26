@@ -1,6 +1,11 @@
 //! `hr` CLI 的三级定位：`--cli-path` > `HREADER_CLI` > `PATH`（纯决策，存在性判定由调用方注入）。
 
+use std::ffi::{OsStr, OsString};
+use std::io;
 use std::path::{Path, PathBuf};
+
+use which::sys::{Sys, SysMetadata, SysReadDirEntry};
+use which::WhichConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
@@ -21,6 +26,93 @@ pub enum LocateError {
     ExplicitMissing(PathBuf),
     /// 三级全落空：干净机器需要先 `npm i -g @hreader/cli` 或设 `HREADER_CLI`。
     NotFound,
+}
+
+struct InjectedMetadata {
+    is_file: bool,
+}
+
+impl SysMetadata for InjectedMetadata {
+    fn is_symlink(&self) -> bool {
+        false
+    }
+
+    fn is_file(&self) -> bool {
+        self.is_file
+    }
+}
+
+struct EmptyDirEntry;
+
+impl SysReadDirEntry for EmptyDirEntry {
+    fn file_name(&self) -> OsString {
+        OsString::new()
+    }
+
+    fn path(&self) -> PathBuf {
+        PathBuf::new()
+    }
+}
+
+/// 将调用方注入的 `exists` 判定适配为 `which::sys::Sys`，在保持纯函数可测性的前提下复用 `which` 的 PATH 查找。
+struct InjectedSys<'a> {
+    exists: &'a dyn Fn(&Path) -> bool,
+}
+
+impl Sys for InjectedSys<'_> {
+    type ReadDirEntry = EmptyDirEntry;
+    type Metadata = InjectedMetadata;
+
+    fn is_windows(&self) -> bool {
+        cfg!(windows)
+    }
+
+    fn current_dir(&self) -> io::Result<PathBuf> {
+        Err(io::Error::new(io::ErrorKind::NotFound, "unused"))
+    }
+
+    fn home_dir(&self) -> Option<PathBuf> {
+        None
+    }
+
+    fn env_split_paths(&self, paths: &OsStr) -> Vec<PathBuf> {
+        std::env::split_paths(paths)
+            .filter(|dir| !dir.as_os_str().is_empty())
+            .collect()
+    }
+
+    fn env_path(&self) -> Option<OsString> {
+        None
+    }
+
+    fn env_path_ext(&self) -> Option<OsString> {
+        if cfg!(windows) {
+            Some(OsString::from(".CMD;.EXE"))
+        } else {
+            None
+        }
+    }
+
+    fn metadata(&self, path: &Path) -> io::Result<Self::Metadata> {
+        Ok(InjectedMetadata {
+            is_file: (self.exists)(path),
+        })
+    }
+
+    fn symlink_metadata(&self, path: &Path) -> io::Result<Self::Metadata> {
+        self.metadata(path)
+    }
+
+    fn read_dir(
+        &self,
+        _path: &Path,
+    ) -> io::Result<Box<dyn Iterator<Item = io::Result<Self::ReadDirEntry>>>> {
+        Ok(Box::new(std::iter::empty()))
+    }
+
+    fn is_valid_executable(&self, path: &Path) -> io::Result<bool> {
+        Ok((self.exists)(path))
+    }
 }
 
 pub fn locate(
@@ -47,28 +139,23 @@ pub fn locate(
             });
         }
     }
-    let sep = if cfg!(windows) { ';' } else { ':' };
-    let names: &[&str] = if cfg!(windows) {
-        &["hr.cmd", "hr.exe", "hr"]
-    } else {
-        &["hr"]
+    let Some(path_list) = path_var else {
+        return Err(LocateError::NotFound);
     };
-    for directory in path_var
-        .unwrap_or("")
-        .split(sep)
-        .filter(|item| !item.is_empty())
-    {
-        for name in names {
-            let candidate = Path::new(directory).join(name);
-            if exists(&candidate) {
-                return Ok(Located {
-                    cli: candidate,
-                    source: Source::Path,
-                });
-            }
-        }
+    let found = WhichConfig::new_with_sys(InjectedSys { exists })
+        .binary_name(OsString::from("hr"))
+        .custom_path_list(OsString::from(path_list))
+        .system_cwd(false)
+        .all_results()
+        .ok()
+        .and_then(|mut iter| iter.next());
+    match found {
+        Some(cli) => Ok(Located {
+            cli,
+            source: Source::Path,
+        }),
+        None => Err(LocateError::NotFound),
     }
-    Err(LocateError::NotFound)
 }
 
 #[cfg(test)]
@@ -80,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_flag_wins_over_env_and_path() {
+    fn flag_wins_over_env_and_path() {
         let exists = only_these(&["/flag/hr", "/env/hr", "/bin/hr"]);
         assert_eq!(
             locate(
@@ -97,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_env_wins_over_path() {
+    fn env_wins_over_path() {
         let exists = only_these(&["/env/hr", "/bin/hr"]);
         assert_eq!(
             locate(
@@ -114,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_path_is_the_last_resort() {
+    fn path_is_the_last_resort() {
         let exists = only_these(&["/bin/hr"]);
         let path_env = if cfg!(windows) {
             "/usr/bin;/bin"
@@ -131,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_missing_explicit_path_does_not_fall_back() {
+    fn missing_explicit_path_does_not_fall_back() {
         let exists = only_these(&["/bin/hr"]);
         assert_eq!(
             locate(Some(Path::new("/nope/hr")), None, Some("/bin"), &exists),
@@ -140,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_all_three_missing_is_not_found() {
+    fn all_three_missing_is_not_found() {
         let exists = only_these(&[]);
         assert_eq!(
             locate(
@@ -158,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn ac6_empty_path_entries_are_skipped() {
+    fn empty_path_entries_are_skipped() {
         let exists = only_these(&["/bin/hr"]);
         let path_env = if cfg!(windows) {
             ";;/bin;;"

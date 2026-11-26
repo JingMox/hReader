@@ -4,11 +4,11 @@ import * as coreEntry from "../../core/src/index";
 import { HrError } from "../../core/src/index";
 import type { ReadNodeResult } from "../../core/src/index";
 
-// M1.1 起 `@hreader/core` 的公开面由 docs/02 §5.2 与卡片定义，M1.1 追加 3 个 HTML 函数。
+// `@hreader/core` 的公开面由契约定义；这里钉住当时追加的 3 个 HTML 函数。
 // 断言策略（为什么这不是放水）：
 //   1. 规格成员逐条点名 —— 少一个就红，报错直接指到缺的名字；
 //   2. 额外键只允许"规格表里没有"的，且报错信息是"多出了谁" —— 内部符号漏出仍然红。
-// M1.0 的 `toEqual(["HrError"])` 是快照式断言：它每张卡都会因合法扩面变红，而红的原因和
+// 旧的 `toEqual(["HrError"])` 是快照式断言：它每张卡都会因合法扩面变红，而红的原因和
 // "实现漏了一个函数"长得一模一样。双表把两种失败区分开，判据仍来自规格（REQUIRED 列表）。
 
 describe("package public surfaces", () => {
@@ -27,9 +27,14 @@ describe("package public surfaces", () => {
 const PUBLIC = [
   "ANCHOR_LIMITS",
   "BUILTIN_STYLES",
+  "COMPONENT_RULES",
+  "DEFAULT_DOC_KIND",
   "DEFAULT_STYLE_ID",
   "DIFF_CHAR_LIMIT",
+  "DOC_KINDS",
   "HrError",
+  "KIND_ATTRIBUTE",
+  "LAYOUT_ISSUE_LIMIT",
   "LINT_HIT_LIMIT",
   "NOTE_LIMIT",
   "STYLE_FILE",
@@ -38,22 +43,34 @@ const PUBLIC = [
   "applyPatch",
   "applyStyle",
   "assertThemeSafe",
+  "attributeOf",
   "buildOutline",
+  "checkLayout",
+  "classifyDocument",
   "compileTone",
   "diffText",
   "discoverStyles",
+  "embeddedThemeCssOf",
   "extractStyle",
   "extractStyleWithLlm",
   "findBuiltinStyle",
   "hasArticle",
+  "hasExecutableContent",
+  "hasExternalResource",
+  "importForeign",
   "injectNodeIds",
+  "isCountedImage",
+  "isDocKind",
+  "isDroppedNode",
   "isInside",
   "isInsideOrSelf",
   "lintByStyle",
   "listAnnotations",
+  "loadDocument",
   "loadStyle",
   "loadThemeCss",
   "locateTarget",
+  "newDocumentHtml",
   "nodePatchDeps",
   "nodeStyleDeps",
   "normalizeFile",
@@ -71,6 +88,7 @@ const PUBLIC = [
   "resolveAnnotation",
   "resolveThemePath",
   "revertLast",
+  "sanitizedAttributesOf",
   "saveStyleText",
   "serializeHtml",
   "startServer",
@@ -83,7 +101,7 @@ const PUBLIC = [
 ];
 
 describe("core entry · 精确集", () => {
-  it("should not leak internal symbols onto the public surface（55 项精确集）", () => {
+  it("should not leak internal symbols onto the public surface（72 项精确集）", () => {
     // 精确集而不是"至少含有"：多一个内部符号也红，报错直接点名多出来的那个。
 
     expect(Object.keys(coreEntry).sort()).toEqual(PUBLIC);

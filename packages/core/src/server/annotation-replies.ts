@@ -1,13 +1,16 @@
-// 这层管：M2.3 的四个批注/撤销处理器（AC3.1–AC3.4）；只产出 `Reply`/`Written`，不碰 socket。
+// 这层管：批注/撤销处理器；只产出 `Reply`/`Written`，不碰 socket。
+
+import { z } from "zod";
 
 import type { ResolvedTarget } from "../io/paths";
 import { diffText, resolveAnchor, type Annotation, type TextAnchor } from "../annotations";
 import { HrError } from "../hr-error";
+import { jsonObject } from "../schema";
 import type { DocumentModel } from "../model/constants";
-import { addAnnotation, listAnnotations, resolveAnnotation } from "../ops/annotationOps";
-import { revertLast } from "../ops/revertOp";
+import { addAnnotation, listAnnotations, resolveAnnotation } from "../ops/annotation-ops";
+import { revertLast } from "../ops/revert-op";
 import { blockBasisOf, flattenOf, modelOf } from "./annotation-basis";
-import { integerFieldOf, requiredStringOf, stringFieldOf } from "./body";
+import { integer, optionalString, parseBody, requiredString } from "./body";
 import type { AnnotationDiffBody, Reply } from "./contracts";
 import { busy, jsonReply, targetOf, type HandlerContext, type Written } from "./handlers";
 import { revisionOf } from "./revision";
@@ -15,7 +18,7 @@ import { revisionOf } from "./revision";
 const bytesOf = (ctx: HandlerContext, target: ResolvedTarget): Promise<Uint8Array> =>
   ctx.deps.fs.readFile(target.realPath);
 
-/** 锚点解析的"文档侧"：失败是值不是异常（AC1.2），且**按批注自己的块**判（裁定 #4）。 */
+/** 锚点解析的"文档侧"：失败是值不是异常，且**按批注自己的块**判。 */
 const lostOf = (model: DocumentModel, annotations: readonly Annotation[]): readonly string[] => {
   const nodes = flattenOf(model);
   const ids = nodes.map((node) => node.id);
@@ -44,16 +47,19 @@ export const annotationsReply = async (ctx: HandlerContext, docId: string): Prom
   });
 };
 
-const anchorOf = (body: Readonly<Record<string, unknown>>): TextAnchor => {
-  const raw = body["anchor"];
-  if (typeof raw !== "object" || raw === null) throw new HrError("invalid_payload", "anchor 缺失");
-  const record: Readonly<Record<string, unknown>> = { ...raw };
-  return {
-    exact: requiredStringOf(record, "exact"),
-    prefix: stringFieldOf(record, "prefix") ?? "",
-    suffix: stringFieldOf(record, "suffix") ?? "",
-    start: integerFieldOf(record, "start"),
-  };
+const anchorBody = z.object({
+  exact: requiredString,
+  prefix: z.string().catch(""),
+  suffix: z.string().catch(""),
+  start: integer,
+});
+
+const addBody = z.object({ nodeId: requiredString, note: optionalString });
+
+/** 缺 `anchor` 是 payload 形状错（`invalid_payload`），`anchor` 里的字段错才是请求错。 */
+const anchorOf = (raw: unknown): TextAnchor => {
+  if (!jsonObject.safeParse(raw).success) throw new HrError("invalid_payload", "anchor 缺失");
+  return parseBody(anchorBody, raw);
 };
 
 export const annotationAddReply = async (
@@ -63,15 +69,14 @@ export const annotationAddReply = async (
   lockMs: number,
 ): Promise<Written> => {
   const target = await targetOf(ctx, docId);
+  const { nodeId, note } = parseBody(addBody, body);
+  const anchor = anchorOf(body["anchor"]);
+  // 与 patch/style 同一道闸：外来/不可派生文档在锁与写之前就拒——
+  // `addAnnotation` 本身不判分档，会把 hr-meta 写进外来文档还报 201。
+  modelOf(await bytesOf(ctx, target), target.realPath);
   const result = await busy(() =>
     addAnnotation(
-      {
-        workspace: ctx.workspace,
-        file: docId,
-        nodeId: requiredStringOf(body, "nodeId"),
-        anchor: anchorOf(body),
-        note: stringFieldOf(body, "note") ?? "",
-      },
+      { workspace: ctx.workspace, file: docId, nodeId, anchor, note: note ?? "" },
       ctx.deps,
       { lockTimeoutMs: lockMs },
     ),
@@ -91,6 +96,8 @@ export interface DocAnId {
   readonly anId: string;
 }
 
+const resolveBody = z.object({ resolutionNote: optionalString });
+
 export const annotationResolveReply = async (
   ctx: HandlerContext,
   ids: DocAnId,
@@ -98,7 +105,7 @@ export const annotationResolveReply = async (
   lockMs: number,
 ): Promise<Written> => {
   const target = await targetOf(ctx, ids.docId);
-  const resolutionNote = stringFieldOf(body, "resolutionNote");
+  const { resolutionNote } = parseBody(resolveBody, body);
   const result = await busy(() =>
     resolveAnnotation(
       {
@@ -140,20 +147,20 @@ export const undoReply = async (
   };
 };
 
-/** `GET /api/doc/<docId>/notes/<anId>/diff`：diff 在服务端算（裁定 #8），浏览器只渲染 chunk。 */
+/** `GET /api/doc/<docId>/notes/<anId>/diff`：diff 在服务端算，浏览器只渲染 chunk。 */
 export const annotationDiffReply = async (ctx: HandlerContext, ids: DocAnId): Promise<Reply> => {
   const target = await targetOf(ctx, ids.docId);
   const bytes = await bytesOf(ctx, target);
   const listed = await listAnnotations({ workspace: ctx.workspace, file: ids.docId }, ctx.deps);
   const annotation = listed.annotations.find((item) => item.id === ids.anId);
   if (annotation === undefined) throw new HrError("not_found", `批注不存在：${ids.anId}`);
-  // 裁定 #4：diff 的粒度是**这条批注自己的块**，不是全篇（全篇会让两条批注拿到同一份结果）。
+  // diff 的粒度是**这条批注自己的块**，不是全篇（全篇会让两条批注拿到同一份结果）。
   const model = modelOf(bytes, target.realPath);
   const basis = await blockBasisOf(ctx, target, model, annotation.nodeId);
   const diff = diffText(basis.before, basis.after);
   const body: AnnotationDiffBody = {
     revision: revisionOf(bytes),
-    // 裁定：重识别后响应里的 `nodeId` 必须是当前文档里的真实 id（否则前端标不到块）。
+    // 重识别后响应里的 `nodeId` 必须是当前文档里的真实 id（否则前端标不到块）。
     nodeId: basis.nodeId,
     before: basis.before,
     after: basis.after,

@@ -1,4 +1,4 @@
-// 这层管：`<script id="hr-meta">` 的读取与 `pendingAnnotations`（卡片 M1.3 契约 5）。
+// 这层管：`<script id="hr-meta">` 的读取与 `pendingAnnotations`。
 
 import { describe, expect, it } from "vitest";
 
@@ -38,7 +38,7 @@ describe("hr_outline · hr-meta 畸形输入", () => {
     expect(messagesOf(outline)).toContain("hr-meta 为空");
   });
 
-  it("should diagnose non-JSON text (and M1.1 script_in_meta reports the same defect)", () => {
+  it("should diagnose non-JSON text (and the parser's script_in_meta reports the same defect)", () => {
     const outline = outlineOf(withMeta("not json"));
 
     expect(codesOf(outline)).toContain("invalid_meta");
@@ -102,7 +102,7 @@ describe("hr_outline · hr-meta 注入与原型污染", () => {
 
   // P0-D4（已登记）：`src/html/balance.ts:132` 的 `stripRawText` 用 `html.replaceAll(RAW_TEXT_PATTERN, …)`，
   // 实测阈值 4MB 过、8MB 抛 `RangeError: Maximum call stack size exceeded`（V8 对大字符串
-  // 的 RegExp `Symbol.replace` 递归）。这不是 M1.3 的代码，但卡片 AC 要求“10MB meta 不崩”，
+  // 的 RegExp `Symbol.replace` 递归）。这不是本层的代码，但契约要求“10MB meta 不崩”，
   // 所以先钉一条 `it.fails`，实现修好后它会红、提醒翻牌。
 });
 describe("hr_outline · hr-meta 注入与原型污染 · 续 1", () => {

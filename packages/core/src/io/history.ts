@@ -3,9 +3,8 @@
 import { join } from "node:path";
 
 import { mkdirOrFail, writeAtomic } from "./atomic";
-import { failureOf, isMissing } from "./errors";
+import { failureOf, isMissing, unlinkOf } from "./errors";
 import { sha256Hex } from "./digest";
-import { unlinkOf } from "./fs-ops";
 import type { PatchDeps } from "./ports";
 
 export const HISTORY_LIMIT = 10;

@@ -88,7 +88,7 @@ const readOf = async (
   };
 };
 
-/** ④ 改一章：返回 patch 的信封 `data`（R2-04 起 id 不变，「旧 id 还能用」才是用户要的那件事）。 */
+/** ④ 改一章：返回 patch 的信封 `data`（id 不变，「旧 id 还能用」才是用户要的那件事）。 */
 const patchChapter = async (dir: string, oldId: string): Promise<unknown> => {
   const result = checked(
     await runCli(
@@ -157,7 +157,7 @@ describe("首用路径 · 改一章、换风格、出打印稿", () => {
       await normalizeDraft(dir);
       const { chapter2 } = await outlineOf(dir);
 
-      // 改完：docs/05:57（R2-04「id 归产品所有」）——新根继承目标 id，**旧 id 仍然可用**，
+      // 改完：「id 归产品所有」——新根继承目标 id，**旧 id 仍然可用**，
       // 所以这里断言的是「拿旧 id 立刻读回新正文」，而不是「旧 id 已失效」。
       const replaced = await patchChapter(dir, chapter2);
       expect(listOf(fieldOf(replaced, "replacedIds"))).toEqual([]);
@@ -199,7 +199,7 @@ describe("首用路径 · 起站点在浏览器里读", () => {
         const html = await page.text();
         expect(page.status).toBe(200);
         expect(html).toContain("doc.html");
-        // 首页必须有正文（F4 的用户症状就是“打开首页看不到内容”）。
+        // 首页必须有正文（不然"打开首页看不到内容"）。
         expect(html).toContain("下一季度只做三件事。");
 
         // 反面：裸 `/` 没凭据就是 401（同一台机器上别的网页不能拿走正文）。

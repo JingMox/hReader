@@ -94,7 +94,7 @@ describe("parseStyleText · 合法输入", () => {
       maxParagraphSentences: 3,
       style: "",
     });
-    // 显式 `style: ''` 是同一个哨兵：合法且原样保留（裁定 R5）。
+    // 显式 `style: ''` 是同一个哨兵：合法且原样保留。
     expect(
       parseStyleText(MINIMAL("  narrative_rules: [r]").replace("style: x", "style: ''"), "a.yaml")
         .language.rhythm,

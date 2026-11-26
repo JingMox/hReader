@@ -1,6 +1,6 @@
 ---
 name: hreader
-description: 用 hReader 读写长文档（HTML 报告/文章）。当用户要写报告、改某个小节、套排版主题、检查禁用词，或要求"把这段内容排成好看的长文"时使用；也用于按大纲分段改写而不动其余部分。
+description: 用 hReader 起稿和读写 HTML 文档（笔记、报告、会议纪要、决策简报、幻灯片）。当用户要写报告、整理纪要、做一份 HTML 汇报、改某个小节、套排版主题、检查排版或禁用词，或要求"把这段内容排成好看的长文"时使用；也用于按大纲分段改写而不动其余部分。
 ---
 
 # hReader：按节点读写长文档
@@ -17,6 +17,8 @@ hReader 把一份 HTML 长文档拆成"可按 id 读、可按 id 改"的节点�
 ## 命令（全部经 `scripts/hr.mjs`）
 
 ```bash
+node skills/hreader/scripts/hr.mjs new report.html --kind report --title "Q4 复盘"  # 按形态起稿
+node skills/hreader/scripts/hr.mjs import deck.html --kind slides # 外来 HTML → 托管文档（默认出 <name>.hr.html）
 node skills/hreader/scripts/hr.mjs outline report.html            # 结构树
 node skills/hreader/scripts/hr.mjs read report.html s2-p1 --json   # 读一个节点
 node skills/hreader/scripts/hr.mjs patch report.html s2-p1 \
@@ -24,9 +26,27 @@ node skills/hreader/scripts/hr.mjs patch report.html s2-p1 \
 node skills/hreader/scripts/hr.mjs style report.html --visual atelier-editorial
 node skills/hreader/scripts/hr.mjs style report.html --tone atelier-editorial
 node skills/hreader/scripts/hr.mjs style report.html --lint
+node skills/hreader/scripts/hr.mjs check report.html               # 排版约束检查
 ```
 
 退出码：`0` 成功、`1` 业务失败（节点不存在/片段非法/被锁）、`2` 用法错误、`3` IO 与路径问题、`70` 内部错误。**非 0 时先读 stderr 的报错原文，不要猜。**
+
+## 从零起稿：先选形态（`new`）
+
+不要手写整份 HTML 骨架。`new` 按形态生成一份带齐 id、已套主题、组件占位齐全的起稿，之后逐块 `patch`：
+
+| `--kind`  | 用途     | 骨架                                              |
+| --------- | -------- | ------------------------------------------------- |
+| `note`    | 笔记     | 一个小节，自由展开（默认）                        |
+| `report`  | 报告     | 结论 → 关键数据 → 分析 → 方案对比 → 风险 → 下一步 |
+| `minutes` | 会议纪要 | 结论与决定 → 讨论要点 → 待办 → 录音与逐字稿       |
+| `brief`   | 决策简报 | 建议 → 依据 → 代价与风险 → 下一步                 |
+| `slides`  | 幻灯片   | 标题页 + 每个顶层 `<section>` 一页                |
+
+- 占位文字都写在全角括号里（如 `（一句话结论）`）：`outline` 后逐块 `replace` 掉，**交付前不许留括号占位**。
+- 用不上的小节整节 `delete`；要加页 / 加节就对相邻 `<section>` 做 `insert_after`。
+- `slides` 每页只讲一件事：一个 `<h2>` 加一个组件或两三句话。浏览器里滚动即翻页，打印 / 存 PDF 是横版一页一张，不需要任何脚本。
+- `<file>` 已存在时要加 `--force`；标题不给就取文件名。
 
 ## 五原语工作流
 
@@ -39,7 +59,18 @@ node skills/hreader/scripts/hr.mjs style report.html --lint
    - `insert_after` / `insert_before`：**在该节点同级插入**，不是塞进子节点；插入物必须有且只有一个根元素。
    - `append`：塞进该节点的子节点末尾（目标可以是空元素）。
    - `delete`：删除该节点及其子树。
-5. **验成果**：`--json` 返回 `{"ok":true,"data":{...}}`；关注 `changed`（`false` 表示写盘字节与原文完全一致，没产生历史快照）、`newIds`（插入内容里自动分配的 id）、`historyPath`（可撤销锚点）。
+5. **验成果**：`--json` 返回 `{"ok":true,"data":{...}}`；关注 `changed`（`false` 表示写盘字节与原文完全一致，没产生历史快照）、`newIds`（插入内容里自动分配的 id）、`historyPath`（可撤销锚点）、`warnings`（排版约束问题，见下）。
+
+## 排版约束：写入时就查
+
+长相归主题管，正文只声明语义。两类问题会被查出来：
+
+- **组件结构不对**（`component_root` / `component_shape`）：根标签不对、子元素个数不对、缺必备子元素。规约表见 `references/components-spec.md`。
+- **内联 `style`**（`inline_style`）：任何元素都不要带 `style` 属性（内联 SVG 内部除外）。
+
+`patch` 不会因此拒写——片段照常落盘，问题出现在回执的 `warnings` 里；整篇用 `check <file>` 复查（`--json` 时看 `count`）。**看到 warning 就再 patch 一次改掉，`check` 干净了再说“完成”。**
+
+要把 `check` 当门禁用就加 `--strict`：有 error 级诊断时退出 1（报告照常先写 stdout）；`--strict=warning` 连 warning 也算失败。
 
 ## 安全区内不能做的事
 
@@ -49,17 +80,18 @@ node skills/hreader/scripts/hr.mjs style report.html --lint
 
 ## 组件速查（复制即用）
 
-完整片段见 `references/components-spec.md`。七个组件靠 `data-hr-component` 触发主题样式：
+完整片段见 `references/components-spec.md`。八个组件靠 `data-hr-component` 触发主题样式：
 
-| 组件         | 选择器                                | 用途                |
-| ------------ | ------------------------------------- | ------------------- |
-| KPI 卡阵     | `data-hr-component="kpi-bento"`       | 3–6 个关键数字      |
-| 洞察 callout | `data-hr-component="callout-insight"` | 需要读者记住的判断  |
-| 风险 callout | `data-hr-component="callout-warning"` | 代价、坑、边界条件  |
-| 对比分栏     | `data-hr-component="split-compare"`   | 方案 A/B、前后对照  |
-| 深度折叠     | `data-hr-component="deep-dive"`       | 可跳过的推演细节    |
-| 步骤时间线   | `data-hr-component="step-timeline"`   | 流程、roadmap、复盘 |
-| 图表舞台     | `data-hr-component="diagram-stage"`   | 图片/SVG + 图注     |
+| 组件         | 选择器                                | 用途                          |
+| ------------ | ------------------------------------- | ----------------------------- |
+| KPI 卡阵     | `data-hr-component="kpi-bento"`       | 3–6 个关键数字                |
+| 洞察 callout | `data-hr-component="callout-insight"` | 需要读者记住的判断            |
+| 风险 callout | `data-hr-component="callout-warning"` | 代价、坑、边界条件            |
+| 对比分栏     | `data-hr-component="split-compare"`   | 方案 A/B、前后对照            |
+| 深度折叠     | `data-hr-component="deep-dive"`       | 可跳过的推演细节              |
+| 步骤时间线   | `data-hr-component="step-timeline"`   | 流程、roadmap、复盘           |
+| 图表舞台     | `data-hr-component="diagram-stage"`   | 图片/SVG + 图注               |
+| 媒体卡片     | `data-hr-component="media-card"`      | 录音/视频 + 图注 + 折叠逐字稿 |
 
 ## 风格与禁用词
 
@@ -80,7 +112,7 @@ env -u OPENCODE_API_KEY node skills/hreader/scripts/hr.mjs style extract 文1.md
 - **`--out` 必须落在发现路径上**，否则 `style --tone my-voice` 找不到它：项目级 `<workspace>/.hreader/style.yaml`，或用户级 `~/.hreader/styles/my-voice/style.yaml`。写到别处也合法（导出/归档），但 `--tone` 只认 id、没有路径入口——要让 `--tone` 用上它，就得写到上面两条路径之一；写别处时 stderr 会给一行提示。
 - `--out` 指向已存在的文件时必须加 `--force`，否则 `file_exists`；父目录不自动建。
 - 模型/网关可用 `--model`、`--base-url` 覆盖；`--json` 输出 `{ok,data:{path,stats,yaml,dropped}}`（`dropped` 仅 LLM 路径出现），错误也是单行 JSON。
-- fixture 与模型换代（换 `--model` 或改 prompt）后须重录 `fixtures/llm/`，否则回放证明的不再是今天的模型输出（`L-36`）。
+- fixture 与模型换代（换 `--model` 或改 prompt）后须重录 `fixtures/llm/`，否则回放证明的不再是今天的模型输出。
 
 ## 让宿主自己带着风格（不用每次取口吻）
 

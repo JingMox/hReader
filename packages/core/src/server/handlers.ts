@@ -1,5 +1,7 @@
 // 这层管：把 HTTP 语义翻成 core 调用（校验 → 加锁 → 落盘），返回"状态码 + 头 + 体"；不碰 socket、不分发路由。
 
+import { z } from "zod";
+
 import { HrError } from "../hr-error";
 import { decodeUtf8, encodeUtf8 } from "../io/bytes";
 import { writeAtomic } from "../io/atomic";
@@ -8,18 +10,26 @@ import { runLocked } from "../io/lock";
 import type { ResolvedTarget } from "../io/paths";
 import { resolveTarget } from "../io/paths";
 import type { PatchDeps } from "../io/ports";
-import { patchFile } from "../io/patchFile";
+import { patchFile } from "../io/patch-file";
+import { readTrust, writeTrust, type TrustLevel } from "../io/trust";
 import { parseHtml } from "../html/parse";
+import { hasExecutableContent } from "../html/sanitize";
+import { attributeOf } from "../model/attrs";
+import { classifyDocument } from "../model/classify";
 import { toDocumentModel } from "../model/derive";
 import type { DocumentModel } from "../model/constants";
+import type { HtmlElementNode } from "../html/constants";
+import { isDocKind, KIND_ATTRIBUTE, type DocKind } from "../layout/kinds";
 import { buildOutline } from "../ops/outline";
-import type { PatchAction, PatchRequest } from "../ops/patchNode";
-import { applyStyle } from "../style/applyFile";
+import { firstArticleOf } from "../ops/outline/locate";
+import { normalizeFile } from "../ops/normalize-file";
+import type { PatchAction, PatchRequest } from "../ops/patch-node";
+import { applyStyle } from "../style/apply-file";
 import type { StyleDeps } from "../style";
 import { appendAnnotation, type AnnotationInput, type AnnotationOutcome } from "./annotation";
 import type { Reply } from "./contracts";
 import { diffNodes } from "./diff-nodes";
-import { integerFieldOf, requiredStringOf, stringFieldOf } from "./body";
+import { integer, optionalString, parseBody, requiredString } from "./body";
 import { revisionOf } from "./revision";
 
 export interface HandlerContext {
@@ -58,12 +68,28 @@ const HTML_HEADERS: Readonly<Record<string, string>> = {
   "cache-control": "no-store",
 };
 
+/**
+ * 外来文档按信任档下发的 CSP。`sandbox` 指令是关键防线：即使有人在浏览器标签页里
+ * 直接打开 `/s/<docId>`（顶层、不在 iframe 里），文档也被强制成 opaque origin——
+ * 脚本读不到 cookie，也碰不到同源的写接口。**`sandbox` 后绝不能加 `allow-same-origin`**。
+ * `local` 档的 `script-src 'unsafe-inline'` 能安全使用，正是因为 opaque origin +
+ * `connect-src 'none'`：脚本跑得起来，但出不了源、也发不出请求。不要"修"它。
+ */
+const FOREIGN_CSP: Readonly<Record<TrustLevel, string>> = {
+  off: "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+  local:
+    "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; " +
+    "style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; " +
+    "connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; " +
+    "sandbox allow-scripts",
+};
+
 const JSON_HEADERS: Readonly<Record<string, string>> = {
   ...SECURITY,
   "content-type": "application/json; charset=utf-8",
 };
 
-/** @internal 由 M2.3 处理器（annotation-replies.ts）复用；不进公共导出面。 */
+/** @internal 由 annotation-replies.ts 的处理器复用；不进公共导出面。 */
 export const jsonReply = (status: number, value: unknown): Reply => ({
   status,
   headers: JSON_HEADERS,
@@ -102,11 +128,13 @@ export const busy = async <T>(work: () => Promise<T>): Promise<T> => {
   }
 };
 
-const loadDocument = async (ctx: HandlerContext, docId: string): Promise<DocumentServe> => {
+const loadDocument = async (
+  ctx: HandlerContext,
+  docId: string,
+): Promise<Omit<DocumentServe, "reply">> => {
   const target = await targetOf(ctx, docId);
   const bytes = await bytesOf(ctx, target);
   return {
-    reply: jsonReply(200, { revision: revisionOf(bytes) }),
     target,
     bytes,
     revision: revisionOf(bytes),
@@ -120,55 +148,109 @@ export const modelReply = async (ctx: HandlerContext, docId: string): Promise<Re
 
 export const outlineReply = async (ctx: HandlerContext, docId: string): Promise<Reply> => {
   const doc = await loadDocument(ctx, docId);
-  const outline = buildOutline(parseHtml(decodeUtf8(doc.bytes, doc.target.realPath)));
+  const parsed = parseHtml(decodeUtf8(doc.bytes, doc.target.realPath));
+  // 冻结契约：非托管文档的 422/409 口径只在 derive 里有一份——让它抛，不复制文案。
+  // （`remember` 不再为外来文档抛错，`buildOutline` 本身又不判 article。）
+  // Stryker disable next-line ConditionalExpression,StringLiteral: 让 toDocumentModel 自己抛——cls 条件无论怎么改，非托管文档都在那里炸，managed 多调一次无副作用。
+  if (classifyDocument(parsed).cls !== "managed") toDocumentModel(parsed);
+  const outline = buildOutline(parsed);
   return jsonReply(200, { revision: doc.revision, outline });
 };
 
 export const documentReply = async (ctx: HandlerContext, docId: string): Promise<DocumentServe> => {
   const doc = await loadDocument(ctx, docId);
-  return { ...doc, reply: htmlReply(doc.bytes) };
+  const parsed = parseHtml(decodeUtf8(doc.bytes, doc.target.realPath));
+  // 托管/可归一文档的响应头逐字节不动；外来文档才按信任档换 CSP。
+  if (classifyDocument(parsed).cls !== "foreign") return { ...doc, reply: htmlReply(doc.bytes) };
+  const trust = await readTrust({ target: doc.target, bytes: doc.bytes }, ctx.deps);
+  return {
+    ...doc,
+    reply: {
+      status: 200,
+      headers: { ...HTML_HEADERS, "content-security-policy": FOREIGN_CSP[trust] },
+      body: doc.bytes,
+    },
+  };
 };
 
-const changedOf = (before: Uint8Array, after: Uint8Array, label: string): readonly string[] =>
-  diffNodes(modelOf(before, label), modelOf(after, label));
-
-const ACTIONS: Readonly<Record<string, PatchAction>> = {
-  replace: "replace",
-  insert_before: "insert_before",
-  insert_after: "insert_after",
-  append: "append",
-  delete: "delete",
+/** `kind` 只在恰好一个 `<article>` 时有意义：外来文档可能含多个 article，哪一个都不算"文档形态"。 */
+const docKindOf = (article: HtmlElementNode | undefined): DocKind | undefined => {
+  if (article === undefined) return undefined;
+  const value = attributeOf(article, KIND_ATTRIBUTE);
+  // Stryker disable next-line ConditionalExpression: isDocKind(undefined) 恒 false，短路与否同值。
+  return value !== undefined && isDocKind(value) ? value : undefined;
 };
 
-const actionOf = (record: Readonly<Record<string, unknown>>): PatchAction => {
-  const action = requiredStringOf(record, "action");
-  const known = ACTIONS[action];
-  if (known === undefined) throw new HrError("invalid_request", `未知 action：${action}`);
-  return known;
+/** 分档查询不判托管与否：外来文档也要能拿到 `cls`/`reason`，`model`/`outline` 的 422 契约不挪到这里。 */
+export const docInfoReply = async (ctx: HandlerContext, docId: string): Promise<Reply> => {
+  const target = await targetOf(ctx, docId);
+  const bytes = await bytesOf(ctx, target);
+  const parsed = parseHtml(decodeUtf8(bytes, target.realPath));
+  const classification = classifyDocument(parsed);
+  const kind = docKindOf(classification.articles === 1 ? firstArticleOf(parsed.root) : undefined);
+  // 信任档只对外来文档有意义：managed/normalizable 永不执行文档脚本，恒报 "off"，
+  // 也免得"先当外来授权、后被改成托管"的陈旧记录漏出来。
+  const trust =
+    // Stryker disable next-line ConditionalExpression: readTrust 按字节寻记录，非外来文档的查找必然未中、落回 "off"——恒真变异无可见差异。
+    classification.cls === "foreign" ? await readTrust({ target, bytes }, ctx.deps) : "off";
+  return jsonReply(200, {
+    revision: revisionOf(bytes),
+    cls: classification.cls,
+    trust,
+    scripts: hasExecutableContent(parsed.root),
+    // Stryker disable next-line ConditionalExpression: { reason: undefined } 被 JSON.stringify 丢键，与 {} 同输出。
+    ...(classification.reason === undefined ? {} : { reason: classification.reason }),
+    // Stryker disable next-line ConditionalExpression: 同上，{ kind: undefined } 序列化后消失。
+    ...(kind === undefined ? {} : { kind }),
+  });
 };
 
-const requestOf = (record: Readonly<Record<string, unknown>>): PatchRequest => {
-  const targetId = requiredStringOf(record, "targetId");
-  const action = actionOf(record);
-  const fragment = stringFieldOf(record, "fragment");
-  return fragment === undefined ? { targetId, action } : { targetId, action, html: fragment };
-};
+/**
+ * 一切内容写先派生再放行：`modelOf(before)` 在写调用之前执行——外来/不可派生文档
+ * 到不了 `writeAtomic`，不留"报失败却已改盘"的半成品（sha 键信任档会当场失效）。
+ * undo/resolve 不挂这道闸：它们只恢复/改写服务端自产的快照与 hr-meta，不注入新内容，
+ * 且 undo 是外部改坏文档后的唯一恢复路径。
+ */
+const diffOf = (beforeModel: DocumentModel, after: Uint8Array, label: string): readonly string[] =>
+  diffNodes(beforeModel, modelOf(after, label));
+
+/** 标注成 `ZodType<PatchAction>`：枚举里混进 `PatchAction` 之外的值会在编译期报错。 */
+const patchAction: z.ZodType<PatchAction, z.ZodTypeDef, unknown> = z.enum([
+  "replace",
+  "insert_before",
+  "insert_after",
+  "append",
+  "delete",
+]);
+
+const patchBody = z.object({
+  docId: requiredString,
+  targetId: requiredString,
+  // 先判"给没给"再判"认不认识"：空串报缺字段，而不是"未知 action："。
+  action: requiredString.pipe(patchAction),
+  fragment: optionalString,
+});
 
 export const patchReply = async (
   ctx: HandlerContext,
   body: Readonly<Record<string, unknown>>,
   lockMs: number,
 ): Promise<Written> => {
-  const docId = requiredStringOf(body, "docId");
+  const { docId, targetId, action, fragment } = parseBody(patchBody, body);
+  const request: PatchRequest =
+    // Stryker disable next-line ConditionalExpression: html:undefined 与不设字段同义，下游 patchFile 判 undefined。
+    fragment === undefined ? { targetId, action } : { targetId, action, html: fragment };
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
+  const beforeModel = modelOf(before, target.realPath);
   const result = await busy(() =>
-    patchFile({ workspace: ctx.workspace, file: docId, request: requestOf(body) }, ctx.deps, {
+    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
+    patchFile({ workspace: ctx.workspace, file: docId, request }, ctx.deps, {
       lockTimeoutMs: lockMs,
     }),
   );
   const after = await bytesOf(ctx, target);
-  const changedNodes = changedOf(before, after, target.realPath);
+  const changedNodes = diffOf(beforeModel, after, target.realPath);
   return {
     reply: jsonReply(200, {
       changed: result.changed,
@@ -184,22 +266,32 @@ export const patchReply = async (
   };
 };
 
+const styleBody = z.object({ docId: requiredString, visualId: requiredString });
+
 export const styleReply = async (
   ctx: HandlerContext,
   body: Readonly<Record<string, unknown>>,
   lockMs: number,
 ): Promise<Written> => {
-  const docId = requiredStringOf(body, "docId");
-  const visualId = requiredStringOf(body, "visualId");
+  const { docId, visualId } = parseBody(styleBody, body);
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
+  const parsed = parseHtml(decodeUtf8(before, target.realPath));
+  // 外来文档没有可派生模型，但换主题是确认的例外：`applyStyle` 只拼接
+  // `<style id="hr-theme">` 区间。跳过派生与 diff，才不会先写盘再 422；
+  // 内容写（patch/批注）依旧先派生再放行，零写盘拒绝。
+  const foreign = classifyDocument(parsed).cls === "foreign";
+  const beforeModel = foreign ? undefined : toDocumentModel(parsed);
   const result = await busy(() =>
+    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
     applyStyle({ workspace: ctx.workspace, file: docId, visualId }, ctx.styleDeps, {
       lockTimeoutMs: lockMs,
     }),
   );
   const after = await bytesOf(ctx, target);
-  const changedNodes = result.changed ? changedOf(before, after, target.realPath) : [];
+  const changedNodes =
+    // Stryker disable next-line ConditionalExpression: 主题挂载点在 <head>、不在内容模型里，diff 恒为空——beforeModel 短路与否同输出。
+    beforeModel !== undefined && result.changed ? diffOf(beforeModel, after, target.realPath) : [];
   return {
     reply: jsonReply(200, { changed: result.changed, revision: revisionOf(after), changedNodes }),
     target,
@@ -209,12 +301,12 @@ export const styleReply = async (
   };
 };
 
-const inputOf = (body: Readonly<Record<string, unknown>>): AnnotationInput => ({
-  start: integerFieldOf(body, "start"),
-  end: integerFieldOf(body, "end"),
-  text: requiredStringOf(body, "text"),
-  note: stringFieldOf(body, "note"),
-  status: "pending",
+const annotationBody = z.object({
+  docId: requiredString,
+  start: integer,
+  end: integer,
+  text: requiredString,
+  note: optionalString,
 });
 
 /** 读-改-写必须整段在锁里：`appendAnnotation` 要读当前 `hr-meta` 再整篇重写，锁外读会丢并发写。 */
@@ -225,11 +317,13 @@ const appendWithLock = async (
   lockMs: number,
 ): Promise<AnnotationOutcome> =>
   busy(() =>
+    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
     runLocked(target, ctx.deps, { lockTimeoutMs: lockMs }, async () => {
       const html = decodeUtf8(await bytesOf(ctx, target), target.realPath);
-      // 时间戳只从注入的时钟来（`annotationOps` 同源），否则同一次写入不可复现。
+      // 时间戳只从注入的时钟来（`annotation-ops` 同源），否则同一次写入不可复现。
       const createdAt = ctx.deps.clock.now().toISOString();
       const outcome = appendAnnotation(html, input, `an_${nonce().slice(0, 8)}`, createdAt);
+      // Stryker disable next-line ConditionalExpression: appendAnnotation 的 changed 恒真（追加必改字节）。
       if (outcome.changed) {
         await writeAtomic(
           { path: target.realPath, workspace: ctx.workspace, data: encodeUtf8(outcome.html) },
@@ -245,10 +339,17 @@ export const annotationReply = async (
   body: Readonly<Record<string, unknown>>,
   lockMs: number,
 ): Promise<Written> => {
-  const docId = requiredStringOf(body, "docId");
+  const { docId, start, end, text, note } = parseBody(annotationBody, body);
   const target = await targetOf(ctx, docId);
   const before = await bytesOf(ctx, target);
-  const written = await appendWithLock(ctx, target, inputOf(body), lockMs);
+  const beforeModel = modelOf(before, target.realPath);
+  const written = await appendWithLock(
+    ctx,
+    target,
+    // Stryker disable next-line StringLiteral: 空 status 经 normalizeStatus 回落 "pending"，记录同值。
+    { start, end, text, note, status: "pending" },
+    lockMs,
+  );
   const after = await bytesOf(ctx, target);
   return {
     reply: jsonReply(201, {
@@ -259,6 +360,87 @@ export const annotationReply = async (
     target,
     revision: revisionOf(after),
     changed: written.changed,
-    changedNodes: changedOf(before, after, target.realPath),
+    changedNodes: diffOf(beforeModel, after, target.realPath),
+  };
+};
+
+const trustBody = z.object({ level: z.enum(["off", "local"]) });
+
+export const trustReply = async (
+  ctx: HandlerContext,
+  docId: string,
+  body: Readonly<Record<string, unknown>>,
+  lockMs: number,
+): Promise<Written> => {
+  const { level } = parseBody(trustBody, body);
+  const target = await targetOf(ctx, docId);
+  const bytes = await bytesOf(ctx, target);
+  const parsed = parseHtml(decodeUtf8(bytes, target.realPath));
+  const classification = classifyDocument(parsed);
+  if (classification.cls !== "foreign") {
+    // 409 码表里没有"文档分档与操作不符"的专码：`needs_normalize` 是唯一
+    // "文档状态不适用此操作"的 409 语义（其余 409 全是锁/快照/端口类）。
+    // managed/normalizable 都不执行文档脚本，信任档对它们没有适用对象。
+    throw new HrError(
+      "needs_normalize",
+      `信任档只对外来文档开放：该文档归作 ${classification.cls}，不执行脚本`,
+    );
+  }
+  // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
+  await busy(() => writeTrust({ target, bytes, level }, ctx.deps, { lockTimeoutMs: lockMs }));
+  return {
+    reply: jsonReply(200, { trust: level }),
+    target,
+    revision: revisionOf(bytes),
+    // 文档字节没变，但下发头变了：阅读器必须重载 iframe，`changed` 就是"推 doc.changed"的扳机。
+    changed: true,
+    changedNodes: [],
+  };
+};
+
+export const normalizeReply = async (
+  ctx: HandlerContext,
+  docId: string,
+  lockMs: number,
+): Promise<Written> => {
+  const target = await targetOf(ctx, docId);
+  const before = await bytesOf(ctx, target);
+  const parsed = parseHtml(decodeUtf8(before, target.realPath));
+  const classification = classifyDocument(parsed);
+  if (classification.cls === "foreign") {
+    throw new HrError(
+      "invalid_document",
+      classification.articles === 0
+        ? // 与 ops/normalize-file.ts 同一份文案：`hr normalize` 与 HTTP 路由报同一句。
+          "文档里没有 <article>：这不是可规范化的文档"
+        : `文档里有 ${String(classification.articles)} 个 <article>：这不是可规范化的文档`,
+    );
+  }
+  // Stryker disable next-line ConditionalExpression,StringLiteral,BlockStatement: 拆掉这道早退也只让 normalizeFile 在托管文档上空跑一轮——无写无快照，回执同形。
+  if (classification.cls === "managed") {
+    // no-op：托管文档已带合法 id，不锁也不写，只回当前 revision。
+    return {
+      reply: jsonReply(200, { revision: revisionOf(before), cls: "managed" }),
+      target,
+      revision: revisionOf(before),
+      changed: false,
+      // Stryker disable next-line ArrayDeclaration: changed 恒 false，不会推送 doc.changed——changedNodes 无出口。
+      changedNodes: [],
+    };
+  }
+  const result = await busy(() =>
+    // Stryker disable next-line ObjectLiteral: 空 options 只落默认锁超时，行为同值。
+    normalizeFile({ workspace: ctx.workspace, file: docId, write: true, history: true }, ctx.deps, {
+      lockTimeoutMs: lockMs,
+    }),
+  );
+  const after = await bytesOf(ctx, target);
+  return {
+    reply: jsonReply(200, { revision: revisionOf(after), cls: "managed" }),
+    target,
+    revision: revisionOf(after),
+    changed: result.changed,
+    // 写前是 normalizable（没有模型），写后是 managed：diff 无从算起，阅读器整页重拉即可。
+    changedNodes: [],
   };
 };

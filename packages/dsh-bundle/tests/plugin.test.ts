@@ -1,4 +1,4 @@
-// 这层管：`apply(ctx, config)` 的行为契约（AC-3/AC-4/AC-5/AC-6）。宿主是假宿主，样式走真 core。
+// 这层管：`apply(ctx, config)` 的行为契约。宿主是假宿主，样式走真 core。
 
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
@@ -21,7 +21,7 @@ import { fakeHostOf } from "./host";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
-/** 一个**非默认**的内置 id：AC-5 的判绿硬条件（只断言默认 id 等于让"只列默认 id"混过去）。 */
+/** 一个**非默认**的内置 id：判绿硬条件（只断言默认 id 等于让"只列默认 id"混过去）。 */
 const NON_DEFAULT_ID = BUILTIN_STYLES.find((style) => style.id !== DEFAULT_STYLE_ID)?.id ?? "";
 
 /** 项目风格文件的最小合法形状（`packages/core/src/style/spec.ts` 的 snake_case 键名）。 */
@@ -150,7 +150,7 @@ describe("apply：未知 styleId", () => {
 /**
  * 以 YAML 解析后的运行期形状调 `apply`：`config.workspace` 是用户手写的，`workspace: 123` 这种错
  * 完全在类型系统之外，而本仓禁 `as`/`any`，故走 `Reflect.apply` 的类型擦除（同
- * `packages/core/tests/html-support.test.ts:79` 的 `callWithUnknown`）。
+ * `packages/core/tests/html-support.ts` 的 `callWithUnknown`）。
  */
 const applyWithRawWorkspace = (ctx: HostContext, workspace: unknown): Promise<unknown> => {
   // `Reflect.apply` 回的是 `any`：先收成 `unknown`，再把同步/异步两种结局统一成 Promise。

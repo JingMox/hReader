@@ -1,8 +1,9 @@
-// 这层管：中栏（正文 + 控制条）。正文**只在 mount 注入一次**（AC2.4），之后按 `revision`
-// 与 `blocks` 做块级 diff：内容变了写块、块没了删块（裁定 #8）；不在 `update` 里整篇重设。
+// 这层管：中栏（正文 + 控制条）。正文**只在 mount 注入一次**，之后按 `revision`
+// 与 `blocks` 做块级 diff：内容变了写块、块没了删块；不在 `update` 里整篇重设。
 
 import type { Host } from "../dom.ts";
 import type { ReaderIntent, ReaderState } from "../state.ts";
+import { escapeAttr } from "../escape-attr.ts";
 import { COPY } from "./copy.ts";
 import type { Widget } from "./library.ts";
 
@@ -43,7 +44,7 @@ const diffBlocks = (host: Host, next: ReaderState, known: Set<string>): void => 
 
 export const mountCanvas = (deps: CanvasDeps): Widget => {
   const { host, parent, input, onIntent, state } = deps;
-  // 第一处 `innerHTML`（裁定 #7）：正文注入，一次；之后只走块级更新。
+  // 第一处 `innerHTML`：正文注入，一次；之后只走块级更新。
   host.html(`${parent} #hr-doc`, input.html);
   paintControls(deps);
   host.on(`${parent} #hr-theme-select`, "change", (target) => {
@@ -74,7 +75,11 @@ export const mountCanvas = (deps: CanvasDeps): Widget => {
     }
     host.cls(`${parent} #hr-doc`, "canvas--focus", next.focus);
     for (const id of next.blocks) {
-      host.cls(`${parent} [data-hr-id="${id}"]`, "doc__block--on", next.activeId === id);
+      host.cls(
+        `${parent} [data-hr-id="${escapeAttr(id)}"]`,
+        "doc__block--on",
+        next.activeId === id,
+      );
     }
   };
 

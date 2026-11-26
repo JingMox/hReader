@@ -1,17 +1,17 @@
-// R2-06a（docs/05:60 末句）：`<p>甲<table>…</table>乙</p>` 拆成两段时，**"原来那个元素"是首段**——
+// `<p>甲<table>…</table>乙</p>` 拆成两段时，**"原来那个元素"是首段**——
 // 首段留原 `data-hr-id`，后续段不带 id、由注入阶段分配。这层管 `parseHtml` 的产树结果；
-// 落盘之后"删首段只删首段"还在 `packages/cli/tests/r2-split-paragraph-id.test.ts` 里钉一遍。
+// 落盘之后"删首段只删首段"还在 `packages/cli/tests/implicit-end-tags.test.ts` 里钉一遍。
 //
 // 为什么要单独钉 `data-hr-id` 的归属：注入阶段会把重复 id 改名，所以"照抄原 id"在**最终字节**上
 // 可能看不出差别（第二个分段照样拿到一个合法新 id）——只有直接看解析产树才能证明第二个分段
-// 本来**不带** id（`implicitClose.ts` 的 `withoutHrId`）。否则这段判据会被注入的去重逻辑吞掉。
+// 本来**不带** id（`implicit-close.ts` 的 `withoutHrId`）。否则这段判据会被注入的去重逻辑吞掉。
 
 import { describe, expect, it } from "vitest";
 
 import { injectNodeIds, parseHtml, serializeHtml } from "../src/index";
-import { closeImplicitParagraphs } from "../src/html/implicitClose";
+import { closeImplicitParagraphs } from "../src/html/implicit-close";
 import type { HtmlElementNode, HtmlNode, ParsedHtml } from "../src/index";
-import { attributeValue, childrenOf, requireElement } from "./html-support.test";
+import { attributeValue, childrenOf, requireElement } from "./html-support";
 
 const HR_ID = "data-hr-id";
 const HR_ID_SHAPE = /^hr-[0-9a-f]{8}$/u;
@@ -55,7 +55,7 @@ const twoPiecesOf = (parsed: ParsedHtml): readonly [HtmlElementNode, HtmlElement
   return [first, second];
 };
 
-describe("parseHtml · 分裂出来的段落 id 归属（R2-06a）", () => {
+describe("parseHtml · 分裂出来的段落 id 归属", () => {
   it("should keep the original id on the first piece and leave the later piece id-less", () => {
     const parsed = parseHtml(QUIRKS_DOC);
 
@@ -95,7 +95,7 @@ describe("parseHtml · 分裂出来的段落 id 归属（R2-06a）", () => {
   });
 });
 
-describe("parseHtml · 分裂出来的段落区间与嵌套块（R2-06a）", () => {
+describe("parseHtml · 分裂出来的段落区间与嵌套块", () => {
   it("should give each piece its own source range when locations are on", () => {
     const parsed = parseHtml(QUIRKS_DOC, { locations: true });
     const [first, second] = twoPiecesOf(parsed);

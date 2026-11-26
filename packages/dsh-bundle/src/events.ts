@@ -3,17 +3,17 @@
 // 本文件**不**从 `@hreader/core` 取类型：core 在 package.json 里只是 `workspace:*` 的 devDependency，
 // 一旦进了 `dist/events.d.ts`，装到 profile 的人就会 tsc 报 `Cannot find module '@hreader/core'`。
 // 同理不从 `@deepseek-ai/*` 取类型（它们不在 `dependencies`，声明文件里一个裸 `import type` 就足以让
-// 只装了本包的使用方报 TS2307，G2-R1 P2-5）。对外形状一律本地镜像 + 测试盯着漂移；唯一的例外是
+// 只装了本包的使用方报 TS2307）。对外形状一律本地镜像 + 测试盯着漂移；唯一的例外是
 // 下面那行 `import type {}` 空种子（不绑名字、会被 tsc 从 d.ts 擦掉，理由见原处）。
 
 /**
- * `PatchAction` 的形状镜像：字段与取值逐字对齐 `packages/core/src/ops/patchNode/constants.ts:3`。
+ * `PatchAction` 的形状镜像：字段与取值逐字对齐 `packages/core/src/ops/patch-node/constants.ts:3`。
  */
 export type HreaderPatchAction = "replace" | "insert_before" | "insert_after" | "append" | "delete";
 
 /**
  * `PatchRequest` 的形状镜像（结构相同、字段与可选性逐字对齐）：
- * 源定义在 `packages/core/src/ops/patchNode/constants.ts:5`。漂移由两条断言合起来抓：
+ * 源定义在 `packages/core/src/ops/patch-node/constants.ts:5`。漂移由两条断言合起来抓：
  * 字段与可选性靠 `tests/drift.test-d.ts` 的双向子类型，**多出可选字段**靠
  * `tests/shape-no-extra-keys.test-d.ts` 的 `keyof` 差集（可选增量对双向可赋值不可见）。
  */

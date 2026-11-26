@@ -1,5 +1,5 @@
-// 这层管：`hr style extract` 的 LLM 全链路（真 fixture 回放、R23 判据、不泄漏、两条降级路径）。
-// 网络用假 fetch 回放 `fixtures/llm/`，`pnpm verify` 里零真实调用。
+// 这层管：`hr style extract` 的 LLM 全链路（真 fixture 回放、判据、不泄漏、两条降级路径）与请求构造
+//（"确定性失败不花钱"：前置校验在模型调用之前）。网络用假 fetch 回放 `fixtures/llm/`，零真实调用。
 
 import {
   existsSync,
@@ -13,14 +13,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-
 import { extractStyleWithLlm } from "@hreader/core";
-
 import type { CorpusText } from "@hreader/core";
-
-import type { LlmPort } from "../src/llm/client";
-
 import { run, type CliIo } from "../src/run";
+import { fetchBodyOf, fetchUrlOf } from "./harness";
+import type { LlmPort } from "../src/llm/client";
 
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "hr-llm-")));
 mkdirSync(join(dir, "styles"));
@@ -145,7 +142,7 @@ describe("style extract · 围栏", () => {
   });
 });
 
-describe("style extract · R23 判据", () => {
+describe("style extract · 零可用字段即失败", () => {
   it("should fail on zero usable fields and leave --out untouched", async () => {
     const file = corpusAt("r23.md");
     const out = join(dir, "styles/r23.yaml");
@@ -199,7 +196,7 @@ describe("style extract · 两条降级路径", () => {
   });
 });
 
-describe("style extract · 不泄漏（AC-8）", () => {
+describe("style extract · 不泄漏", () => {
   const bodies = ["", "<html>", '{"choices":[]}', '{"choices":[{"message":{"content":"{}"}}]}'];
 
   it("should keep the key out of every error surface", async () => {
@@ -240,5 +237,118 @@ describe("style extract · 失败时不动已有产物", () => {
 
     expect(result.code).toBe(3);
     expect(readFileSync(out, "utf8")).toBe('id: "keep"\n');
+  });
+});
+describe("style extract · --model / --base-url", () => {
+  it("should put both flags into the request url and body", async () => {
+    const sent: { url: string; body: string }[] = [];
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      sent.push({ url: fetchUrlOf(input), body: fetchBodyOf(init) });
+      return Promise.resolve(new Response(fixtureOf("ok.json")));
+    };
+
+    const result = await llmRun(
+      [corpusAt("flags.md"), "--model", "flag-model", "--base-url", "https://proxy.test/v1"],
+      fetch,
+    );
+
+    expect(result.code).toBe(0);
+    expect(sent[0]?.url).toBe("https://proxy.test/v1/chat/completions");
+    expect(JSON.parse(sent[0]?.body ?? "{}")).toMatchObject({ model: "flag-model" });
+  });
+});
+
+describe("style extract · base url 归一", () => {
+  it("should normalize the trailing slash of a flag base url", async () => {
+    const urls: string[] = [];
+    const fetch: typeof globalThis.fetch = (input) => {
+      urls.push(fetchUrlOf(input));
+      return Promise.resolve(new Response(fixtureOf("ok.json")));
+    };
+
+    for (const baseUrl of ["https://proxy.test/v1/", "https://proxy.test/v1"]) {
+      const result = await llmRun([corpusAt("slash.md"), "--base-url", baseUrl], fetch);
+      expect(result.code).toBe(0);
+    }
+
+    expect(urls).toEqual([
+      "https://proxy.test/v1/chat/completions",
+      "https://proxy.test/v1/chat/completions",
+    ]);
+  });
+
+  it("should reject a non absolute http(s) base url without spending a call", async () => {
+    let sent = 0;
+    const fetch: typeof globalThis.fetch = () => {
+      sent += 1;
+      return Promise.resolve(new Response(fixtureOf("ok.json")));
+    };
+
+    for (const baseUrl of ["", "v1", "::bad", "ftp://x/v1"]) {
+      const result = await llmRun([corpusAt("empty-url.md"), "--base-url", baseUrl], fetch);
+      expect(result.code).toBe(1);
+      expect(result.err).toContain("base url 必须是 http(s) 绝对地址");
+    }
+    expect(sent).toBe(0);
+  });
+});
+
+const fetchCallsOf = (): { calls: () => number; fetch: typeof globalThis.fetch } => {
+  let calls = 0;
+  const fetch: typeof globalThis.fetch = () => {
+    calls += 1;
+    return Promise.resolve(new Response(fixtureOf("ok.json")));
+  };
+  return { calls: () => calls, fetch };
+};
+
+describe("style extract · --out 覆盖守卫不花钱", () => {
+  it("should refuse an existing --out before calling the model", async () => {
+    const out = join(dir, "styles/exists.yaml");
+    writeFileSync(out, 'id: "exists"\n');
+    const counter = fetchCallsOf();
+
+    const result = await llmRun([corpusAt("exists.md"), "--out", out], counter.fetch);
+
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("目标已存在");
+    expect(counter.calls()).toBe(0);
+    expect(readFileSync(out, "utf8")).toBe('id: "exists"\n');
+  });
+
+  it("should still overwrite with --force", async () => {
+    const out = join(dir, "styles/forced.yaml");
+    writeFileSync(out, 'id: "old"\n');
+
+    const result = await llmRun(
+      [corpusAt("forced.md"), "--out", out, "--force"],
+      replayOf(fixtureOf("ok.json")),
+    );
+
+    expect(result.code).toBe(0);
+    expect(readFileSync(out, "utf8")).toContain('id: "forced"');
+  });
+});
+
+describe("style extract · 路径错误不花钱", () => {
+  it("should refuse a missing parent and an escaping path before calling the model", async () => {
+    const missingParent = fetchCallsOf();
+    const outside = fetchCallsOf();
+
+    const noParent = await llmRun(
+      [corpusAt("no-parent.md"), "--out", join(dir, "nope/x.yaml")],
+      missingParent.fetch,
+    );
+    const escaped = await llmRun(
+      [corpusAt("escape.md"), "--out", "../escape.yaml", "--json"],
+      outside.fetch,
+    );
+
+    expect(noParent.code).toBe(1);
+    expect(noParent.err).toContain("父目录不存在");
+    expect(missingParent.calls()).toBe(0);
+    expect(escaped.code).toBe(3);
+    expect(escaped.out).toContain('"code":"path_outside_workspace"');
+    expect(outside.calls()).toBe(0);
   });
 });

@@ -4,17 +4,18 @@ import type { IncomingMessage } from "node:http";
 import { basename, dirname, join, relative, sep } from "node:path";
 
 import { parseHtml } from "../html/parse";
-import { TMP_PREFIX } from "../io/atomic";
+import { isTmpFileName } from "../io/atomic";
 import { decodeUtf8 } from "../io/bytes";
 import { resolveTarget, type ResolvedTarget } from "../io/paths";
 import type { PatchDeps } from "../io/ports";
-import type { DocumentModel } from "../model/constants";
-import { toDocumentModel } from "../model/derive";
+import { loadDocument } from "../model/load";
+import type { DocumentLoad } from "../model/load";
 import type { StyleDeps } from "../style";
 import type { Reply } from "./contracts";
 import { diffNodes } from "./diff-nodes";
 import { annotationDiffReply, annotationsReply } from "./annotation-replies";
 import {
+  docInfoReply,
   documentReply,
   modelReply,
   outlineReply,
@@ -48,82 +49,103 @@ export interface Runtime {
 
 interface Watched {
   active: ResolvedTarget | undefined;
-  model: DocumentModel | undefined;
+  /** 缓存整份加载结果（含分档）：每次文件变更直接换，不为外来文档反复走 derive-抛错-吞掉的老路。 */
+  load: DocumentLoad | undefined;
   revision: string | undefined;
 }
 
-const modelOfPath = async (deps: RuntimeDeps, target: ResolvedTarget): Promise<DocumentModel> =>
-  toDocumentModel(
+const loadOfPath = async (deps: RuntimeDeps, target: ResolvedTarget): Promise<DocumentLoad> =>
+  loadDocument(
     parseHtml(decodeUtf8(await deps.patch.fs.readFile(target.realPath), target.realPath)),
   );
 
 /** `.hreader/` 是库（锁/历史），tmp 是原子写的中间态：都不算"文档变了"，否则 SSE 会被自己的痕迹刷屏。 */
-const internalOf = (workspace: string, path: string): boolean => {
-  const store = join(workspace, ".hreader");
+const internalOf = (store: string, path: string): boolean => {
   if (path === store || path.startsWith(`${store}${sep}`)) return true;
   const name = basename(path);
-  return name.startsWith(TMP_PREFIX) || name.endsWith("~");
+  return isTmpFileName(name) || name.endsWith("~");
 };
 
 interface PublishInput {
   readonly hub: Hub;
-  readonly deps: RuntimeDeps;
   readonly state: Watched;
-  readonly workspace: string;
-  readonly model: DocumentModel;
+  readonly load: DocumentLoad;
   readonly target: ResolvedTarget;
+  readonly bytes: Uint8Array;
 }
 
-/** `revision` 只有一个口径：文件字节的 sha256 前 16 位（与 REST 响应、`patch` 回执同源）。 */
+/** `revision` 只有一个口径：文件字节的 sha256 前 16 位（与 REST 响应、`patch` 回执同源）。
+ *  前后两侧都托管才 diff；外来文档没有模型，`changedNodes` 恒空，事件照发让阅读器刷新。 */
 const publishChanged = (input: PublishInput): void => {
-  const previous = input.state.model;
-  const changedNodes = previous === undefined ? [] : diffNodes(previous, input.model);
-  input.state.model = input.model;
-  void input.deps.patch.fs.readFile(input.target.realPath).then(
-    (bytes) => {
-      const revision = revisionOf(bytes);
-      // 字节没变（mtime 抖动/格式化）才不发事件；"模型没差异"不等于"文件没变"（属性、无 id 的新节点）。
-      if (revision === input.state.revision) return;
-      input.state.revision = revision;
-      input.hub.publish("doc.changed", {
-        docId: relative(input.workspace, input.target.realPath),
-        revision,
-        changedNodes,
-      });
-    },
-    () => undefined,
-  );
+  const previous = input.state.load;
+  const changedNodes =
+    previous !== undefined && previous.ok && input.load.ok
+      ? diffNodes(previous.model, input.load.model)
+      : [];
+  input.state.load = input.load;
+  const revision = revisionOf(input.bytes);
+  // 字节没变（mtime 抖动/格式化）才不发事件；"模型没差异"不等于"文件没变"（属性、无 id 的新节点）。
+  if (revision === input.state.revision) return;
+  input.state.revision = revision;
+  input.hub.publish("doc.changed", {
+    docId: input.target.relative,
+    revision,
+    changedNodes,
+  });
 };
 
-/** 打开文档时才挂监听：整库递归监听在 10 万文件上会把 CPU 烧穿（卡 D8）。 */
+/** 打开文档时才挂监听：整库递归监听在 10 万文件上会把 CPU 烧穿。 */
 const watchOf = (deps: RuntimeDeps, hub: Hub, state: Watched, workspace: string): Watcher => {
-  const onFileChange = (path: string): void => {
-    if (internalOf(workspace, path)) return;
+  // 事件路径必须与 realPath 同口径：workspace 含符号链接时（macOS /var→/private/var、
+  // 软链的家目录），未解析的目录前缀拼出的事件路径永远 ≠ active.realPath——活跃文档的
+  // 改动被错报成 library.changed（浏览器不认），MCP/CLI 的写就此丢刷新。整目录监听因此
+  // 挂在解析后的真实路径上；realpath 失败退回词法路径（保持旧行为，仍比不报强）。
+  let root = workspace;
+  let store = join(workspace, ".hreader");
+  const onFileChange = (path: string, probe?: boolean): void => {
+    if (internalOf(store, path)) return;
     const active = state.active;
-    // 载荷只给 workspace 相对路径：绝对路径不进浏览器（P1-7，与 `doc.changed` 同口径）。
-    const docPath = relative(workspace, path);
-    if (active === undefined) {
-      hub.publish("library.changed", { path: docPath });
+    // 盲窗对账只对活跃文档有意义：未活跃路径的探针不能放大成 library.changed 刷屏
+    // （心跳每个 tick 一条）。文档没开过的话首开本来就会全量读，盲窗丢它不可惜。
+    if (path !== active?.realPath) {
+      if (probe !== true) {
+        // 载荷只给 workspace 相对路径：绝对路径不进浏览器（与 `doc.changed` 同口径）。
+        hub.publish("library.changed", { path: relative(root, path) });
+      }
       return;
     }
-    if (path !== active.realPath) {
-      hub.publish("library.changed", { path: docPath });
-      return;
-    }
-    void modelOfPath(deps, active).then(
-      (model) => {
-        publishChanged({ hub, deps, state, workspace, model, target: active });
+    const docPath = relative(root, path);
+    // 先读字节对 sha：自写回声/mtime 抖动落在同一字节上直接短路，省掉整份模型重解析；
+    // 字节真变了才 load+diff+publish。别进程（MCP/CLI/编辑器）的写必然过这道闸——
+    // 旧的 200ms 回声窗会把窗口内的外部写整段吞掉（批注 resolve 后阅读器不刷新）。
+    void deps.patch.fs.readFile(active.realPath).then(
+      (bytes) => {
+        if (revisionOf(bytes) === state.revision) return;
+        void loadOfPath(deps, active).then(
+          (load) => {
+            publishChanged({ hub, state, load, target: active, bytes });
+          },
+          () => {
+            hub.publish("doc.error", { path: docPath });
+          },
+        );
       },
       () => {
         hub.publish("doc.error", { path: docPath });
       },
     );
   };
-  const watcher = createWatcher(
-    { now: () => deps.patch.clock.now().getTime(), onFileChange },
-    deps.watch,
+  const watcher = createWatcher({ onFileChange }, deps.watch);
+  void deps.patch.fs.realpath(workspace).then(
+    (real) => {
+      root = real;
+      store = join(real, ".hreader");
+      watcher.add(real, undefined);
+    },
+    () => {
+      watcher.add(workspace, undefined);
+    },
   );
-  watcher.add(workspace, undefined);
   return watcher;
 };
 
@@ -157,11 +179,18 @@ type StaticKind = Extract<Route["kind"], "home" | "assets" | "theme" | "themes">
 const isStaticKind = (kind: Route["kind"]): kind is StaticKind =>
   kind === "home" || kind === "assets" || kind === "theme" || kind === "themes";
 
-/** 读类路由（document/model/outline/annotations）共用"先 remember 再取"。 */
-type ReadKind = Extract<Route["kind"], "document" | "model" | "outline" | "annotations">;
+/** 读类路由（document/docInfo/model/outline/annotations）共用"先 remember 再取"。 */
+type ReadKind = Extract<
+  Route["kind"],
+  "document" | "docInfo" | "model" | "outline" | "annotations"
+>;
 
 const isReadKind = (kind: Route["kind"]): kind is ReadKind =>
-  kind === "document" || kind === "model" || kind === "outline" || kind === "annotations";
+  kind === "document" ||
+  kind === "docInfo" ||
+  kind === "model" ||
+  kind === "outline" ||
+  kind === "annotations";
 
 const readReplyOf = async (
   context: HandlerContext,
@@ -171,6 +200,7 @@ const readReplyOf = async (
 ): Promise<Reply> => {
   await remember(docId);
   if (kind === "document") return (await documentReply(context, docId)).reply;
+  if (kind === "docInfo") return docInfoReply(context, docId);
   if (kind === "annotations") return annotationsReply(context, docId);
   return kind === "model" ? modelReply(context, docId) : outlineReply(context, docId);
 };
@@ -212,9 +242,8 @@ const dispatchOf =
     return written.reply;
   };
 
-/** 自己的写直接广播（watcher 的回声窗口会吞掉同一路径），监听只负责"外部改动"。 */
+/** 自己的写直接广播（fs 事件照样走监听 → 下游 sha 去重），监听负责一切落盘改动。 */
 interface NoteContext {
-  readonly options: { readonly workspace: string };
   readonly deps: RuntimeDeps;
   readonly hub: Hub;
   readonly state: Watched;
@@ -224,19 +253,21 @@ interface NoteContext {
 const noteWriterOf =
   (context: NoteContext): Runtime["noteWrite"] =>
   (written) => {
-    const { options, deps, hub, state, watcher } = context;
+    const { deps, hub, state, watcher } = context;
     if (!written.changed) return;
-    watcher.noteSelfWrite(written.target.realPath);
+    // 写路由可能是这份文档的第一次接触：remember 没跑过就不会挂监听，
+    // 子目录文档的外部编辑会漏报（workspace 目录监听是 depth:0）。
+    watcher.add(dirname(written.target.realPath), basename(written.target.realPath));
     state.active = written.target;
     state.revision = written.revision;
     hub.publish("doc.changed", {
-      docId: relative(options.workspace, written.target.realPath),
+      docId: written.target.relative,
       revision: written.revision,
       changedNodes: written.changedNodes,
     });
-    void modelOfPath(deps, written.target).then(
-      (model) => {
-        state.model = model;
+    void loadOfPath(deps, written.target).then(
+      (load) => {
+        state.load = load;
       },
       () => undefined,
     );
@@ -255,9 +286,14 @@ const rememberOf =
       ctx.deps.patch.fs,
     );
     if (ctx.state.active?.realPath === target.realPath) return target;
+    // 先加载再认领 active：二进制/坏 UTF-8 文档加载失败时不得改指，
+    // 否则前一个文档的外部编辑会漏成 library.changed。
+    const load = await loadOfPath(ctx.deps, target);
+    const revision = revisionOf(await ctx.deps.patch.fs.readFile(target.realPath));
     ctx.state.active = target;
-    ctx.state.model = await modelOfPath(ctx.deps, target);
-    ctx.state.revision = revisionOf(await ctx.deps.patch.fs.readFile(target.realPath));
+    // 外来文档不拒：`remember` 只负责定位与缓存分档，托管与否由 `model`/`outline` 各自判（422/409 契约照旧）。
+    ctx.state.load = load;
+    ctx.state.revision = revision;
     ctx.watcher.add(dirname(target.realPath), basename(target.realPath));
     return target;
   };
@@ -273,7 +309,7 @@ export const createRuntime = (
   deps: RuntimeDeps,
   hub: Hub,
 ): Runtime => {
-  const state: Watched = { active: undefined, model: undefined, revision: undefined };
+  const state: Watched = { active: undefined, load: undefined, revision: undefined };
   const context: HandlerContext = {
     workspace: options.workspace,
     appDir: options.appDir ?? "",
@@ -281,7 +317,17 @@ export const createRuntime = (
     styleDeps: deps.style,
   };
   const watcher = watchOf(deps, hub, state, options.workspace);
-  const noteWrite = noteWriterOf({ options, deps, hub, state, watcher });
+  // 被服务的文档启动时就挂文件级监听，不等第一个 HTTP 触碰：挂载→ready 的盲窗里，
+  // 事件源看不见任何写（首轮扫描把窗口内容当存量），高负载下 ready 能拖到几十秒——
+  // 盲窗期间的写只有 reconcile 兜底，收敛太晚。启动挂载把盲窗收窄到"服务还没起来"的
+  // 那段时间，测试与真实客户端的写都在 ready 之后。文档不存在就不挂（后续 remember 照走）。
+  void resolveTarget({ workspace: options.workspace, file: options.docId }, deps.patch.fs).then(
+    (target) => {
+      watcher.add(dirname(target.realPath), basename(target.realPath));
+    },
+    () => undefined,
+  );
+  const noteWrite = noteWriterOf({ deps, hub, state, watcher });
   const remember = rememberOf({ options, deps, state, watcher });
   return {
     remember,

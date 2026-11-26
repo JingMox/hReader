@@ -1,5 +1,5 @@
 // 这层管：daemon.json 的解析、docId 的推导规则、阅读器 URL 的拼法。
-// docId 规则（AC-2 要求写进报告并回填卡内）：docId = 目标相对 `daemon.workspace` 的路径，`/` 分隔；
+// docId 规则：docId = 目标相对 `daemon.workspace` 的路径，`/` 分隔；
 // 相对路径的基是 workspace（不是 Pi 的 cwd）；workspace 自身与越界路径都不算文档。
 
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";

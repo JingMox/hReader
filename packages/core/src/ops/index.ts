@@ -2,9 +2,11 @@
 
 export { buildOutline } from "./outline";
 export type { Outline, OutlineNode, PendingAnnotation } from "./outline";
-export { readNode } from "./readNode";
-export type { ReadNodeResult } from "./readNode";
+export { readNode } from "./read-node";
+export type { ReadNodeResult } from "./read-node";
 export { locateTarget, patchTargetIdOf } from "./locate";
 export type { LocatedTarget } from "./locate";
-export { applyPatch, parseFragment } from "./patchNode";
-export type { PatchAction, PatchOutcome, PatchRequest } from "./patchNode";
+export { applyPatch, parseFragment } from "./patch-node";
+export type { PatchAction, PatchOutcome, PatchRequest } from "./patch-node";
+export { importForeign } from "./import";
+export type { ImportDiscard, ImportOptions, ImportReport, ImportResult } from "./import";

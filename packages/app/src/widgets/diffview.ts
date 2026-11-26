@@ -1,4 +1,4 @@
-// 这层管：Visual Diff 的右栏渲染（AC4.4/AC4.5）；只产出 NodeSpec，**不碰正文 DOM**。
+// 这层管：Visual Diff 的右栏渲染；只产出 NodeSpec，**不碰正文 DOM**。
 // `ins`/`del` 用真实元素表达语义；Accept 只关视图、Revert 走 undo 请求（与正文无关）。
 
 import type { DiffChunk, DiffKind, NodeSpec } from "../dom.ts";
@@ -22,7 +22,7 @@ export const diffSpecsOf = (view: DiffView): readonly NodeSpec[] =>
     .filter((chunk) => chunk.text !== "")
     .map((chunk) => ({
       tag: kindTag[chunk.kind],
-      // `data-hr-node` 让面板能标出"这是哪一块"的 diff（服务端按块算，P1-4/P2-7）。
+      // `data-hr-node` 让面板能标出"这是哪一块"的 diff（服务端按块算）。
       attrs: { "data-hr-diff": chunk.kind, "data-hr-node": view.nodeId },
       text: chunk.text,
     }));

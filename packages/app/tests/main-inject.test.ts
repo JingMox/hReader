@@ -1,5 +1,5 @@
 // 这层管：**注入式入口**（`@internal main` / `bootWith`）的接线与守卫——
-// 手册 §10.7 的接缝规则：从真实入口进、走真实路由代码，不许在中间层直接
+// 接缝规则：从真实入口进、走真实路由代码，不许在中间层直接
 // `settleTheme` / `store.dispatch({kind:"themeSelected"})`。
 // 与 `main.test.ts` 分开是因为两者共用 `support/main-stubs.ts` 的全局桩会互相打架，
 // 也为了让单个 describe 的函数体保持在 lint 的行数上限内。
@@ -57,6 +57,7 @@ const recordingHostOf = (): RecordedHost => {
       return () => undefined;
     },
     scrollTo: noop,
+    all: () => [],
     destroy: noop,
   };
   return {
@@ -82,25 +83,27 @@ const ioOf = (css: string, asked: string[] = []): AppIo => ({
     const candidate: unknown =
       path === "/api/theme"
         ? themes
-        : path.endsWith("/model")
-          ? model
-          : path.endsWith("/outline")
-            ? outline
-            : path.endsWith("/annotations")
-              ? {
-                  annotations: [
-                    {
-                      id: "an-1a2b3c4d",
-                      nodeId: "hr-a",
-                      note: "批注",
-                      status: "pending",
-                      anchor: { exact: "一", prefix: "", suffix: "", start: 0 },
-                      createdAt: "2024-01-01T00:00:00.000Z",
-                    },
-                  ],
-                  lost: [],
-                }
-              : { chunks: [{ kind: "ins", text: "新段落" }], degraded: false };
+        : path.endsWith("/info")
+          ? { revision: "r1", cls: "managed" }
+          : path.endsWith("/model")
+            ? model
+            : path.endsWith("/outline")
+              ? outline
+              : path.endsWith("/annotations")
+                ? {
+                    annotations: [
+                      {
+                        id: "an-1a2b3c4d",
+                        nodeId: "hr-a",
+                        note: "批注",
+                        status: "pending",
+                        anchor: { exact: "一", prefix: "", suffix: "", start: 0 },
+                        createdAt: "2024-01-01T00:00:00.000Z",
+                      },
+                    ],
+                    lost: [],
+                  }
+                : { chunks: [{ kind: "ins", text: "新段落" }], degraded: false };
     return guard(candidate)
       ? Promise.resolve(candidate)
       : Promise.reject(new Error(`${path} → 响应形状不符`));
@@ -113,7 +116,13 @@ const failingIoOf = (broken: string): AppIo => ({
     path === broken ? Promise.reject(new Error(`${path} → 500`)) : Promise.resolve(ARTICLE),
   json: (path, guard) => {
     const candidate: unknown =
-      path === "/api/theme" ? themes : path.endsWith("/model") ? model : outline;
+      path === "/api/theme"
+        ? themes
+        : path.endsWith("/info")
+          ? { revision: "r1", cls: "managed" }
+          : path.endsWith("/model")
+            ? model
+            : outline;
     return guard(candidate)
       ? Promise.resolve(candidate)
       : Promise.reject(new Error(`${path} → 响应形状不符`));
@@ -192,7 +201,7 @@ describe("main · 注入面（@internal bootWith / main） · 主题接线", () 
   });
 });
 
-describe("main · 守卫与兜底的剩余分支（G3-R4）", () => {
+describe("main · 守卫与兜底的剩余分支", () => {
   it("should reject a non-record theme list before touching its fields", async () => {
     const { isThemeList } = await import("../src/main.ts");
 
@@ -226,8 +235,8 @@ describe("main · 守卫与兜底的剩余分支（G3-R4）", () => {
 });
 
 describe("main · 端到端接线（入口 → host 事件 → dispatchIntent → widget）", () => {
-  // 手册 §10.7：接缝必须从真实入口进、走真实路由代码，不许在中间层直接调
-  // `settleTheme` / `store.dispatch({kind:"themeSelected"})`——那正是 G3-R3 漏掉的东西。
+  // 接缝必须从真实入口进、走真实路由代码，不许在中间层直接调
+  // `settleTheme` / `store.dispatch({kind:"themeSelected"})`——那正是之前漏掉的东西。
   it("should write the theme CSS when the user changes the select after booting via main()", async () => {
     installGlobals("doc.html", "http://x/?doc=doc.html");
     const { texts, host, fireChange } = recordingHostOf();

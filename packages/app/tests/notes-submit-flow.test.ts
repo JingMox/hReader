@@ -1,5 +1,5 @@
-// P1-1/P1-2：提交批注的真实路径——点模板里的提交按钮，而不是直接 dispatch reducer 的 intent。
-// `noteSubmitted` 在审计时**没有任何 dispatch 点**，所以"乐观卡/防重/失败回滚"三条只能在
+// 提交批注的真实路径——点模板里的提交按钮，而不是直接 dispatch reducer 的 intent。
+// `noteSubmitted` 此前**没有任何 dispatch 点**，所以"乐观卡/防重/失败回滚"三条只能在
 // 这个入口上测：从按钮出发，才可能发现"这个 intent 没人发"。
 
 import { describe, expect, it } from "vitest";
@@ -17,7 +17,7 @@ import {
 const annotationPosts = (h: ReturnType<typeof bootedWith>): readonly string[] =>
   h.posted.filter((post) => post.path.endsWith("/annotations")).map((post) => post.path);
 
-describe("提交批注 · 乐观渲染与防重（P1-1）", () => {
+describe("提交批注 · 乐观渲染与防重", () => {
   it("should render the optimistic card immediately and send only one POST", async () => {
     const h = bootedWith({ pendingPost: true });
     // 先等首屏批注落地：`annotationsLoaded` 会把整张清单替换掉，提交必须发生在它之后。
@@ -40,7 +40,7 @@ describe("提交批注 · 乐观渲染与防重（P1-1）", () => {
   });
 });
 
-describe("提交批注 · 首屏加载与提交的时序（P1-1）", () => {
+describe("提交批注 · 首屏加载与提交的时序", () => {
   it("should keep the optimistic card when the first annotation list lands after a submit", async () => {
     const h = bootedWith({ pendingPost: true });
     // 故意不等首屏：`annotationsLoaded` 还没落地就提交（用户手快就是这个时序）。
@@ -57,7 +57,7 @@ describe("提交批注 · 首屏加载与提交的时序（P1-1）", () => {
   });
 });
 
-describe("提交批注 · 失败提示与回滚（P1-2）", () => {
+describe("提交批注 · 失败提示与回滚", () => {
   it("should show an error and roll the optimistic card back when the POST fails", async () => {
     const h = bootedWith({ failPost: true });
     await flush();

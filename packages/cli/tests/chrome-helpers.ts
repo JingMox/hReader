@@ -1,23 +1,29 @@
-// 假传输/假进程/假页面的共同夹具：让 `chrome_*` 的每层都能跳过真 Chrome 单独测。
+// 假进程/假浏览器/假页面的共同夹具：让 `chrome_*` 的每层都能跳过真 Chrome 单独测。
 import { mkdtempSync, rmSync } from "node:fs";
+
+import { HrError } from "@hreader/core";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { ChromeDeps, ChromeProcess } from "../src/chrome/session";
-import { fieldOf, type CdpParams } from "../src/chrome/protocol";
-import { fakeTransportOf, type ChromeTransport, type FakeTransport } from "../src/chrome/transport";
+import type {
+  BrowserLike,
+  PageLike,
+  PdfPrintOptions,
+  PngShotOptions,
+  ViewportSpec,
+} from "../src/chrome/browser";
+import type { ChromeDeps, ChromeProcess } from "../src/chrome/process";
 
-import { screenshotOf, type Viewport } from "./chrome-png";
+import { pngOf } from "./chrome-png";
 
 export { pngBase64Of, pngOf } from "./chrome-png";
 
-export const VERSION_TEXT = JSON.stringify({
-  webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/browser/fake",
-});
+/** 永不兑现的 promise：goto/metrics/pdf 的 "hang" 模式靠它挂住渲染（让外层超时/中断来赢）。 */
+const HANG: Promise<never> = new Promise<never>(() => undefined);
 
 /**
  * 造一份页数可数、**结构自洽**的 PDF：Catalog(1) → Pages(2) → Page(3..)，带 trailer，不带 `/Outlines`。
- * 页树与 trailer 必须真在：产物要过 `bookmarkCountOf` 的 trailer → `/Root` 走法。
+ * 页树与 trailer 必须真在：产物要过 `inspectPdfOf` 的 catalog → `/Outlines` 走法。
  */
 export const pdfOf = (pages: number): string => {
   const ids = Array.from({ length: pages }, (_unused: unknown, index: number) => String(3 + index));
@@ -82,186 +88,128 @@ export const fakeChromeOf = (): FakeChrome => {
   };
 };
 
-export interface ResponderOptions {
+export interface FakePageOptions {
   readonly pages?: number;
-  readonly targets?: "page" | "none" | "no-id" | "not-array";
-  readonly attach?: "session" | "none";
-  readonly navigate?: "ok" | "error";
-  /** `manual`：navigate 回包但**不**发 `loadEventFired`，由用例自己 `inject`（M17 的时间线判别）。 */
-  readonly loadEvent?: "immediate" | "manual";
-  readonly print?: "ok" | "error" | "hang" | "no-data";
+  readonly goto?: "ok" | "error" | "hang";
+  readonly pdf?: "ok" | "error" | "hang";
   /** `cssContentSize.height`；`"none"` = 不给这个字段。 */
-  readonly contentHeight?: number | "none";
-  readonly png?: "ok" | "error" | "hang" | "no-data" | "not-png" | "half-width" | "half-height";
+  readonly contentHeight?: number | "none" | "hang";
+  readonly png?: "ok" | "error" | "hang" | "not-png" | "half-width" | "half-height";
 }
 
-export interface Responder {
-  readonly transport: ChromeTransport;
-  readonly sent: readonly string[];
-  inject(text: string): void;
-  drop(): void;
+export interface FakePage extends PageLike {
+  readonly goneTo: string[];
+  readonly pdfCalls: PdfPrintOptions[];
+  readonly shotCalls: PngShotOptions[];
+  readonly viewports: ViewportSpec[];
 }
 
-const jsonOf = (id: number, result: unknown): string => JSON.stringify({ id, result });
+/** 半分辨率夹具：宽或高只给一半，用来验证截图后的倍率交叉断言。 */
+const halfShotOf = (
+  mode: FakePageOptions["png"],
+  width: number,
+  height: number,
+): { readonly width: number; readonly height: number } =>
+  mode === "half-width"
+    ? { width: Math.round(width / 2), height }
+    : { width, height: Math.round(height / 2) };
 
-const errorOf = (id: number, message: string): string => JSON.stringify({ id, error: { message } });
-
-const loadEventOf = (): string => JSON.stringify({ method: "Page.loadEventFired", params: {} });
-
-const targetsOf = (mode: ResponderOptions["targets"]): unknown => {
-  if (mode === "none") return [];
-  if (mode === "not-array") return "nope";
-  return [{ targetId: mode === "no-id" ? undefined : "t1", type: "page" }];
-};
-
-const navigateOf = (options: ResponderOptions, base: FakeTransport, id: number): void => {
-  if (options.navigate === "error") {
-    base.receive(errorOf(id, "navigate boom\nsecond line"));
-    return;
+const shotBytesOf = (
+  options: PngShotOptions,
+  viewport: ViewportSpec,
+  mode: FakePageOptions["png"],
+): Uint8Array => {
+  if (mode === "not-png") return Buffer.from("GIF89a");
+  const deviceWidth = options.clip.width * options.clip.scale * viewport.deviceScaleFactor;
+  const deviceHeight = options.clip.height * options.clip.scale * viewport.deviceScaleFactor;
+  if (mode === "half-width" || mode === "half-height") {
+    const half = halfShotOf(mode, deviceWidth, deviceHeight);
+    return pngOf(half.width, half.height);
   }
-  base.receive(jsonOf(id, { frameId: "f1" }));
-  if (options.loadEvent === "manual") return;
-  // 第二次 loadEventFired 没有等待者：覆盖“无人等的事件被丢掉”的路径。
-  base.receive(loadEventOf());
-  base.receive(loadEventOf());
+  return pngOf(deviceWidth, deviceHeight);
 };
 
-const printOf = (options: ResponderOptions, base: FakeTransport, id: number): void => {
-  if (options.print === "hang") return;
-  if (options.print === "error") {
-    base.receive(errorOf(id, "printToPDF boom\nat stack"));
-    return;
-  }
-  if (options.print === "no-data") {
-    base.receive(jsonOf(id, {}));
-    return;
-  }
-  base.receive(jsonOf(id, { data: pdfBase64Of(options.pages ?? 2) }));
+const gotoOf = (goneTo: string[], mode: FakePageOptions["goto"]): PageLike["goto"] => {
+  return (url) => {
+    goneTo.push(url);
+    if (mode === "hang") return HANG;
+    if (mode === "error")
+      return Promise.reject(new HrError("chrome_failed", "Page.navigate 失败：navigate boom"));
+    return Promise.resolve();
+  };
 };
 
-type Handler = (id: number, params: CdpParams) => void;
-
-const isRecord = (value: unknown): value is CdpParams =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const metricsOf = (options: ResponderOptions, base: FakeTransport, id: number): void => {
-  const height = options.contentHeight ?? 900;
-  base.receive(jsonOf(id, height === "none" ? {} : { cssContentSize: { width: 800, height } }));
+const pdfCallOf = (pdfCalls: PdfPrintOptions[], options: FakePageOptions): PageLike["pdf"] => {
+  return (params) => {
+    pdfCalls.push(params);
+    if (options.pdf === "hang") return HANG;
+    if (options.pdf === "error") {
+      return Promise.reject(new HrError("chrome_failed", "Page.printToPDF 失败：printToPDF boom"));
+    }
+    return Promise.resolve(Buffer.from(pdfOf(options.pages ?? 2)));
+  };
 };
 
-const replyOf =
-  (base: FakeTransport, result: unknown): Handler =>
-  (id) => {
-    base.receive(jsonOf(id, result));
+const shotCallOf = (
+  shotCalls: PngShotOptions[],
+  viewports: ViewportSpec[],
+  options: FakePageOptions,
+): PageLike["screenshot"] => {
+  return (params) => {
+    shotCalls.push(params);
+    const mode = options.png ?? "ok";
+    if (mode === "hang") return HANG;
+    if (mode === "error") {
+      return Promise.reject(
+        new HrError("chrome_failed", "Page.captureScreenshot 失败：captureScreenshot boom"),
+      );
+    }
+    const viewport = viewports.at(-1) ?? { width: 0, height: 0, deviceScaleFactor: 1 };
+    return Promise.resolve(shotBytesOf(params, viewport, mode));
   };
+};
 
-/** 握手阶段的三条：target 列表 / attach / Page.enable。 */
-const targetHandlersOf = (
-  options: ResponderOptions,
-  base: FakeTransport,
-): (readonly [string, Handler])[] => [
-  ["Target.getTargets", replyOf(base, { targetInfos: targetsOf(options.targets) })],
-  ["Target.attachToTarget", replyOf(base, options.attach === "none" ? {} : { sessionId: "s1" })],
-  ["Page.enable", replyOf(base, {})],
-];
-
-const metricsHandlerOf =
-  (options: ResponderOptions, base: FakeTransport): Handler =>
-  (id) => {
-    metricsOf(options, base, id);
+const metricsOf = (mode: FakePageOptions["contentHeight"]): PageLike["metrics"] => {
+  return () => {
+    if (mode === "hang") return HANG;
+    if (mode === "none") return Promise.resolve({});
+    return Promise.resolve({ cssContentSize: { width: 800, height: mode ?? 900 } });
   };
+};
 
-/** 有 `clip` 就以 clip 为准；真 Chrome 把 clip.scale 与 deviceScaleFactor 相乘，假传输照此口径回字节。 */
-const captureHandlerOf =
-  (options: ResponderOptions, base: FakeTransport, viewport: Viewport): Handler =>
-  (id, params) => {
-    const clip = fieldOf(params, "clip");
-    const capture =
-      clip === undefined
-        ? viewport
-        : {
-            width: Number(fieldOf(clip, "width")),
-            height: Number(fieldOf(clip, "height")),
-            scale: Number(fieldOf(clip, "scale")) * viewport.scale,
-          };
-    screenshotOf(options.png, base, capture, id);
-  };
-
-/** 渲染阶段：navigate / printToPDF / 长图三条（尺寸取自 override）。 */
-const pageHandlersOf = (
-  options: ResponderOptions,
-  base: FakeTransport,
-  viewport: Viewport,
-): (readonly [string, Handler])[] => [
-  [
-    "Page.navigate",
-    (id) => {
-      navigateOf(options, base, id);
-    },
-  ],
-  [
-    "Page.printToPDF",
-    (id) => {
-      printOf(options, base, id);
-    },
-  ],
-  ["Page.getLayoutMetrics", metricsHandlerOf(options, base)],
-  [
-    "Emulation.setDeviceMetricsOverride",
-    (id, params) => {
-      viewport.width = Number(fieldOf(params, "width"));
-      viewport.height = Number(fieldOf(params, "height"));
-      viewport.scale = Number(fieldOf(params, "deviceScaleFactor"));
-      base.receive(jsonOf(id, {}));
-    },
-  ],
-  ["Page.captureScreenshot", captureHandlerOf(options, base, viewport)],
-];
-
-const handlersOf = (
-  options: ResponderOptions,
-  base: FakeTransport,
-  viewport: Viewport,
-): Map<string, Handler> =>
-  new Map([...targetHandlersOf(options, base), ...pageHandlersOf(options, base, viewport)]);
-
-export const responderOf = (options: ResponderOptions = {}): Responder => {
-  const base = fakeTransportOf();
-  const viewport: Viewport = { width: 0, height: 0, scale: 1 };
-  const dispatch = handlersOf(options, base, viewport);
-  const respond = (text: string): void => {
-    const parsed: unknown = JSON.parse(text);
-    const id: unknown = fieldOf(parsed, "id");
-    const method: unknown = fieldOf(parsed, "method");
-    if (typeof id !== "number" || typeof method !== "string") return;
-    const params: unknown = fieldOf(parsed, "params");
-    dispatch.get(method)?.(id, isRecord(params) ? params : {});
-  };
-  const transport: ChromeTransport = {
-    send: (text) => {
-      base.send(text);
-      queueMicrotask(() => {
-        respond(text);
-      });
-    },
-    onMessage: (cb) => {
-      base.onMessage(cb);
-    },
-    onClose: (cb) => {
-      base.onClose(cb);
-    },
-    close: () => {
-      base.close();
-    },
-  };
+/** 假 `PageLike`：记录每一次调用；回包按 `options` 的故障模式走。 */
+export const fakePageOf = (options: FakePageOptions = {}): FakePage => {
+  const goneTo: string[] = [];
+  const pdfCalls: PdfPrintOptions[] = [];
+  const shotCalls: PngShotOptions[] = [];
+  const viewports: ViewportSpec[] = [];
   return {
-    transport,
-    sent: base.sent,
-    inject: (text) => {
-      base.receive(text);
+    goneTo,
+    pdfCalls,
+    shotCalls,
+    viewports,
+    goto: gotoOf(goneTo, options.goto),
+    pdf: pdfCallOf(pdfCalls, options),
+    screenshot: shotCallOf(shotCalls, viewports, options),
+    setViewport: (viewport) => {
+      viewports.push(viewport);
+      return Promise.resolve();
     },
-    drop: () => {
-      base.drop();
+    metrics: metricsOf(options.contentHeight),
+  };
+};
+
+export interface FakeBrowser extends BrowserLike {
+  readonly disconnected: { count: number };
+}
+
+export const fakeBrowserOf = (page: PageLike): FakeBrowser => {
+  const disconnected = { count: 0 };
+  return {
+    disconnected,
+    newPage: () => Promise.resolve(page),
+    disconnect: () => {
+      disconnected.count += 1;
     },
   };
 };
@@ -269,10 +217,9 @@ export const responderOf = (options: ResponderOptions = {}): Responder => {
 export interface DepsInput {
   readonly chrome: ChromeProcess;
   readonly dirs: string[];
-  readonly connect: (url: string) => ChromeTransport;
+  readonly connect: (url: string) => Promise<BrowserLike>;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly exists?: (path: string) => boolean;
-  readonly fetchText?: (url: string) => Promise<string>;
   readonly spawnError?: string;
   readonly onSpawn?: (args: readonly string[]) => void;
 }
@@ -285,7 +232,6 @@ export const depsWithOf = (input: DepsInput): ChromeDeps => ({
     if (input.spawnError !== undefined) throw new Error(input.spawnError);
     return input.chrome;
   },
-  fetchText: input.fetchText ?? (() => Promise.resolve(VERSION_TEXT)),
   connect: input.connect,
   tempDir: () => {
     const dir = mkdtempSync(join(tmpdir(), "hr-chrome-"));

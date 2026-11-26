@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { injectNodeIds, parseHtml } from "../src/index";
 import type { HtmlNode } from "../src/html/constants";
 
-// R0 裁定：`<article>` 自身也是注入目标（模型根 ID 不得为空）。这里单独钉住它的边界：
+// `<article>` 自身也是注入目标（模型根 ID 不得为空）。这里单独钉住它的边界：
 // 只注入最外层、已有合法 ID 原样保留、非法 ID 重注入、嵌套 article 不重复处理、可重复。
 
 const HR_ID = "data-hr-id";

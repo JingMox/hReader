@@ -1,4 +1,4 @@
-// 这层管：两段文本的字符级 diff（AC4.1/AC4.2）；纯函数、零依赖、零 IO。
+// 这层管：两段文本的字符级 diff；纯函数、零依赖、零 IO。
 // **性能上限写在注释里，因为它决定主线程会不会被锁死**：一侧超过 20 000 字符就不做字符级 LCS。
 
 export type ChunkKind = "same" | "ins" | "del";
@@ -12,7 +12,7 @@ export interface TextChunk {
  * 为什么不按字符数：`20 000 × 20 000` 的表格是 1.5 GB（裁字 #10）；按格子数才能在分配之前就拦住。 */
 const DIFF_CELL_LIMIT = 8_000_000;
 
-/** 字符上限（AC4.2 的文案口径）：先于格子数闸门检查，单个块文本超过它直接退化。 */
+/** 字符上限：先于格子数闸门检查，单个块文本超过它直接退化。 */
 export const DIFF_CHAR_LIMIT = 20_000;
 
 export interface DiffResult {
@@ -21,7 +21,7 @@ export interface DiffResult {
 }
 
 const pushChunk = (chunks: TextChunk[], kind: ChunkKind, text: string): void => {
-  if (text === "") return; // 零长度 chunk 永不外泄（AC4.1）
+  if (text === "") return; // 零长度 chunk 永不外泄
   const last = chunks[chunks.length - 1];
   if (last?.kind === kind) {
     chunks[chunks.length - 1] = { kind, text: last.text + text };
@@ -85,7 +85,7 @@ const lcsDiff = (before: string, after: string): TextChunk[] => {
 const textAt = (lines: readonly string[], index: number): string =>
   lines.slice(index, index + 1).join("");
 
-/** 退化路径：按**真实行边界**切（换行符粘在前一行尾），重拼必须逐字等于原文（裁定 #16）。 */
+/** 退化路径：按**真实行边界**切（换行符粘在前一行尾），重拼必须逐字等于原文。 */
 const paragraphDiff = (before: string, after: string): TextChunk[] => {
   const left = before.split(/(?<=\n)/u);
   const right = after.split(/(?<=\n)/u);

@@ -7,28 +7,6 @@ import { describe, expect, it } from "vitest";
 const REPO_ROOT = decodeURIComponent(new URL("../../../", import.meta.url).pathname);
 const PROBE_FILE = `${REPO_ROOT}packages/core/tests/gates.test.ts`;
 
-// 拼出被禁的注释词，避免本文件自己触发 no-warning-comments（location: "anywhere"）。
-const TS_IGNORE = ["@ts", "ignore"].join("-");
-const ESLINT_DISABLE = ["eslint", "disable"].join("-");
-
-const LONG_FUNCTION_SOURCE = [
-  "export function longFunction(): number {",
-  "  let total = 0;",
-  ...Array.from({ length: 45 }, (_, index) => `  total += ${String(index)};`),
-  "  return total;",
-  "}",
-].join("\n");
-
-const COMPLEXITY_SOURCE = [
-  "export function classify(value: number): string {",
-  ...Array.from(
-    { length: 11 },
-    (_, index) => `  if (value === ${String(index)}) return "v${String(index)}";`,
-  ),
-  '  return "other";',
-  "}",
-].join("\n");
-
 interface Probe {
   readonly name: string;
   readonly ruleId: string;
@@ -43,29 +21,19 @@ const PROBES: readonly Probe[] = [
       "export function bad(value: unknown): number {\n  const loose: any = value;\n  return loose;\n}",
   },
   {
-    name: "as 断言",
+    name: "对象字面量断言",
     ruleId: "@typescript-eslint/consistent-type-assertions",
-    source: "const raw: unknown = 1;\nexport const casted = raw as number;\nconsole.log(casted);",
-  },
-  {
-    name: "41 行函数",
-    ruleId: "max-lines-per-function",
-    source: LONG_FUNCTION_SOURCE,
-  },
-  {
-    name: "复杂度 12",
-    ruleId: "complexity",
-    source: COMPLEXITY_SOURCE,
+    source: "export const casted = { a: 1 } as { a: number; b: number };\nconsole.log(casted);",
   },
   {
     name: "ts-ignore 注释",
     ruleId: "@typescript-eslint/ban-ts-comment",
-    source: `// ${TS_IGNORE}\nexport const implicit: number = "not a number";`,
+    source: `// @ts-ignore\nexport const implicit: number = "not a number";`,
   },
   {
-    name: "eslint-disable 注释",
-    ruleId: "no-warning-comments",
-    source: `// ${ESLINT_DISABLE}-next-line\nexport const suppressed = 1;`,
+    name: "无说明的 eslint-disable",
+    ruleId: "@eslint-community/eslint-comments/require-description",
+    source: `// eslint-disable-next-line no-console\nexport const suppressed = 1;`,
   },
   {
     name: "深层导入",
@@ -92,9 +60,9 @@ describe("lint gate effectiveness", () => {
   }, 120_000);
 
   it("should not treat a deep-import rejection as covering the package-root boundary", async () => {
-    // 盲区取证：@hreader/core → @hreader/protocol 的根导入不受 ESLint 限制，
-    // 包边界由 dependency-cruiser 的 core-is-a-foundation 规则守（见 test-M1.0.md 实验记录）。
-    const ruleIds = await ruleIdsFor('import "@hreader/protocol";');
+    // 盲区取证：@hreader/core → 其他 @hreader/* 包的根导入不受 ESLint 限制，
+    // 包边界由 dependency-cruiser 的 core-is-a-foundation 规则守。
+    const ruleIds = await ruleIdsFor('import "@hreader/renderer-html";');
     expect(ruleIds).not.toContain("no-restricted-imports");
   }, 120_000);
 });

@@ -1,15 +1,15 @@
 // 这层管：`<nodeId|selector>` 两种解释的唯一实现（先选择器、再 node id）；不改树、不序列化、不判外壳。
 // 放在 `ops/` 顶层的理由：`read` 与 `patch` 都是它的调用方，它不是 `readNode` 的内部件；
-// 它只借用 `readNode/` 的选择器文法与先序解析（那两件是 `readNode` 的实现细节，不对外）。
+// 它只借用 `read-node/` 的选择器文法与先序解析（那两件是 `readNode` 的实现细节，不对外）。
 // `read` 与 `patch` 共用它：两条命令对同一个串必须解析到同一个节点（同输入同 id），
 // 各写一份"重试链"必然漂移。
 
 import type { ParsedHtml } from "../html/constants";
 import { HR_ID_PATTERN } from "../html/constants";
 import { HrError } from "../hr-error";
-import { identifierOf } from "./readNode/attrs";
-import { resolveSelector } from "./readNode/resolve";
-import { parseSelector } from "./readNode/selector";
+import { identifierOf } from "./read-node/attrs";
+import { resolveSelector } from "./read-node/resolve";
+import { parseSelector } from "./read-node/selector";
 
 /** 一次定位的结果：`selector` 是喂给 `readNode` 的串，`nodeId` 是 `patch` 要的 `data-hr-id`。 */
 export interface LocatedTarget {
@@ -45,12 +45,12 @@ const locatedFrom = (
 /**
  * 两跳都没命中。码只在**这里**定，判据是**这一跳为什么失败**（失败码），不是目标串长什么样：
  * `#`、空格、`>` 都不是 id 字符，按字面形态判就会把“文法过了、只是零命中”塞进 syntax 分支
- * （F20：`#S2`/`#nope`/`article > div:nth-of-type(9)` 曾报 `invalid_selector` + `reason:"syntax"`，
+ * （`#S2`/`#nope`/`article > div:nth-of-type(9)` 曾报 `invalid_selector` + `reason:"syntax"`，
  * 报文还自相矛盾地写着“没有匹配到任何节点”，而同一串走 `readNode` 是 `node_not_found`）。
  * 任一跳报 `node_not_found` ⇒ 那一跳的文法已过，整条就是“找不到”；两跳都是 `invalid_selector` 才是写法错。
  * `HR_ID_PATTERN` 只决定第二跳要不要试（在 `idSelectorOf` 之前），判码时不出现。
  * 报文只讲**一句**，主语用用户敲的那个串（不是 `[data-hr-id="…"]`）：另一跳的过程是调试信息，
- * 两跳拼给用户看只会得到自相矛盾的报文（R2-14）。
+ * 两跳拼给用户看只会得到自相矛盾的报文。
  */
 const bothFailed = (target: string, bySelector: HrError, byId: HrError | undefined): never => {
   const quoted = JSON.stringify(target);

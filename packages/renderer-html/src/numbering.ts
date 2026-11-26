@@ -5,7 +5,7 @@ import type { OutlineNode } from "@hreader/core";
 export interface TocEntry {
   readonly id: string;
   readonly number: string;
-  /** 标题层级 1–4，直接进 `toc__item--h<level>`（D6 契约）。 */
+  /** 标题层级 1–4，直接进 `toc__item--h<level>`。 */
   readonly level: number;
   readonly text: string;
 }
@@ -14,7 +14,7 @@ export interface Numbering {
   readonly entries: readonly TocEntry[];
   /** `data-hr-id` → 章节号；只有编号标题在内，容器节点查不到就不该有 `id="sec-…"`。 */
   readonly numberById: ReadonlyMap<string, string>;
-  /** outline 里的 `section` 容器：正文要给它们加 `chapter` 类（§11.2：`header` 容器不产生 chapter）。 */
+  /** outline 里的 `section` 容器：正文要给它们加 `chapter` 类（`header` 容器不产生 chapter）。 */
   readonly chapterIds: ReadonlySet<string>;
 }
 

@@ -1,11 +1,12 @@
-// 这层管：stderr 洪流下的缓冲上限与监听器回收（§15.3）；不测 Chrome 渲染本身。
+// 这层管：stderr 洪流下的缓冲上限与监听器回收；不测 Chrome 渲染本身。
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { chromeDepsOf, chromeProcessOf, renderPdfOf, stderrBufferOf } from "../src/chrome/session";
-import { responderOf, VERSION_TEXT } from "./chrome-helpers";
+import { chromeProcessOf, stderrBufferOf } from "../src/chrome/process";
+import { chromeDepsOf, renderPdfOf } from "../src/chrome/session";
+import { fakeBrowserOf, fakePageOf } from "./chrome-helpers";
 import { NEVER } from "./chrome-session-setup";
 
 const FAKE_CHROME = fileURLToPath(new URL("../fixtures/fake-chrome.mjs", import.meta.url));
@@ -36,13 +37,13 @@ describe("renderPdfOf · stderr 洪流", () => {
         child = spawn(file, [...args], { ...options, env: { ...process.env, FAKE_MODE: "flood" } });
         return chromeProcessOf(child);
       },
-      fetchText: () => Promise.resolve(VERSION_TEXT),
-      connect: () => responderOf({}).transport,
+      connect: () => Promise.resolve(fakeBrowserOf(fakePageOf({ pages: 1 }))),
     };
     const result = await renderPdfOf({
       html: "<p>x</p>",
       pageSize: "a4",
       outline: true,
+      preferCSSPageSize: false,
       stop: NEVER,
       timeoutMs: 5000,
       deps,

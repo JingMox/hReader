@@ -1,4 +1,4 @@
-// P1-4：`/diff` 必须给**这条批注所在块**的 diff，而不是全篇。
+// `/diff` 必须给**这条批注所在块**的 diff，而不是全篇。
 // 全篇 diff 有两个可观察后果：两条不同块的批注拿到同一份结果；面板也没有 `nodeId` 可标块。
 // 另加一条短文档守门：`degraded` 不该在这种规模上为真（审计实测 2 000 字符 → false）。
 
@@ -117,7 +117,7 @@ const diffOfDeletedBlock = async (ctx: TestServer): Promise<unknown> => {
 };
 
 /** 判定“块粒度”：`nodeId` 是**自己的** id，`after` 只含自己那块的新文本。
- *  R2-04 后 patch 保留目标 id ⇒ 直接命中，不降级（旧口径的“重识别”已无产生路径）。 */
+ *  patch 保留目标 id ⇒ 直接命中，不降级（旧口径的“重识别”已无产生路径）。 */
 const expectOwnBlockOnly = (
   left: unknown,
   right: unknown,
@@ -125,10 +125,10 @@ const expectOwnBlockOnly = (
 ): void => {
   expect(fieldOf(left, "nodeId")).toBe(ids.leftNodeId);
   expect(fieldOf(right, "nodeId")).toBe(ids.rightNodeId);
-  // id 归产品所有：`replace` 不再换锚点（docs/05:57），所以盘中 id 就是批注写的那个。
+  // id 归产品所有：`replace` 不再换锚点，所以盘中 id 就是批注写的那个。
   expect(ids.leftNodeId).toBe("hr-c");
   expect(ids.rightNodeId).toBe("hr-d");
-  // C1/L-05：wire 不再有 reason/originNodeId；`degraded` 才是契约。
+  // wire 不再有 reason/originNodeId；`degraded` 才是契约。
   expect(fieldOf(left, "originNodeId")).toBeUndefined();
   expect(fieldOf(right, "originNodeId")).toBeUndefined();
   expect(fieldOf(left, "degraded")).toBe(false);
@@ -141,7 +141,7 @@ const expectOwnBlockOnly = (
   expect(fieldOf(left, "reason")).toBeUndefined();
 };
 
-describe("GET …/diff · 粒度是块（P1-4）", () => {
+describe("GET …/diff · 粒度是块", () => {
   it("should diff only the annotation's own block", async () => {
     await withServer(async (ctx) => {
       const { left, right, leftNodeId, rightNodeId } = await twoBlockDiffs(ctx);
@@ -182,7 +182,7 @@ describe("GET …/diff · 粒度是块（P1-4）", () => {
 //   M1c index 翻转（反文档序）             → KILLED（本用例 + `should diff only the annotation's own block`）
 describe("GET …/diff · 第二档：按文档先序重识别", () => {
   it("should reidentify by document-order position when only the fragment subtree's id was rebuilt", async () => {
-    // R2-04 后 `replace` 保留片段根的 id，但**子树内部的 id 仍会重算**；批注锚在子树里时
+    // `replace` 保留片段根的 id，但**子树内部的 id 仍会重算**；批注锚在子树里时
     // 老 id 就不在盘上了——这是现在唯一还能走到位置重识别（D.4 第二档）的路径。
     const NESTED = [
       "<!doctype html>",
@@ -220,7 +220,7 @@ describe("GET …/diff · 第三档：块缺失", () => {
       const body = await diffOfDeletedBlock(ctx);
       expect(fieldOf(body, "after")).toBe("");
       expect(fieldOf(body, "degraded")).toBe(true);
-      // C1/L-05：wire 不再有 reason/originNodeId；degraded 才是契约。
+      // wire 不再有 reason/originNodeId；degraded 才是契约。
       expect(fieldOf(body, "reason")).toBeUndefined();
       expect(typeof fieldOf(body, "degradedReason")).toBe("string");
       // 没有替身可给：`nodeId` 只能回旧 id（D.4）；旧 id 不再另起字段。

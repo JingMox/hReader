@@ -41,7 +41,7 @@ interface Frame {
   words: number;
   levelSet: boolean;
   textSet: boolean;
-  /** 子树里文档序第一个标题的 level/text（AC1：section/header 取"其所属标题层级/首个标题文本"）。 */
+  /** 子树里文档序第一个标题的 level/text（section/header 取"其所属标题层级/首个标题文本"）。 */
   firstHeadingLevel: number | undefined;
   firstHeadingText: string | undefined;
 }

@@ -1,4 +1,4 @@
-// 这层管：M2.3 的四条新路由（16 条表里的 12→16）：正例 + 未鉴权/坏载荷/未知 docId 负例。
+// 这层管：批注路由：正例 + 未鉴权/坏载荷/未知 docId 负例。
 // 走真 HTTP：断言 code 之外，负例还要断"文件字节没动"。
 
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -265,7 +265,7 @@ describe("POST /api/doc/:doc/annotations · 载荷边界", () => {
         body: bodyOf("other.html"),
       });
 
-      // 裁定 #6：路径段是唯一真相，body 不一致要报错，而不是静默用其中一个。
+      // 路径段是唯一真相，body 不一致要报错，而不是静默用其中一个。
       expect(response.status).toBe(400);
       expect(response.body).toContain("invalid_payload");
       expect(response.body).toContain("body.docId");

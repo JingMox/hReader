@@ -1,4 +1,4 @@
-// 这层管：装配（纯组装，不含 IO、不读 argv）。两种传输共用这一份注册表（AC-8）。
+// 这层管：装配（纯组装，不含 IO、不读 argv）。两种传输共用这一份注册表。
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 

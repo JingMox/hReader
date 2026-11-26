@@ -1,7 +1,7 @@
-// 这层管：`Host` 的假实现——记录**调用序列**（不是最终 DOM），AC2.2/AC2.4 的"只写变化"
+// 这层管：`Host` 的假实现——记录**调用序列**（不是最终 DOM），"只写变化"
 // 必须靠序列证明：整篇重载与按块更新在最终 DOM 上可能一样，在调用序列上不一样。
 
-import type { Host, NodeSpec, TargetLike } from "../../src/dom.ts";
+import type { ElementLike, Host, NodeSpec, TargetLike } from "../../src/dom.ts";
 import {
   initialState,
   type OutlineNode,
@@ -18,6 +18,8 @@ export interface HostCall {
 export interface FakeHost {
   readonly host: Host;
   readonly calls: readonly HostCall[];
+  /** 测试按选择器登记的 `all` 命中（默认空）。 */
+  readonly all: Map<string, readonly ElementLike[]>;
   /** 只取操作名，断言"某操作没发生"时比逐条比参数更好读。 */
   readonly ops: () => readonly string[];
   /** 触发某个 `on` 注册的处理器（模拟点击/change）。 */
@@ -28,7 +30,8 @@ export interface FakeHost {
 
 const textOpsOf = (
   calls: HostCall[],
-): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo"> => {
+  all: Map<string, readonly ElementLike[]>,
+): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "all"> => {
   const record = (op: string, args: readonly string[]): void => {
     calls.push({ op, args });
   };
@@ -47,6 +50,10 @@ const textOpsOf = (
     },
     scrollTo: (selector) => {
       record("scrollTo", [selector]);
+    },
+    all: (selector) => {
+      record("all", [selector]);
+      return all.get(selector) ?? [];
     },
   };
 };
@@ -125,9 +132,11 @@ export const createFakeHost = (
 ): FakeHost => {
   const calls: HostCall[] = [];
   const handlers = new Map<string, (target: TargetLike) => void>();
+  const all = new Map<string, readonly ElementLike[]>();
   return {
-    host: { ...textOpsOf(calls), ...treeOpsOf(calls, handlers, blocksOf) },
+    host: { ...textOpsOf(calls, all), ...treeOpsOf(calls, handlers, blocksOf) },
     calls,
+    all,
     ops: () => calls.map((call) => call.op),
     listeners: () => [...handlers.keys()],
     fire: (selector, type, target) => {

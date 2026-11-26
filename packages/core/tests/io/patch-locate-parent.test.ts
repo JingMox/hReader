@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseHtml } from "../../src/html/parse";
-import { parentElementOf } from "../../src/ops/patchNode/locate";
+import { parentElementOf } from "../../src/ops/patch-node/locate";
 
 describe("parentElementOf · 找不到父元素", () => {
   it("should return undefined when the child is not in the tree at all", () => {

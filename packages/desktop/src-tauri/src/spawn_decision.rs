@@ -122,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_absent_file_means_spawn_without_stale_cleanup() {
+    fn absent_file_means_spawn_without_stale_cleanup() {
         assert_eq!(
             decide(&DaemonState::Absent, &probe(true, true, Some(42))),
             Decision::Spawn { stale: false }
@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_dead_port_means_spawn_after_cleaning_the_residue() {
+    fn dead_port_means_spawn_after_cleaning_the_residue() {
         assert_eq!(
             decide(&state(), &probe(false, false, None)),
             Decision::Spawn { stale: true }
@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_live_healthy_daemon_is_reused() {
+    fn live_healthy_daemon_is_reused() {
         assert_eq!(
             decide(&state(), &probe(true, true, Some(42))),
             Decision::Reuse(info())
@@ -146,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_port_open_with_dead_pid_is_conflicted() {
+    fn port_open_with_dead_pid_is_conflicted() {
         assert_eq!(
             decide(&state(), &probe(true, false, None)),
             Decision::Conflicted(Conflict::PortOwnedByOther)
@@ -159,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_port_open_pid_alive_but_health_fails_is_conflicted() {
+    fn port_open_pid_alive_but_health_fails_is_conflicted() {
         assert_eq!(
             decide(&state(), &probe(true, true, None)),
             Decision::Conflicted(Conflict::NotAnHreaderDaemon)
@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_conflict_keys_are_stable() {
+    fn conflict_keys_are_stable() {
         assert_eq!(Conflict::PortOwnedByOther.message_key(), "port_taken");
         assert_eq!(
             Conflict::NotAnHreaderDaemon.message_key(),
@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_recheck_rejects_a_squatter_that_took_the_port_after_reuse() {
+    fn recheck_rejects_a_squatter_that_took_the_port_after_reuse() {
         let probe = Scripted::new(&[(true, true, Some(42)), (true, true, Some(7))]);
         assert_eq!(decide(&state(), &probe), Decision::Reuse(info()));
         probe.advance();
@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_recheck_rejects_when_health_stops_answering() {
+    fn recheck_rejects_when_health_stops_answering() {
         let probe = Scripted::new(&[(true, true, Some(42)), (true, true, None)]);
         assert_eq!(decide(&state(), &probe), Decision::Reuse(info()));
         probe.advance();
@@ -233,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_recheck_reports_a_daemon_that_died_before_navigation() {
+    fn recheck_reports_a_daemon_that_died_before_navigation() {
         let probe = Scripted::new(&[(true, true, Some(42)), (false, false, None)]);
         assert_eq!(decide(&state(), &probe), Decision::Reuse(info()));
         probe.advance();
@@ -241,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn ac4_recheck_passes_when_the_same_daemon_still_answers() {
+    fn recheck_passes_when_the_same_daemon_still_answers() {
         let probe = Scripted::new(&[(true, true, Some(42))]);
         assert_eq!(recheck(&info(), &probe), Ok(()));
     }

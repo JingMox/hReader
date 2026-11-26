@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { applyStyle } from "../../src/style/applyFile";
+import { applyStyle } from "../../src/style/apply-file";
 import { sha1Of } from "../io/harness";
 import { loadStyle } from "../../src/style/load";
 import {
@@ -64,6 +64,9 @@ describe("applyStyle · 幂等与插入", () => {
       env.deps,
     );
     const afterFirst = env.fake.state.files.get(FILE);
+    const writesAfterFirst = env.fake.state.log.filter((line) =>
+      line.startsWith("writeFileAtomic:"),
+    ).length;
     const result = await applyStyle(
       { workspace: "/work", file: "article.html", visualId: "atelier-editorial" },
       env.deps,
@@ -71,7 +74,9 @@ describe("applyStyle · 幂等与插入", () => {
 
     expect(result.changed).toBe(false);
     expect(env.fake.state.files.get(FILE)).toBe(afterFirst);
-    expect(env.fake.state.log.filter((line) => line.startsWith("rename:"))).toHaveLength(1);
+    expect(env.fake.state.log.filter((line) => line.startsWith("writeFileAtomic:"))).toHaveLength(
+      writesAfterFirst,
+    );
   });
 
   it("should insert the block into <head> when the document has none", async () => {
@@ -90,10 +95,10 @@ describe("applyStyle · 幂等与插入", () => {
 });
 
 describe("applyStyle · 失败不留痕（tmp / 原字节 / 锁）", () => {
-  it("should leave no tmp and keep the original bytes when rename fails", async () => {
+  it("should leave no tmp and keep the original bytes when the atomic write fails", async () => {
     const env = styleEnv(seed());
     const before = new Uint8Array(env.fake.state.files.get(FILE) ?? new Uint8Array());
-    env.fake.fail("rename", Object.assign(new Error("EIO"), { code: "EIO" }));
+    env.fake.fail("writeFileAtomic", Object.assign(new Error("EIO"), { code: "EIO" }));
 
     await expect(
       applyStyle(
@@ -203,7 +208,7 @@ describe("applyStyle · 文档读取失败", () => {
   });
 });
 
-describe("resolveStyle 单一解析链（R4）", () => {
+describe("resolveStyle 单一解析链", () => {
   it("should apply a builtin visual that loadStyle can resolve", async () => {
     const env = styleEnv(seed());
     const loaded = await loadStyle({ id: "atelier-editorial" }, env.deps);
@@ -217,7 +222,7 @@ describe("resolveStyle 单一解析链（R4）", () => {
   });
 });
 
-describe("resolveStyle 单一解析链 · 用户路径（R4）", () => {
+describe("resolveStyle 单一解析链 · 用户路径", () => {
   it("should apply a user style that loadStyle resolves from an explicit path", async () => {
     const env = styleEnv(
       seed({

@@ -7,7 +7,7 @@ import { injectNodeIds, parseHtml, serializeHtml } from "../src/index";
 const BUDGET_MS = 300;
 const TIMEOUT_MS = 120_000;
 
-// 抗噪基线（M1.2 的 300ms 绝对阈值在 25 个测试文件并发时会假红：实测一次 1178ms）。
+// 抗噪基线（300ms 绝对阈值在多测试文件并发时会假红：实测一次 1178ms）。
 // 用纯数学循环做**同进程争用探针**：它不在 `src/`，不被覆盖插桩，因此只反映 CPU 争用/降频；
 // 本机空闲实测 ~7.5ms，并发下按比例放大预算（上限 6x，再高就是环境问题而非实现问题）。
 const PROBE_IDLE_MS = 7.5;
@@ -120,7 +120,7 @@ describe("性能 · 10k 深嵌套", () => {
       const injected = injectNodeIds(parseHtml(html));
       const printed = serializeHtml(injected.parsed);
 
-      // M1.2 v2：最外层 article 自身也是注入目标，所以是 depth 条（article + 9999 层 section）。
+      // 最外层 article 自身也是注入目标，所以是 depth 条（article + 9999 层 section）。
       expect(injected.injected).toHaveLength(depth);
       expect(printed.length).toBeGreaterThan(html.length);
     },

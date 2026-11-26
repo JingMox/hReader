@@ -90,7 +90,7 @@ describe("shell · stripping anchors out of an article read", () => {
   });
 });
 
-describe("shell · content-level stripping (v2 #13)", () => {
+describe("shell · content-level stripping", () => {
   it("should strip an ordinary inline script instead of shipping it out", () => {
     const result = read(
       '<article data-hr-id="post"><script>run()</script><p>x</p></article>',
