@@ -164,8 +164,8 @@ describe("matchRoute · 批注与撤销", () => {
     });
   });
 
-  it("should freeze the table at 20 entries (12 + 5 + info + trust/normalize)", () => {
-    expect(ROUTES).toHaveLength(20);
+  it("should freeze the table at 23 entries (12 + 5 + info + trust/normalize + permissions×3)", () => {
+    expect(ROUTES).toHaveLength(23);
     expect(matchRoute("GET", "/api/doc/a.html/info")).toMatchObject({
       kind: "route",
       params: { docId: "a.html" },

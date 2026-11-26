@@ -1,5 +1,6 @@
-// 这层管：`POST /api/doc/:docId/trust`——只有外来文档能设档、`/s/` 按档下发 CSP、
-// info 回 `trust`/`scripts`、写后推 doc.changed；以及"内容一变信任即失效"。
+// 这层管：`POST /api/doc/:docId/trust` 的兼容面——只有外来文档能设档、`/s/` 按生效
+// 脚本位下发 CSP、info 回 `trust`/`scripts`/`permissions`、写后推 doc.changed；
+// 以及路径键语义：内容改动（含 style 写入）不再收回授权。
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -14,11 +15,13 @@ const FOREIGN_WITH_SCRIPT =
 
 const FOREIGN_CLEAN = '<!doctype html><html><body><div class="app">plain</div></body></html>';
 
-const OFF_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
+const OFF_CSP =
+  "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; " +
+  "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox";
 const LOCAL_CSP =
   "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; " +
   "img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; " +
-  "frame-src 'none'; form-action 'none'; base-uri 'none'; sandbox allow-scripts";
+  "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts";
 
 const foreignSeed =
   (html = FOREIGN_WITH_SCRIPT) =>
@@ -109,6 +112,40 @@ describe("doc trust · info 字段", () => {
     }, foreignSeed());
   });
 
+  it("should expose the effective two-dimension permissions on a foreign doc", async () => {
+    await withServer(async (ctx) => {
+      // 默认（双 per-doc、无授权）：两维都关、出处都是单文档记录。
+      expect(await infoOf(ctx.port, ctx.token)).toMatchObject({
+        permissions: {
+          scripts: false,
+          network: false,
+          scriptsSource: "doc",
+          networkSource: "doc",
+          modes: { scripts: "per-doc", network: "per-doc" },
+        },
+      });
+
+      // trust=local 映成 grant {scripts:true, network:false}：network 维保持关。
+      await postTrust(ctx.port, ctx.token, "local");
+      expect(await infoOf(ctx.port, ctx.token)).toMatchObject({
+        permissions: { scripts: true, network: false },
+      });
+    }, foreignSeed());
+  });
+
+  it("should omit the permissions field for managed and normalizable docs", async () => {
+    await withServer(async (ctx) => {
+      const info = await infoOf(ctx.port, ctx.token);
+      expect(info).toMatchObject({ cls: "managed", trust: "off" });
+      expect("permissions" in info).toBe(false);
+    });
+    await withServer(async (ctx) => {
+      const info = await infoOf(ctx.port, ctx.token);
+      expect(info).toMatchObject({ cls: "normalizable" });
+      expect("permissions" in info).toBe(false);
+    }, foreignSeed("<article><p>没有 id</p></article>"));
+  });
+
   it("should report scripts false for a foreign doc without executable content", async () => {
     await withServer(async (ctx) => {
       expect(await infoOf(ctx.port, ctx.token)).toMatchObject({
@@ -193,15 +230,34 @@ describe("doc trust · SSE 与失效", () => {
     }, foreignSeed());
   });
 
-  it("should fall back to off when the document bytes change after a grant", async () => {
+  it("should keep the grant when the document bytes change after a grant", async () => {
     await withServer(async (ctx) => {
       await postTrust(ctx.port, ctx.token, "local");
       expect(await infoOf(ctx.port, ctx.token)).toMatchObject({ trust: "local" });
 
+      // 授权按路径记：字节变了授权保留（用户/agent 编辑文档不再掉档）。
       writeFileSync(ctx.file, `${FOREIGN_WITH_SCRIPT}<!-- v2 -->`, "utf8");
 
-      expect(await infoOf(ctx.port, ctx.token)).toMatchObject({ trust: "off" });
-      expect(await cspOf(ctx.port, ctx.token)).toBe(OFF_CSP);
+      expect(await infoOf(ctx.port, ctx.token)).toMatchObject({ trust: "local" });
+      expect(await cspOf(ctx.port, ctx.token)).toBe(LOCAL_CSP);
+    }, foreignSeed());
+  });
+
+  it("should keep the grant when a style write changes the document bytes", async () => {
+    await withServer(async (ctx) => {
+      await postTrust(ctx.port, ctx.token, "local");
+
+      const style = await httpCall(ctx.port, {
+        method: "POST",
+        path: "/api/style",
+        headers: withPost(ctx.token),
+        body: JSON.stringify({ docId: "doc.html", visualId: "atelier-editorial" }),
+      });
+
+      // 主题写进文件只换字节、不换路径：授权保留——这正是从 sha 键切到路径键要修的问题。
+      expect(style.status).toBe(200);
+      expect(await infoOf(ctx.port, ctx.token)).toMatchObject({ trust: "local" });
+      expect(await cspOf(ctx.port, ctx.token)).toBe(LOCAL_CSP);
     }, foreignSeed());
   });
 });
