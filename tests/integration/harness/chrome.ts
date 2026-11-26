@@ -31,6 +31,8 @@ export interface Page {
   readonly onNewDocument: (source: string) => Promise<void>;
   readonly navigate: (url: string) => Promise<void>;
   readonly reload: () => Promise<void>;
+  /** Page errors, console.error entries and failed requests collected since page open. */
+  readonly consoleErrors: () => readonly string[];
 }
 
 // 老 hand-rolled 驱动同款旗标（headless 本身走 launch({ headless: true }），
@@ -43,7 +45,7 @@ const CHROME_ARGS: readonly string[] = [
   "--remote-allow-origins=*",
 ];
 
-const wrapPage = (inner: PuppeteerPage, session: CDPSession): Page => {
+const wrapPage = (inner: PuppeteerPage, session: CDPSession): Omit<Page, "consoleErrors"> => {
   // 直走 CDPSession 而非 page.evaluate：需要 `userGesture: true` 让求值带上
   // transient user activation——演示模式入口内部会 requestFullscreen()，没激活态
   // 的 el.click() 会当场被拒（page.evaluate 没有暴露这个开关）。
@@ -144,8 +146,32 @@ export const launchBrowser = async (): Promise<Browser> => {
   return {
     open: async (url) => {
       const inner = await browser.newPage();
+      // Listeners attach before navigation so a broken module load (missing chunk,
+      // unhandled pageerror, failed request) can never slip past the collector.
+      const consoleErrors: string[] = [];
+      inner.on("pageerror", (error: unknown) => {
+        consoleErrors.push(`pageerror: ${String(error)}`);
+      });
+      inner.on("console", (message) => {
+        if (message.type() === "error") {
+          consoleErrors.push(`console.error: ${message.text()} (${message.location().url})`);
+        }
+      });
+      inner.on("requestfailed", (request) => {
+        consoleErrors.push(
+          `requestfailed: ${request.url()} ${request.failure()?.errorText ?? "unknown"}`,
+        );
+      });
+      inner.on("response", (response) => {
+        if (response.status() >= 400) {
+          consoleErrors.push(`http ${String(response.status())}: ${response.url()}`);
+        }
+      });
       const session = await inner.createCDPSession();
-      const page = wrapPage(inner, session);
+      const page: Page = {
+        ...wrapPage(inner, session),
+        consoleErrors: () => [...consoleErrors],
+      };
       await page.navigate(url);
       return page;
     },

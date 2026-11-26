@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import { afterAll, beforeAll, describe, test } from "vitest";
 
-import { assertEq } from "../harness/check.ts";
+import { assert, assertEq } from "../harness/check.ts";
 import { newDoc } from "../harness/cli.ts";
 import { launchBrowser, type Browser, type Page } from "../harness/chrome.ts";
 import { chromeSkipReason, sandbox, type TestHome } from "../harness/env.ts";
@@ -47,5 +47,16 @@ describe.skipIf(skip !== undefined)("version-journey", () => {
       `(() => { const el = document.querySelector('#hr-version'); return el && el.textContent !== '' ? el.textContent : false; })()`,
     );
     assertEq(shown, `v${version}`, "#hr-version text");
+  });
+
+  test("reader loads with no console errors or failed requests", async () => {
+    // A broken module emit (a stray node: import, a missing chunk) shows up here even
+    // when the page still renders — this is the browser-side mirror of the dist audit.
+    const ready = await page.wait(`document.querySelector('#hr-doc') !== null`);
+    assert(ready !== false, "reader did not render #hr-doc within 20s");
+    // favicon.ico 404s on every load (the server ships no icon) — pre-existing, not a
+    // module failure; everything else must be clean.
+    const errors = page.consoleErrors().filter((entry) => !entry.includes("favicon.ico"));
+    assert(errors.length === 0, `console errors / failed requests: ${JSON.stringify(errors)}`);
   });
 });
