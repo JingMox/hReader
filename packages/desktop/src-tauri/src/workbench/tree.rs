@@ -6,6 +6,9 @@
 //! subdirectories that are `clean` (fully scanned and containing no HTML of
 //! their own). A directory whose sole document is `index.html` collapses into a
 //! single `page-folder` node.
+//!
+//! Symlinks are never followed (D29, same as the watcher's
+//! `followSymlinks: false`): every link is a hidden non-document leaf.
 
 use std::cmp::Ordering;
 use std::fs;
@@ -243,9 +246,17 @@ fn scan_dir(dir: &Path, rel: &str, depth: usize, budget: &mut ScanBudget) -> Dir
         }
         let path = entry.path();
         let entry_rel = join_rel(rel, &name);
-        if path.is_dir() {
+        // Never follow symlinks (watcher parity: `followSymlinks: false`): a
+        // link becomes a hidden leaf whatever it points at — neither a
+        // directory to descend into nor a document to open.
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_symlink() {
+            other_files.push((name, entry_rel));
+        } else if file_type.is_dir() {
             subdirs.push((name, path, entry_rel));
-        } else if path.is_file() {
+        } else if file_type.is_file() {
             if is_html_file(&path) {
                 html_files.push((name, path, entry_rel));
             } else {

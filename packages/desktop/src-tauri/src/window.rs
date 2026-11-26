@@ -560,7 +560,7 @@ fn handle_menu_event(app: &tauri::AppHandle, shared: &SharedState, id: &str) {
         "pick-file" => pick_file_async(app.clone(), Arc::clone(shared)),
         "pick-folder" => pick_folder_async(app.clone(), Arc::clone(shared)),
         "welcome" => open_welcome(app.clone(), Arc::clone(shared)),
-        "reveal" => reveal_in_finder(shared, None),
+        "reveal" => reveal_in_finder(app, shared, None),
         "open-themes-dir" => open_themes_dir(app, shared),
         "reload-themes" => reload_themes(app, shared),
         "export-pdf" => export_async(app.clone(), Arc::clone(shared), "pdf", None),
@@ -758,8 +758,8 @@ fn handle_bridge_navigation(app: &tauri::AppHandle, shared: &SharedState, url: &
         "/welcome" => open_welcome(app.clone(), Arc::clone(shared)),
         "/pick-file" => pick_file_async(app.clone(), Arc::clone(shared)),
         "/pick-folder" => pick_folder_async(app.clone(), Arc::clone(shared)),
-        "/reveal" => reveal_in_finder(shared, query_param(url, "doc").as_deref()),
-        "/open-asset" => open_asset_in_workspace(shared, query_param(url, "doc").as_deref()),
+        "/reveal" => reveal_in_finder(app, shared, query_param(url, "doc").as_deref()),
+        "/open-asset" => open_asset_in_workspace(app, shared, query_param(url, "doc").as_deref()),
         "/open-themes-dir" => open_themes_dir(app, shared),
         "/reload-themes" => reload_themes(app, shared),
         "/export-pdf" => {
@@ -1087,11 +1087,56 @@ fn reveal_path(target: &Path) {
     }
 }
 
-/// reveal 的目标必须留在工作区里：`?doc=` 来自页面，绝对路径/`..` 会把它带出工作区
-/// （顺带用 Finder 的存在性确认做了 oracle）。越界或不存在一律回落到工作区根。
-fn resolve_reveal_target(workspace: &Path, doc: &str) -> PathBuf {
+/// `/open-asset` 只把"被动类型"交给系统默认程序：查看器打开的格式不会执行
+/// 代码。其余一切——包括目录、.app bundle、脚本与无扩展名文件——只 reveal。
+const ASSET_OPEN_WHITELIST: &[&str] = &[
+    // images
+    "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "bmp", "tiff", "heic",
+    // documents
+    "pdf", "txt", "md", "csv", "json", // audio / video
+    "mp3", "wav", "m4a", "ogg", "mp4", "webm", "mov", // fonts
+    "ttf", "otf", "woff", "woff2", "css",
+];
+
+/// What the bridge may do with a verified in-workspace target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AssetOpenAction {
+    /// Hand the file to the system default application.
+    Open,
+    /// Only reveal it in the file manager — never executes anything.
+    Reveal,
+}
+
+/// 扩展名大小写不敏感判白名单；目录（含 .app bundle）一律 Reveal——
+/// `open` 一个 .app 会启动它，等同于执行任意二进制。
+fn asset_open_action(target: &Path) -> AssetOpenAction {
+    if target.is_dir() {
+        return AssetOpenAction::Reveal;
+    }
+    let openable = target
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            ASSET_OPEN_WHITELIST
+                .iter()
+                .any(|allowed| ext.eq_ignore_ascii_case(allowed))
+        });
+    if openable {
+        AssetOpenAction::Open
+    } else {
+        AssetOpenAction::Reveal
+    }
+}
+
+/// reveal 与 open-asset 共用的目标解析：`?doc=` 来自页面，绝对路径/`..` 先字面
+/// 拒查；再 canonicalize，要求真实路径仍落在（同样 canonicalize 后的）工作区内。
+/// 越界或不存在返回 `None`——调用方什么都不做，绝不能回落到工作区根再动手。
+fn resolve_verified_target(workspace: &Path, doc: &str) -> Option<PathBuf> {
+    let ws_real = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.to_path_buf());
     if doc.is_empty() {
-        return workspace.to_path_buf();
+        return Some(ws_real);
     }
     let rel = Path::new(doc);
     let escapes = rel.is_absolute()
@@ -1104,44 +1149,28 @@ fn resolve_reveal_target(workspace: &Path, doc: &str) -> PathBuf {
             )
         });
     if escapes {
-        return workspace.to_path_buf();
+        return None;
     }
-    let candidate = workspace.join(rel);
-    if candidate.exists() {
-        candidate
+    let real = workspace.join(rel).canonicalize().ok()?;
+    if real.starts_with(&ws_real) {
+        Some(real)
     } else {
-        workspace.to_path_buf()
+        None
     }
 }
 
-/// What the bridge may do with a verified in-workspace target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AssetOpenAction {
-    /// Hand the file to the system default application.
-    Open,
-    /// Only reveal it in the file manager — never executes anything.
-    Reveal,
-}
-
-fn asset_open_action(target: &Path) -> AssetOpenAction {
-    let _ = target;
-    AssetOpenAction::Open
-}
-
-/// Verified in-workspace target for reveal/open-asset: `None` means refuse.
-fn resolve_verified_target(workspace: &Path, doc: &str) -> Option<PathBuf> {
-    Some(resolve_reveal_target(workspace, doc))
-}
-
-fn reveal_in_finder(shared: &SharedState, doc_opt: Option<&str>) {
-    let target = match shared.lock() {
+fn reveal_in_finder(app: &tauri::AppHandle, shared: &SharedState, doc_opt: Option<&str>) {
+    let resolved = match shared.lock() {
         Ok(guard) => {
             let doc = doc_opt.unwrap_or(&guard.doc_id);
-            resolve_reveal_target(&guard.workspace, doc)
+            resolve_verified_target(&guard.workspace, doc)
         }
         Err(_) => return,
     };
-    reveal_path(&target);
+    match resolved {
+        Some(target) => reveal_path(&target),
+        None => toast(app, "无法打开：路径不存在或已移出工作区", true),
+    }
 }
 
 /// Open a file with the system default application: like `reveal`, but the
@@ -1161,17 +1190,23 @@ fn open_path_default(target: &Path) {
     }
 }
 
-/// 资源文件走系统默认程序打开：解析规则与 reveal 相同——绝不越出工作区，
-/// 越界或不存在的路径一律回落到工作区根目录。
-fn open_asset_in_workspace(shared: &SharedState, doc_opt: Option<&str>) {
-    let target = match shared.lock() {
+/// 资源文件先过边界校验，再按类型分流：白名单被动类型交给系统默认程序，
+/// 其余一律"在 Finder 中显示"——系统 `open` 对 .app/.command/.sh 等会直接执行。
+fn open_asset_in_workspace(app: &tauri::AppHandle, shared: &SharedState, doc_opt: Option<&str>) {
+    let resolved = match shared.lock() {
         Ok(guard) => {
             let doc = doc_opt.unwrap_or(&guard.doc_id);
-            resolve_reveal_target(&guard.workspace, doc)
+            resolve_verified_target(&guard.workspace, doc)
         }
         Err(_) => return,
     };
-    open_path_default(&target);
+    match resolved {
+        Some(target) => match asset_open_action(&target) {
+            AssetOpenAction::Open => open_path_default(&target),
+            AssetOpenAction::Reveal => reveal_path(&target),
+        },
+        None => toast(app, "无法打开：路径不存在或已移出工作区", true),
+    }
 }
 
 fn export_async(
