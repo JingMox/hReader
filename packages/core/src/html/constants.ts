@@ -2,8 +2,7 @@
 // 类型与常量放同一文件：v8 对纯类型模块记 0% 覆盖，perFile 100% 门禁下单独的类型文件永远不可达。
 
 /**
- * `docs/02-architecture-and-roadmap.md` 的 6 大组件列举出 7 个 `data-hr-component` 取值
- * （第 2 条 `callout-insight / warning` 是两个值）；`media-card` 是后加的第 8 个（音视频统一外壳）。
+ * `data-hr-component` 的合法取值词表（语义组件）；`media-card` 是后加的（音视频统一外壳）。
  * 每个取值的结构规约在 `layout/components.ts`，两边必须一一对应。
  */
 export const COMPONENT_WHITELIST: readonly string[] = [

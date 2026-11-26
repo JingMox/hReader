@@ -860,7 +860,7 @@ const offerOf = async (context: OfferContext, annotation: PendingAnnotation): Pr
   const text = injectionOf(annotation, context.docId, context.document);
   // 无 UI（print/json 模式）时 `confirm` 不可用：只提示，不擅自把批注塞进会话。
   if (!context.ctx.hasUI) {
-    // `nodeId`/`note` 是 daemon 来源的不可信片段（`docs/01` 威胁模型）：回显前净化。
+    // `nodeId`/`note` 是 daemon 来源的不可信片段：回显前净化。
     notifyOf(
       context.ctx,
       `有新批注（${safeTextOf(annotation.nodeId)}）：${safeTextOf(annotation.note)}`,
