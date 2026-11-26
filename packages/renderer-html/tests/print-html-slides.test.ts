@@ -1,4 +1,4 @@
-// 这层管：slides 形态打印稿的结构差异（无封面/目录、16:9 页框、标题不编号）；不验视觉渲染。
+// Structural differences of the slides print sheet (no cover/TOC, 16:9 page frame, unnumbered titles); visual rendering is not verified here.
 
 import { parseHtml } from "@hreader/core";
 import { describe, expect, it } from "vitest";
@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { printHtmlReportOf } from "../src/index";
 import { attrOf, classesOf, elementsOfHtml, inputOf, tagsOf } from "./support";
 
-/** slides 文档：顶层 h1 是标题页，之后每页一个 section（`hr new --kind slides` 的形状）。 */
+/** A slides document: the top-level h1 is the title page and each later page is one section (the `hr new --kind slides` shape). */
 const SLIDES_DOC = [
   "<!doctype html>",
   "<html><body>",
@@ -20,15 +20,15 @@ const SLIDES_DOC = [
 
 const slidesReport = () => printHtmlReportOf(inputOf(SLIDES_DOC));
 
-describe("printHtmlReportOf · slides 判定", () => {
-  it("data-hr-kind=slides 的产物标 slides: true，普通文档标 false", () => {
+describe("printHtmlReportOf slides detection", () => {
+  it("should report slides: true for data-hr-kind=slides and false for a normal document", () => {
     expect(slidesReport().slides).toBe(true);
     expect(printHtmlReportOf(inputOf("<article><h1>标题</h1><p>正文</p></article>")).slides).toBe(
       false,
     );
   });
 
-  it("data-hr-kind 取别的值不走 slides 骨架", () => {
+  it("should not take the slides skeleton when data-hr-kind holds another value", () => {
     const report = printHtmlReportOf(
       inputOf('<article data-hr-kind="report"><h1>标题</h1><p>正文</p></article>'),
     );
@@ -37,32 +37,32 @@ describe("printHtmlReportOf · slides 判定", () => {
   });
 });
 
-describe("slides 打印稿 · 页家具", () => {
+describe("slides print sheet page furniture", () => {
   const { html } = slidesReport();
   const elements = elementsOfHtml(html);
 
-  it("没有封面与目录：多一页就让“PDF 页数 = slide 数”失约", () => {
+  it('should emit no cover or TOC: one extra page would break the "PDF pages = slide count" promise', () => {
     expect(tagsOf(parseHtml(html).root, "nav")).toEqual([]);
     expect(elements.some((element) => classesOf(element).includes("cover"))).toBe(false);
   });
 
-  it("页框写死 16:9：slides 不接受 --page-size，@page 里不许出现模板残留", () => {
+  it("should hard-code a 16:9 page frame: slides rejects --page-size and no template residue may appear in @page", () => {
     expect(html).toContain("size: 13.333in 7.5in;");
     expect(html).not.toContain("@@paper@@");
     expect(html).not.toContain("size: A4;");
   });
 
-  it("顶层 slide 元素按骨架强制分页", () => {
+  it("should force pagination on every top-level slide element per the skeleton", () => {
     expect(html).toContain("article > section");
     expect(html).toContain("break-after: page;");
   });
 });
 
-describe("slides 打印稿 · 正文改写", () => {
+describe("slides print sheet body rewriting", () => {
   const { html } = slidesReport();
   const elements = elementsOfHtml(html);
 
-  it("标题不带章节序号，容器不带 chapter 类（页标题不该出现“1.2”前缀）", () => {
+  it('should leave titles unnumbered and containers without the chapter class (no "1.2" prefix on page titles)', () => {
     expect(
       elements.some(
         (element) =>
@@ -71,7 +71,7 @@ describe("slides 打印稿 · 正文改写", () => {
     ).toBe(false);
   });
 
-  it("article 保留 data-hr-kind：主题的 slides 分叉选择器要在产物里还认得它", () => {
+  it("should keep data-hr-kind on article so a theme's slides selector still recognizes it in the product", () => {
     const articles = elements.filter((element) => element.tag === "article");
     expect(articles.map((element) => attrOf(element, "data-hr-kind"))).toEqual(["slides"]);
   });

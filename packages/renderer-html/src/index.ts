@@ -1,4 +1,4 @@
-// 这层管：`@hreader/renderer-html` 的公开出口（只放打印稿渲染面）；不承载实现。
+// Public exit of `@hreader/renderer-html` (the print-sheet render surface only); carries no implementation.
 
 export { printHtmlOf, printHtmlReportOf } from "./print-html";
 export type { PrintHtmlInput, PrintHtmlResult } from "./print-html";

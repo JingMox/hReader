@@ -1,4 +1,4 @@
-// 这层管：`@page` 的纸张随入参重排；不测 Chrome 的实际分页，那要真机。
+// Re-lays out the `@page` paper per input; actual Chrome pagination is not tested here — that needs real hardware.
 import { describe, expect, it } from "vitest";
 
 import { printHtmlOf } from "../src/index";
@@ -15,14 +15,14 @@ const pageSizeOf = (paper: PaperSize): string => {
   return matched;
 };
 
-describe("纸张重排", () => {
-  it("三档纸张给出三个不同的 @page size", () => {
+describe("paper re-layout", () => {
+  it("should emit three distinct @page sizes for the three paper tiers", () => {
     const sizes = (["a4", "letter", "a5"] as const).map((paper) => pageSizeOf(paper));
     expect(sizes).toEqual(["A4", "letter", "A5"]);
     expect(new Set(sizes).size).toBe(3);
   });
 
-  it("换纸只改 @page 的 size 一行，余白与其他字节都不动", () => {
+  it("should change only the @page size line when switching paper, leaving margins and all other bytes untouched", () => {
     const a4 = printHtmlOf(inputOf(fixtureOf("article.html"), { paper: "a4" }));
     const a5 = printHtmlOf(inputOf(fixtureOf("article.html"), { paper: "a5" }));
     const letter = printHtmlOf(inputOf(fixtureOf("article.html"), { paper: "letter" }));

@@ -23,14 +23,14 @@ const root = parseHtml(product).root;
 const article = firstTagOf(root, "article");
 const idsOf = elementsOfHtml(product).map((element) => attrOf(element, "data-hr-id"));
 
-describe("data-hr-id 幂等", () => {
-  it("源文档的合法 id 逐字保留", () => {
+describe("data-hr-id idempotence", () => {
+  it("should preserve a valid source-document id verbatim", () => {
     for (const id of ["chapter-7", "doc-head", "legal-id", "sec-legal"]) {
       expect(idsOf).toContain(id);
     }
   });
 
-  it("非法 id 由 core 改写并留 invalid_hr_id 诊断，产物里不再出现原值", () => {
+  it("should have core rewrite an illegal id with an invalid_hr_id diagnostic, leaving the original out of the product", () => {
     const diagnostics = injectNodeIds(parseHtml(source)).parsed.diagnostics;
     expect(diagnostics.map((item) => item.code)).toContain("invalid_hr_id");
     const heading = tagsOf(article, "h2")[0];
@@ -38,7 +38,7 @@ describe("data-hr-id 幂等", () => {
     expect(product).not.toContain("bad id!");
   });
 
-  it("编号按 core 改写后的 id 落到标题上，不因改写断链", () => {
+  it("should attach numbering to the heading via core's rewritten id without breaking the link", () => {
     const heading = tagsOf(article, "h2")[0];
     expect(attrOf(heading ?? article, "id")).toMatch(/^sec-\d+(?:\.\d+)*$/u);
     expect(
@@ -47,20 +47,20 @@ describe("data-hr-id 幂等", () => {
   });
 });
 
-describe("chapter 只由 section 产生", () => {
-  it("section 带 chapter 类", () => {
+describe("chapter comes only from section", () => {
+  it("should mark a section with the chapter class", () => {
     const section = tagsOf(article, "section")[0];
     expect(classesOf(section ?? article)).toContain("chapter");
   });
 
-  it("header 容器不带 chapter 类", () => {
+  it("should not mark a header container with the chapter class", () => {
     const header = tagsOf(article, "header")[0];
     expect(classesOf(header ?? article)).not.toContain("chapter");
   });
 });
 
-describe("生成锚不与既有 id 冲突", () => {
-  it("源文档占用 sec-1 时，生成锚让位到 sec-1-2（与既有 id 不冲突）", () => {
+describe("generated anchors never collide with existing ids", () => {
+  it("should yield a generated anchor to sec-1-2 when the source document owns sec-1", () => {
     const html = printHtmlOf(
       inputOf('<article><h2>甲</h2><div id="sec-1">x</div><h2>乙</h2></article>'),
     );
@@ -70,24 +70,24 @@ describe("生成锚不与既有 id 冲突", () => {
     expect(ids).toContain("sec-1-2");
   });
 
-  it("源文档占用 hr-toc 时，目录容器的 id 也避让", () => {
+  it("should also move the TOC container id aside when the source document owns hr-toc", () => {
     const html = printHtmlOf(inputOf('<article><p id="hr-toc">正文</p></article>'));
     expect(html).not.toContain('<nav class="toc" id="hr-toc">');
   });
 
-  // 有意为之的已知行为：改写用户 id 会打断 `<a href="#x">` 的内部链接语义，
-  // 而重复 id 本身就是非法 HTML——该修的是源文档，不是渲染层。口径仍是"生成锚不与既有 id 冲突"。
-  it("source-duplicate-ids-are-preserved：源文档自带的重复 id 原样保留", () => {
+  // Deliberate known behavior: rewriting a user id would break `<a href="#x">` internal links,
+  // and a duplicate id is already invalid HTML — the source document is what needs fixing, not the render layer. The contract is still "no collision with existing ids".
+  it("should preserve duplicate ids shipped by the source document", () => {
     const html = printHtmlOf(
       inputOf('<article><h2>甲</h2><div id="dup">x</div><div id="dup">y</div></article>'),
     );
     const ids = idsOfHtml(html);
     expect(ids.filter((id) => id === "dup")).toHaveLength(2);
-    // 生成锚照样避让：与 dup 无冲突即可，不要求全树唯一。
+    // Generated anchors still yield: no collision with dup is enough; tree-wide uniqueness is not required.
     expect(ids).toContain("sec-1");
   });
 
-  it("目录链接指向真实存在的锚（避让后不产生死链）", () => {
+  it("should point every TOC link at an anchor that exists (no dead links after yielding)", () => {
     const html = printHtmlOf(
       inputOf('<article><div id="sec-1">x</div><h2>甲</h2><h2>乙</h2></article>'),
     );
@@ -98,7 +98,7 @@ describe("生成锚不与既有 id 冲突", () => {
   });
 });
 
-/** 直接装配输入：不经过 `inputOf` 的 `injectNodeIds`，才能造出"没有 `data-hr-id` 的树"。 */
+/** Assembles input directly: bypassing `inputOf`'s `injectNodeIds` is what produces a tree "without `data-hr-id`". */
 const unnormalizedInputOf = (
   documentHtml: string,
   outline: readonly OutlineNode[],
@@ -111,30 +111,30 @@ const unnormalizedInputOf = (
   outline,
 });
 
-// outline 条目的 id 用 `x`：这让兜底值 `""` 与任何别的字面量可区分——若改成 `?? "x"`，
-// 带 `data-hr-id="x"` 的标题会让 `""` 分支失效，占位也就不再发生。
+// Outline entry ids use `x` so the fallback `""` stays distinguishable from every other literal — change it to
+// `?? "x"` and a heading with `data-hr-id="x"` would disable the `""` branch, so no reservation would ever happen.
 const headingOutline: readonly OutlineNode[] = [
   { id: "x", tag: "h1", level: 1, text: "标题甲", wordCount: 3, children: [] },
 ];
 
-describe("未 normalize 的树：无 data-hr-id 的既有 id 先占位", () => {
-  // `sectionId` 为 undefined 是真实输入：元素只有 `id`、没有 `data-hr-id`。它的 `id` 必须先占位，
-  // 否则随后生成的 `sec-…` 会撞上它。
-  it('id="sec-1" 无 data-hr-id 时占位生效，生成锚让位到 sec-1-2', () => {
+describe("un-normalized trees: existing ids without data-hr-id reserve first", () => {
+  // An undefined `sectionId` is real input: an element with `id` but no `data-hr-id`. Its `id` must reserve first,
+  // or a later generated `sec-…` would collide with it.
+  it('should honor a reservation from id="sec-1" without data-hr-id and yield the generated anchor to sec-1-2', () => {
     const html = printHtmlOf(
       unnormalizedInputOf(
         '<article><p id="sec-1">占位</p><h1 data-hr-id="x">标题甲</h1></article>',
         headingOutline,
       ),
     );
-    // 小节标题拿到的锚是让位后的 sec-1-2，而不是与 <p> 同值的 sec-1。
+    // The section heading receives the yielded sec-1-2, not the sec-1 already owned by <p>.
     expect(attrOf(firstTagOf(parseHtml(html).root, "h1"), "id")).toBe("sec-1-2");
     expect(anchorHrefsOfHtml(html)).toEqual(["sec-1-2"]);
-    // 占位者本身原样保留，且全树只有一个 sec-1。
+    // The reserving element keeps its id verbatim, and the tree holds exactly one sec-1.
     expect(idsOfHtml(html).filter((id) => id === "sec-1")).toHaveLength(1);
   });
 
-  it("同元素补上 data-hr-id 且已编号时不占位，生成锚直接用 sec-1", () => {
+  it("should skip reservation when the same element gains a numbered data-hr-id, letting the generated anchor use sec-1", () => {
     const html = printHtmlOf(
       unnormalizedInputOf(
         '<article><p id="sec-1" data-hr-id="x">占位</p><h1>标题甲</h1></article>',
@@ -145,7 +145,7 @@ describe("未 normalize 的树：无 data-hr-id 的既有 id 先占位", () => {
     expect(ids.filter((id) => id === "sec-1-2")).toHaveLength(0);
     expect(anchorHrefsOfHtml(html)).toEqual(["sec-1"]);
     expect(ids).toContain("sec-1");
-    // 同一棵树只挪动 `data-hr-id` 的位置：占位与否必须产出不同结果。
+    // Same tree with only the `data-hr-id` moved: reserving or not must produce different output.
     expect(html).not.toBe(
       printHtmlOf(
         unnormalizedInputOf(
@@ -157,27 +157,27 @@ describe("未 normalize 的树：无 data-hr-id 的既有 id 先占位", () => {
   });
 });
 
-describe("字节数", () => {
-  it("报告里的 bytes 等于产物的 UTF-8 字节数（上限判据由调用方用）", () => {
+describe("byte count", () => {
+  it("should report bytes equal to the product UTF-8 byte count (callers apply the limit check)", () => {
     const report = printHtmlReportOf(input);
     expect(report.bytes).toBe(Buffer.byteLength(report.html, "utf8"));
     expect(report.bytes).toBeGreaterThan(report.html.length);
   });
 });
 
-describe("对打印稿再导出一次（序号不叠）", () => {
-  it("换掉开头的 secnum 而不是再套一层", () => {
-    // 用户把导出的打印稿又喂回 `hr export`：不该变成「1 1 季度复盘」。
+describe("re-exporting a print sheet (numbers do not stack)", () => {
+  it("should replace a leading secnum instead of wrapping another layer around it", () => {
+    // A user feeding an exported print sheet back into `hr export` must not produce a doubled number prefix.
     const twice = printHtmlOf(inputOf(product));
     const countOf = (html: string): number => (html.match(/class="secnum"/gu) ?? []).length;
 
-    // 打印稿必须真的有序号（否则下面那条"不叠"恒真）
+    // The sheet must really carry a number, or the "no stacking" assertion below is trivially true.
     expect(countOf(product)).toBeGreaterThan(0);
     expect(countOf(twice)).toBe(countOf(product));
     expect(twice).not.toMatch(/class="secnum">[^<]*<\/span><span class="secnum"/u);
   });
 
-  it("空标题（没有子节点）不崩", () => {
+  it("should not crash on an empty heading (no children)", () => {
     const html = printHtmlOf(inputOf("<article><h1></h1><p>正文</p></article>"));
 
     expect(html).toContain("正文");

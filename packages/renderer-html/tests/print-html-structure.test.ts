@@ -52,8 +52,8 @@ const headingHrefs = elementsOf(article).flatMap((element) => {
   return id.startsWith("sec-") ? [`#${id}`] : [];
 });
 
-describe("三段结构", () => {
-  it("按封面 → 目录 → 正文的顺序拼接", () => {
+describe("three-part structure", () => {
+  it("should assemble cover, TOC, then body in that order", () => {
     const coverAt = product.indexOf('<header class="cover">');
     const tocAt = product.indexOf('<nav class="toc"');
     const articleAt = product.indexOf("\n<article");
@@ -62,7 +62,7 @@ describe("三段结构", () => {
     expect(articleAt).toBeGreaterThan(tocAt);
   });
 
-  it("输出完整文档外壳与两份 meta", () => {
+  it("should emit a complete document shell with two meta tags", () => {
     expect(product.startsWith('<!DOCTYPE html>\n<html lang="zh-CN">')).toBe(true);
     const metas = tagsOf(root, "meta").map((meta) => [
       attrOf(meta, "name"),
@@ -72,13 +72,13 @@ describe("三段结构", () => {
     expect(metas).toContainEqual(["hr-visual", "atelier-editorial"]);
   });
 
-  it("不传 bodyClass 时 <body> 不带 class，传了则原样输出", () => {
+  it("should emit <body> without a class when bodyClass is omitted and verbatim when supplied", () => {
     expect(product).toContain("\n<body>\n");
     const withClass = printHtmlOf({ ...input, bodyClass: "visual-atelier-editorial" });
     expect(withClass).toContain('<body class="visual-atelier-editorial">');
   });
 
-  it("非标题容器都带 chapter 类，数量等于 outline 容器数", () => {
+  it("should mark every non-heading container with the chapter class, matching the outline container count", () => {
     const containers = outlineNodes.filter((node) => !isHeading(node));
     const chapters = elementsOf(article).filter((element) =>
       classesOf(element).includes("chapter"),
@@ -89,8 +89,8 @@ describe("三段结构", () => {
   });
 });
 
-describe("容器类名", () => {
-  it("源容器自带 class 时与 chapter 并存，源 class 不被吞掉", () => {
+describe("container class names", () => {
+  it("should keep a source container class alongside chapter instead of swallowing it", () => {
     const html = printHtmlOf(
       inputOf('<article><section class="part"><h2>小节</h2></section></article>'),
     );
@@ -101,17 +101,17 @@ describe("容器类名", () => {
   });
 });
 
-describe("编号", () => {
-  it("按 outline 的 level 自增编号，容器节点不参与", () => {
+describe("numbering", () => {
+  it("should number incrementally by outline level, excluding container nodes", () => {
     expect(secnumsOf(article)).toEqual(["1", "1.1", "1.2", "1.2.1", "1.3", "1.3.1", "1.4"]);
   });
 
-  it("标题总数与 outline 的标题节点数相等", () => {
+  it("should emit exactly as many headings as the outline has heading nodes", () => {
     expect(outlineHeadings.length).toBe(7);
     expect(headings.length).toBe(outlineHeadings.length);
   });
 
-  it("每个标题的文本里仍能读到 outline 文本（编号是额外插进去的 span）", () => {
+  it("should keep the outline text readable inside each heading (the number is an extra inserted span)", () => {
     const rendered = headings.map((heading) => textOf(heading).trim());
     outlineHeadings.forEach((node, index) => {
       expect(rendered[index] ?? "").toContain(node.text);
@@ -119,22 +119,22 @@ describe("编号", () => {
   });
 });
 
-describe("目录", () => {
-  it("只收标题，不收容器节点", () => {
+describe("table of contents", () => {
+  it("should list only headings, not container nodes", () => {
     expect(tocItems.length).toBe(outlineHeadings.length);
     expect(tocItems.map((item) => attrOf(item, "data-toc-id"))).toEqual(
       outlineHeadings.map((node) => node.id),
     );
   });
 
-  it("同名标题靠编号与 data-toc-id 区分", () => {
+  it("should distinguish same-named headings by number and data-toc-id", () => {
     const duplicate = tocItems.filter((item) => textOf(item).includes("方法"));
     expect(duplicate.length).toBe(2);
     expect(new Set(duplicate.map((item) => textOf(item))).size).toBe(2);
     expect(new Set(duplicate.map((item) => attrOf(item, "data-toc-id"))).size).toBe(2);
   });
 
-  it("层级类名来自落地标题的 tag", () => {
+  it("should derive the level class from the emitted heading tag", () => {
     for (const item of tocItems) {
       const target = byId.get((attrOf(firstTagOf(item, "a"), "href") ?? "").slice(1));
       expect(target === undefined ? "" : target.tag).toMatch(/^h[1-4]$/u);
@@ -142,17 +142,17 @@ describe("目录", () => {
     }
   });
 
-  it("与正文双向可达，且没有指向同一标题的重复项", () => {
+  it("should be reachable to and from the body with no duplicate entries for one heading", () => {
     expect(new Set(tocHrefs).size).toBe(tocHrefs.length);
     expect([...tocHrefs].sort()).toEqual([...headingHrefs].sort());
   });
 });
 
-describe("嵌套 article", () => {
+describe("nested article", () => {
   const noisyRoot = parseHtml(printHtmlOf(inputOf(fixtureOf("article-noisy.html")))).root;
   const noisyArticle = firstTagOf(noisyRoot, "article");
 
-  it("内层 <article> 降级为 div 并保留原属性", () => {
+  it("should demote an inner <article> to div while preserving its attributes", () => {
     expect(tagsOf(noisyRoot, "article").length).toBe(1);
     const inner = elementsOf(noisyArticle).filter((element) =>
       classesOf(element).includes("inner"),
@@ -162,7 +162,7 @@ describe("嵌套 article", () => {
     expect(attrOf(firstTagOf(noisyArticle, "div"), "data-hr-id")).toBe("inner-article");
   });
 
-  it("内层小节照样进编号与目录", () => {
+  it("should still number inner sections and list them in the TOC", () => {
     expect(tocItemsOf(noisyRoot).some((item) => textOf(item).includes("内层小节"))).toBe(true);
   });
 });

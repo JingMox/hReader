@@ -1,8 +1,8 @@
-// 这层管：出版级打印规则（纯字符串常量）；不选主题、不拼文档、不读盘。
+// Publication-grade print rules as plain string constants; no theme selection, no document assembly, no disk reads.
 
 import { HrError } from "@hreader/core";
 
-/** 纸张三档与 `hr pdf --page-size` 同一套名字；CSS 关键字大小写不敏感，写惯用形式。 */
+/** The three paper names match `hr pdf --page-size`; CSS keywords are case-insensitive, so use the customary form. */
 export type PaperSize = "a4" | "letter" | "a5";
 
 const PAPER_KEYWORD: Readonly<Record<PaperSize, string>> = {
@@ -12,14 +12,14 @@ const PAPER_KEYWORD: Readonly<Record<PaperSize, string>> = {
 };
 
 /**
- * 选择器成对写：产物用的是 `.cover`/`.toc`/`section.chapter`，
- * 别名只有四个——`.print-cover`/`.print-cover__title`/`.print-toc`/`.print-chapter`，给手写模板与主题复用。
- * 成对的两个名字必须同时生效，否则改了类名就静默丢版式（"规则存在 ≠ 规则生效"的另一种死法）。
- * 别名**不补齐**：产物不走 `.print-*`，多写一份 `.print-toc__item--h*` 只是没人读的第二份真源。
- * `page-break-*` 与 `break-*` 成对保留：前者覆盖老印刷引擎，后者是现行标准。
+ * Selectors come in pairs: the product uses `.cover`/`.toc`/`section.chapter`,
+ * and there are only four aliases — `.print-cover`/`.print-cover__title`/`.print-toc`/`.print-chapter` — for hand-written templates and themes.
+ * Both names of a pair must be effective at once, or renaming a class silently drops layout (another way "rule exists ≠ rule applies" dies).
+ * Aliases are **not** completed: the product never emits `.print-*`, so a second copy of `.print-toc__item--h*` would be a source of truth nobody reads.
+ * `page-break-*` and `break-*` are both kept: the former covers old print engines, the latter is the current standard.
  *
- * `@page` 的纸张必须随 `--page-size` 变：只换 printToPDF 的纸不换版心，正文会按 A4 宽排再被纸边切掉。
- * a4 的内容与既有产物逐字节一致（快照/字节断言钉死），其余两档只改 `size` 关键字。
+ * The `@page` size must follow `--page-size`: swapping only printToPDF's paper but not the type area lays body text out at A4 width and lets the paper edge crop it.
+ * The a4 content stays byte-identical to existing output (pinned by snapshot/byte assertions); the other two sizes change only the `size` keyword.
  */
 const PRINT_CSS_TEMPLATE = `@page {
   size: @@paper@@;
@@ -205,10 +205,10 @@ article > .print-chapter:first-child {
 `;
 
 /**
- * slides 形态的骨架：纸张尺寸本身就是契约（横版 16:9 一页一屏），不走 `--page-size` 三档。
- * 没有封面与目录页，每个顶层 slide 元素一条强制分页；版式细节仍归主题（骨架只保底分页）。
- * `@page` 的 margin 只在主题没声明命名页时生效：主题写 `page: hr-slide` + `@page hr-slide`
- * 时命名页整体接管，0.5in 这里只是无主题 slides 的兜底余白。
+ * Skeleton of the slides form: the paper size is itself the contract (16:9 landscape, one page per screen), so it does not take the `--page-size` tiers.
+ * No cover or TOC page; every top-level slide element gets one forced page break, while layout details still belong to the theme (the skeleton only guarantees pagination).
+ * The `@page` margin applies only when the theme declares no named page: a theme writing `page: hr-slide` + `@page hr-slide`
+ * takes over wholesale, and the 0.5in here is just fallback whitespace for theme-less slides.
  */
 const SLIDES_PRINT_CSS = `@page {
   size: 13.333in 7.5in;
@@ -230,9 +230,9 @@ article > section {
 const PAPER_TOKEN = "@@paper@@";
 
 /**
- * `paper` 在类型层已收窄，但 CLI 的字符串会原样流到这里：不守卫就会产出 `size: undefined;` 这种
- * 印刷引擎默默当 A4 用的坏 CSS，错误必须在生成阶段就炸出来。按 `string` 索引查询就是
- * 把“运行期可能是任意字符串”这件事写进类型，否则守卫在类型检查器眼里是不可达代码。
+ * `paper` is already narrowed at the type level, but CLI strings flow in unchecked: without a guard this would emit
+ * `size: undefined;` — bad CSS a print engine silently treats as A4 — so the error must surface at generation time.
+ * Indexing by `string` writes "may be any string at runtime" into the type, otherwise the guard is unreachable code to the checker.
  */
 const PAPER_KEYWORD_BY_NAME: Record<string, string | undefined> = PAPER_KEYWORD;
 
@@ -249,5 +249,5 @@ export const printCssOf = (paper: PaperSize): string =>
 
 export const PRINT_CSS = printCssOf("a4");
 
-/** slides 打印稿的骨架 CSS：常量不是模板——slides 纸张不接受 `--page-size` 参数化。 */
+/** Skeleton CSS for slides print sheets: a constant, not a template — slides paper takes no `--page-size` parameterization. */
 export const slidesPrintCssOf = (): string => SLIDES_PRINT_CSS;
