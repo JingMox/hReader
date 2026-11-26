@@ -22,7 +22,7 @@ body:
     id: version
     attributes:
       label: Version & Environment
-      placeholder: "e.g. v1.0.0, macOS 15 arm64, Node v22.14.0"
+      placeholder: "hReader version (shown in the reader status bar), OS and arch, Node version"
     validations:
       required: true
   - type: textarea
