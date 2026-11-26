@@ -315,14 +315,15 @@ describe("writeGlobalModes · 读写", () => {
     expect(await readGlobalModes(HOME, deps)).toEqual({ scripts: "per-doc", network: "deny" });
   });
 
-  it("should propagate a missing home as an io error, never write outside it", async () => {
+  it("should propagate a missing home as not_a_file, never write outside it", async () => {
     const { fs, deps } = await homeWorldOf({});
 
+    // failureOf 的口径：ENOENT = 调用方指错了路（not_a_file），非盘故障（io_failure）。
     const code = await codeOfAsync(() =>
       writeGlobalModes({ home: "/missing-home", modes: { scripts: "allow" } }, deps),
     );
 
-    expect(code).toBe("io_failure");
+    expect(code).toBe("not_a_file");
     expect([...fs.state.files.keys()].some((p) => p.startsWith("/missing-home"))).toBe(false);
   });
 });

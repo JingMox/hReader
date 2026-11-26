@@ -10,6 +10,7 @@ import { mkdirOrFail, writeAtomic } from "./atomic";
 import { decodeUtf8, encodeUtf8 } from "./bytes";
 import type { PatchOptions } from "./contracts";
 import { sha256Hex } from "./digest";
+import { failureOf } from "./errors";
 import { runLocked } from "./lock";
 import type { ResolvedTarget } from "./paths";
 import type { PatchDeps } from "./ports";
@@ -91,20 +92,19 @@ const isGrantShape = (value: unknown): value is DocGrant =>
   typeof Reflect.get(value, "scripts") === "boolean" &&
   typeof Reflect.get(value, "network") === "boolean";
 
-const EMPTY_TABLE: TrustTable = { grants: {}, legacy: {} };
-
 /**
  * 读取的任何失败与任何损坏形状都回落成"没有任何授权"：信任是显式授予物，
  * 文件丢了/坏了必须掉回最严的全关，而不是把整个服务拖死。
+ * 回落必须给**新对象**——写侧会把 grant 塞进返回的表，共享空表会把授权漏进下个世界。
  */
 const tableOf = async (deps: PatchDeps, path: string): Promise<TrustTable> => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(decodeUtf8(await deps.fs.readFile(path), path));
   } catch {
-    return EMPTY_TABLE;
+    return { grants: {}, legacy: {} };
   }
-  if (typeof parsed !== "object" || parsed === null) return EMPTY_TABLE;
+  if (typeof parsed !== "object" || parsed === null) return { grants: {}, legacy: {} };
   const grants: Record<string, DocGrant> = {};
   const legacy: Record<string, LegacyLevel> = {};
   for (const [key, value] of Object.entries(parsed)) {
@@ -229,7 +229,12 @@ export const writeGlobalModes = async (
   options: PatchOptions = {},
 ): Promise<GlobalModes> => {
   const path = settingsPathOf(input.home);
-  const workspace = await deps.fs.realpath(input.home);
+  let workspace: string;
+  try {
+    workspace = await deps.fs.realpath(input.home);
+  } catch (error: unknown) {
+    throw failureOf("解析用户配置根", input.home, error);
+  }
   return await runLocked({ lockPath: settingsLockOf(input.home) }, deps, options, async () => {
     const current = await readGlobalModes(input.home, deps);
     const next: GlobalModes = {
