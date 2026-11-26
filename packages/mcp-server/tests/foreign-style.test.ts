@@ -1,5 +1,5 @@
-// 这层管：MCP 写工具与 HTTP 同口径——外来文档可用 `hr_apply_style` 换主题，
-// 且样式快照照常被 `hr_undo` 逐字节退回；内容 patch 仍拒绝且不写盘。
+// This layer: MCP write tools match the HTTP semantics — foreign documents can switch themes via `hr_apply_style`,
+// and the style snapshot is reverted byte-for-byte by `hr_undo`; content patches are still refused without writing.
 
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -22,7 +22,7 @@ afterEach(async () => {
   await leaveWorkspace(workspace);
 });
 
-describe("hr_apply_style · 外来文档", () => {
+describe("hr_apply_style · foreign document", () => {
   it("should apply a theme to a foreign doc and undo it back to the original bytes", async () => {
     const path = join(workspace, "foreign.html");
     await writeFile(path, FOREIGN_DOC, "utf8");

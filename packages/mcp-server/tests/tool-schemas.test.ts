@@ -1,16 +1,16 @@
-// 这层管："tool list 必须带 zod 生成的 inputSchema" 与 "description 写何时用" 这两条散装契约。
-// 现有 `stdio.test.ts` 只比了**工具名**：名字对而 schema 缺失/手写跑偏，它照样绿。
+// This layer: two loose contracts — "the tool list must carry a zod-generated inputSchema" and "description says when to use".
+// Existing `stdio.test.ts` only compared **tool names**: right names with a missing/handwritten-drifting schema stays green.
 //
-// 它会因为什么而红：
-// - `tools/list` 里某个工具没有 `inputSchema`（宿主无法自描述，只能靠猜参）；
-// - schema 的必填键与下表不一致（少一个必填 = 模型可以合法地不传；多一个 = 合法调用被拒）；
-// - `description` 退化成参数名复述或空串。
+// What makes it red:
+// - some tool in `tools/list` lacks `inputSchema` (the host cannot self-describe and must guess parameters);
+// - a schema's required keys diverge from the table below (one missing = the model may legally omit it; one extra = a legal call gets rejected);
+// - a `description` degrades into a parameter-name restatement or an empty string.
 
 import { describe, expect, it } from "vitest";
 
 import { isRecord, sessionOf } from "./harness";
 
-/** 工具 → 必填参数的契约表。 */
+/** Contract table: tool → required parameters. */
 const REQUIRED_BY_TOOL: Record<string, readonly string[]> = {
   hr_outline: ["filePath"],
   hr_read_node: ["filePath", "nodeId"],
@@ -34,7 +34,7 @@ const toolsOf = async (): Promise<readonly ListedTool[]> => {
   const listed: unknown = await session.client.listTools();
   await session.close();
   const tools: unknown = isRecord(listed) ? listed["tools"] : undefined;
-  if (!Array.isArray(tools)) throw new Error("tools/list 没有 tools 数组");
+  if (!Array.isArray(tools)) throw new Error("tools/list has no tools array");
 
   return tools.map((raw: unknown) => {
     const tool = isRecord(raw) ? raw : {};
@@ -53,18 +53,19 @@ const toolsOf = async (): Promise<readonly ListedTool[]> => {
   });
 };
 
-describe("工具自我描述", () => {
+describe("tool self-description", () => {
   it("should carry a zod-derived inputSchema for every tool, with the required keys the card names", async () => {
     const tools = await toolsOf();
 
     expect(tools.map((tool) => tool.name).sort()).toEqual(Object.keys(REQUIRED_BY_TOOL).sort());
     for (const tool of tools) {
-      // 手写 schema 的典型症状：没有 `type: object`（上面已断）或 properties 空。
+      // The classic symptom of a handwritten schema: no `type: object` (asserted above) or empty properties.
       expect(tool.properties.length).toBeGreaterThan(0);
       const expected = REQUIRED_BY_TOOL[tool.name];
-      if (expected === undefined) throw new Error(`契约表上没有登记的工具：${tool.name}`);
+      if (expected === undefined)
+        throw new Error(`tool not registered in the contract table: ${tool.name}`);
       expect([...tool.required].sort()).toEqual([...expected].sort());
-      // 必填项必须真的在 properties 里，否则宿主渲染不出该参数。
+      // Required keys must really sit inside properties, or the host cannot render the parameter.
       for (const key of tool.required) expect(tool.properties).toContain(key);
     }
   });
@@ -74,7 +75,7 @@ describe("工具自我描述", () => {
 
     for (const tool of tools) {
       expect(tool.description.length).toBeGreaterThan(20);
-      // 参数名复述的典型形状：`filePath: string` / `nodeId`。
+      // The classic shape of parameter-name restatement: `filePath: string` / `nodeId`.
       expect(tool.description).not.toMatch(/^[a-zA-Z]+\s*:/u);
       expect(tool.description).not.toBe(tool.name);
     }

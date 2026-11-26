@@ -1,4 +1,4 @@
-// 单包测试入口：`pnpm -F @hreader/mcp-server test`。共享约定在仓库根 vitest.shared.ts。
+// Per-package test entry: `pnpm -F @hreader/mcp-server test`. Shared conventions live in the repo-root vitest.shared.ts.
 import { definePackageConfig } from "../../vitest.shared.ts";
 
 export default definePackageConfig();

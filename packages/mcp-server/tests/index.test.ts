@@ -1,4 +1,4 @@
-// 这层管：包入口的导出面——测试与将来的进程内嵌只认 `@hreader/mcp-server` 这一个面。
+// This layer: the package entry's export surface — tests and future in-process embedding only know `@hreader/mcp-server` as the surface.
 
 import { describe, expect, it } from "vitest";
 

@@ -1,5 +1,5 @@
-// 这层管：`prompts/*`。`use-hreader-style` 把 core 编译出的完整语言规约交给宿主，
-// 而不是一句"请用 X 风格"；toneId 的合法集合在调用时按 `discoverStyles()` 现算（不硬编码枚举）。
+// This layer: `prompts/*`. `use-hreader-style` hands the host the full language spec compiled by core,
+// not a one-line "please use style X"; the valid toneId set is computed at call time via `discoverStyles()` (no hardcoded enum).
 
 import { compileTone, HrError, loadStyle } from "@hreader/core";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -13,7 +13,7 @@ export const USE_STYLE_PROMPT = "use-hreader-style";
 const stylised = async (toneId: string, workspace: string): Promise<string> => {
   const ids = await styleIdsOf(workspace);
   if (!ids.includes(toneId)) {
-    // 文案必须把"查了哪些源"写出来：内置预设是 TS 常量（不在 styles/ 里），漏掉它会让人以为只有盘上两份。
+    // The text must spell out which sources were searched: builtin presets are TS constants (not in styles/), and omitting them makes it look like only the on-disk pair exists.
     throw new HrError(
       "unknown_style",
       `未知 toneId：${toneId}；已查内置预设、~/.hreader/styles、仓库 styles/；当前可用：${ids.join("、")}`,

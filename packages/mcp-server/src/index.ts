@@ -1,4 +1,4 @@
-// 这层管：包入口（供测试与将来的进程内嵌用）；bin 走 `dist/main.js`，不经过这里。
+// This layer: package entry (for tests and future in-process embedding); the bin goes through `dist/main.js`, not here.
 
 export { createServer, SERVER_VERSION } from "./server";
 export { modeOf, runMain, startHttp, USAGE } from "./cli";

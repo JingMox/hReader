@@ -1,5 +1,5 @@
-// 这层管：`dist/main.js` 真子进程探针 + 握手帧常量——`stdio.test.ts`（宿主视角）与
-// `stream.test.ts`（坏输入 / 超限帧）共用；两边各自 `beforeAll(buildDist)` 建一次产物。
+// This layer: the real-subprocess probe for `dist/main.js` + handshake-frame constants — shared by `stdio.test.ts` (host's view) and
+// `stream.test.ts` (broken input / oversized frames); each side runs `beforeAll(buildDist)` to build artifacts once.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { open, readdir, readFile, rm, stat } from "node:fs/promises";
@@ -40,7 +40,7 @@ export const HANDSHAKE = linesOf([
   RESOURCES_LIST,
 ]);
 
-/** 输入全坏：一行畸形 JSON、一条不认识的方法、一条缺参数的 `tools/call`、一条越界路径的 `tools/call`。 */
+/** All-bad input: one malformed JSON line, one unknown method, one `tools/call` missing parameters, one `tools/call` with an out-of-bounds path. */
 export const BROKEN_INPUT = [
   `{"jsonrpc":"2.0","id":`,
   ...linesOf([{ jsonrpc: "2.0", id: 5, method: "no/such/method" }]),
@@ -82,7 +82,7 @@ export const nonEmptyOf = (chunks: readonly string[]): readonly string[] =>
     .split("\n")
     .filter((line) => line.trim() !== "");
 
-/** 等响应齐了就关 stdin：stdio 传输随之收尾，进程自己退。 */
+/** Close stdin once the responses are in: the stdio transport winds down and the process exits by itself. */
 export const exitCodeOf = async (
   child: ChildProcess,
   chunks: readonly string[],
@@ -91,7 +91,7 @@ export const exitCodeOf = async (
   new Promise<number | null>((resolve, reject) => {
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error("MCP 进程在 15s 内没有把响应写完"));
+      reject(new Error("MCP process did not finish writing its response within 15s"));
     }, 15_000);
     const poll = setInterval(() => {
       if (nonEmptyOf(chunks).length >= expected) {
@@ -149,7 +149,7 @@ export const errorCodeOf = (frame: Record<string, unknown> | undefined): unknown
   return isRecord(error) ? error["code"] : undefined;
 };
 
-/** 响应顺序不跟输入顺序（同步能答的帧先出）：断言只能按 `id` 取，不能按下标。 */
+/** Response order does not follow input order (frames answerable synchronously come out first): assertions must pick by `id`, never by index. */
 export const byIdOf = (
   frames: readonly Record<string, unknown>[],
 ): Map<unknown, Record<string, unknown>> => new Map(frames.map((frame) => [frame["id"], frame]));
@@ -173,10 +173,10 @@ const sleepOf = async (ms: number): Promise<void> =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
- * 跨进程锁：`vitest run packages/mcp-server` 会让多个测试文件**各自**在自己的进程里
- * `beforeAll(buildDist)`，而 `build` 先清 dist 再写——并发时另一个文件正好读到"清了一半"的产物，
- * 症状是 `Unexpected end of JSON input`（本文件曾因此在全包跑时假红）。锁文件放 tmpdir：
- * `build` 会清 dist，锁不能在里面。
+ * Cross-process lock: `vitest run packages/mcp-server` lets multiple test files **each** run
+ * `beforeAll(buildDist)` in their own process, and `build` clears dist before writing — concurrently, another file can read a "half-cleared" artifact,
+ * surfacing as `Unexpected end of JSON input` (this file once went falsely red on full-package runs). The lock file lives in tmpdir:
+ * `build` clears dist, so the lock cannot sit inside it.
  */
 const buildLockOf = async (deadline: number): Promise<boolean> => {
   try {
@@ -191,15 +191,17 @@ const buildLockOf = async (deadline: number): Promise<boolean> => {
     if (stale || Date.now() > deadline) {
       if (stale) await rm(BUILD_LOCK, { force: true });
       if (Date.now() > deadline)
-        throw new Error("等 dist 构建锁超时（另一个测试文件一直在建产物）");
+        throw new Error(
+          "timed out waiting for the dist build lock (another test file kept building artifacts)",
+        );
     }
     await sleepOf(200);
     return false;
   }
 };
 
-/** 产物比所有输入都新就不用再建：并发文件排队拿到锁之后，第二个起直接跳过。 */
-/** 目录下每个条目的 mtime，展平成一维给调用方取最大值。 */
+/** If the artifact is newer than every input, skip rebuilding: after queued files acquire the lock, the second one skips straight ahead. */
+/** mtime of every entry under the directory, flattened to one dimension for the caller to take the max. */
 const stampsOf = async (root: string): Promise<readonly number[]> => {
   const names = await readdir(root, { recursive: true });
   return Promise.all(
@@ -213,9 +215,9 @@ const stampsOf = async (root: string): Promise<readonly number[]> => {
 };
 
 /**
- * 产物必须比**所有会进 dist 的源**新：`src/**`、`package.json`，以及仓库根 `styles/**`——
- * build 会把 `styles/` 拷进包里，漏盯它就会出现"改了主题不重建，install-sim 拿上一次的拷贝当基准"。
- * 包内的 `styles/` 是生成物，不参与比较。
+ * The artifact must be newer than **every source that ends up in dist**: `src/**`, `package.json`, and the repo-root `styles/**` —
+ * build copies `styles/` into the package, and missing it means "changed theme, no rebuild, install-sim benchmarks against the previous copy".
+ * The in-package `styles/` is a generated artifact and does not join the comparison.
  */
 const distIsFresh = async (): Promise<boolean> => {
   const built = await stat(join(PACKAGE_ROOT, "dist", "main.js")).then(
@@ -234,7 +236,7 @@ const distIsFresh = async (): Promise<boolean> => {
   return built > Math.max(...stamps);
 };
 
-/** 测交付物就先把它造出来：`build` 自己会清 dist，避免拿旧产物测新代码。 */
+/** To test the deliverable, build it first: `build` clears dist itself, keeping stale artifacts out of new-code tests. */
 export const buildDist = async (): Promise<void> => {
   const deadline = Date.now() + 300_000;
   for (;;) {
@@ -255,8 +257,8 @@ export interface OversizedProbe {
 }
 
 /**
- * 单帧越过 SDK 的 10MB `ReadBuffer` 之后：**不**主动关 stdin——传输自己调 `onerror` 再 close，
- * 进程随之退出。这就是"静默半死"与"留一条 stderr"的差别所在。
+ * After a single frame overflows the SDK's 10MB `ReadBuffer`: do **not** close stdin proactively — the transport calls `onerror` then closes itself,
+ * and the process exits with it. This is the difference between "silently half-dead" and "leaves one stderr line".
  */
 export const oversizedProbeOf = async (entry: string, frame: string): Promise<OversizedProbe> => {
   const child = spawn(process.execPath, [entry], {
@@ -270,7 +272,7 @@ export const oversizedProbeOf = async (entry: string, frame: string): Promise<Ov
   child.stderr.setEncoding("utf8");
   child.stdout.on("data", (chunk: string) => chunks.push(chunk));
   child.stderr.on("data", (chunk: string) => errors.push(chunk));
-  // 传输先 close 时父进程可能还在写那 11MB：EPIPE 是预期噪声，不是被测对象。
+  // When the transport closes first, the parent may still be writing those 11MB: EPIPE is expected noise, not the subject under test.
   child.stdin.on("error", () => undefined);
   for (const line of HANDSHAKE) child.stdin.write(`${line}\n`);
   child.stdin.write(`${frame}\n`);
@@ -278,7 +280,7 @@ export const oversizedProbeOf = async (entry: string, frame: string): Promise<Ov
   const exitCode = await new Promise<number | null>((resolve, reject) => {
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error("MCP 进程在超限帧之后 15s 仍没退出"));
+      reject(new Error("MCP process still has not exited 15s after the oversized frame"));
     }, 15_000);
     child.once("error", reject);
     child.once("close", (code) => {

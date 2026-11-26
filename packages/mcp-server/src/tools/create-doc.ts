@@ -1,4 +1,4 @@
-// 这层管：`hr_create_doc`（最小合法文档或按形态起稿 + 校验 + 落盘）；写作视图靠它拿到一个可读的落点。
+// This layer: `hr_create_doc` (minimal valid document, or a kind-shaped draft + validation + write); the writing view relies on it for a readable landing spot.
 
 import {
   DOC_KINDS,
@@ -21,8 +21,8 @@ export const createDocShape = {
   title: z
     .string()
     .min(1)
-    // 块的 id 由内容派生（core `inject.ts` 的 `seedOf`：标签 + 兄弟序号 + 文本前 64 字符），而 `replace`
-    // 会让被替换节点换 id（为了 patch 幂等）——所以这里必须提前说清，别让宿主缓存。
+    // Block ids derive from content (core `inject.ts`'s `seedOf`: tag + sibling index + first 64 chars of text), and `replace`
+    // gives the replaced node a new id (for patch idempotence) — so this must be said up front; the host must not cache them.
     .describe(
       "文档标题（写进 `<title>` 与 `<h1>`）；正文之后再靠 patch 补。" +
         "新建文档的块 id 由内容派生：首次写入正文后 id 会变，" +
@@ -40,10 +40,10 @@ export const createDocShape = {
 
 type CreateDocArgs = z.infer<z.ZodObject<typeof createDocShape>>;
 
-/** 最小合法文档 = `<article>` + `<h1>` + 一个 `<section>`，不做模板系统。
- * 骨架里只写 `<article data-hr-id="root">`：`validateDocument` 要求它存在，后续整篇替换也以它为靶。
- * 其余节点的 id 一律交给 core 的 `injectNodeIds`——本包不手写 id 规则（手写的结论必然是
- * “新建的文档对 `hr_patch_node` 只有一个靶子 `root`、大纲为空”，与 core 漂移一次就断一条链路）。 */
+/** Minimal valid document = `<article>` + `<h1>` + one `<section>`; no template system.
+ * The skeleton only writes `<article data-hr-id="root">`: `validateDocument` requires it, and later whole-document replaces target it.
+ * All other node ids come from core's `injectNodeIds` — this package never handwrites id rules (a handwritten conclusion is necessarily
+ * "a fresh document offers `hr_patch_node` only the `root` target and an empty outline", and one drift from core breaks the chain). */
 const skeletonOf = (title: string): string => `<!doctype html>
 <html lang="zh">
 <head>
@@ -69,7 +69,7 @@ const writeNewDocOf = async (
   htmlOf: (title: string) => string,
 ): Promise<CallToolResult> => {
   const target = documentTargetOf(args.filePath, process.cwd());
-  // 形态骨架来自 core（与 `hr new` 同一份）；不给 `kind` 时仍是最小合法文档，行为不变。
+  // Kind skeletons come from core (same as `hr new`); without `kind` it is still the minimal document — behavior unchanged.
   const html =
     args.kind === undefined
       ? htmlOf(args.title)
@@ -78,7 +78,7 @@ const writeNewDocOf = async (
   if (firstDiagnostic !== undefined) {
     throw new HrError("invalid_document", `生成的文档没过校验：${firstDiagnostic.message}`);
   }
-  // 先判定再建：`filePath` 来自模型输出，而模型可被文档里的注入操纵——越界必须先拒，不能先建目录。
+  // Judge before creating: `filePath` comes from model output, and the model can be steered by injection inside documents — out-of-bounds must be rejected before any directory is made.
   await assertInsideWorkspace(target);
   await createNewFileOf(target, html);
   return okResult(
@@ -89,7 +89,7 @@ const writeNewDocOf = async (
   );
 };
 
-/** 模板由调用方给：正常路径传 `minimalDocOf`，测试传坏模板以钉住"模板坏了就报错"。 */
+/** The template is supplied by the caller: the normal path passes `minimalDocOf`; tests pass a broken template to pin "a bad template errors out". */
 export const createDocWith =
   (htmlOf: (title: string) => string) =>
   (args: CreateDocArgs): Promise<CallToolResult> =>

@@ -1,5 +1,5 @@
-// 这层管：八个工具的注册表（名字 → 入参 schema → core 原语调用）；工具实现各自一个文件。
-// 拆成三组只是为了让每个函数短到能一眼读完：读写（看清现状 + 开篇）、改动（落盘 + 结批注）、撤销。
+// This layer: the registry of the eight tools (name → input schema → core primitive call); each tool lives in its own file.
+// The three groups only exist to keep each function short enough to read at a glance: read/write (see the state + start a doc), change (write + resolve annotations), undo.
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -94,7 +94,7 @@ const registerEditingTools = (server: McpServer): void => {
   );
 };
 
-/** 撤销单独一组：它改的是"上一次写"，与 patch 共用同一条快照链（`revertLast` 是唯一入口）。 */
+/** Undo is its own group: it changes "the last write" and shares the same snapshot chain as patch (`revertLast` is the only entry). */
 const registerUndoTool = (server: McpServer): void => {
   server.registerTool(
     "hr_undo",

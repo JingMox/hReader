@@ -1,5 +1,5 @@
-// 这层管：三个「改动」工具走 in-memory transport 的行为——
-// 落盘是否真经过 core 的写管线、失败是否折成保留 `HrError.code` 的工具结果。
+// This layer: the three "change" tools' behavior over in-memory transport —
+// whether writes really go through core's write pipeline, and whether failures fold into tool results that keep `HrError.code`.
 
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -92,7 +92,7 @@ describe("hr_patch_node · delete", () => {
   });
 });
 
-describe("hr_patch_node · 入参", () => {
+describe("hr_patch_node · arguments", () => {
   it("should let the schema reject an action outside the five core verbs", async () => {
     await docIn("doc.html");
     const session = await sessionOf();
@@ -142,7 +142,7 @@ describe("hr_apply_style", () => {
   });
 });
 
-describe("hr_apply_style · 失败路径", () => {
+describe("hr_apply_style · failure paths", () => {
   it("should reject a call that gives neither visualId nor toneId", async () => {
     await docIn("doc.html");
     const session = await sessionOf();
@@ -201,7 +201,7 @@ describe("hr_resolve_annotation", () => {
   });
 });
 
-describe("hr_resolve_annotation · 失败的翻译", () => {
+describe("hr_resolve_annotation · failure translation", () => {
   it("should translate a missing document like the other tools, with no absolute path in the body", async () => {
     const session = await sessionOf();
     const result = await session.client.callTool({

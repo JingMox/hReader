@@ -1,5 +1,5 @@
-// 这层管：`hr_import_doc`（外来 HTML → importForeign → 落盘托管文档）；转换与校验全部在 core。
-// 与 `hr_create_doc` 共用同一道边界判定与 errno 翻译：`outPath` 先判再写，目标已存在即拒（`wx`）。
+// This layer: `hr_import_doc` (foreign HTML → importForeign → managed document on disk); conversion and validation are all in core.
+// Shares the same boundary check and errno translation as `hr_create_doc`: `outPath` is judged before writing; an existing target is rejected (`wx`).
 
 import { basename, dirname, extname, join } from "node:path";
 
@@ -42,7 +42,7 @@ export const importDocShape = {
 
 type ImportDocArgs = z.infer<z.ZodObject<typeof importDocShape>>;
 
-/** 缺省落点与源同目录、同名加 `.hr` 中缀（与 `hr import` 同一规则）：`a.html` → `a.hr.html`。 */
+/** Default landing spot: same directory as the source, same name plus a `.hr` infix (same rule as `hr import`): `a.html` → `a.hr.html`. */
 const outTargetOf = (args: ImportDocArgs, source: DocumentTarget, cwd: string): DocumentTarget => {
   if (args.outPath !== undefined) return documentTargetOf(args.outPath, cwd);
   const derived = join(
@@ -56,7 +56,7 @@ const writeImportedDocOf = async (args: ImportDocArgs): Promise<CallToolResult> 
   const cwd = process.cwd();
   const source = documentTargetOf(args.filePath, cwd);
   const target = outTargetOf(args, source, cwd);
-  // 词法这道先拦：outPath 指向源文件 = 覆盖输入本身，先拒再读（语义同 CLI 的用法错误）。
+  // The lexical check intercepts first: outPath pointing at the source means overwriting the input itself — reject before reading (same semantics as the CLI's usage error).
   if (target.absolute === source.absolute) {
     throw new HrError("invalid_input", `outPath 不能指向源文件自身：${target.input}`);
   }
@@ -64,7 +64,7 @@ const writeImportedDocOf = async (args: ImportDocArgs): Promise<CallToolResult> 
     ...(args.kind === undefined ? {} : { kind: args.kind }),
     ...(args.title === undefined ? {} : { title: args.title }),
   });
-  // 先判定再建：`outPath` 来自模型输出，而模型可被文档里的注入操纵——越界必须先拒，不能先建目录。
+  // Judge before creating: `outPath` comes from model output, and the model can be steered by injection inside documents — out-of-bounds must be rejected before any directory is made.
   await assertInsideWorkspace(target);
   await createNewFileOf(target, product.html);
   return okResult(

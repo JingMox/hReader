@@ -1,13 +1,13 @@
-// 这层管：错误码的诚实性（防"错误归因"：说错原因比缺功能更贵）。
+// This layer: error-code honesty (guards against "misattribution": blaming the wrong cause costs more than missing functionality).
 //
-// 它会因为什么而红：
-// - 某类失败被归到 `[internal]`（等于告诉宿主"我们炸了"，而其实是入参/目标的问题）；
-// - 一类失败出现两个码（宿主按码分流就会分叉）；
-// - 文案里出现 node 的原始 errno（`ENOENT:` / `EISDIR:` / `ENAMETOOLONG:`）——那是实现细节，
-//   宿主既不能据此重试也不能改参数，只能把它原样塞进日志。
+// What makes it red:
+// - some failure class lands in `[internal]` (telling the host "we blew up" when it is really the argument/target's problem);
+// - one failure class produces two codes (hosts routing on codes diverge);
+// - raw node errnos appear in the text (`ENOENT:` / `EISDIR:` / `ENAMETOOLONG:`) — implementation details the host
+//   can neither retry on nor fix arguments with, only paste into a log.
 //
-// 注意：文案里连绝对路径都不许出现——`errors.ts` 的 `humanMessageOf` 会把工作区根折成相对，
-// 所以对**所有**码都一刀切；越界时用户看到的是自己传进来的那条相对路径。
+// Note: even absolute paths are banned from the text — `errors.ts`'s `humanMessageOf` folds the workspace root into a relative one,
+// so the rule applies to **all** codes; on out-of-bounds the user sees the relative path they passed in.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -42,8 +42,8 @@ interface Case {
   readonly tool: string;
   readonly args: Record<string, unknown>;
   /**
-   * 允许的 `HrError.code` 集合：具体选哪个是实现的选择（core 词表里 `not_a_file` 与 `not_found` 都先有先例），
-   * 本用例只锁两件不该含糊的事——**不许 `internal` 当垃圾桶**、且**同一类失败只有一个码**（集合只放同语义的近邻）。
+   * The allowed `HrError.code` set: which specific one is an implementation choice (core's vocabulary has precedent for both `not_a_file` and `not_found`);
+   * this case only pins two things that must not blur — **`internal` may not be a trash bin**, and **one failure class gets exactly one code** (the set only holds same-semantics neighbors).
    */
   readonly codes: readonly string[];
   readonly prepare?: () => Promise<void>;
@@ -51,13 +51,13 @@ interface Case {
 
 const CASES: readonly Case[] = [
   {
-    name: "读一个不存在的文档",
+    name: "read a missing document",
     tool: "hr_outline",
     args: { filePath: "nope.html" },
     codes: ["not_found"],
   },
   {
-    name: "改一个不存在的节点",
+    name: "patch a missing node",
     tool: "hr_patch_node",
     args: {
       filePath: "doc.html",
@@ -68,37 +68,37 @@ const CASES: readonly Case[] = [
     codes: ["node_not_found"],
   },
   {
-    name: "改一个不存在的文档",
+    name: "patch a missing document",
     tool: "hr_patch_node",
     args: { filePath: "ghost.html", nodeId: "root", action: "replace", htmlContent: "<p>x</p>" },
     codes: ["not_found"],
   },
   {
-    name: "建一份已存在的文档",
+    name: "create an existing document",
     tool: "hr_create_doc",
     args: { filePath: "doc.html", title: "撞名" },
     codes: ["file_exists"],
   },
   {
-    name: "要求一份不存在的风格",
+    name: "ask for a missing style",
     tool: "hr_apply_style",
     args: { filePath: "doc.html", visualId: "no-such-style" },
     codes: ["unknown_style"],
   },
   {
-    name: "两样都不给（visualId 与 toneId 全空）",
+    name: "give neither (visualId and toneId both empty)",
     tool: "hr_apply_style",
     args: { filePath: "doc.html" },
     codes: ["invalid_input"],
   },
   {
-    name: "超长路径",
+    name: "an overlong path",
     tool: "hr_create_doc",
     args: { filePath: `${"a/".repeat(2500)}x.html`, title: "太长" },
     codes: ["invalid_input"],
   },
   {
-    name: "把目录当文档读",
+    name: "read a directory as a document",
     tool: "hr_outline",
     args: { filePath: "sub" },
     codes: ["not_a_file"],
@@ -120,26 +120,26 @@ const runCase = async (row: Case): Promise<{ code: string; text: string }> => {
   return { code: codeOf(result), text: textOf(result) };
 };
 
-describe("错误码诚实性 · 每类失败一个码、一个原因", () => {
+describe("error-code honesty · one code, one cause per failure class", () => {
   it.each(CASES)(
-    "$name → 诚实码，不是 internal",
+    "$name → honest code, not internal",
     async (row) => {
       await writeFile(join(workspace, "doc.html"), ANNOTATED_DOC, "utf8");
       const { code, text } = await runCase(row);
 
       expect(row.codes).toContain(code);
-      // 正文里只许出现一个码，且就是它自己（`[code] message`）。
+      // Only one code may appear in the body, and it must be that one (`[code] message`).
       expect(text.startsWith(`[${code}] `)).toBe(true);
       expect(text.match(/^\[[a-z_]+\]/gu)).toHaveLength(1);
       for (const errno of RAW_ERRNO) expect(text).not.toContain(errno);
-      // 绝对路径同样不许进正文：用户看到的是自己传进来的相对路径。
+      // Absolute paths are banned from the body too: the user sees the relative path they passed in.
       expect(text).not.toContain(workspace);
     },
     30_000,
   );
 });
 
-describe("错误码诚实性 · 同一份源的两个出口不许各说各话", () => {
+describe("error-code honesty · two exits of one source must not disagree", () => {
   it("should report an unknown style with one code through the resource and through the tool", async () => {
     await writeFile(join(workspace, "doc.html"), ANNOTATED_DOC, "utf8");
     const session = await sessionOf();
@@ -156,13 +156,13 @@ describe("错误码诚实性 · 同一份源的两个出口不许各说各话", 
     await session.close();
 
     expect(codeOf(tool)).toBe("unknown_style");
-    // 资源那条走的是 JSON-RPC error（没有工具结果的壳）：`McpError` 的 `message` 与 `code` 都要能读。
+    // The resource arm goes through a JSON-RPC error (no tool-result shell): both `McpError`'s `message` and `code` must be readable.
     const rpcCode: unknown = Reflect.get(Object(resource), "code");
     const rpcMessage: unknown = Reflect.get(Object(resource), "message");
-    // 实测：`rpcCode` 恒为 -32603，只有 `message` 里带着真原因——"码对了文案错"与"文案对了码错"
-    // 对宿主是同一件事：它没法按码分流。这条断言就是"资源出口也得有真码"的探针。
+    // Measured: `rpcCode` is always -32603, and only `message` carries the real cause — "right code, wrong text" and "right text, wrong code"
+    // are the same thing to the host: it cannot route on the code. This assertion is the probe for "the resource exit also carries the true code".
     expect(rpcMessage).toContain("no-such-style");
-    // `-32603 Internal error` 是 SDK 的兜底码：业务失败落在这里就等于"错误归因"。
+    // `-32603 Internal error` is the SDK's fallback code: a business failure landing here is "misattribution".
     expect(rpcCode).not.toBe(-32603);
   }, 30_000);
 });

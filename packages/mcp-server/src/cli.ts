@@ -1,5 +1,5 @@
-// 这层管：命令行 → transport / 工作区选择与启动（stdio / `--http <port>` / `--workspace <dir>` / `--help`）；不做协议逻辑。
-// 与 `main.ts` 分开是为了能在进程内测：本文件只在默认 io 里读 `process`，argv 由调用方传入。
+// This layer: command line → transport / workspace selection and startup (stdio / `--http <port>` / `--workspace <dir>` / `--help`); no protocol logic.
+// Split from `main.ts` so it can be tested in-process: this file only reads `process` through injected io, and argv comes from the caller.
 
 import { randomUUID } from "node:crypto";
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
@@ -53,7 +53,7 @@ const parseWorkspaceFlag = (value: string | undefined, state: FlagState): string
   return undefined;
 };
 
-/** 严格参数解析：未知、缺值或重复参数一律回 `bad`，绝不猜测意图。 */
+/** Strict argument parsing: unknown, missing-value, or repeated arguments all return `bad`; intent is never guessed. */
 export const modeOf = (argv: readonly string[]): Mode => {
   if (argv.includes("--help")) return { kind: "help" };
   const state: FlagState = {};
@@ -79,7 +79,7 @@ export interface RunningHttp {
   close(): Promise<void>;
 }
 
-/** `listen` 之后的地址形态：TCP 给对象，命名管道给字符串，未监听为 null。 */
+/** Address shape after `listen`: an object for TCP, a string for named pipes, null when not listening. */
 export const portOfAddress = (address: ReturnType<HttpServer["address"]>): number => {
   if (address === null || typeof address === "string") {
     throw new HrError("io_failure", "监听中的 HTTP server 没有 TCP 端口");
@@ -87,7 +87,7 @@ export const portOfAddress = (address: ReturnType<HttpServer["address"]>): numbe
   return address.port;
 };
 
-/** 端口被占用/无权限时让错误冒到 `runMain`：那里统一转成退出码 + stderr 说明。 */
+/** When the port is taken or forbidden, let the error bubble up to `runMain`: it is turned into an exit code + stderr note there. */
 export const startHttp = async (port: number): Promise<RunningHttp> => {
   const mcp = createServer(process.cwd());
   const transport = new StreamableHTTPServerTransport({
@@ -103,7 +103,7 @@ export const startHttp = async (port: number): Promise<RunningHttp> => {
   });
   return {
     port: portOfAddress(http.address()),
-    // 关服务不解释失败：已经在拆了，"未打开 / 连接残余"没有可执行的分支。
+    // Shutdown failures are not explained: we are already tearing down, and "not open / leftover connection" has no actionable branch.
     close: async () => {
       await new Promise<void>((resolveClose) => {
         http.close(() => {
@@ -121,13 +121,13 @@ export interface MainIo {
   readonly chdir?: (dir: string) => void;
 }
 
-/** stdio 的 transport 由调用方给：测试用内存对，线上用 `StdioServerTransport`（绑进程流）。 */
+/** The stdio transport is supplied by the caller: tests use an in-memory pair, production uses `StdioServerTransport` (bound to the process streams). */
 export const cliIoOf = (transportOf: () => Transport): MainIo => ({
   startStdio: async () => {
     const mcp = createServer(process.cwd());
     const transport = transportOf();
-    // SDK 的 `ReadBuffer` 超限（默认 10MB 单帧）时只调 `onerror` 然后自己 `close`：不接这一行，
-    // 进程就在**一声不响**中退出，宿主只看到服务器凭空消失。
+    // When the SDK's `ReadBuffer` overflows (10MB per frame by default) it only calls `onerror` and then closes itself: without this line,
+    // the process exits **silently** and the host just sees the server vanish.
     transport.onerror = (error: Error) => {
       logLine(`传输错误：${messageOf(error)}`);
     };
@@ -142,7 +142,7 @@ const defaultChdir = (dir: string): void => {
   process.chdir(resolve(dir));
 };
 
-/** 宿主错把 `/` 或 `$HOME` 当工作区时发出显式提醒，但不阻止启动。 */
+/** Warns explicitly when the host mistakes `/` or `$HOME` for the workspace, without blocking startup. */
 export const workspaceWarningOf = (
   workspace: string,
   home: string = homedir(),
@@ -154,11 +154,11 @@ export const workspaceWarningOf = (
   return `WARNING 工作区范围过大（${resolved}）：建议通过 --workspace <dir> 限定文档目录`;
 };
 
-/** 资源缺失/过宽工作区的警告要不要打：纯函数，可直接求值验证。 */
+/** Whether to print the missing-resources / overly-wide-workspace warning: a pure function, directly evaluable in tests. */
 export const warningLinesOf = (warning: string | undefined): readonly string[] =>
   warning === undefined ? [] : [warning];
 
-/** 返回值 = 进程退出码。stdio 模式下它只在"起不来"时才回（成功后进程被 stdin 拖着）。 */
+/** Return value = process exit code. In stdio mode it only returns when startup fails (on success the process is held by stdin). */
 export const runMain = async (argv: readonly string[], io: MainIo = defaultIo): Promise<number> => {
   const mode = modeOf(argv);
   if (mode.kind === "help") {
@@ -172,8 +172,8 @@ export const runMain = async (argv: readonly string[], io: MainIo = defaultIo): 
   try {
     if (mode.workspace !== undefined) (io.chdir ?? defaultChdir)(mode.workspace);
     const workspace = process.cwd();
-    // 宿主唯一能自证"工作区是哪个目录"的地方：stdio 的 stdout 是协议通道，只能写 stderr。
-    // 资源缺失也不该等宿主第一次 `hr_apply_style` 才知道（仓库外布局）。
+    // The only place the host can prove which directory the workspace is: in stdio, stdout is the protocol channel, so this goes to stderr.
+    // Missing resources should not wait for the host's first `hr_apply_style` to surface (out-of-repo layouts).
     [
       `workspace=${workspace}`,
       ...warningLinesOf(workspaceWarningOf(workspace)),

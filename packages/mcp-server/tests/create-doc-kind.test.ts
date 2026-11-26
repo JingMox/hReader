@@ -1,5 +1,5 @@
-// 这层管：`hr_create_doc` 的 `kind`（按文档形态起稿）与 `hr_patch_node` 回执里的排版警告——
-// 两者都只是把 core 的能力透出来，这里钉的是“透出来了、形状没变”。
+// This layer: `hr_create_doc`'s `kind` (shape-based drafting) and the layout warnings in `hr_patch_node` receipts —
+// both merely expose core capabilities; what is pinned here is "exposed, shape unchanged".
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -50,7 +50,7 @@ describe("hr_create_doc · kind", () => {
   });
 });
 
-describe("hr_patch_node · 排版警告", () => {
+describe("hr_patch_node · layout warnings", () => {
   it("should return layout problems of the fragment as warnings and still write it", async () => {
     await callOf("hr_create_doc", { filePath: "doc.html", title: "稿", kind: "note" });
     const result = await callOf("hr_patch_node", {

@@ -1,8 +1,8 @@
-// 这层管：`hr_patch_node` 的成功响应也要带 `_meta.ui.resourceUri`。
-// 现有用例只对 `hr_create_doc` 断言了 ui meta（`read-tools.test.ts`）：改稿这条最重要的一臂没人盯，
-// 把 `src/tools/patch-node.ts` 里 okResult 的 ui 选项删掉，全套测试照样绿。
+// This layer: `hr_patch_node`'s success response must also carry `_meta.ui.resourceUri`.
+// Existing cases only assert ui meta for `hr_create_doc` (`read-tools.test.ts`): the most important arm — editing — went unwatched;
+// delete the ui option from okResult in `src/tools/patch-node.ts` and the whole suite stays green.
 //
-// 它会因为什么而红：patch 成功但 `_meta.ui` 消失 / URI 前缀换了 / 指向的视图读不出来或读到改前正文。
+// What makes it red: patch succeeds but `_meta.ui` vanishes / the URI prefix changes / the view it points to is unreadable or serves pre-edit content.
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -30,7 +30,7 @@ afterEach(async () => {
   await leaveWorkspace(workspace);
 });
 
-describe("hr_patch_node 的阅读视图元数据", () => {
+describe("hr_patch_node's reading-view metadata", () => {
   it("should point the patched result at a readable view of the same document", async () => {
     const session = await sessionOf();
     const patched: unknown = await session.client.callTool({
@@ -45,7 +45,7 @@ describe("hr_patch_node 的阅读视图元数据", () => {
     expect(isErrorResultOf(patched)).toBe(false);
     expect(uiUriOf(patched)).toMatch(/^ui:\/\/hreader\/view\//u);
 
-    // 指过去的 URI 必须真的读得出来，且读到的是**改后**的正文。
+    // The URI it points at must really be readable, and must serve the **post-edit** body.
     const read = await session.client.readResource({ uri: uiUriOf(patched) });
     await session.close();
 

@@ -1,11 +1,11 @@
-// 这层管："三条风格出口对同一份源"的可执行证明。
+// This layer: executable proof that "the three style exits serve the same source".
 //
-// 它会因为什么而红：任一条出口自己拼一份 CSS/spec（弱实现）→ 与 repo 里的 `theme.css` 或
-// `compileTone(spec)` 的字节不再相等；`_meta.origin` 从 `generated` 变成 `file` → 说明它读了别的源；
-// 仓库外布局（产物脱离 `styles/`）→ 三条出口必须**一起**失败，而不是工具红了、资源与 prompt 还在回空壳
-// （"同一策略两份实现"就是这么回来的）。
+// What makes it red: any exit building its own CSS/spec (weak implementation) → bytes stop matching the repo's `theme.css` or
+// `compileTone(spec)`; `_meta.origin` changing from `generated` to `file` → it read a different source;
+// the out-of-repo layout (artifact without `styles/`) → all three exits must fail **together**, not the tool red while resource and prompt still answer shells
+// (that is how "one strategy, two implementations" comes back).
 //
-// 禁止用 `toContain("某句短语")` 当主断言：一句写死的短语能被任何弱实现凑齐。
+// Forbidden as the main assertion: `toContain("some phrase")` — any weak implementation can cobble together a hardcoded phrase.
 
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -35,14 +35,14 @@ const PRESET_ID = "atelier-editorial";
 
 const presetOf = (id: string): (typeof BUILTIN_STYLES)[number] => {
   const found = BUILTIN_STYLES.find((style) => style.id === id);
-  if (found === undefined) throw new Error(`内置预设里没有 ${id}`);
+  if (found === undefined) throw new Error(`no ${id} among the builtin presets`);
   return found;
 };
 
 const injectedThemeOf = (html: string): string =>
   /<style id="hr-theme">([\s\S]*?)<\/style>/u.exec(html)?.[1] ?? "";
 
-/** `client.getPrompt()` 直接返回 `GetPromptResult`（不像 `callTool` 外面还套一层 `{result}`）。 */
+/** `client.getPrompt()` returns `GetPromptResult` directly (unlike `callTool`, which wraps `{result}` around it). */
 const textBlockOf = (answer: unknown): string => {
   const messages: unknown = isRecord(answer) ? answer["messages"] : undefined;
   const first: unknown = Array.isArray(messages) ? messages[0] : undefined;
@@ -59,7 +59,7 @@ interface Exits {
   readonly promptText: string;
 }
 
-/** 三条出口各取一份原文：这是"同一份源"要比的三堆字节。 */
+/** Each of the three exits contributes one original text: the three piles of bytes "same source" is compared over. */
 const exitsOf = async (workspace: string): Promise<Exits> => {
   await writeFile(join(workspace, "a.html"), ANNOTATED_DOC, "utf8");
   const session = await sessionOf();
@@ -83,7 +83,7 @@ const exitsOf = async (workspace: string): Promise<Exits> => {
   };
 };
 
-describe("风格三出口 · 同一份源", () => {
+describe("three style exits · the same source", () => {
   it("should build the tool css, the resource yaml and the prompt text from the same preset", async () => {
     const workspace = await workspaceIn("hreader-mcp-parity-");
     process.chdir(workspace);
@@ -93,7 +93,7 @@ describe("风格三出口 · 同一份源", () => {
         await exitsOf(workspace);
       const expectedYaml = await readStyleSource(PRESET_ID, styleDepsOf(workspace));
 
-      // ① 工具：注入的整块 CSS 必须与 repo 里那份 `theme.css` 逐字相等（少一个换行也红）。
+      // ① Tool: the whole injected CSS block must equal the repo's `theme.css` byte for byte (one missing newline goes red).
       const themeCss = await readFile(
         join(REPO_ROOT, "styles", preset.inheritsVisual, "theme.css"),
         "utf8",
@@ -102,12 +102,12 @@ describe("风格三出口 · 同一份源", () => {
       const injected = injectedThemeOf(await readFile(join(workspace, "a.html"), "utf8"));
       expect(injected.trim()).toBe(themeCss.trim());
 
-      // ② 资源：`origin` 必须是 `generated`（内置档由 core 序列化，不是盘上碰巧有一份 YAML），
-      //    正文与 `readStyleSource` 的产物逐字相等（证明适配层没自己拼第二份）。
+      // ② Resource: `origin` must be `generated` (builtin presets are serialized by core, not a YAML that happens to sit on disk),
+      //    and the body must equal `readStyleSource`'s output byte for byte (proving the adapter built no second copy).
       expect(resourceMime).toBe("application/yaml");
       expect(resourceMeta).toEqual({ origin: "generated" });
       expect(resourceText).toBe(expectedYaml.yaml);
-      // ③ prompt：与 `compileTone(同一份 preset)` **全等**，不是"包含某句人设"。
+      // ③ Prompt: **identical** to `compileTone(the same preset)`, not "contains some persona phrase".
       expect(promptText).toBe(compileTone(preset));
     } finally {
       await leaveWorkspace(workspace);
@@ -120,7 +120,7 @@ interface BothExits {
   readonly stderrText: string;
 }
 
-/** 只拷产物、不拷 `styles/`：这正是"装到别人机器上"的布局。三条出口一次问完。 */
+/** Copy only the artifact, not `styles/`: exactly the "installed on someone else's machine" layout. All three exits asked in one pass. */
 const outOfRepoExitsOf = async (hostDir: string): Promise<BothExits> => {
   const entry = join(hostDir, "main.js");
   await cp(await binPathOf(), entry);
@@ -154,20 +154,20 @@ const outOfRepoExitsOf = async (hostDir: string): Promise<BothExits> => {
   return { byId: byIdOf(frames), stderrText };
 };
 
-describe("风格三出口 · 仓库外布局", () => {
+describe("three style exits · out-of-repo layout", () => {
   it("should fail all three exits instead of pretending only the tool is broken", async () => {
     const hostDir = await mkdtemp(join(tmpdir(), "hreader-mcp-parity-out-"));
     try {
       const { byId, stderrText } = await outOfRepoExitsOf(hostDir);
 
-      // ① 工具：码必须是 `style_io_failure`（不是 `unknown_style`——风格存在，是资源没定位到）。
+      // ① Tool: the code must be `style_io_failure` (not `unknown_style` — the style exists; its resources were not located).
       expect(textOf(byId.get(2)).startsWith("[style_io_failure] ")).toBe(true);
-      // ② 资源与 prompt 也必须失败：回空壳就等于"这条出口还在假装能用"。
+      // ② Resource and prompt must fail too: answering a shell means "this exit still pretends to work".
       expect(resultOf(byId.get(3))).toEqual({});
       expect(isRecord(byId.get(3)?.["error"])).toBe(true);
       expect(resultOf(byId.get(4))).toEqual({});
       expect(isRecord(byId.get(4)?.["error"])).toBe(true);
-      // ③ 启动就留痕，别让宿主只能靠猜。
+      // ③ Leave a trace at startup; do not make the host guess.
       expect(stderrText).toContain("WARNING 主题资源缺失：");
     } finally {
       await rm(hostDir, { recursive: true, force: true });

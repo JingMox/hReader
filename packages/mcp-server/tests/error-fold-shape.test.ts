@@ -1,10 +1,10 @@
-// 这层管：错误折叠的两个"形状不变量"——折叠后的 **cause 链**（下游靠它摸回 errno）与
-// `elidedOf` 对根的**顺序无关**（`[cwd, real]` 与 `[real, cwd]` 必须折出同一句）。
+// This layer: two "shape invariants" of error folding — the folded **cause chain** (downstream walks it back to the errno) and
+// `elidedOf`'s **order-independence** over roots (`[cwd, real]` and `[real, cwd]` must fold to the same text).
 //
-// 它会因为什么而红：
-// - 折叠只留 message 不留 cause（`foldedOf` 里丢掉 `cause: error`）→ `cause` 不再是原 HrError；
-// - 折叠时把 cause 拍平成字符串 → 原 cause 的 `code` / 更深一层 cause 摸不到；
-// - `elidedOf` 的"长的根先折"排序被删 → 两个顺序折出不同结果（macOS `/var` ↔ `/private/var`）。
+// What makes it red:
+// - folding keeps message but drops cause (`foldedOf` loses `cause: error`) → `cause` is no longer the original HrError;
+// - folding flattens cause into a string → the original cause's `code` / deeper causes become unreachable;
+// - `elidedOf`'s "fold the longer root first" sort gets deleted → the two orders fold differently (macOS `/var` ↔ `/private/var`).
 
 import { describe, expect, it } from "vitest";
 
@@ -17,15 +17,15 @@ const errnoOf = (root: string): Error & { code: string } =>
     code: "ENOENT",
   });
 
-/** 断言 `unknown` 真是 HrError 并收窄：比 `as` 一遍更严（错类型会当场抛，而不是骗过类型检查）。 */
+/** Assert `unknown` really is an HrError and narrow it: stricter than `as` (a wrong type throws on the spot instead of fooling the type check). */
 const hrErrorOf = (value: unknown): HrError => {
-  if (!(value instanceof HrError)) throw new Error(`不是 HrError：${typeof value}`);
+  if (!(value instanceof HrError)) throw new Error(`not an HrError: ${typeof value}`);
   return value;
 };
 
 /**
- * 沿 `cause` 链收集所有节点（带环保护）。**只回答"还摸不摸得到"**，不锁层数：
- * `foldedOf` 将来若把底层 cause 直接挂上来（可观察行为更好、层数更少），这里照样绿。
+ * Collect every node along the `cause` chain (with cycle protection). **Only answers "still reachable?"**, does not pin the depth:
+ * if `foldedOf` someday attaches the underlying cause directly (better observable behavior, fewer layers), this stays green.
  */
 const causesOf = (root: unknown): readonly unknown[] => {
   const chain: unknown[] = [];
@@ -40,7 +40,7 @@ const causesOf = (root: unknown): readonly unknown[] => {
 const codeOfCause = (node: unknown): unknown =>
   node instanceof Error && "code" in node ? node.code : undefined;
 
-describe("折叠后的 cause 链", () => {
+describe("the folded cause chain", () => {
   it("should keep both the original HrError and its errno reachable along the cause chain", () => {
     const errno = errnoOf("/ws/project");
     const original = new HrError("not_found", "/ws/project/doc.html 不存在", { cause: errno });
@@ -50,8 +50,8 @@ describe("折叠后的 cause 链", () => {
     expect(folded).not.toBe(original);
     expect(hrErrorOf(folded).code).toBe("not_found");
 
-    // 下游拿 `cause.code` 比 errno 是常见写法：折完这条链上必须两样都还摸得到。
-    // 不断言"恰好两层"——那是内部结构，不是契约。
+    // Downstream reading `cause.code` for the errno is a common pattern: after folding, both must remain reachable on the chain.
+    // Not asserting "exactly two layers" — that is internal structure, not contract.
     const chain = causesOf(folded);
     expect(chain).toContain(original);
     expect(chain.map(codeOfCause)).toContain("ENOENT");
@@ -65,7 +65,7 @@ describe("折叠后的 cause 链", () => {
   });
 });
 
-describe("elidedOf 与根的顺序无关", () => {
+describe("elidedOf is independent of root order", () => {
   it("should fold the same text whichever order the two roots are given in", () => {
     const cwd = "/var/folders/x/hreader-ws";
     const real = "/private/var/folders/x/hreader-ws";
@@ -78,8 +78,8 @@ describe("elidedOf 与根的顺序无关", () => {
     const realFirst = elidedOf(message, [real, cwd]);
 
     expect(cwdFirst).toBe(realFirst);
-    // 折的是"窄"的那个：短根 `cwd` 折进去会剩下 `/privatedoc.html` 这种畸形。
-    // （`elidedOf` 是单趟替换，只折最长的那处命中；第二处留着不算缺陷。）
+    // What folds is the "narrower" root: folding the short root `cwd` inside it would leave malformed text like `/privatedoc.html`.
+    // (`elidedOf` is a single-pass replacement and only folds the longest hit; a second occurrence left over is not a defect.)
     expect(cwdFirst).not.toContain("/private");
   });
 

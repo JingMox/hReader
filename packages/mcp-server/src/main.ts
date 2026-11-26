@@ -1,5 +1,5 @@
-// 这层管：唯一的 bin 入口——把 argv 交给 `cli.ts`，自己不做任何决定。
-// stdout 是 JSON-RPC 通道，本文件一行都不往 stdout 写（`cli.ts` 的日志也只走 stderr）。
+// This layer: the only bin entry — hands argv to `cli.ts` and decides nothing itself.
+// stdout is the JSON-RPC channel; this file never writes a single byte to it (`cli.ts` logs go to stderr too).
 
 import { runMain } from "./cli";
 

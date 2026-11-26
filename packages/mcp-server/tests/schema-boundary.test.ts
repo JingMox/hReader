@@ -1,6 +1,6 @@
-// 这层管：每个 tool 的 zod schema 边界——类型错、缺字段、非法枚举、多余字段、超长字符串。
-// 契约：schema 拒绝一律是 `isError` 工具结果且文本带 `-32602`（invalid params），
-// 不许崩、不许落盘副作用；多余字段按 zod 非严格口径剥掉放行（pin 住这个宽容面）。
+// This layer: every tool's zod schema boundary — wrong types, missing fields, illegal enums, extra fields, oversized strings.
+// Contract: a schema rejection is always an `isError` tool result whose text carries `-32602` (invalid params);
+// never a crash, never an on-disk side effect; extra fields are stripped and passed through per zod's non-strict mode (pins the lenient surface).
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -38,7 +38,7 @@ afterEach(async () => {
   await rm(workspace, { recursive: true, force: true });
 });
 
-describe("schema 边界 · 类型与缺字段", () => {
+describe("schema boundary · types and missing fields", () => {
   it.each([
     ["hr_create_doc", { filePath: "a.html", title: 123 }, "title"],
     ["hr_create_doc", { filePath: "a.html" }, "title"],
@@ -48,7 +48,7 @@ describe("schema 边界 · 类型与缺字段", () => {
     ["hr_patch_node", { filePath: "doc.html", nodeId: "p-1", action: "explode" }, "action"],
     ["hr_apply_style", { filePath: "doc.html", visualId: 7 }, "visualId"],
     ["hr_import_doc", { filePath: "doc.html", kind: "bogus" }, "kind"],
-  ])("%s rejects %j with -32602", async (name, args, field) => {
+  ])("should reject %j with -32602 for %s", async (name, args, field) => {
     const result = await call(name, args);
 
     expect(result.isError).toBe(true);
@@ -68,9 +68,9 @@ describe("schema 边界 · 类型与缺字段", () => {
   });
 });
 
-describe("schema 边界 · 巨型与畸形输入", () => {
+describe("schema boundary · giant and malformed input", () => {
   it("should answer a 2MiB nodeId with a coded error, not a crash", async () => {
-    // stderr 收进内存：入参原样回显的失败日志是 MB 级单行，漏出去会把 runner 卡死。
+    // stderr is captured in memory: failure logs echoing the input verbatim are MB-scale single lines — leaking them would stall the runner.
     const stderr = stderrText();
     const result = await call("hr_read_node", {
       filePath: "doc.html",
@@ -91,7 +91,7 @@ describe("schema 边界 · 巨型与畸形输入", () => {
 
   it("should answer non-object arguments with a JSON-RPC error instead of a tool result", async () => {
     const session = await sessionOf();
-    // `arguments` 不是对象时连 zod 都进不去：SDK 直接回 JSON-RPC error（pin 住 -32603 现状）。
+    // When `arguments` is not an object, even zod is unreachable: the SDK answers a JSON-RPC error directly (pins the -32603 status quo).
     const error: unknown = await session.client
       .callTool({
         name: "hr_outline",

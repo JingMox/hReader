@@ -1,4 +1,4 @@
-// 这层管：`hr_read_node`（一个节点的 HTML + 它身上的批注）；切片/截断全在 core 的 `readNode`。
+// This layer: `hr_read_node` (one node's HTML + its annotations); slicing/truncation are all in core's `readNode`.
 
 import { locateTarget, parseHtml, readNode } from "@hreader/core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -21,7 +21,7 @@ export const readNodeCall = (args: ReadNodeArgs): Promise<CallToolResult> =>
   guarded("hr_read_node", async () => {
     const text = await readInsideWorkspace(documentTargetOf(args.filePath, process.cwd()));
     const parsed = parseHtml(text);
-    // 与 CLI `hr read` 同一条解析路径：selector 优先、id 兜底、两跳都败才报错——
-    // 不再自拼 `[data-hr-id="…"]`（那会把"选择器输入"这层语义整个压掉）。
+    // Same resolution path as CLI `hr read`: selector first, id as fallback, error only after both hops fail —
+    // we no longer hand-build `[data-hr-id="…"]` (that would flatten away the whole "input is a selector" layer of meaning).
     return okResult(readNode(parsed, locateTarget(parsed, args.nodeId).selector));
   });

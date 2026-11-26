@@ -1,5 +1,5 @@
-// 这层管：`resources/*`。风格源文本一条（`hreader://styles/{id}`）+ MCP-UI 视图一条
-// （`ui://hreader/view/{docId}`）；读取不依赖 daemon 是否在跑。
+// This layer: `resources/*`. One style-source resource (`hreader://styles/{id}`) + one MCP-UI view resource
+// (`ui://hreader/view/{docId}`); reads do not depend on the daemon running.
 
 import { BUILTIN_STYLES, discoverStyles, HrError, readStyleSource } from "@hreader/core";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -19,7 +19,7 @@ export const STYLE_URI_PREFIX = "hreader://styles/";
 
 const unique = (ids: readonly string[]): readonly string[] => [...new Set(ids)].sort();
 
-/** `discoverStyles()` 只收 project/user，内置档由本层并入（`presets/*.ts` 不在盘上）。 */
+/** `discoverStyles()` only returns project/user styles; builtin ones are merged in at this layer (`presets/*.ts` are not on disk). */
 export const styleIdsOf = async (workspace: string): Promise<readonly string[]> => {
   const discovery = await discoverStyles(styleDepsOf(workspace));
   return unique([
@@ -42,7 +42,7 @@ const readStyle = async (id: string, workspace: string): Promise<ReadResourceRes
         uri: `${STYLE_URI_PREFIX}${id}`,
         mimeType: "application/yaml",
         text: source.yaml,
-        // 宿主需要知道这份文本是盘上的原文还是内置档的序列化产物。
+        // The host needs to know whether this text is the on-disk original or the serialized form of a builtin preset.
         _meta: { origin: source.origin },
       },
     ],
@@ -56,7 +56,7 @@ const readView = async (docId: string): Promise<ReadResourceResult> => {
   }
   const target = documentTargetOf(relativePath, process.cwd());
   const text = await viewHtmlOf(target).catch((error: unknown) => {
-    // docId 是 base64url 解出来的，乱码当路径报给模型没有意义：回"这份文档不存在"就好。
+    // docId comes out of a base64url decode; reporting garbage as a path to the model is meaningless: just answer "this document does not exist".
     if (error instanceof HrError && error.code === "not_found") {
       throw new HrError("not_found", `视图已失效：${docId} 对应的文档不存在`, { cause: error });
     }
@@ -79,7 +79,7 @@ export const registerResources = (server: McpServer, workspace: string): void =>
   server.server.setRequestHandler(ListResourcesRequestSchema, async () => ({
     resources: (await styleIdsOf(workspace)).map(styleResourceOf),
   }));
-  // 失败必须变成带码的 JSON-RPC error：`-32603 Internal error` 等于"错误归因"，宿主没法按码分流。
+  // Failures must become coded JSON-RPC errors: `-32603 Internal error` is "misattribution" — the host cannot route on it.
   server.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     try {
       return await readUri(request.params.uri, workspace);

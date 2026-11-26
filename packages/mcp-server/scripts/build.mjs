@@ -1,4 +1,4 @@
-// 跨平台构建可交付产物：tsc 先过类型，再出 `dist/main.js`（shebang 可执行）+ `styles/`。
+// Cross-platform build of the deliverable: tsc checks types first, then emits `dist/main.js` (shebang-executable) + `styles/`.
 import { rmSync } from "node:fs";
 
 import { bundleNode, copyRepoStyles, makeExecutable, runTsc } from "../../../scripts/esbuild.mjs";

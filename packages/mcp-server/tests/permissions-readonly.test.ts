@@ -1,16 +1,16 @@
-// 这层管：agent 面只读权限的钉子——MCP 工具清单里绝不能出现任何能写授权的工具。
-// 外来 HTML 的「脚本 / 联网」两个权限维只由用户在阅读器界面里开启；
-// agent 侧（MCP 工具、CLI 命令）没有任何写权限的入口，这条测试把它锁死。
+// This layer: nails the agent surface's read-only permission — no tool capable of writing grants may ever appear in the MCP tool list.
+// Foreign HTML's two permission axes ("scripts" / "network") can only be enabled by the user in the reader UI;
+// the agent side (MCP tools, CLI commands) has no write-permission entry at all, and this test pins that shut.
 //
-// 它会因为什么而红：
-// - 有人注册了一个名字/参数暗示授权写入的工具（hr_trust、hr_permissions、set_grant…）；
-// - 既有工具的 schema 里混进了 trust/permission/grant 参数（功能寄生）。
+// What makes it red:
+// - someone registers a tool whose name/parameters imply grant-writing (hr_trust, hr_permissions, set_grant…);
+// - an existing tool's schema grows a trust/permission/grant parameter (feature parasitism).
 
 import { describe, expect, it } from "vitest";
 
 import { isRecord, sessionOf } from "./harness";
 
-/** 授权面在工具名或参数名里的特征词（大小写不敏感）。 */
+/** Feature words of the grant surface in tool or parameter names (case-insensitive). */
 const PERMISSION_SURFACE = /trust|permission|grant|perm/i;
 
 interface ListedTool {
@@ -23,7 +23,7 @@ const toolsOf = async (): Promise<readonly ListedTool[]> => {
   const listed: unknown = await session.client.listTools();
   await session.close();
   const tools: unknown = isRecord(listed) ? listed["tools"] : undefined;
-  if (!Array.isArray(tools)) throw new Error("tools/list 没有 tools 数组");
+  if (!Array.isArray(tools)) throw new Error("tools/list has no tools array");
 
   return tools.map((raw: unknown) => {
     const tool = isRecord(raw) ? raw : {};

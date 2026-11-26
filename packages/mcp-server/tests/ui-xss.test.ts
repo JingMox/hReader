@@ -1,8 +1,8 @@
-// 这层管：`ui://hreader/view/{docId}` 的文档注入面。
-// 之前 `viewHtmlOf` 把盘上字节原样塞 `<article>${text}</article>`：工作区里任何一份外来 HTML
-// （`<script>`、`on*`、外链资源、`</article>` 逃逸、会改写整个视图页的 `<style>`）都进了
-// 宿主渲染的 mcp-app 页面。契约：视图是**静态内容预览**——可执行面、外链面、注释、
-// 文档级样式一律剥掉，正文必须还在。
+// This layer: the document-injection surface of `ui://hreader/view/{docId}`.
+// `viewHtmlOf` used to stuff on-disk bytes verbatim into `<article>${text}</article>`: any foreign HTML in the workspace
+// (`<script>`, `on*` handlers, external resources, `</article>` escapes, view-page-rewriting `<style>`) flowed into
+// the host-rendered mcp-app page. Contract: the view is a **static content preview** — executable surface, external-resource surface, comments,
+// and document-level styles are all stripped; the body must survive.
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -39,7 +39,7 @@ let workspace = "";
 beforeEach(async () => {
   workspace = await mkdtemp(join(tmpdir(), "hreader-mcp-ui-xss-"));
   process.chdir(workspace);
-  // 视图拿端口要读 ~/.hreader/daemon.json：把 HOME 指进临时目录，测试不撞开发机真配置。
+  // The view reads ~/.hreader/daemon.json for the port: point HOME at a temp dir so tests do not hit the dev machine's real config.
   await mkdir(join(workspace, "home"), { recursive: true });
   process.env["HOME"] = join(workspace, "home");
 });
@@ -49,7 +49,7 @@ afterEach(async () => {
   await rm(workspace, { recursive: true, force: true });
 });
 
-describe("ui://hreader/view · 文档净化", () => {
+describe("ui://hreader/view · document sanitization", () => {
   it("should strip scripts, handlers, external resources and doc-level styles but keep content", async () => {
     await writeFile(
       join(workspace, "evil.html"),
@@ -77,7 +77,7 @@ describe("ui://hreader/view · 文档净化", () => {
     expect(view).not.toContain("onclick");
     expect(view).not.toContain("evil.example");
     expect(view).not.toContain("javascript:");
-    // 文档级 <style> 会改写整个视图页（display:none / @import 外联）：整删，视图用自己的样式。
+    // Document-level <style> would rewrite the whole view page (display:none / @import external links): delete it; the view uses its own styles.
     expect(view).not.toContain("display:none");
     expect(view).not.toContain("@import");
     expect(view).not.toContain("<!--");

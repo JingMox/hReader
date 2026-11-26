@@ -1,5 +1,5 @@
-// 这层管：`target.ts` 的 errno 翻译（调用点的"主修"）——码要诚实，文案要人话、且不带绝对路径。
-// 兜底映射（`errors.ts`）另有单测；这里钉的是"哪个文件的哪次操作"这层上下文。
+// This layer: `target.ts`'s errno translation (the call sites' "main translation") — codes stay honest, wording stays human, no absolute paths.
+// The fallback mapping (`errors.ts`) has its own unit tests; what is pinned here is the "which file, which operation" context.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -30,9 +30,9 @@ afterEach(async () => {
   await rm(workspace, { recursive: true, force: true });
 });
 
-/** 收紧成 `HrError` 再断言：不用类型断言，顺便在"没抛 HrError"时给出真正的失败原因。 */
+/** Narrow to `HrError` before asserting: no type assertion, and it surfaces the real failure reason when what was thrown is not an HrError. */
 const asHrErrorOf = (value: unknown): HrError => {
-  if (!(value instanceof HrError)) throw new Error(`期望 HrError，实际是：${String(value)}`);
+  if (!(value instanceof HrError)) throw new Error(`expected an HrError, got: ${String(value)}`);
   return value;
 };
 
@@ -46,7 +46,7 @@ describe("documentTargetOf", () => {
   it("should echo the path the caller gave, absolute or relative", () => {
     expect(documentTargetOf("/etc/passwd", workspace).input).toBe("/etc/passwd");
     expect(documentTargetOf("./doc.html", workspace).input).toBe("./doc.html");
-    // `file` 仍是我们算给 core 的相对路径，和回显用的 `input` 分开。
+    // `file` is still the relative path we compute for core — separate from `input`, which is what gets echoed.
     expect(documentTargetOf("doc.html", workspace).file).toBe("doc.html");
   });
 
@@ -67,11 +67,11 @@ describe("documentTargetOf", () => {
   });
 });
 
-describe("调用点的 errno 翻译", () => {
+describe("errno translation at the call site", () => {
   it.each([
-    // `EACCES` 在这里只能合成：非 root 跑测试造不出"目录存在但不可写"（root 会直接写成功）。
-    // `ENOENT`/`EISDIR`/`ENAMETOOLONG` 都由下面的真 fs 用例触发——合成只能证明我们的表自洽，
-    // 真 fs 才能证明我们把 Node 的错误读对了。
+    // `EACCES` can only be synthesized here: a non-root test run cannot create "directory exists but not writable" (root would just write successfully).
+    // `ENOENT`/`EISDIR`/`ENAMETOOLONG` are all triggered by the real-fs cases below — synthesis only proves our table is self-consistent;
+    // only real fs proves we read Node's errors right.
     ["EACCES", "io_failure", "写入失败（目录不可建或文件已存在）：doc.html"],
   ] as const)("should map %s to %s when writing", (errno, code, message) => {
     const target = documentTargetOf("doc.html", workspace);
@@ -79,7 +79,7 @@ describe("调用点的 errno 翻译", () => {
 
     expect(failure.code).toBe(code);
     expect(failure.message).toBe(message);
-    // errno 原文与绝对路径都只进 stderr（`cause` 链），不进正文。
+    // The raw errno and the absolute path only go to stderr (the `cause` chain), never the body.
     expect(failure.message).not.toContain(errno);
     expect(failure.message).not.toContain(workspace);
     expect(failure.cause).toBeDefined();
@@ -106,7 +106,7 @@ describe("调用点的 errno 翻译", () => {
   });
 });
 
-describe("core 的因果翻成我们的码", () => {
+describe("core's cause mapped to our code", () => {
   it("should turn core's not_a_file + cause ENOENT into not_found", () => {
     const target = documentTargetOf("ghost.html", workspace);
     const core = new HrError(
@@ -128,14 +128,14 @@ describe("core 的因果翻成我们的码", () => {
     const kept = asHrErrorOf(coreFailureOf(other, target));
     const plain = new Error("boom");
 
-    // code/文案原样保留（core 的绝对路径在这里被折，但这条没有路径可折）。
+    // code/wording preserved verbatim (core's absolute path would fold here, but this one has no path to fold).
     expect(kept.code).toBe("node_not_found");
     expect(kept.message).toBe("找不到节点");
     expect(coreFailureOf(plain, target)).toBe(plain);
   });
 });
 
-describe("真实文件系统上的读路径", () => {
+describe("read path on the real filesystem", () => {
   it("should answer a directory with not_a_file", async () => {
     await mkdir(join(workspace, "sub"), { recursive: true });
     const failure = await failureOf(readInsideWorkspace(documentTargetOf("sub", workspace)));

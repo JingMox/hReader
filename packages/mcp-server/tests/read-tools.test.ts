@@ -1,5 +1,5 @@
-// 这层管：三个「读 / 开篇」工具走 in-memory transport 的行为——
-// 入参 schema、调的是哪条 core 原语、失败是否折成保留 `HrError.code` 的工具结果。
+// This layer: the three "read / start" tools' behavior over in-memory transport —
+// the input schema, which core primitive is called, and whether failures fold into tool results that keep `HrError.code`.
 
 import { readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -65,7 +65,7 @@ describe("hr_create_doc", () => {
     await writeFile(join(workspace, "taken.html"), "<article></article>", "utf8");
     const result = await createOf({ filePath: "taken.html", title: "撞名" });
 
-    // 与 CLI `hr new` 同码：目标已存在是 `file_exists`，不再掉进 io_failure 兜底。
+    // Same code as CLI `hr new`: an existing target is `file_exists`, no longer falling into the io_failure fallback.
     expect(isErrorResultOf(result)).toBe(true);
     expect(codeOf(result)).toBe("file_exists");
   });
@@ -78,8 +78,8 @@ describe("hr_create_doc", () => {
   });
 });
 
-// 建完就能改。这一组用例的职责是"以后谁再手搓文档骨架，它会红"——
-// 新建文档的 id 必须由 core 的注入器给，否则大纲为空、`hr_patch_node` 只剩 `root` 一个靶子。
+// Editable right after creation. This group's job is "goes red if anyone hand-builds a document skeleton again" —
+// a new document's ids must come from core's injector, or the outline is empty and `hr_patch_node` has only `root` as a target.
 const outlineOf = async (filePath: string): Promise<Record<string, unknown>> => {
   const session = await sessionOf();
   const result: unknown = await session.client.callTool({
@@ -98,7 +98,7 @@ const outlineNodesOf = async (filePath: string): Promise<readonly Record<string,
 const headingIdOf = (nodes: readonly Record<string, unknown>[]): unknown =>
   nodes.find((node) => node["tag"] === "h1")?.["id"];
 
-describe("hr_create_doc · 建完就能改", () => {
+describe("hr_create_doc · editable right after creation", () => {
   it("should hand out node ids, so that a new document actually has an outline", async () => {
     expect(isErrorResultOf(await createOf({ filePath: "doc.html", title: "可改" }))).toBe(false);
 
@@ -136,8 +136,8 @@ describe("hr_create_doc · 建完就能改", () => {
   });
 });
 
-// `filePath` 来自模型输出（可被文档内容里的注入操纵），越界必须在建目录之前拒掉。
-describe("hr_create_doc · 工作区边界", () => {
+// `filePath` comes from model output (steerable by injection inside document content); out-of-bounds must be rejected before any directory is made.
+describe("hr_create_doc · workspace boundary", () => {
   it("should reject a path that escapes the workspace before creating anything", async () => {
     const outside = join(dirname(workspace), `${basename(workspace)}-escape.html`);
     const result = await createOf({
@@ -162,17 +162,17 @@ describe("hr_create_doc · 工作区边界", () => {
   });
 });
 
-// 回显：都是"用户到底发了什么"的问题，和越界判定分开看。
-describe("hr_create_doc · 回显", () => {
+// Echoing: a question of "what did the user actually send", judged separately from the boundary check.
+describe("hr_create_doc · echo", () => {
   it("should echo an absolute path verbatim instead of a `..`-laden relative one", async () => {
     const result = await createOf({ filePath: "/etc/passwd", title: "越界" });
     const text = textOf(result);
 
-    // 用户发来的是 `/etc/passwd`：回显必须是它，不能是 `../../../../etc/passwd`。
+    // The user sent `/etc/passwd`: the echo must be it, not `../../../../etc/passwd`.
     expect(codeOf(result)).toBe("path_outside_workspace");
     expect(text).toContain("/etc/passwd");
     expect(text).not.toContain("..");
-    // 界内绝对路径走"能落盘"那一侧：按落盘位置判越界，不因前导 `/` 先拒。
+    // An in-bounds absolute path goes down the "can land on disk" side: judged by landing position, not pre-rejected for its leading `/`.
     const inside = join(workspace, "abs.html");
     const created = await createOf({ filePath: inside, title: "界内绝对" });
     expect(isErrorResultOf(created)).toBe(false);
@@ -192,8 +192,8 @@ describe("hr_create_doc · 回显", () => {
   });
 });
 
-// 边界判定的边角：`..foo` 是被误拒的合法目录；自身与父目录是 `relative()` 返回空串 / `..` 的两头。
-describe("hr_create_doc · 路径判定的边角", () => {
+// Corners of the boundary check: `..foo` is a legal directory once wrongly rejected; self vs parent are the two ends where `relative()` returns "" / `..`.
+describe("hr_create_doc · corners of the path check", () => {
   it("should accept a directory whose name merely starts with two dots", async () => {
     const result = await createOf({ filePath: "..foo/x.html", title: "点点" });
 

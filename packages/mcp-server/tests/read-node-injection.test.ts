@@ -1,8 +1,8 @@
-// 这层管：`hr_read_node` 的目标解析口径与 CLI `hr read` 对齐。
-// 旧实现把 nodeId 原样插进 `[data-hr-id="${nodeId}"]`：选择器文法对 `"]`/`[` 判非法，
-// 注入只能造出 `invalid_selector`（造不出第二个选择器），但它把"输入是选择器还是 id"
-// 这第二层语义整个压掉——`hr read doc section` 在 CLI 是合法定位，在 MCP 永远查无此人。
-// 契约：跟 CLI 同一个 `locateTarget`（selector 优先、够不着的字符再试 id、两跳都败才报错）。
+// This layer: `hr_read_node`'s target-resolution semantics aligned with CLI `hr read`.
+// The old implementation spliced nodeId verbatim into `[data-hr-id="${nodeId}"]`: the selector grammar rejects `"]`/`[` as illegal,
+// so injection can only produce `invalid_selector` (never a second selector) — but it flattened away the whole second layer of
+// "is the input a selector or an id" semantics: `hr read doc section` is a legal lookup in the CLI, yet permanently unfindable in MCP.
+// Contract: same `locateTarget` as the CLI (selector first, retry unreachable characters as id, error only after both hops fail).
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -42,7 +42,7 @@ afterEach(async () => {
   await rm(workspace, { recursive: true, force: true });
 });
 
-describe("hr_read_node · 目标解析", () => {
+describe("hr_read_node · target resolution", () => {
   it("should read a node by its data-hr-id like before", async () => {
     const result = await call("p-1");
 
@@ -51,9 +51,9 @@ describe("hr_read_node · 目标解析", () => {
   });
 
   it("should reject a nodeId crafted to rewrite the selector instead of returning the wrong node", async () => {
-    // `x"],[data-hr-id="i-1` 拼进模板是 `[data-hr-id="x"],[data-hr-id="i-1"]`：
-    // 选择器文法对 `]` 后接字符判非法——注入造不出第二条选择器，只能报错。
-    // 换 locateTarget 后这条仍必须是错误（不能变成静默返回别的节点）。
+    // `x"],[data-hr-id="i-1` spliced into the template gives `[data-hr-id="x"],[data-hr-id="i-1"]`:
+    // the selector grammar rejects characters after `]` — injection cannot build a second selector, only an error.
+    // After switching to locateTarget this must still be an error (must not silently return some other node).
     const result = await call('x"],[data-hr-id="i-1');
 
     expect(result.isError).toBe(true);
@@ -61,8 +61,8 @@ describe("hr_read_node · 目标解析", () => {
   });
 
   it("should resolve a bare tag name like the CLI does (selector-first)", async () => {
-    // CLI `hr read doc section` 把输入当选择器解析（命中首棵 <section>）；MCP 旧模板把
-    // "section" 当 id 查（永远查无此 id → node_not_found）。两边必须同一行为。
+    // CLI `hr read doc section` parses the input as a selector (hits the first <section>); the old MCP template looked
+    // "section" up as an id (never found → node_not_found). Both sides must behave identically.
     const result = await call("section");
 
     expect(result.isError).toBe(false);

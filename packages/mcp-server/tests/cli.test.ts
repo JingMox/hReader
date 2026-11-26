@@ -1,5 +1,5 @@
-// 这层管：`cli.ts` 的参数解析、退出码与 transport 启动（io 全部注入，不碰真进程）；
-// `main.ts` 那两行壳也在这里求值一次（真子进程验证在 `stdio.test.ts`，那是宿主看到的形态）。
+// This layer: `cli.ts`'s argument parsing, exit codes and transport startup (all io injected, no real processes);
+// the two-line shell of `main.ts` is also evaluated once here (the real-subprocess check lives in `stdio.test.ts`, the shape the host sees).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { tmpdir } from "node:os";
@@ -205,7 +205,7 @@ describe("portOfAddress", () => {
 });
 
 const startHttpOf = (): never => {
-  throw new Error("runMain 在 stdio 模式下不应调到 startHttp");
+  throw new Error("runMain should never reach startHttp in stdio mode");
 };
 
 describe("startHttp", () => {
@@ -236,7 +236,7 @@ describe("startHttp", () => {
   });
 });
 
-describe("main.ts · 进程壳", () => {
+describe("main.ts · process shell", () => {
   it("should hand argv to runMain and set the exit code", async () => {
     const lines = stderrLines();
     process.argv = [process.execPath, "main.ts", "--help"];

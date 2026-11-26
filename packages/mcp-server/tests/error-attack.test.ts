@@ -1,11 +1,11 @@
-// 这层管：错误归因的**反向攻击**。前面几组问"码是对的吗"，这里问"能不能骗它把一类失败说成另一类"，
-// 以及"哪个格子里还藏着 internal 这个垃圾桶"。
+// This layer: the **reverse attack** on error attribution. Earlier groups asked "is the code right"; here we ask "can it be tricked into calling one failure class another",
+// and "which cell still hides the `internal` trash bin".
 //
-// 它会因为什么而红：
-// - 同一个失败经工具出口说 `unknown_style`、经资源出口说 `not_found`（宿主按码分流就会分叉）；
-// - 一条非 `ENOENT` 的 fs 失败（`EACCES`/`ENOTDIR`）仍落进 `internal`——那等于告诉宿主"我们没料到"；
-// - **合法**参数被误报：`..foo` 那次的老病。406 字符的相对路径在 `PATH_MAX=1024` 下完全合法，
-//   它的失败原因只能是"文件不存在"（`not_found`），绝不能是"参数不合法"（`invalid_input`）。
+// What makes it red:
+// - the same failure says `unknown_style` through the tool exit but `not_found` through the resource exit (hosts routing on codes diverge);
+// - a non-`ENOENT` fs failure (`EACCES`/`ENOTDIR`) still lands in `internal` — telling the host "we did not expect this";
+// - a **legal** argument gets misreported: the old `..foo` bug. A 406-char relative path is fully legal under `PATH_MAX=1024`,
+//   so its only possible failure cause is "file does not exist" (`not_found`), never "invalid argument" (`invalid_input`).
 
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -34,9 +34,9 @@ afterEach(async () => {
   await leaveWorkspace(workspace);
 });
 
-/** 深 200 层、406 个字符：合法（`PATH_MAX=1024`），所以"不存在"才是它的真因。 */
+/** 200 levels deep, 406 characters: legal (`PATH_MAX=1024`), so "does not exist" is its true cause. */
 const DEEP_BUT_LEGAL = `${"a/".repeat(200)}x.html`;
-/** 5006 个字符：超过 Linux `PATH_MAX=4096` 与 macOS `PATH_MAX=1024`。 */
+/** 5006 characters: over Linux `PATH_MAX=4096` and macOS `PATH_MAX=1024`. */
 const TOO_LONG = `${"a/".repeat(2500)}x.html`;
 
 const errorOf = (error: unknown): { code: unknown; data: unknown; message: unknown } => ({
@@ -63,14 +63,14 @@ interface Parity {
 
 const PARITIES: readonly Parity[] = [
   {
-    name: "未知风格：工具出口与资源出口",
+    name: "unknown style: tool exit and resource exit",
     uri: "hreader://styles/no-such-style",
     tool: "hr_apply_style",
     args: { filePath: "doc.html", visualId: "no-such-style" },
     code: "unknown_style",
   },
   {
-    name: "未知 uri 前缀：只有资源出口",
+    name: "unknown uri prefix: resource exit only",
     uri: "hreader://nothing/here",
     tool: "hr_outline",
     args: { filePath: "doc.html" },
@@ -78,9 +78,9 @@ const PARITIES: readonly Parity[] = [
   },
 ];
 
-describe("错误归因 · 双入口同码", () => {
+describe("error attribution · same code through both exits", () => {
   it.each(PARITIES)(
-    "$name → 资源出口的 data.code 与工具出口同一个",
+    "$name → the resource exit's data.code matches the tool exit's",
     async (row) => {
       await writeFile(join(workspace, "doc.html"), ANNOTATED_DOC, "utf8");
       const session = await sessionOf();
@@ -93,7 +93,7 @@ describe("错误归因 · 双入口同码", () => {
       const failure = errorOf(rejected);
       const data = isRecord(failure.data) ? failure.data : {};
       expect(data["code"]).toBe(row.code);
-      // 工具出口的码必须是同一个（`not_found` 那行只是借用 `hr_outline` 的成功路径，不比工具码）。
+      // The tool exit's code must be the same one (the `not_found` line just borrows `hr_outline`'s success path; tool codes are not compared there).
       if (row.code !== "not_found" || row.uri.startsWith("hreader://styles/")) {
         expect(await toolCodeOf(row.tool, row.args)).toBe(row.code);
       }
@@ -102,7 +102,7 @@ describe("错误归因 · 双入口同码", () => {
   );
 });
 
-describe("错误归因 · internal 不是垃圾桶", () => {
+describe("error attribution · internal is not a trash bin", () => {
   it("should map EACCES on read to io_failure, not internal", async () => {
     const file = join(workspace, "locked.html");
     await writeFile(file, ANNOTATED_DOC, "utf8");
@@ -133,7 +133,7 @@ describe("错误归因 · internal 不是垃圾桶", () => {
   }, 30_000);
 });
 
-describe("错误归因 · 合法参数不许被误报", () => {
+describe("error attribution · legal arguments must not be misreported", () => {
   it("should call a deep-but-legal path not_found, never invalid_input", async () => {
     const session = await sessionOf();
     const result: unknown = await session.client.callTool({
@@ -143,7 +143,7 @@ describe("错误归因 · 合法参数不许被误报", () => {
     await session.close();
 
     expect(isErrorResultOf(result)).toBe(true);
-    // 误报"参数不合法"会教模型去改一个本来就对的参数（`..foo` 那次的同类错误）。
+    // Misreporting "invalid argument" teaches the model to fix an argument that was already right (same class as the `..foo` bug).
     expect(codeOf(result)).toBe("not_found");
     expect(textOf(result)).toContain("x.html");
   }, 30_000);
@@ -154,7 +154,7 @@ describe("错误归因 · 合法参数不许被误报", () => {
   }, 30_000);
 });
 
-describe("错误归因 · 缺失的 UI 资源也不许装成功", () => {
+describe("error attribution · a missing UI resource must not fake success", () => {
   it("should answer ui://view/{missing} with a coded error instead of a shell page", async () => {
     const session = await sessionOf();
     const rejected = await session.client.readResource({ uri: "ui://hreader/view/ghost" }).then(
@@ -171,7 +171,7 @@ describe("错误归因 · 缺失的 UI 资源也不许装成功", () => {
   }, 30_000);
 });
 
-describe("错误归因 · 正文里不出现宿主布局", () => {
+describe("error attribution · no host layout in the body", () => {
   it("should keep the workspace path and errno out of the tool text", async () => {
     const session = await sessionOf();
     const result: unknown = await session.client.callTool({
