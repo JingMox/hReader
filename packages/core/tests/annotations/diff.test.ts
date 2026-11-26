@@ -51,6 +51,12 @@ describe("diffText · 七种形态", () => {
 const long = "a".repeat(DIFF_CHAR_LIMIT);
 const longer = "a".repeat(DIFF_CHAR_LIMIT + 1);
 
+/** Milliseconds of CPU time burned by this process (user+system); scheduling stalls do not inflate it. */
+const cpuMs = (): number => {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
+};
+
 describe("diffText · 20 000 字符上限", () => {
   it("should pin the limit at exactly 20 000", () => {
     expect(DIFF_CHAR_LIMIT).toBe(20_000);
@@ -100,13 +106,16 @@ describe("diffText · 单侧超限与性能", () => {
     const before = Array.from({ length: 40 }, (_, i) => `第${String(i)}行`).join("\n");
     const padded = `${before}${"x".repeat(DIFF_CHAR_LIMIT - before.length + 1)}`;
     const after = `${padded.slice(0, -1)}y`;
-    const started = performance.now();
+    const startedWall = performance.now();
+    const startedCpu = cpuMs();
     const result = diffText(padded, after);
-    const elapsed = performance.now() - started;
+    const elapsedWall = performance.now() - startedWall;
+    const elapsedCpu = cpuMs() - startedCpu;
 
     expect(result.degraded).toBe(true);
     expect(result.chunks.length).toBeGreaterThan(0);
-    expect(elapsed).toBeLessThan(200);
+    expect(elapsedWall).toBeLessThan(200);
+    expect(elapsedCpu).toBeLessThan(200);
   });
 });
 

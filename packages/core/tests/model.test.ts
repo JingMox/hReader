@@ -52,19 +52,34 @@ const wide = (paragraphs: number): string =>
 /** 空载机器上 `buildDocument(300)` 走完整条流水线的耗时（毫秒）：校准系数的分母。 */
 const IDLE_REFERENCE_MS = 4;
 
-const measure = (html: string): number => {
+/** Milliseconds of CPU time burned by this process (user+system); scheduling stalls do not inflate it. */
+const cpuMs = (): number => {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
+};
+
+/** One sample on both clocks: wall time balloons under CPU contention while own-CPU stays stable. */
+interface Sample {
+  readonly wall: number;
+  readonly cpu: number;
+}
+
+const measure = (html: string): Sample => {
   const startedAt = performance.now();
+  const startedCpu = cpuMs();
   const parsed = parseHtml(html);
   const injected = injectNodeIds(parsed);
   toDocumentModel(injected.parsed);
-  return performance.now() - startedAt;
+  return { wall: performance.now() - startedAt, cpu: cpuMs() - startedCpu };
 };
 
 /** 取最快的一次：抖动只会让单次变慢，最快样本最接近真实成本（与 html-perf 同口径）。 */
-const fastest = (html: string, runs: number): number => {
-  let best = Number.POSITIVE_INFINITY;
+const fastest = (html: string, runs: number): Sample => {
+  const best = { wall: Number.POSITIVE_INFINITY, cpu: Number.POSITIVE_INFINITY };
   for (let index = 0; index < runs; index += 1) {
-    best = Math.min(best, measure(html));
+    const sample = measure(html);
+    best.wall = Math.min(best.wall, sample.wall);
+    best.cpu = Math.min(best.cpu, sample.cpu);
   }
   return best;
 };
@@ -174,21 +189,24 @@ describe("toDocumentModel · 深度与性能", () => {
     measure(bigHtml);
     measure(referenceHtml);
     let ratio = Number.POSITIVE_INFINITY;
-    let bestBig = Number.POSITIVE_INFINITY;
-    let bestReference = Number.POSITIVE_INFINITY;
+    const bestBig = { wall: Number.POSITIVE_INFINITY, cpu: Number.POSITIVE_INFINITY };
+    const bestReference = { wall: Number.POSITIVE_INFINITY, cpu: Number.POSITIVE_INFINITY };
     for (let window = 0; window < 5; window += 1) {
       const reference = measure(referenceHtml);
       const big = measure(bigHtml);
-      bestReference = Math.min(bestReference, reference);
-      bestBig = Math.min(bestBig, big);
-      ratio = Math.min(ratio, big / reference);
+      bestReference.wall = Math.min(bestReference.wall, reference.wall);
+      bestReference.cpu = Math.min(bestReference.cpu, reference.cpu);
+      bestBig.wall = Math.min(bestBig.wall, big.wall);
+      bestBig.cpu = Math.min(bestBig.cpu, big.cpu);
+      ratio = Math.min(ratio, big.wall / reference.wall);
     }
-    const slowdown = Math.min(Math.max(bestReference / IDLE_REFERENCE_MS, 1), 8);
+    const slowdown = Math.min(Math.max(bestReference.wall / IDLE_REFERENCE_MS, 1), 8);
 
     expect(
-      bestBig,
-      `${String(bigHtml.length)} chars took ${bestBig.toFixed(1)}ms (reference ${bestReference.toFixed(1)}ms)`,
+      bestBig.wall,
+      `${String(bigHtml.length)} chars took ${bestBig.wall.toFixed(1)}ms wall / ${bestBig.cpu.toFixed(1)}ms cpu (reference ${bestReference.wall.toFixed(1)}ms)`,
     ).toBeLessThan(200 * slowdown);
+    expect(bestBig.cpu).toBeLessThan(200 * slowdown);
     // 体量 10 倍：线性 ≈10，平方 ≈100。
     expect(ratio, `best big/reference ratio ${ratio.toFixed(1)}`).toBeLessThan(14);
   }, 120_000);
@@ -199,15 +217,17 @@ describe("toDocumentModel · 深度与性能 · 续", () => {
     const html = wide(64_000);
 
     expect(html.length).toBeGreaterThan(1_000_000);
-    expect(fastest(html, 2)).toBeLessThan(8_000);
+    expect(fastest(html, 2).wall).toBeLessThan(8_000);
+    expect(fastest(html, 2).cpu).toBeLessThan(8_000);
   }, 30_000);
 
   it("should stay close to linear in the number of blocks", () => {
     fastest(wide(5_000), 1);
-    const small = Math.max(fastest(wide(10_000), 2), 2);
+    const small = fastest(wide(10_000), 2);
     const large = fastest(wide(20_000), 1);
 
     // 4 倍输入换成平方会到 ~16 倍；线性只该是 ~4 倍。
-    expect(large).toBeLessThan(Math.max(small * 8, 80));
+    expect(large.wall).toBeLessThan(Math.max(small.wall * 8, 80));
+    expect(large.cpu).toBeLessThan(Math.max(small.cpu * 8, 80));
   });
 });

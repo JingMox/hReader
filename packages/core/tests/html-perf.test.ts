@@ -40,17 +40,32 @@ const buildDocument = (sections: number): string => {
   return parts.join("");
 };
 
-/** parse + inject 的总耗时（毫秒）。 */
-const measure = (html: string): number => {
-  const start = performance.now();
-  injectNodeIds(parseHtml(html));
-  return performance.now() - start;
+/** Milliseconds of CPU time burned by this process (user+system); scheduling stalls do not inflate it. */
+const cpuMs = (): number => {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
 };
 
-const fastest = (html: string, runs: number): number => {
-  let best = Number.POSITIVE_INFINITY;
+/** One sample on both clocks: wall time balloons under CPU contention while own-CPU stays stable. */
+interface Sample {
+  readonly wall: number;
+  readonly cpu: number;
+}
+
+/** parse + inject cost in milliseconds, sampled on both the wall and own-process CPU clocks. */
+const measure = (html: string): Sample => {
+  const start = performance.now();
+  const startCpu = cpuMs();
+  injectNodeIds(parseHtml(html));
+  return { wall: performance.now() - start, cpu: cpuMs() - startCpu };
+};
+
+const fastest = (html: string, runs: number): Sample => {
+  const best = { wall: Number.POSITIVE_INFINITY, cpu: Number.POSITIVE_INFINITY };
   for (let index = 0; index < runs; index += 1) {
-    best = Math.min(best, measure(html));
+    const sample = measure(html);
+    best.wall = Math.min(best.wall, sample.wall);
+    best.cpu = Math.min(best.cpu, sample.cpu);
   }
   return best;
 };
@@ -60,12 +75,12 @@ const fastest = (html: string, runs: number): number => {
 // 下一条用例的 `large/small` 比值门与这里的 8x 关系都会红。
 const budgetFor = (
   html: string,
-): { readonly cost: number; readonly budget: number; readonly factor: number } => {
+): { readonly cost: Sample; readonly budget: number; readonly factor: number } => {
   fastest(buildDocument(20), 2);
   const factor = contention();
   const quarterCost = fastest(buildDocument(750), 3);
   const cost = fastest(html, 3);
-  return { cost, budget: Math.max(BUDGET_MS * factor, quarterCost * 8), factor };
+  return { cost, budget: Math.max(BUDGET_MS * factor, quarterCost.wall * 8), factor };
 };
 
 /** 交错取样：相邻窗口各测一档再相除，两端吃同一份争用，比值才稳；返回 5 个窗口里的最小比值。 */
@@ -74,8 +89,8 @@ const growthRatio = (small: string, large: string): number => {
   fastest(large, 2);
   let ratio = Number.POSITIVE_INFINITY;
   for (let window = 0; window < 5; window += 1) {
-    const smallCost = Math.max(fastest(small, 1), 0.5);
-    ratio = Math.min(ratio, fastest(large, 1) / smallCost);
+    const smallCost = Math.max(fastest(small, 1).wall, 0.5);
+    ratio = Math.min(ratio, fastest(large, 1).wall / smallCost);
   }
   return ratio;
 };
@@ -91,9 +106,10 @@ describe("性能 · 1MB 文档", () => {
 
       expect(html.length, `body size ${String(html.length)}`).toBeGreaterThan(1_000_000);
       expect(
-        cost,
-        `parse+inject of ${String(html.length)} chars took ${cost.toFixed(1)}ms, budget ${budget.toFixed(0)}ms (contention x${factor.toFixed(1)})`,
+        cost.wall,
+        `parse+inject of ${String(html.length)} chars took ${cost.wall.toFixed(1)}ms wall / ${cost.cpu.toFixed(1)}ms cpu, budget ${budget.toFixed(0)}ms (contention x${factor.toFixed(1)})`,
       ).toBeLessThanOrEqual(budget);
+      expect(cost.cpu).toBeLessThanOrEqual(budget);
     },
     TIMEOUT_MS,
   );

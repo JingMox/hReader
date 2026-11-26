@@ -215,12 +215,26 @@ const buildLarge = (sections: number): string =>
 
 const byteLength = (text: string): number => new TextEncoder().encode(text).length;
 
-const fastest = (run: () => unknown, attempts: number): number => {
-  let best = Number.POSITIVE_INFINITY;
+/** Milliseconds of CPU time burned by this process (user+system); scheduling stalls do not inflate it. */
+const cpuMs = (): number => {
+  const { user, system } = process.cpuUsage();
+  return (user + system) / 1000;
+};
+
+/** One sample on both clocks: wall time balloons under CPU contention while own-CPU stays stable. */
+interface Sample {
+  readonly wall: number;
+  readonly cpu: number;
+}
+
+const fastest = (run: () => unknown, attempts: number): Sample => {
+  const best = { wall: Number.POSITIVE_INFINITY, cpu: Number.POSITIVE_INFINITY };
   for (let index = 0; index < attempts; index += 1) {
     const started = performance.now();
+    const startedCpu = cpuMs();
     run();
-    best = Math.min(best, performance.now() - started);
+    best.cpu = Math.min(best.cpu, cpuMs() - startedCpu);
+    best.wall = Math.min(best.wall, performance.now() - started);
   }
   return best;
 };
@@ -251,30 +265,32 @@ describe("performance · one megabyte document", () => {
     const big = buildLarge(5_000);
     const medium = buildLarge(500);
     const reference = fastest(() => read(medium, "#s250"), 3);
-    const slowdown = Math.min(Math.max(reference / 2, 1), 20);
+    const slowdown = Math.min(Math.max(reference.wall / 2, 1), 20);
     const elapsed = fastest(() => read(big, "#s2500"), 3);
 
     expect(byteLength(big)).toBeGreaterThan(1_000_000);
     expect(
-      elapsed,
-      `1MB/${String(byteLength(big))}B read took ${elapsed.toFixed(1)}ms (slowdown ${slowdown.toFixed(1)}x)`,
+      elapsed.wall,
+      `1MB/${String(byteLength(big))}B read took ${elapsed.wall.toFixed(1)}ms wall / ${elapsed.cpu.toFixed(1)}ms cpu (slowdown ${slowdown.toFixed(1)}x)`,
     ).toBeLessThan(60 * slowdown);
+    expect(elapsed.cpu).toBeLessThan(60 * slowdown);
   }, 30_000);
 
   it("should truncate a full article read out of a 1MB document within 120ms", () => {
     const big = buildLarge(5_000);
     const medium = buildLarge(500);
     const reference = fastest(() => read(medium, "article"), 3);
-    const slowdown = Math.min(Math.max(reference / 5, 1), 8);
+    const slowdown = Math.min(Math.max(reference.wall / 5, 1), 8);
     const elapsed = fastest(() => read(big, "article"), 3);
     const result = read(big, "article");
 
     expect(result.truncated).toBe(true);
     expect(byteLength(result.html)).toBeLessThanOrEqual(65_536);
     expect(
-      elapsed,
-      `article read took ${elapsed.toFixed(1)}ms (slowdown ${slowdown.toFixed(1)}x)`,
+      elapsed.wall,
+      `article read took ${elapsed.wall.toFixed(1)}ms wall / ${elapsed.cpu.toFixed(1)}ms cpu (slowdown ${slowdown.toFixed(1)}x)`,
     ).toBeLessThan(120 * slowdown);
+    expect(elapsed.cpu).toBeLessThan(120 * slowdown);
   }, 60_000);
 });
 
