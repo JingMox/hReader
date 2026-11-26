@@ -335,10 +335,7 @@ describe("asset open safety contract", () => {
     // ...visible under show-all, and only via the bridge.
     s.hrd.savePrefs({ ...s.hrd.state.prefs, showAllFiles: true });
     s.hrd.renderFilesPanel("");
-    const row = mustGet(
-      s.document,
-      '[data-hrd-asset="linked-outside"]',
-    ) as HTMLElement;
+    const row = mustGet(s.document, '[data-hrd-asset="linked-outside"]') as HTMLElement;
     row.click();
     expect(s.window.location.href).toBe(
       "http://hr-desktop.local/open-asset?doc=linked-outside&t=test-token",
