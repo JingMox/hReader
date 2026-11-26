@@ -418,6 +418,8 @@ const foreignSseOf = (store: Store, foreign: ForeignHandle, resync: () => void):
  * `__HR_DESKTOP_CTX__`；浏览器里没有它，整段调用直接早退。
  */
 const reportDocGate = (gate: DocGate): void => {
+  // 浏览器外（单测）没有 window：桌面上下文必缺席，与无令牌同一条早退路。
+  if (typeof window === "undefined") return;
   const token = (
     window as { __HR_DESKTOP_CTX__?: { bridgeToken?: string } }
   ).__HR_DESKTOP_CTX__?.bridgeToken;
