@@ -150,10 +150,16 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
       return;
     }
     await page.reload();
-    const restored = await page.wait(`location.hash === ${JSON.stringify(before)}`, 20_000);
+    // The URL keeps the "#p=" hash across reload, so a hash-only wait resolves
+    // while the app is still booting — the resumable fact is `data-hr-present`
+    // being painted again (state.present.active true, keydown bound).
+    const restored = await page.wait(
+      `document.querySelector('#hr-root').hasAttribute('data-hr-present') && location.hash === ${JSON.stringify(before)}`,
+      20_000,
+    );
     assert(
       restored === true,
-      `刷新后 hash 没恢复到 ${before}（实际：${String(await evalJs("location.hash"))}）`,
+      `刷新后演示态没恢复到 ${before}（实际：${String(await evalJs("location.hash"))}）`,
     );
   });
 
@@ -177,6 +183,15 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
   });
 
   test("退出演示后状态全部清理", async () => {
+    // An Escape fired before `data-hr-present` is painted lands inside the
+    // post-reload resume gap: it is dropped while keydown is unbound or reduced
+    // to a panelClosed no-op, after which the "#p=" hash resume re-activates
+    // presentation and the assertions below can never hold.
+    const armed = await page.wait(
+      `document.querySelector('#hr-root').hasAttribute('data-hr-present')`,
+      15_000,
+    );
+    assert(armed === true, "按 Escape 前演示态没有处于活动状态");
     await press(page, "Escape");
     const clean = await page.wait(
       `location.hash === '' && !document.documentElement.hasAttribute('data-hr-present') && !document.body.hasAttribute('data-hr-present') && document.querySelectorAll('[data-hr-slide-state],[data-hr-step-state]').length === 0`,
