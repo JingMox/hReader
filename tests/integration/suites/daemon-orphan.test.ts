@@ -84,9 +84,13 @@ describe("daemon orphan reaping", () => {
         launcher.once("exit", resolve);
       });
 
-      const reaped = await until(() => !pidAlive(daemonPid), (gone) => gone, {
-        timeoutMs: REAP_TIMEOUT_MS,
-      });
+      const reaped = await until(
+        () => !pidAlive(daemonPid),
+        (gone) => gone,
+        {
+          timeoutMs: REAP_TIMEOUT_MS,
+        },
+      );
       expect(reaped).toBe(true);
     } finally {
       if (launcher.exitCode === null && launcher.signalCode === null) launcher.kill("SIGKILL");

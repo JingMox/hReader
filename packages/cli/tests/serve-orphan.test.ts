@@ -48,11 +48,9 @@ describe("serve-harness orphan reaping", () => {
       `  .then(() => { console.log("LAUNCHED"); setInterval(() => undefined, 10000); })`,
       `  .catch((error) => { console.error(String(error)); process.exitCode = 3; });`,
     ].join("\n");
-    const launcher = spawn(
-      process.execPath,
-      ["--experimental-strip-types", "-e", launcherCode],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
+    const launcher = spawn(process.execPath, ["--experimental-strip-types", "-e", launcherCode], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let launcherOut = "";
     launcher.stdout.on("data", (chunk: Buffer) => {
       launcherOut += chunk.toString("utf8");

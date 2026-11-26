@@ -35,6 +35,7 @@
         "scripts/**/*.ts",
         "scripts/**/*.mjs",
         "tests/integration/**/*.ts",
+        "tests/leak-guard/**/*.ts",
         "tests/perf/**/*.ts"
       ]
     },
