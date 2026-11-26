@@ -124,4 +124,25 @@ describe("设置弹窗 · 外来 HTML 权限", () => {
     expect(network.disabled).toBe(true);
     s.dispose();
   });
+
+  it("should keep both selects disabled and write nothing when modes carry out-of-range values", async () => {
+    // `modes` shaped like an object but with values outside the enum is just as
+    // malformed as "garbage": enabling the selects would put "" in the field and
+    // Done would POST a body the server must reject — the same lock-up applies.
+    const s = createSandbox();
+    await openSettings(s, { scripts: "bogus", network: "deny" });
+    const { scripts, network } = permSelects(s);
+    expect(scripts.disabled).toBe(true);
+    expect(network.disabled).toBe(true);
+
+    const post = vi.fn().mockResolvedValue({});
+    s.hrd.apiPost = post;
+    (mustGet(s.document, "#hrd-set-done") as HTMLSelectElement).click();
+    await flush();
+    expect(
+      post.mock.calls.filter((call) => call[0] === "/api/permissions"),
+      "越界模式值不许写回服务端",
+    ).toHaveLength(0);
+    s.dispose();
+  });
 });
