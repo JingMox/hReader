@@ -68,6 +68,25 @@ describe("chromeDepsOf · spawn and stderr", () => {
     child.killGroup("SIGKILL");
   });
 
+  it("should deliver the whole stderr stream by the time onClose fires", async () => {
+    const deps = chromeDepsOf({});
+    const child = deps.spawn(process.execPath, ["-e", "process.stderr.write('tail-ok')"], {
+      detached: true,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    const stderr: string[] = [];
+    child.onStderr((text) => {
+      stderr.push(text);
+    });
+    const code = await new Promise<number | null>((resolve) => {
+      child.onClose(resolve);
+    });
+    // 'close' is the drained-stream point: everything the process wrote has arrived by now.
+    expect(code).toBe(0);
+    expect(stderr.join("")).toBe("tail-ok");
+    child.killGroup("SIGKILL");
+  });
+
   it("should do nothing in onStderr when stdio gives no stderr pipe", async () => {
     const child = chromeProcessOf(
       spawn(process.execPath, ["-e", ""], { stdio: ["ignore", "ignore", "ignore"] }),

@@ -135,6 +135,7 @@ describe("renderPdfOf · DevTools endpoint", () => {
     const pending = renderWithOf(setup);
     setup.fake.stderr("fatal: no display\nsecond\n");
     setup.fake.exit(1);
+    setup.fake.close(1);
     const error = await failureOf(pending);
     expect(error.code).toBe("chrome_failed");
     expect(error.message).toContain("Chrome 提前退出（code 1）：fatal: no display");
