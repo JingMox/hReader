@@ -293,6 +293,8 @@ describe("foreign · 权限开关", () => {
     fake.fire(PERM_SCRIPTS, "click", {});
     fake.fire(PERM_SCRIPTS, "click", {});
     fake.fire(PERM_NETWORK, "click", {});
+    // 横幅动作位同样串行化：写请求在途时动作点击不能再发一份。
+    fake.fire(ACTION, "click", {});
     expect(asked).toEqual([{ scripts: true }]);
 
     release(permsOf({ scripts: true }));
@@ -361,6 +363,8 @@ describe("foreign · 全局模式接管", () => {
 
     // 置灰是表现层；逻辑层同样拦住（绕过 disabled 的合成点击不能发出写请求）。
     fake.fire(PERM_SCRIPTS, "click", {});
+    // 横幅动作位被隐藏但监听仍在：同样的逻辑层闸门，一样不许发写。
+    fake.fire(ACTION, "click", {});
     await flush();
 
     expect(asked).toEqual([]);

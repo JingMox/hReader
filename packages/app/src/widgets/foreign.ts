@@ -131,10 +131,14 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     return perms.scripts ? COPY.foreignDisallow : COPY.foreignAllow;
   };
 
-  const paintToggle = (selector: string, dim: "scripts" | "network", label: string): void => {
-    if (perms === undefined) return;
-    const on = perms[dim];
-    const controlled = perms.modes[dim] !== "per-doc";
+  const paintToggle = (
+    selector: string,
+    dim: "scripts" | "network",
+    label: string,
+    view: DocPermissions,
+  ): void => {
+    const on = view[dim];
+    const controlled = view.modes[dim] !== "per-doc";
     host.text(selector, `${label}：${on ? "开" : "关"}`);
     host.attr(selector, "data-on", on ? "true" : "false");
     host.attr(selector, "aria-pressed", on ? "true" : "false");
@@ -156,9 +160,9 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     // 底栏开关只对外来文档存在：normalizable/managed 没有可授权的维度。
     const granted = info.cls === "foreign" && perms !== undefined;
     host.attr(PERMS, "hidden", granted ? undefined : "");
-    if (granted) {
-      paintToggle(PERM_SCRIPTS, "scripts", COPY.permScripts);
-      paintToggle(PERM_NETWORK, "network", COPY.permNetwork);
+    if (granted && perms !== undefined) {
+      paintToggle(PERM_SCRIPTS, "scripts", COPY.permScripts, perms);
+      paintToggle(PERM_NETWORK, "network", COPY.permNetwork, perms);
     }
   };
 

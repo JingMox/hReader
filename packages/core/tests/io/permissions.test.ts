@@ -48,10 +48,10 @@ interface World {
 }
 
 /** 假 fs 里的最小世界：workspace + 外来文档，读/写都走 `readDocGrant`/`writeDocGrant`。 */
-const worldOf = async (
+const worldOf = (
   seed: Readonly<Record<string, string>>,
   docs: readonly string[] = [DOC],
-): Promise<World> => {
+): World => {
   const fs = fakeFs({
     ...Object.fromEntries(docs.map((doc) => [`${WORKSPACE}/${doc}`, "seed"])),
     ...seed,
@@ -68,7 +68,7 @@ const worldOf = async (
 };
 
 /** 假 home：种子文件把 `/home` 钉成已存在目录，否则 `realpath(home)` 先倒。 */
-const homeWorldOf = async (seed: Readonly<Record<string, string>>) => {
+const homeWorldOf = (seed: Readonly<Record<string, string>>) => {
   const fs = fakeFs({ [`${HOME}/keep`]: "", ...seed });
   const deps = depsOf(fs.port, fixedClock(0).clock, recordingSleep().sleep);
   return { fs, deps };
@@ -90,27 +90,27 @@ describe("readDocGrant · 读取回落", () => {
       { [TRUST_PATH]: JSON.stringify({ [DOC]: { scripts: true } }) },
     ],
   ])("should fall back to denied when %s", async (_label, seed) => {
-    const world = await worldOf(seed);
+    const world = worldOf(seed);
 
     expect(await world.read()).toEqual(DENIED);
   });
 
   it("should fall back to denied when trust.json is not valid UTF-8", async () => {
-    const world = await worldOf({});
+    const world = worldOf({});
     world.fs.state.files.set(TRUST_PATH, new Uint8Array([0xff, 0xfe, 0x00]));
 
     expect(await world.read()).toEqual(DENIED);
   });
 
   it("should fall back to denied when reading trust.json fails with a system error", async () => {
-    const world = await worldOf({ [TRUST_PATH]: "{}" });
+    const world = worldOf({ [TRUST_PATH]: "{}" });
     world.fs.fail("readFile", systemError("EACCES"), (path) => path === TRUST_PATH);
 
     expect(await world.read()).toEqual(DENIED);
   });
 
   it("should ignore unknown extra fields on a well-formed grant", async () => {
-    const world = await worldOf({
+    const world = worldOf({
       [TRUST_PATH]: JSON.stringify({ [DOC]: { scripts: true, network: true, note: "x" } }),
     });
 
@@ -120,7 +120,7 @@ describe("readDocGrant · 读取回落", () => {
 
 describe("readDocGrant/writeDocGrant · 路径键语义", () => {
   it("should persist the grant keyed by workspace-relative path", async () => {
-    const world = await worldOf({});
+    const world = worldOf({});
 
     await world.write({ scripts: true, network: true });
 
@@ -130,7 +130,7 @@ describe("readDocGrant/writeDocGrant · 路径键语义", () => {
   });
 
   it("should keep the grant when the document bytes change", async () => {
-    const world = await worldOf({});
+    const world = worldOf({});
     await world.write({ scripts: true, network: false });
 
     const edited = encodeUtf8("<div>edited</div>");
@@ -139,14 +139,14 @@ describe("readDocGrant/writeDocGrant · 路径键语义", () => {
   });
 
   it("should not grant a sibling document under a different path", async () => {
-    const world = await worldOf({}, ["a.html", "b.html"]);
+    const world = worldOf({}, ["a.html", "b.html"]);
     await world.write({ scripts: true, network: false }, "a.html");
 
     expect(await world.read(DOC_BYTES, "b.html")).toEqual(DENIED);
   });
 
   it("should keep grants for other documents when writing a new one", async () => {
-    const world = await worldOf({}, ["a.html", "b.html"]);
+    const world = worldOf({}, ["a.html", "b.html"]);
     await world.write({ scripts: true, network: false }, "a.html");
     await world.write({ scripts: false, network: true }, "b.html");
 
@@ -155,7 +155,7 @@ describe("readDocGrant/writeDocGrant · 路径键语义", () => {
   });
 
   it("should overwrite a previous grant for the same path", async () => {
-    const world = await worldOf({});
+    const world = worldOf({});
     await world.write({ scripts: true, network: false });
     await world.write(DENIED);
 
@@ -163,7 +163,7 @@ describe("readDocGrant/writeDocGrant · 路径键语义", () => {
   });
 
   it("should never write into the document file itself", async () => {
-    const world = await worldOf({ [`${WORKSPACE}/${DOC}`]: "<div>foreign one</div>" });
+    const world = worldOf({ [`${WORKSPACE}/${DOC}`]: "<div>foreign one</div>" });
 
     await world.write({ scripts: true, network: false });
 
@@ -173,7 +173,7 @@ describe("readDocGrant/writeDocGrant · 路径键语义", () => {
 
 describe("readDocGrant · 旧 sha 键迁移", () => {
   it("should migrate a matching legacy sha grant to the path key", async () => {
-    const world = await worldOf({
+    const world = worldOf({
       [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "local" }),
     });
 
@@ -185,7 +185,7 @@ describe("readDocGrant · 旧 sha 键迁移", () => {
   });
 
   it("should be idempotent: a second read hits the path key and does not rewrite", async () => {
-    const world = await worldOf({
+    const world = worldOf({
       [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "local" }),
     });
 
@@ -198,7 +198,7 @@ describe("readDocGrant · 旧 sha 键迁移", () => {
   });
 
   it("should not migrate a legacy off record", async () => {
-    const world = await worldOf({
+    const world = worldOf({
       [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "off" }),
     });
 
@@ -207,8 +207,44 @@ describe("readDocGrant · 旧 sha 键迁移", () => {
     expect(world.fs.state.log.some((line) => line.startsWith("writeFileAtomic"))).toBe(false);
   });
 
+  it("should not resurrect a grant that appeared under the migration lock", async () => {
+    const world = worldOf({
+      [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "local" }),
+    });
+    // 首轮读到旧键后，另一客户端抢先写入路径键（这里是收回档）——锁内重读必须看到并放弃迁移。
+    world.fs.once(
+      "readFile",
+      (path) => path === TRUST_PATH,
+      () => {
+        world.fs.state.files.set(TRUST_PATH, encodeUtf8(JSON.stringify({ [DOC]: DENIED })));
+      },
+    );
+
+    expect(await world.read()).toEqual({ scripts: true, network: false });
+    const table = JSON.parse(world.fs.textAt(TRUST_PATH)) as Record<string, unknown>;
+    expect(table[DOC]).toEqual(DENIED);
+  });
+
+  it("should drop the migration when the legacy key vanished under the lock", async () => {
+    const world = worldOf({
+      [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "local" }),
+    });
+    // 首轮读到旧键后，旧键被整表重写抹掉——锁内重读对不上就必须停手，不写盘。
+    world.fs.once(
+      "readFile",
+      (path) => path === TRUST_PATH,
+      () => {
+        world.fs.state.files.set(TRUST_PATH, encodeUtf8(JSON.stringify({})));
+      },
+    );
+
+    expect(await world.read()).toEqual({ scripts: true, network: false });
+    const table = JSON.parse(world.fs.textAt(TRUST_PATH)) as Record<string, unknown>;
+    expect(table[DOC]).toBeUndefined();
+  });
+
   it("should ignore a legacy sha that does not match the current bytes", async () => {
-    const world = await worldOf({
+    const world = worldOf({
       [TRUST_PATH]: JSON.stringify({ [sha256Of(encodeUtf8("other"))]: "local" }),
     });
 
@@ -216,7 +252,7 @@ describe("readDocGrant · 旧 sha 键迁移", () => {
   });
 
   it("should still report the migrated grant when the migration write fails", async () => {
-    const world = await worldOf({
+    const world = worldOf({
       [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "local" }),
     });
     world.fs.fail("writeFileAtomic", systemError("EACCES"), () => true);
@@ -225,7 +261,7 @@ describe("readDocGrant · 旧 sha 键迁移", () => {
   });
 
   it("should prefer an existing path grant over a matching legacy sha key", async () => {
-    const world = await worldOf({
+    const world = worldOf({
       [TRUST_PATH]: JSON.stringify({
         [sha256Of(DOC_BYTES)]: "local",
         [DOC]: DENIED,
@@ -239,7 +275,7 @@ describe("readDocGrant · 旧 sha 键迁移", () => {
 
 describe("readGlobalModes · 读取回落", () => {
   it("should report per-doc/per-doc when the settings file is missing", async () => {
-    const { deps } = await homeWorldOf({});
+    const { deps } = homeWorldOf({});
 
     expect(await readGlobalModes(HOME, deps)).toEqual({ scripts: "per-doc", network: "per-doc" });
   });
@@ -252,7 +288,7 @@ describe("readGlobalModes · 读取回落", () => {
     ["an array", "[]"],
     ["unknown modes", JSON.stringify({ scripts: "admin", network: "admin" })],
   ])("should fall back to defaults when the file is %s", async (_label, content) => {
-    const { fs, deps } = await homeWorldOf({});
+    const { fs, deps } = homeWorldOf({});
     fs.state.files.set(
       SETTINGS_PATH,
       content === null ? new Uint8Array([0xff]) : encodeUtf8(content),
@@ -265,7 +301,7 @@ describe("readGlobalModes · 读取回落", () => {
   });
 
   it("should fall back per-dimension: a broken scripts value does not poison network", async () => {
-    const { deps } = await homeWorldOf({
+    const { deps } = homeWorldOf({
       [SETTINGS_PATH]: JSON.stringify({ scripts: "oops", network: "allow" }),
     });
 
@@ -273,7 +309,7 @@ describe("readGlobalModes · 读取回落", () => {
   });
 
   it("should fall back to defaults when reading the file fails with a system error", async () => {
-    const { fs, deps } = await homeWorldOf({ [SETTINGS_PATH]: "{}" });
+    const { fs, deps } = homeWorldOf({ [SETTINGS_PATH]: "{}" });
     fs.fail("readFile", systemError("EACCES"), (path) => path === SETTINGS_PATH);
 
     expect(await readGlobalModes(HOME, deps)).toEqual({
@@ -285,7 +321,7 @@ describe("readGlobalModes · 读取回落", () => {
 
 describe("writeGlobalModes · 读写", () => {
   it("should round-trip a full write", async () => {
-    const { deps } = await homeWorldOf({});
+    const { deps } = homeWorldOf({});
 
     const modes = await writeGlobalModes(
       { home: HOME, modes: { scripts: "allow", network: "deny" } },
@@ -297,7 +333,7 @@ describe("writeGlobalModes · 读写", () => {
   });
 
   it("should keep the untouched dimension on a partial write", async () => {
-    const { deps } = await homeWorldOf({
+    const { deps } = homeWorldOf({
       [SETTINGS_PATH]: JSON.stringify({ scripts: "deny", network: "allow" }),
     });
 
@@ -307,7 +343,7 @@ describe("writeGlobalModes · 读写", () => {
   });
 
   it("should heal a corrupted settings file by writing over it", async () => {
-    const { deps } = await homeWorldOf({ [SETTINGS_PATH]: "{oops" });
+    const { deps } = homeWorldOf({ [SETTINGS_PATH]: "{oops" });
 
     await writeGlobalModes({ home: HOME, modes: { network: "deny" } }, deps);
 
@@ -315,7 +351,7 @@ describe("writeGlobalModes · 读写", () => {
   });
 
   it("should propagate a missing home as not_a_file, never write outside it", async () => {
-    const { fs, deps } = await homeWorldOf({});
+    const { fs, deps } = homeWorldOf({});
 
     // failureOf 的口径：ENOENT = 调用方指错了路（not_a_file），非盘故障（io_failure）。
     const code = await codeOfAsync(() =>
@@ -360,10 +396,10 @@ describe("permissions · 表污染回归", () => {
   it("should not leak one world's grants into another world's reads", async () => {
     // 世界一的写入会改 trust.json；世界二根本没有这个文件，读必须回落成 DENIED——
     // 如果回落路径复用了被写侧 mutate 过的共享表，授权就跨界泄漏了。
-    const first = await worldOf({});
+    const first = worldOf({});
     await first.write({ scripts: true, network: false });
 
-    const second = await worldOf({});
+    const second = worldOf({});
 
     expect(await second.read()).toEqual(DENIED);
     expect(second.fs.state.files.has(TRUST_PATH)).toBe(false);

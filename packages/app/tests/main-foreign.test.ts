@@ -355,4 +355,28 @@ describe("main · info 形状守卫", () => {
     expect(isDocInfo({ cls: "managed" })).toBe(false);
     expect(isDocInfo(null)).toBe(false);
   });
+
+  it("should validate the nested permissions view field by field", async () => {
+    const { isDocInfo } = await import("../src/main.ts");
+
+    const base = { revision: "r1", cls: "foreign", trust: "off", scripts: true };
+    const perms = {
+      scripts: true,
+      network: false,
+      scriptsSource: "doc",
+      networkSource: "global",
+      modes: { scripts: "allow", network: "per-doc" },
+    };
+    expect(isDocInfo({ ...base, permissions: perms })).toBe(true);
+    for (const bad of [
+      { ...perms, scriptsSource: "bogus" },
+      { ...perms, networkSource: "bogus" },
+      { ...perms, scriptsSource: 1 },
+      { ...perms, modes: { scripts: "always", network: "per-doc" } },
+      { ...perms, modes: "per-doc" },
+      { ...perms, scripts: "yes" },
+    ]) {
+      expect(isDocInfo({ ...base, permissions: bad }), JSON.stringify(bad)).toBe(false);
+    }
+  });
 });
