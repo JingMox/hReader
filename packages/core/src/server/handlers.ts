@@ -15,6 +15,7 @@ import {
   effectiveOf,
   grantOfLevel,
   levelOfScripts,
+  patchDocGrant,
   readDocGrant,
   readGlobalModes,
   writeDocGrant,
@@ -510,13 +511,13 @@ export const docPermissionsReply = async (
 ): Promise<Written> => {
   const patch = parseBody(docPermissionsBody, body);
   const doc = await foreignDocOf(ctx, docId);
-  const before = await permissionsOf(ctx, doc.target, doc.bytes);
-  const grant: DocGrant = {
-    scripts: patch.scripts ?? before.grant.scripts,
-    network: patch.network ?? before.grant.network,
-  };
+  // The merge must happen under the trust lock: an alias docId spelling
+  // bypasses the per-doc request queue, so a read-then-write here could only
+  // see a stale record and the second writer would drop the other's dimension.
   await busy(() =>
-    writeDocGrant({ target: doc.target, grant }, ctx.deps, { lockTimeoutMs: lockMs }),
+    patchDocGrant({ target: doc.target, patch, bytes: doc.bytes }, ctx.deps, {
+      lockTimeoutMs: lockMs,
+    }),
   );
   const after = await permissionsOf(ctx, doc.target, doc.bytes);
   return {

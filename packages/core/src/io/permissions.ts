@@ -50,6 +50,15 @@ export interface GlobalModesPatch {
   readonly network?: PermissionMode | undefined;
 }
 
+/**
+ * Partial update shape for a doc grant: a missing dimension keeps the stored
+ * value. Same explicit-optional convention as GlobalModesPatch.
+ */
+export interface DocGrantPatch {
+  readonly scripts?: boolean | undefined;
+  readonly network?: boolean | undefined;
+}
+
 /** `per-doc` 维度取授权值，全局档维度取模式值；出处只用来向 UI 解释"开关归谁管"。 */
 export const effectiveOf = (modes: GlobalModes, grant: DocGrant): EffectivePermissions => ({
   scripts: modes.scripts === "allow" ? true : modes.scripts === "deny" ? false : grant.scripts,
@@ -190,6 +199,54 @@ export const writeDocGrant = async (
       deps,
     );
   });
+};
+
+/**
+ * Partial grant write where the merge base is read inside the lock: a caller
+ * merging outside could only see a stale record once a parallel write —
+ * another process, or an alias docId past the per-doc request queue —
+ * commits first. The base honors a pending legacy sha grant just like
+ * readDocGrant does, so a patch cannot silently drop an unmigrated scripts
+ * grant. Returns the merged grant so callers skip a second read.
+ */
+export const patchDocGrant = async (
+  input: {
+    readonly target: ResolvedTarget;
+    readonly patch: DocGrantPatch;
+    readonly bytes: Uint8Array;
+  },
+  deps: PatchDeps,
+  options: PatchOptions = {},
+): Promise<DocGrant> => {
+  const path = trustPathOf(input.target.storeDir);
+  return await runLocked(
+    { lockPath: trustLockOf(input.target.storeDir) },
+    deps,
+    options,
+    async () => {
+      const table = await tableOf(deps, path);
+      const current: DocGrant =
+        table.grants[input.target.relative] ??
+        (table.legacy[sha256Hex(input.bytes)] === "local"
+          ? { scripts: true, network: false }
+          : DENIED);
+      const merged: DocGrant = {
+        scripts: input.patch.scripts ?? current.scripts,
+        network: input.patch.network ?? current.network,
+      };
+      table.grants[input.target.relative] = merged;
+      await mkdirOrFail(deps, input.target.storeDir);
+      await writeAtomic(
+        {
+          path,
+          workspace: input.target.workspace,
+          data: encodeUtf8(serializeTable(table)),
+        },
+        deps,
+      );
+      return merged;
+    },
+  );
 };
 
 // ---- 全局默认：`<home>/.hreader/permissions.json`，home 由调用方注入 ----

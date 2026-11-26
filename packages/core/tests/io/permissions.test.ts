@@ -7,6 +7,7 @@ import { encodeUtf8 } from "../../src/io/bytes";
 import { resolveTarget } from "../../src/io/paths";
 import {
   effectiveOf,
+  patchDocGrant,
   readDocGrant,
   readGlobalModes,
   settingsPathOf,
@@ -47,6 +48,7 @@ interface World {
   readonly patch: (
     patch: { readonly scripts?: boolean; readonly network?: boolean },
     doc?: string,
+    bytes?: Uint8Array,
   ) => Promise<DocGrant>;
   readonly targetOf: (doc: string) => ReturnType<typeof resolveTarget>;
 }
@@ -68,10 +70,8 @@ const worldOf = (
     read: async (bytes = DOC_BYTES, doc = DOC) =>
       readDocGrant({ target: await targetOf(doc), bytes }, deps),
     write: async (grant, doc = DOC) => writeDocGrant({ target: await targetOf(doc), grant }, deps),
-    // Resolved through a dynamic import so the suite still loads while the API
-    // is under test: a missing `patchDocGrant` fails only these cases, not the file.
-    patch: async (patch, doc = DOC) =>
-      (await import("../../src/io")).patchDocGrant({ target: await targetOf(doc), patch }, deps),
+    patch: async (patch, doc = DOC, bytes = DOC_BYTES) =>
+      patchDocGrant({ target: await targetOf(doc), patch, bytes }, deps),
   };
 };
 
@@ -469,16 +469,40 @@ describe("patchDocGrant · in-lock partial merge", () => {
     expect(await world.read()).toEqual({ scripts: false, network: true });
   });
 
+  it("should merge onto an unmigrated legacy sha grant as the base", async () => {
+    // A doc whose only record is a legacy sha `local` has an effective scripts
+    // grant; a partial patch must merge onto it, not onto the denied fallback.
+    const world = worldOf({
+      [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "local" }),
+    });
+
+    const merged = await world.patch({ network: true });
+
+    expect(merged).toEqual({ scripts: true, network: true });
+    expect(await world.read()).toEqual({ scripts: true, network: true });
+  });
+
   it("should read the merge base inside the lock so racing patches keep both dimensions", async () => {
     // Two partial patches on one record must both survive. A merge base read
     // outside the lock is already stale when a parallel write — another
     // process, or an alias docId slipping past the per-doc request queue —
-    // commits first: the last write then silently drops the other's dimension.
-    const world = worldOf({});
+    // commits first. This needs a real fs: the fake fs cannot serialize
+    // concurrent runLocked acquisitions (its open(wx) file appears at write()).
+    await withWorkspace(async (dir) => {
+      const workspace = await realDirOf(dir);
+      await writeFile(join(workspace, "doc.html"), DOC_BYTES);
+      const target = await resolveTarget({ workspace, file: "doc.html" }, nodePatchDeps.fs);
 
-    await Promise.all([world.patch({ scripts: true }), world.patch({ network: true })]);
+      await Promise.all([
+        patchDocGrant({ target, patch: { scripts: true }, bytes: DOC_BYTES }, nodePatchDeps),
+        patchDocGrant({ target, patch: { network: true }, bytes: DOC_BYTES }, nodePatchDeps),
+      ]);
 
-    expect(await world.read()).toEqual({ scripts: true, network: true });
+      expect(await readDocGrant({ target, bytes: DOC_BYTES }, nodePatchDeps)).toEqual({
+        scripts: true,
+        network: true,
+      });
+    });
   });
 });
 

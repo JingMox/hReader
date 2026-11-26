@@ -16,6 +16,7 @@ export {
   effectiveOf,
   grantOfLevel,
   levelOfScripts,
+  patchDocGrant,
   readDocGrant,
   readGlobalModes,
   settingsPathOf,
@@ -24,6 +25,7 @@ export {
 } from "./permissions";
 export type {
   DocGrant,
+  DocGrantPatch,
   EffectivePermissions,
   GlobalModes,
   GlobalModesPatch,

@@ -41,6 +41,7 @@ describe("门面导出面", () => {
       "isInsideOrSelf",
       "levelOfScripts",
       "nodePatchDeps",
+      "patchDocGrant",
       "patchFile",
       "readDocGrant",
       "readGlobalModes",
