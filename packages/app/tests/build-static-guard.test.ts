@@ -1,0 +1,99 @@
+// The static build must fail loudly when the emitted browser bundle keeps Node-only
+// code: dist is served verbatim, and a moved version.ts or any stray node: import leaves
+// a module the browser cannot run — silently, because the bake step only writes one file.
+
+import { spawnSync } from "node:child_process";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+
+import { afterAll, describe, expect, it } from "vitest";
+
+const APP_DIR = join(import.meta.dirname, "..");
+const SCRIPT = join(APP_DIR, "scripts", "build-static.mjs");
+
+/** What tsc emits for src/version.ts: a node:fs import plus an import.meta file read. */
+const TSC_VERSION_EMIT = [
+  'import { readFileSync } from "node:fs";',
+  'export const APP_VERSION = readFileSync(new URL("../package.json", import.meta.url), "utf8");',
+].join("\n");
+
+const dirs: string[] = [];
+afterAll(() => {
+  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+});
+
+interface Sandbox {
+  readonly run: () => { readonly status: number | null; readonly output: string };
+  readonly versionJs: () => string;
+}
+
+/** A throwaway package layout the real script runs against verbatim (script dir → app dir). */
+const sandboxOf = (distFiles: Readonly<Record<string, string>>): Sandbox => {
+  const dir = mkdtempSync(join(tmpdir(), "hr-build-guard-"));
+  dirs.push(dir);
+  mkdirSync(join(dir, "scripts"), { recursive: true });
+  mkdirSync(join(dir, "static"), { recursive: true });
+  cpSync(SCRIPT, join(dir, "scripts", "build-static.mjs"));
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "9.9.9" }));
+  writeFileSync(join(dir, "static", "index.html"), "<html></html>");
+  writeFileSync(join(dir, "static", "styles.css"), "body{}");
+  for (const [name, body] of Object.entries(distFiles)) {
+    const target = join(dir, "dist", "assets", name);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, body);
+  }
+  return {
+    run: () => {
+      const result = spawnSync(process.execPath, [join(dir, "scripts", "build-static.mjs")], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      return { status: result.status, output: `${result.stdout}\n${result.stderr}` };
+    },
+    versionJs: () => readFileSync(join(dir, "dist", "assets", "version.js"), "utf8"),
+  };
+};
+
+describe("build-static · emitted bundle audit", () => {
+  it("should bake the package version into version.js when the emit is well formed", () => {
+    const sandbox = sandboxOf({
+      "version.js": TSC_VERSION_EMIT,
+      "main.js": "export const main = 1;",
+    });
+    const { status, output } = sandbox.run();
+    expect(output.trim()).toBe("");
+    expect(status).toBe(0);
+    const baked = sandbox.versionJs();
+    expect(baked).toContain('APP_VERSION = "v9.9.9"');
+    expect(baked).not.toContain("node:");
+    expect(baked).not.toContain("import.meta");
+  });
+
+  it("should fail when tsc did not emit version.js at the expected path", () => {
+    const sandbox = sandboxOf({ "internal/version.js": TSC_VERSION_EMIT });
+    const { status, output } = sandbox.run();
+    expect(status).toBe(1);
+    expect(output).toContain("version.js");
+  });
+
+  it("should fail when any emitted module keeps a node: builtin import", () => {
+    const sandbox = sandboxOf({
+      "version.js": TSC_VERSION_EMIT,
+      "extra.js": 'import { join } from "node:path";\nexport const j = join;',
+    });
+    const { status, output } = sandbox.run();
+    expect(status).toBe(1);
+    expect(output).toContain("extra.js");
+  });
+
+  it("should fail when any emitted module resolves files via import.meta.url", () => {
+    const sandbox = sandboxOf({
+      "version.js": TSC_VERSION_EMIT,
+      "meta.js": "export const here = import.meta.url;",
+    });
+    const { status, output } = sandbox.run();
+    expect(status).toBe(1);
+    expect(output).toContain("meta.js");
+  });
+});

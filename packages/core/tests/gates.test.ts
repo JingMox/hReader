@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 // 这里复用本文件自身：内容仍然只来自内存，磁盘上的本文件保持 lint 干净。
 const REPO_ROOT = decodeURIComponent(new URL("../../../", import.meta.url).pathname);
 const PROBE_FILE = `${REPO_ROOT}packages/core/tests/gates.test.ts`;
+// An app/src path: file scope decides which file-scoped rules (app's Node-globals ban)
+// apply to the in-memory source.
+const APP_SRC_PROBE_FILE = `${REPO_ROOT}packages/app/src/state.ts`;
 
 interface Probe {
   readonly name: string;
@@ -49,8 +52,8 @@ const PROBES: readonly Probe[] = [
 
 const eslint = new ESLint({ cwd: REPO_ROOT });
 
-async function ruleIdsFor(source: string): Promise<string[]> {
-  const results = await eslint.lintText(source, { filePath: PROBE_FILE });
+async function ruleIdsFor(source: string, filePath: string = PROBE_FILE): Promise<string[]> {
+  const results = await eslint.lintText(source, { filePath });
   return results.flatMap((result) => result.messages).map((message) => message.ruleId ?? "");
 }
 
@@ -64,6 +67,13 @@ describe("lint gate effectiveness", () => {
     // 包边界由 dependency-cruiser 的 core-is-a-foundation 规则守。
     const ruleIds = await ruleIdsFor('import "@hreader/renderer-html";');
     expect(ruleIds).not.toContain("no-restricted-imports");
+  }, 120_000);
+
+  it("should report no-restricted-globals for Node globals inside packages/app/src", async () => {
+    // packages/app/src is served to the browser verbatim: `process`/`Buffer` must not
+    // compile in. The rule is file-scoped, so the probe has to lint at an app/src path.
+    const ruleIds = await ruleIdsFor("export const probe = process.env.HOME;", APP_SRC_PROBE_FILE);
+    expect(ruleIds).toContain("no-restricted-globals");
   }, 120_000);
 });
 

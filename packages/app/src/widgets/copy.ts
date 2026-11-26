@@ -15,7 +15,6 @@ export const COPY = {
   searchDeferred: "搜索将在后续卡片启用",
   present: "演示",
   presentExit: "退出",
-  version: "v0.0.0",
   foreignReadonly: "这是外来 HTML，以只读方式显示",
   foreignNoEdit: "外来文档不支持按块编辑和批注",
   foreignScriptsOff: "它包含脚本，已禁用",

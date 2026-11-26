@@ -13,6 +13,7 @@
     ".": "./dist/assets/index.js"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "vitest": "catalog:"
   },
   "engines": {

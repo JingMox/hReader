@@ -6,7 +6,7 @@
     "composite": false,
     "noEmit": false,
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": [],
+    "types": ["node"],
     "rewriteRelativeImportExtensions": true,
     "allowImportingTsExtensions": true,
     "declaration": false

@@ -163,6 +163,68 @@ export default tseslint.config(
     },
   },
   {
+    // packages/app/src is served to the browser verbatim: Node-only globals must never
+    // compile in. tsc's "types": ["node"] makes them visible to the whole program (types
+    // cannot be scoped per file), so this rule restores the boundary. Import edges are
+    // gated separately by depcruise's app-src-stays-browser-pure rule.
+    files: ["packages/app/src/**/*.ts"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "process",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+        {
+          name: "Buffer",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+        {
+          name: "__dirname",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+        {
+          name: "__filename",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+        {
+          name: "global",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+        {
+          name: "require",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+        {
+          name: "module",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+        {
+          name: "exports",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+        {
+          name: "setImmediate",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+        {
+          name: "clearImmediate",
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
+        },
+      ],
+    },
+  },
+  {
     // A widget may `import type { Host }` but must not take the adapter implementation; eslint
     // only sees names, so narrow by importNames.
     files: ["packages/app/src/widgets/**/*.ts"],
