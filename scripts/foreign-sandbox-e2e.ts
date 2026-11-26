@@ -3,8 +3,8 @@
 // `sandbox=""` 下脚本根本不跑。Chrome 缺失或 `HREADER_SKIP_CHROME=1` 时打印 SKIPPED 并以 0 退出，
 // 与 print-e2e 同一套约定（需要真跑的 CI 显式给 `CHROME_BIN`）。
 //
-// 边界说明：sandbox 令牌不拦网络——fetch/XHR 的收口靠服务端 CSP（`local` 信任档的响应头），
-// 不在本脚本范围；这里验的是属性层能承诺的那一半。
+// 边界说明：sandbox 令牌不拦网络——fetch/XHR 的收口靠服务端 CSP（「脚本×联网」权限组合
+// 下发的响应头），不在本脚本范围；这里验的是属性层能承诺的那一半。
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -66,7 +66,7 @@ const ATTACK = [
 /** off 档 iframe：脚本若跑了就会 postMessage，父页收不到 = 脚本没跑。 */
 const OFF_FRAME = `<iframe id="off" sandbox="" srcdoc="&lt;script&gt;parent.postMessage('off-ran','*')&lt;/script&gt;"></iframe>`;
 
-/** local 档 iframe：sandbox="allow-scripts"，与 foreign.ts 的唯一可选值一致。 */
+/** 脚本开档 iframe：sandbox="allow-scripts"，与 foreign.ts 的唯一可选值一致。 */
 const LOCAL_FRAME = `<iframe id="local" sandbox="allow-scripts" srcdoc="${ATTACK.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"></iframe>`;
 
 const FIXTURE = [

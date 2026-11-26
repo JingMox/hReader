@@ -292,6 +292,28 @@ body {
   background: #fff;
 }
 
+/* 单文档权限开关（`#hr-perms` 不设 display：作者层 display 会压掉 UA 的 `[hidden]`）。
+   `data-on` 是生效态的唯一事实源——全局模式接管时 `disabled` + "由设置统一控制"提示。 */
+.perm-toggle {
+  font-size: 12px;
+  padding: 0 6px;
+  margin-right: 6px;
+  cursor: pointer;
+  color: var(--hr-ink);
+  background: transparent;
+  border: 1px solid var(--hr-rule);
+}
+
+.perm-toggle[data-on="true"] {
+  border-color: var(--hr-ink);
+  font-weight: 600;
+}
+
+.perm-toggle[disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* 1100px 折点：两栏（书库折叠成抽屉），旁注落到正文下方。 */
 @media (max-width: 1100px) {
   #hr-root {

@@ -161,7 +161,7 @@ describe("handlers · 换主题与信任档回执", () => {
       const body = jsonBodyOf(response) as { code: string; message: string };
       expect(response.status).toBe(409);
       expect(body.code).toBe("needs_normalize");
-      expect(body.message).toContain("信任档只对外来文档开放");
+      expect(body.message).toContain("权限授权只对外来文档开放");
     });
   });
 

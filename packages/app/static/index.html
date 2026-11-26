@@ -73,6 +73,11 @@
       <footer id="hr-statusbar" class="statusbar">
         <span id="hr-conn"></span>
         <span id="hr-version"></span>
+        <!-- 外来文档的单文档权限开关：`hidden` 兜底，foreign widget 按 cls/permissions 摘挂。 -->
+        <span id="hr-perms" hidden>
+          <button id="hr-perm-scripts" type="button" class="perm-toggle"></button>
+          <button id="hr-perm-network" type="button" class="perm-toggle"></button>
+        </span>
         <span id="hr-shortcuts"></span>
         <span id="hr-hint" role="status"></span>
       </footer>

@@ -46,6 +46,8 @@ struct DesktopState {
     bridge_token: String,
     /// 当前这份文档为什么打不开；`None` = 没有文档级失败。
     doc_error: Option<workbench::DocError>,
+    /// 外来 iframe 的外部导航门栏：webview 经 `/doc-state` 桥同步；`None` = 非外来壳。
+    doc_gate: Option<DocGate>,
 }
 
 impl DesktopState {
@@ -75,6 +77,7 @@ impl DesktopState {
             doc_id: doc_id.to_string(),
             message,
         });
+        self.doc_gate = None;
     }
 }
 
@@ -122,6 +125,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 cli: session.cli,
                 bridge_token: mint_bridge_token(),
                 doc_error: None,
+                doc_gate: None,
             };
             (tauri::WebviewUrl::External(parsed), title, state)
         }
@@ -136,6 +140,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 cli,
                 bridge_token: mint_bridge_token(),
                 doc_error: None,
+                doc_gate: None,
             };
             (
                 tauri::WebviewUrl::App("index.html".into()),
@@ -159,6 +164,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 cli,
                 bridge_token: mint_bridge_token(),
                 doc_error: Some(workbench::DocError { doc_id, message }),
+                doc_gate: None,
             };
             (
                 tauri::WebviewUrl::App("index.html".into()),
@@ -227,10 +233,22 @@ pub fn run(target: LaunchTarget) -> i32 {
                             false
                         }
                         NavClass::Local => true,
-                        // 文档里的外链不能把整个工作台导航走：交给系统浏览器。
                         NavClass::External => {
-                            open_external(nav_url);
-                            false
+                            let action = nav_shared
+                                .lock()
+                                .map(|guard| external_nav_action(guard.doc_gate))
+                                .unwrap_or(ExternalAction::Open);
+                            match action {
+                                // 联网开：框架内导航是全包语义的一部分，留在 iframe 里。
+                                ExternalAction::Allow => true,
+                                // 联网关的外来 iframe 自导航：连系统浏览器都不给开。
+                                ExternalAction::Deny => false,
+                                // 文档里的外链不能把整个工作台导航走：交给系统浏览器。
+                                ExternalAction::Open => {
+                                    open_external(nav_url);
+                                    false
+                                }
+                            }
                         }
                         NavClass::Deny => false,
                     }
@@ -579,6 +597,61 @@ fn classify_navigation(url: &tauri::Url) -> NavClass {
     }
 }
 
+/// 外来文档 iframe 的外部导航门栏：webview 经 `/doc-state` 桥同步的生效联网维。
+/// `None` = 非外来壳或尚未上报——外链照旧交给系统浏览器。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DocGate {
+    /// 生效的联网维：开 = 外部导航是全包语义的一部分，留在框架内；关 = 连系统浏览器都不给开。
+    network: bool,
+}
+
+/// `NavClass::External` 的裁决：交给系统浏览器 / 留在框架内 / 直接拒绝。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExternalAction {
+    Open,
+    Allow,
+    Deny,
+}
+
+/// 外来 iframe 自导航的闸门：联网是全包语义——开档时外部导航留在框架内，
+/// 关档时连系统浏览器都不给开。非外来壳（None）照旧 Open。
+fn external_nav_action(gate: Option<DocGate>) -> ExternalAction {
+    match gate {
+        Some(gate) if gate.network => ExternalAction::Allow,
+        Some(_) => ExternalAction::Deny,
+        None => ExternalAction::Open,
+    }
+}
+
+/// `/doc-state` 桥的载荷：webview 上报当前文档是否外来壳与其生效联网维。
+struct DocGateReport {
+    doc: String,
+    foreign: bool,
+    network: bool,
+}
+
+fn parse_doc_gate(url: &tauri::Url) -> DocGateReport {
+    DocGateReport {
+        doc: query_param(url, "doc").unwrap_or_default(),
+        foreign: query_param(url, "foreign").as_deref() == Some("1"),
+        network: query_param(url, "net").as_deref() == Some("1"),
+    }
+}
+
+/// 落闸只认当前文档：晚到的旧文档上报不许改新文档的裁决；`foreign=0` 归还门栏。
+fn apply_doc_gate(current: &mut Option<DocGate>, report: &DocGateReport, current_doc: &str) {
+    if report.doc != current_doc {
+        return;
+    }
+    *current = if report.foreign {
+        Some(DocGate {
+            network: report.network,
+        })
+    } else {
+        None
+    };
+}
+
 /// 桥 URL 必须回带 `?t=<bridgeToken>`：文档/外部页猜不到这个会话随机值，伪造不了原生动作。
 fn bridge_authorized(url: &tauri::Url, expected: &str) -> bool {
     if expected.is_empty() {
@@ -642,6 +715,14 @@ fn handle_bridge_navigation(app: &tauri::AppHandle, shared: &SharedState, url: &
             }
         }
         "/reauth" => handle_reauth(app, shared),
+        "/doc-state" => {
+            // webview 上报外来壳门栏：只认当前文档，foreign=0 即归还。
+            if let Ok(mut guard) = shared.lock() {
+                let report = parse_doc_gate(url);
+                let current_doc = guard.doc_id.clone();
+                apply_doc_gate(&mut guard.doc_gate, &report, &current_doc);
+            }
+        }
         "/open" => {
             if let Some(doc) = query_param(url, "doc") {
                 open_doc_in_workspace(app.clone(), Arc::clone(shared), doc);
@@ -740,6 +821,7 @@ fn ensure_daemon_and_open(
                 if let (Some(_), Some(port)) = (&guard.reaper, guard.port) {
                     guard.doc_id = doc_id.clone();
                     guard.doc_error = None;
+                    guard.doc_gate = None;
                     Some(port)
                 } else {
                     None
@@ -824,6 +906,7 @@ fn ensure_daemon_and_open(
         guard.token = Some(info.token);
         guard.reauth_stage = 0;
         guard.doc_error = None;
+        guard.doc_gate = None;
         guard.workspace = target_ws;
         guard.doc_id = doc_id;
     }
@@ -1529,6 +1612,47 @@ mod tests {
         assert_eq!(safe_new_filename("note.html", ws), "note.html");
     }
 
+    /// D2：外来 iframe 的外部导航裁决——联网关时连系统浏览器都不给开，
+    /// 联网开时留在框架内（联网是全包语义）；非外来壳照旧交系统浏览器。
+    #[test]
+    fn foreign_doc_external_nav_is_gated_by_the_network_dimension() {
+        assert_eq!(external_nav_action(None), ExternalAction::Open);
+        assert_eq!(
+            external_nav_action(Some(DocGate { network: true })),
+            ExternalAction::Allow
+        );
+        assert_eq!(
+            external_nav_action(Some(DocGate { network: false })),
+            ExternalAction::Deny
+        );
+    }
+
+    /// `/doc-state` 桥载荷的解析与落闸：只认当前文档，晚到的旧文档上报不改新文档的
+    /// 裁决；`foreign=0`（外来壳离场）归还门栏。
+    #[test]
+    fn doc_state_reports_gate_only_the_current_doc() {
+        use tauri::Url;
+        let url =
+            |q: &str| Url::parse(&format!("http://hr-desktop.local/doc-state?{q}")).expect("url");
+
+        let mut gate = None;
+        let report = parse_doc_gate(&url("doc=a.html&foreign=1&net=0&t=x"));
+        apply_doc_gate(&mut gate, &report, "a.html");
+        assert_eq!(gate, Some(DocGate { network: false }));
+
+        let report = parse_doc_gate(&url("doc=a.html&foreign=1&net=1&t=x"));
+        apply_doc_gate(&mut gate, &report, "a.html");
+        assert_eq!(gate, Some(DocGate { network: true }));
+
+        let report = parse_doc_gate(&url("doc=a.html&foreign=1&net=0&t=x"));
+        apply_doc_gate(&mut gate, &report, "b.html");
+        assert_eq!(gate, Some(DocGate { network: true }));
+
+        let report = parse_doc_gate(&url("doc=b.html&foreign=0&net=0&t=x"));
+        apply_doc_gate(&mut gate, &report, "b.html");
+        assert_eq!(gate, None);
+    }
+
     #[test]
     fn doc_error_keeps_the_workspace_and_clears_only_the_document() {
         let root = std::env::temp_dir().join(format!("hr-win-docerr-{}", std::process::id()));
@@ -1546,6 +1670,7 @@ mod tests {
             cli: PathBuf::from("/nonexistent/hr"),
             bridge_token: "test-token".to_string(),
             doc_error: None,
+            doc_gate: None,
         };
         state.mark_doc_error(
             root.clone(),

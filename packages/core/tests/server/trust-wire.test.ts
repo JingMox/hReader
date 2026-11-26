@@ -1,5 +1,5 @@
 // 这层管：trust 的对抗面——并发 grant 不互相丢、只读 trust.json 报 500 且不丢旧授权、
-// API 写改动字节即失效、子目录外来文档也能授权。
+// 路径键授权在字节被 API 写改动后仍然有效、子目录外来文档也能授权。
 
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -110,15 +110,14 @@ describe("trust · 写入口", () => {
         }),
       });
 
-      // 外来文档仍没有内容写入口：derive 缺 <article> → 422，拒绝发生在 writeAtomic 之前——
-      // "报失败却已改盘"的半成品会当场废掉 sha 键信任档。
+      // 外来文档仍没有内容写入口：derive 缺 <article> → 422，拒绝发生在 writeAtomic 之前。
       expect(patch.status).toBe(422);
       expect(jsonBodyOf(patch)).toMatchObject({ code: "invalid_document" });
       expect(shaOf(ctx.workspace, "a.html")).toBe(shaBefore);
       expect(await cspOf(ctx.port, ctx.token, "a.html")).toContain("sandbox allow-scripts");
 
       // 换主题是确认的例外：只写 `<style id="hr-theme">` 区间并回 200。
-      // 它确实改了字节，因此 sha 键授权同步失效，CSP 回落到不含 allow-scripts。
+      // 它改了字节但路径没变——路径键授权必须保留，CSP 仍含 allow-scripts。
       const style = await httpCall(ctx.port, {
         method: "POST",
         path: "/api/style",
@@ -128,7 +127,7 @@ describe("trust · 写入口", () => {
       expect(style.status).toBe(200);
       expect(jsonBodyOf(style)).toMatchObject({ changed: true, changedNodes: [] });
       expect(shaOf(ctx.workspace, "a.html")).not.toBe(shaBefore);
-      expect(await cspOf(ctx.port, ctx.token, "a.html")).not.toContain("allow-scripts");
+      expect(await cspOf(ctx.port, ctx.token, "a.html")).toContain("sandbox allow-scripts");
     }, twoForeignSeed);
   });
 

@@ -17,13 +17,16 @@ import { annotationDiffReply, annotationsReply } from "./annotation-replies";
 import {
   docInfoReply,
   documentReply,
+  globalModesReply,
+  globalModesSetReply,
+  LOCK_WAIT_MS,
   modelReply,
   outlineReply,
   type HandlerContext,
   type Written,
 } from "./handlers";
 import { dispatchWrite } from "./write-replies";
-import { jsonOf } from "./http-io";
+import { bodyRecordOf, jsonOf } from "./http-io";
 import type { Hub } from "./hub";
 import { revisionOf } from "./revision";
 import { paramOf, type Route } from "./routes";
@@ -209,7 +212,11 @@ const dispatchOf =
   (
     context: HandlerContext,
     options: { readonly docId: string },
-    runtime: { readonly remember: Runtime["remember"]; readonly noteWrite: Runtime["noteWrite"] },
+    runtime: {
+      readonly remember: Runtime["remember"];
+      readonly noteWrite: Runtime["noteWrite"];
+      readonly hub: Hub;
+    },
     bodyMs: number,
   ) =>
   async (
@@ -217,6 +224,15 @@ const dispatchOf =
     params: Readonly<Record<string, string>>,
     req: IncomingMessage,
   ): Promise<Reply> => {
+    // 全局权限模式不设 docId：不走 docIdOf 那套写队列（它是"所有外来文档"的设置，
+    // 不是某个文档的），广播走独立的 `permissions.changed` 事件。
+    if (route.kind === "permissionsGet") return globalModesReply(context);
+    if (route.kind === "permissionsSet") {
+      const body = await bodyRecordOf(req, bodyMs);
+      const { reply, modes } = await globalModesSetReply(context, body, LOCK_WAIT_MS);
+      runtime.hub.publish("permissions.changed", { modes });
+      return reply;
+    }
     if (isStaticKind(route.kind)) {
       // `req.url` 在 HTTP/1.1 的 origin-form 请求里恒有值；缺失只可能来自“手搓的请求对象”，
       // 所以这里给一条能测的 400，而不是一个永远进不去的 `?? "/"` 默认值。
@@ -305,6 +321,12 @@ export const createRuntime = (
     readonly bodyMs: number;
     /** 构建产物根；缺省空串（只有 `/`、`/assets/*`、`/api/theme/*` 用得到）。 */
     readonly appDir?: string;
+    /**
+     * 用户级配置根（`~/.hreader` 的父目录）：全局权限模式写在 `<home>/.hreader/`。
+     * 缺省回 `workspace`——此时全局设置落在工作区 `.hreader/` 里，
+     * 测试只起 runtime 不起 server 时不碰真实 HOME。
+     */
+    readonly home?: string;
   },
   deps: RuntimeDeps,
   hub: Hub,
@@ -313,6 +335,7 @@ export const createRuntime = (
   const context: HandlerContext = {
     workspace: options.workspace,
     appDir: options.appDir ?? "",
+    home: options.home ?? options.workspace,
     deps: deps.patch,
     styleDeps: deps.style,
   };
@@ -332,7 +355,7 @@ export const createRuntime = (
   return {
     remember,
     noteWrite,
-    dispatch: dispatchOf(context, options, { remember, noteWrite }, options.bodyMs),
+    dispatch: dispatchOf(context, options, { remember, noteWrite, hub }, options.bodyMs),
     close: () => {
       watcher.close();
     },

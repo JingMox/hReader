@@ -141,6 +141,7 @@ env -u OPENCODE_API_KEY node skills/hreader/scripts/hr.mjs style extract 文1.md
 
 ## 不要做的事
 
+- 不要替用户开外来文档的权限：「脚本」「联网」两个维度只由用户在阅读器界面里开（底栏开关或全局设置）。agent 没有任何写权限的工具或命令；`hr serve` 的 `/api/doc/<file>/info` 里能看到 `permissions` 字段，但那只是只读状态——脚本档 grant 落在 `<workspace>/.hreader/trust.json`（按路径记），全局模式在 `~/.hreader/permissions.json`，两处都不该由你写。
 - 不要 `read` 整篇再整体 `write`：那就绕过了节点机制，也会丢掉未改动的字节。
 - 不要在 `--html` 里塞含换行的长片段：用 `--html-file`。
 - 不要为了绕开 `forbidden_content` 改写 `<script>`：直接告诉用户这段需要人工处理。

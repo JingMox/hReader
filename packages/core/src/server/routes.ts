@@ -24,6 +24,9 @@ export type RouteKind =
   | "annotationDiff"
   | "undo"
   | "docTrust"
+  | "docPermissions"
+  | "permissionsGet"
+  | "permissionsSet"
   | "docNormalize"
   | "events";
 
@@ -86,6 +89,9 @@ export const ROUTES: readonly Route[] = Object.freeze([
   route("GET", ["api", "doc", DOC_PARAM, "notes", AN_PARAM, "diff"], "cookie", "annotationDiff"),
   route("POST", ["api", "doc", DOC_PARAM, "undo"], "cookie+csrf", "undo"),
   route("POST", ["api", "doc", DOC_PARAM, "trust"], "cookie+csrf", "docTrust"),
+  route("POST", ["api", "doc", DOC_PARAM, "permissions"], "cookie+csrf", "docPermissions"),
+  route("GET", ["api", "permissions"], "cookie", "permissionsGet"),
+  route("POST", ["api", "permissions"], "cookie+csrf", "permissionsSet"),
   route("POST", ["api", "doc", DOC_PARAM, "normalize"], "cookie+csrf", "docNormalize"),
   route("GET", ["api", "events"], "cookie", "events"),
 ]);

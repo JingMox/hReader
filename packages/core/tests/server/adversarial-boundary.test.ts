@@ -152,6 +152,7 @@ describe("assets · 未构建", () => {
       {
         workspace: "/nonexistent",
         appDir: "",
+        home: "/nonexistent",
         deps: depsOf(fake.port, clock, sleep),
         styleDeps,
       },

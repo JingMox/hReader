@@ -36,6 +36,10 @@ pnpm -C packages/mcp-server build
 
 Prompt exported: `use-hreader-style`.
 
+### Document Permissions (read-only for agents)
+
+Foreign HTML is served under two independent permission dimensions — **scripts** and **network** — granted by the user in the reader UI: per-document toggles in the bottom bar, plus global `allow`/`deny`/`per-doc` modes. Per-document grants live in `<workspace>/.hreader/trust.json` (keyed by document path); global modes in `<home>/.hreader/permissions.json`. Agents cannot change either: no MCP tool or `hr` command writes permission state — the effective values reported by `GET /api/doc/:id/info` (`permissions`) are read-only.
+
 ### Client Configurations (`stdio`)
 
 Always pass `--workspace <your-docs-dir>` so host apps that launch servers from `/` or `$HOME` enforce the right sandbox root.

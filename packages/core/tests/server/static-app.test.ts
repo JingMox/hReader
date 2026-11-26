@@ -76,6 +76,7 @@ afterAll(async () => {
 const contextOf = (appDir: string, readFile: (path: string) => Promise<Uint8Array>) => ({
   workspace: fixture?.workspace ?? tmpdir(),
   appDir,
+  home: fixture?.home ?? tmpdir(),
   deps: { ...nodePatchDeps, fs: { ...nodePatchDeps.fs, readFile } },
   styleDeps: nodeStyleDeps(fixture?.workspace ?? tmpdir()),
 });

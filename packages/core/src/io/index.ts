@@ -12,6 +12,23 @@ export { isInside, isInsideOrSelf } from "./paths";
 export { nodePatchDeps } from "./node-fs";
 export { patchFile } from "./patch-file";
 export type { Clock, FileStat, FileSystem, PatchDeps } from "./ports";
-export { readTrust, writeTrust } from "./trust";
-export type { TrustGrant, TrustInput, TrustLevel } from "./trust";
+export {
+  effectiveOf,
+  levelOfScripts,
+  patchDocGrant,
+  readDocGrant,
+  readGlobalModes,
+  settingsPathOf,
+  writeDocGrant,
+  writeGlobalModes,
+} from "./permissions";
+export type {
+  DocGrant,
+  DocGrantPatch,
+  EffectivePermissions,
+  GlobalModes,
+  GlobalModesPatch,
+  PermissionMode,
+  TrustLevel,
+} from "./permissions";
 export { undoPatch } from "./undo";

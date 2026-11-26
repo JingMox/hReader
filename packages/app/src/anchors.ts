@@ -48,10 +48,13 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-diff",
   "#hr-diff-chunks",
   "#hr-diff-status",
-  // 底部状态栏：连接 / 版本 / 快捷键 / `/` 的可见提示
+  // 底部状态栏：连接 / 版本 / 外来权限开关 / 快捷键 / `/` 的可见提示
   "#hr-statusbar",
   "#hr-conn",
   "#hr-version",
+  "#hr-perms",
+  "#hr-perm-scripts",
+  "#hr-perm-network",
   "#hr-shortcuts",
   "#hr-hint",
 ];
