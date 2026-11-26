@@ -47,26 +47,30 @@ export interface FakeChrome {
   readonly signals: string[];
   stderr(text: string): void;
   exit(code: number | null): void;
+  /** `close` follows `exit` once stdio ends: Node can still deliver the final stderr chunk between the two. */
+  close(code: number | null): void;
   fail(message: string): void;
 }
 
 export const fakeChromeOf = (): FakeChrome => {
   const stderrHandlers: ((text: string) => void)[] = [];
   const exitHandlers: ((code: number | null) => void)[] = [];
+  const closeHandlers: ((code: number | null) => void)[] = [];
   const errorHandlers: ((error: Error) => void)[] = [];
   const signals: string[] = [];
-  const chrome: ChromeProcess = {
+  const chrome = {
     pid: 7001,
-    onStderr: (cb) => {
+    onStderr: (cb: (text: string) => void) => {
       stderrHandlers.push(cb);
       return () => {
         const index = stderrHandlers.indexOf(cb);
         if (index >= 0) stderrHandlers.splice(index, 1);
       };
     },
-    onExit: (cb) => void exitHandlers.push(cb),
-    onError: (cb) => void errorHandlers.push(cb),
-    killGroup: (signal) => void signals.push(signal),
+    onExit: (cb: (code: number | null) => void) => void exitHandlers.push(cb),
+    onClose: (cb: (code: number | null) => void) => void closeHandlers.push(cb),
+    onError: (cb: (error: Error) => void) => void errorHandlers.push(cb),
+    killGroup: (signal: "SIGTERM" | "SIGKILL") => void signals.push(signal),
   };
   return {
     chrome,
@@ -78,6 +82,11 @@ export const fakeChromeOf = (): FakeChrome => {
     },
     exit: (code) => {
       exitHandlers.forEach((handler) => {
+        handler(code);
+      });
+    },
+    close: (code) => {
+      closeHandlers.forEach((handler) => {
         handler(code);
       });
     },

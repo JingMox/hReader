@@ -141,6 +141,19 @@ describe("renderPdfOf · DevTools endpoint", () => {
     expect(error.message).not.toContain("second");
   });
 
+  it("should include stderr that only arrives after the exit event in the failure detail", async () => {
+    const setup = renderSetupOf();
+    const pending = renderWithOf(setup);
+    // Node's semantics: 'exit' can fire while the final stderr chunk is still in flight — only 'close'
+    // guarantees the stream is drained. The detail must be assembled on close, not on exit.
+    setup.fake.exit(2);
+    setup.fake.stderr("fatal: out of memory\n");
+    setup.fake.close(2);
+    const error = await failureOf(pending);
+    expect(error.code).toBe("chrome_failed");
+    expect(error.message).toContain("Chrome 提前退出（code 2）：fatal: out of memory");
+  });
+
   it("should map a Chrome startup error event to chrome_failed", async () => {
     const setup = renderSetupOf();
     const pending = renderWithOf(setup);
