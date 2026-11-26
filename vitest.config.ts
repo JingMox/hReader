@@ -14,9 +14,10 @@ export default defineConfig({
       // `pi-hreader.ts` 是单文件扩展（它在包根，不在 `src/` 下），必须显式列入覆盖率统计。
       include: ["packages/*/src/**/*.ts", "packages/*/pi-hreader.ts"],
       reporter: ["text", "json-summary"],
-      // 任何一条用例失败时，默认的 `onTestFailure` 会先 `rm -rf` 掉 `coverage/.tmp`，而在途的
-      // `writeFile(coverage-N.json)` 还在排着 —— 于是真正的失败被 `ENOENT coverage/.tmp/coverage-N.json`
-      // 的 unhandled rejection 顶掉（§16.5）。保留临时目录，让失败以它本来的样子呈现。
+      // On any test failure the default `onTestFailure` first `rm -rf`s `coverage/.tmp` while an
+      // in-flight `writeFile(coverage-N.json)` is still queued — the real failure then gets masked
+      // by an `ENOENT coverage/.tmp/coverage-N.json` unhandled rejection. Keep the temp directory
+      // so a failure is reported as it actually happened.
       reportOnFailure: true,
       // 全局四维棘轮：2026-11-24 实测 lines/statements/functions/branches 全部 100，
       // 阈值取实测值防退化。不再用 perFile——它把"新建文件"变成必须先满测试的硬约束，

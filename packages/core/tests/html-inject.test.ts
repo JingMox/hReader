@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { chdir, cwd } from "node:process";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -150,16 +152,12 @@ describe("injectNodeIds · 真实文档", () => {
   });
 });
 
-describe("injectNodeIds · docs/02 骨架", () => {
-  it("should inject the real docs/02 document without touching the meta script", () => {
-    const html = [
-      "<!DOCTYPE html><html><head><title>t</title></head><body><article>",
-      '<section data-hr-id="sec-problem"><h2>标题</h2><p>正文</p></section>',
-      '<section data-hr-component="kpi-bento"><h2>指标</h2></section>',
-      "</article>",
-      '<script id="hr-meta">{"version":"1.0"}</script>',
-      "</body></html>",
-    ].join("");
+describe("injectNodeIds · 正典文档骨架", () => {
+  it("should inject the canonical document fixture without touching the meta script", () => {
+    const html = readFileSync(
+      fileURLToPath(new URL("fixtures/canonical-document.html", import.meta.url)),
+      "utf8",
+    );
     const injected = inject(html);
 
     expect(injected.injected).toHaveLength(5);

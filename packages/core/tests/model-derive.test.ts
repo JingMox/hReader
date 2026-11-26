@@ -71,10 +71,13 @@ describe("toDocumentModel · 文本归属 · 续", () => {
     expect(root.children).toEqual([]);
   });
 
-  // 已知缺陷 D1（P2，已登记 impl 侧不修）：块级子树收尾后紧跟的行内文本会与前一段粘连。
-  // 规格要求块边界当词边界（同 <br>），所以 "x<section>y</section>z" 应为 "x y z"；
-  // 实现只在"进入"块级时补空格（derive.ts:separateBlock），"离开"时不补，得到 "x yz"。
-  // 注入后块级元素都有 id，折叠路径几乎只在未注入输入里可达，故定 P2；修好后本用例会转红，请翻成 it。
+  // Registered known defect (P2, fix deferred): inline text right after a folded block
+  // subtree sticks to the preceding paragraph. The spec treats a block boundary as a word
+  // boundary (like <br>), so "x<section>y</section>z" should read "x y z"; the
+  // implementation only inserts a space when *entering* a block (derive.ts:separateBlock),
+  // not when leaving one, and produces "x yz". After id injection every block element has
+  // an id, so the folded path is only reachable on un-injected input — hence P2. When the
+  // fix lands this case turns red; flip it to a plain it then.
   // KD-02
   it.fails("should separate text that follows a folded block subtree", () => {
     const root = rawModelOf('<article data-hr-id="doc"><section>x<p>y</p>z</section></article>');
@@ -100,8 +103,9 @@ describe("toDocumentModel · 空白归一", () => {
   });
 
   it("should collapse NBSP and the ideographic space through the shared parser normaliser", () => {
-    // 卡片契约 5 要求复用 src/html/text.ts 的既有归一（\s+），而 \s 含 U+00A0/U+3000，
-    // 所以这两类"看起来不是空格"的字符也被压成单空格——这是规格选择，不是本实例的取舍。
+    // The contract reuses the existing `src/html/text.ts` normalization (`\s+`), and `\s`
+    // covers U+00A0/U+3000, so these space-looking characters collapse to a single space
+    // too — a spec-level choice, not a call made in this case.
     expect(child(modelOf("<article><p>a\u00a0\u3000 b</p></article>"), 0).text).toBe("a b");
   });
 

@@ -1,7 +1,8 @@
-// 这层管：M1.6 风格引擎的变异测试（真改 src → 跑指定用例 → 逐字节还原）；不做断言。
+// Mutation harness for the style engine: applies real edits to src, runs the named test
+// cases, then restores byte-for-byte. Makes no assertions itself.
 //
-// 用法：node packages/core/fixtures/style-mutants.mjs（从仓库根跑）
-// 退出码：全部被杀且还原成功 = 0；有存活/还原失败 = 1。
+// Usage: node packages/core/fixtures/style-mutants.mjs (run from the repo root)
+// Exit code: 0 = every mutant killed and every file restored; 1 = a survivor or a failed restore.
 
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

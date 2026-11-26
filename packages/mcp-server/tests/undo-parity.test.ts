@@ -1,11 +1,14 @@
-// 这层管：`hr_undo` 与 HTTP `POST /api/doc/<docId>/undo` 在**样式进了撤销链之后**必须同台阶。
+// This layer: `hr_undo` and HTTP `POST /api/doc/<docId>/undo` must stay in lockstep once a
+// style has entered the undo chain.
 //
-// 场景：`patch` → `applyStyle` → undo。`applyStyle` 自 b19ffca 起写前快照（与 patch 同一条链，
-// 登记债 L-32 已修）：第一次 undo 只退样式回到 patch 后的字节，第二次才退 patch。
-// 这不是本层实现的行为，而是 `revertLast` 的行为——两条路径只要真的共用它，就必然一致；
-// 若不一致，说明 MCP 侧没走 `revertLast`。
+// Scenario: `patch` → `applyStyle` → undo. `applyStyle` has written a pre-change snapshot
+// since b19ffca (same chain as patch): the first undo only rolls the style back to the
+// post-patch bytes, the second rolls back the patch.
+// That behavior lives in `revertLast`, not in this layer — two paths that truly share it
+// cannot diverge; if they do, the MCP side is not going through `revertLast`.
 //
-// 它会因为什么而红：`hr_undo` 换成 `undoPatch`/自写还原、HTTP 与 MCP 的锁等待或目标解析分叉。
+// What turns this red: `hr_undo` switched to `undoPatch`/a hand-rolled restore, or the HTTP
+// and MCP sides diverging in lock waiting or target resolution.
 
 import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

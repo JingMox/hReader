@@ -176,7 +176,7 @@ describe("output · 人读文本", () => {
     expect(humanOutline(OUTLINE)).toBe("- hr-1  标题  (1w)\n  - hr-2  子  (1w)\n");
   });
 
-  it("should print an empty outline as a named hint with a runnable next step (docs/05:120)", () => {
+  it("should print an empty outline as a named hint with a runnable next step", () => {
     expect(humanOutline({ ...OUTLINE, nodes: [] }, "a.html")).toBe(EMPTY_OUTLINE_HINT);
     expect(humanOutline({ ...OUTLINE, nodes: [] })).toContain("hr read <文件>");
   });

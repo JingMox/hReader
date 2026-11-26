@@ -19,6 +19,11 @@ coverage/
 .eslintcache
 .deltabox/
 .workflow/
+# 内部文档只留本地、不进版本库；docs/ 下新建文件默认不入库（docs/06 是唯一公开的例外）
+docs/*
+!docs/06-plugins-and-integrations.md
+AGENTS.md
+CLAUDE.md
 home3/
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map

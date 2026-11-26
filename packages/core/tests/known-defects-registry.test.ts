@@ -1,15 +1,16 @@
 // 这层管：**已知缺陷登记表（KD）的机器校验**——仓库不许出现"没有登记的 it.fails"，
 // 也不许出现"用普通 it 断言坏行为"的负向钉住。
-// 规则见 `docs/known-defects.md`：每条 `it.fails` 必须带 `// KD-nn`，
-// 每个编号必须在表里出现，且唯一编号数不得超过表头 `CAP`（只减不增）。
+// 规则：每条 `it.fails` 必须带 `// KD-nn`，每个编号必须在 `tests/known-defects.ts` 里登记，
+// 且唯一编号数不得超过 `KNOWN_DEFECTS_CAP`（只减不增）。叙述性台账留在本地，不进版本库。
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { KNOWN_DEFECTS, KNOWN_DEFECTS_CAP } from "./known-defects";
+
 const REPO = join(import.meta.dirname, "../../..");
-const TABLE = join(REPO, "docs/known-defects.md");
 const PACKAGES = join(REPO, "packages");
 
 interface Offence {
@@ -51,13 +52,6 @@ const sitesOf = (file: string): Site[] => {
   return sites;
 };
 
-const tableOf = (): { cap: number; rows: readonly string[] } => {
-  const text = readFileSync(TABLE, "utf8");
-  const cap = Number(/CAP\s*=\s*(\d+)/.exec(text)?.[1]);
-  const rows = [...text.matchAll(/^\|\s*(KD-\d{2})\s*\|/gm)].map((m) => m[1] ?? "");
-  return { cap, rows };
-};
-
 describe("KD 登记表 · 源码与表一致", () => {
   const sites = testFilesOf(PACKAGES)
     .filter((file) => file !== import.meta.filename)
@@ -78,13 +72,13 @@ describe("KD 登记表 · 源码与表一致", () => {
     expect(offences).toEqual([]);
   });
 
-  it("should register every marker in docs/known-defects.md", () => {
-    const { rows } = tableOf();
+  it("should register every marker in tests/known-defects.ts", () => {
+    const registered = KNOWN_DEFECTS.map((defect) => defect.id);
     const offences: Offence[] = sites
-      .filter((site) => site.marker !== undefined && !rows.includes(site.marker))
+      .filter((site) => site.marker !== undefined && !registered.includes(site.marker))
       .map((site) => ({
         where: `${site.file}:${String(site.line)}`,
-        problem: `${String(site.marker)} 不在表里`,
+        problem: `${String(site.marker)} 不在登记表里`,
       }));
 
     expect(offences).toEqual([]);
@@ -94,20 +88,34 @@ describe("KD 登记表 · 源码与表一致", () => {
 describe("KD 登记表 · 上限", () => {
   const sites = testFilesOf(PACKAGES).flatMap(sitesOf);
 
-  it("should keep the table free of rows that no longer have an it.fails", () => {
+  it("should keep the registry free of entries that no longer have an it.fails", () => {
     const markers = new Set(sites.map((site) => site.marker));
-    const stale = tableOf().rows.filter((row) => !markers.has(row));
+    const stale = KNOWN_DEFECTS.filter((defect) => !markers.has(defect.id)).map(
+      (defect) => defect.id,
+    );
 
     expect(stale).toEqual([]);
   });
 
-  it("should keep the unique KD count at or below CAP", () => {
-    const { cap, rows } = tableOf();
+  it("should keep the unique KD count at or below KNOWN_DEFECTS_CAP", () => {
     const unique = new Set(sites.map((site) => site.marker));
+    const ids = KNOWN_DEFECTS.map((defect) => defect.id);
 
-    expect(rows).toHaveLength(cap);
-    expect(unique.size).toBeLessThanOrEqual(cap);
-    expect(rows).toHaveLength(new Set(rows).size);
+    expect(ids).toHaveLength(KNOWN_DEFECTS_CAP);
+    expect(unique.size).toBeLessThanOrEqual(KNOWN_DEFECTS_CAP);
+    expect(ids).toHaveLength(new Set(ids).size);
+  });
+
+  it("should give every entry a KD-nn shaped id and a one-line English summary", () => {
+    const offences: Offence[] = KNOWN_DEFECTS.flatMap((defect) => {
+      const problems: string[] = [];
+      if (!/^KD-\d{2}$/u.test(defect.id)) problems.push(`id 形状不对：${defect.id}`);
+      if (defect.summary.trim().length === 0 || defect.summary.includes("\n"))
+        problems.push("summary 必须是单行非空英文概述");
+      return problems.map((problem) => ({ where: defect.id, problem }));
+    });
+
+    expect(offences).toEqual([]);
   });
 });
 

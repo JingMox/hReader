@@ -30,7 +30,7 @@ const seed = (dir: string): string => {
 const dataFieldOf = (result: { readonly stdout: string }, key: string): unknown =>
   fieldOf(fieldOf(parseJsonLine(result.stdout), "data"), key);
 
-/** 成功信封的键集是**精确**契约（docs/05）：`ok`+`data`（四个键），不多不少。 */
+/** 成功信封的键集是**精确**契约：`ok`+`data`（四个键），不多不少。 */
 const expectSuccessKeysOf = (result: { readonly stdout: string }): void => {
   const envelope = parseJsonLine(result.stdout);
   expect(keysOf(envelope)).toEqual(["ok", "data"]);

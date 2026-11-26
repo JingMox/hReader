@@ -70,11 +70,13 @@ const DOC_ID_ATTRIBUTE = "data-hr-id";
 const SECNUM_CLASS = "secnum";
 
 /**
- * 本文件的 walker（`findElement`/`textOf`/`rewrittenChildrenOf`/`reservedIdsOf`，
- * 还有 `numbering.ts` 的 `visit`）全是递归——输入是用户 HTML，没有天然深度上限，
- * ~9 万层嵌套就让递归以裸 `RangeError` 退栈（L-40）。在入口量一次深度：
- * 显式栈 DFS 自己不烧栈；超限抛结构化的 `invalid_document`，进 run.ts 的错误码映射。
- * outline 的深度是文档深度的子集（每个 outline 节点都对应一个文档元素），同一道闸兜底。
+ * Every walker in this file (`findElement`/`textOf`/`rewrittenChildrenOf`/`reservedIdsOf`,
+ * plus `visit` in `numbering.ts`) is recursive — the input is user HTML with no natural
+ * depth bound, and ~90k nesting levels used to unwind it with a bare `RangeError`. Measure
+ * the depth once at the entry: the explicit-stack DFS cannot blow the stack itself, and
+ * over-limit input throws the structured `invalid_document` which feeds run.ts's code map.
+ * Outline depth is a subset of document depth (every outline node maps to a document
+ * element), so the same gate covers it.
  */
 const DEPTH_LIMIT = 2048;
 

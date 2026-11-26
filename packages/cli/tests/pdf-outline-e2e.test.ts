@@ -162,7 +162,7 @@ const stepOf = async (cwd: string, argv: readonly string[]): Promise<string> => 
   return result.stdout;
 };
 
-/** 测试员给的复现：`<h1>endobj</h1><p>x</p><h1>Second</h1>`——无恶意的合法文档。 */
+/** Repro input: `<h1>endobj</h1><p>x</p><h1>Second</h1>` — a benign, legal document. */
 const REPRO_HTML = [
   "<!doctype html>",
   '<html lang="zh-CN"><head><meta charset="utf-8"><title>复现</title></head><body>',

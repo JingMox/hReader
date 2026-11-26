@@ -100,10 +100,12 @@ describe("hr_outline · hr-meta 注入与原型污染", () => {
     expect(outline.pendingAnnotations.map((pending) => pending.id)).toEqual(["a"]);
   });
 
-  // P0-D4（已登记）：`src/html/balance.ts:132` 的 `stripRawText` 用 `html.replaceAll(RAW_TEXT_PATTERN, …)`，
-  // 实测阈值 4MB 过、8MB 抛 `RangeError: Maximum call stack size exceeded`（V8 对大字符串
-  // 的 RegExp `Symbol.replace` 递归）。这不是本层的代码，但契约要求“10MB meta 不崩”，
-  // 所以先钉一条 `it.fails`，实现修好后它会红、提醒翻牌。
+  // Known crash: `stripRawText` in `src/html/balance.ts` uses `html.replaceAll(RAW_TEXT_PATTERN, …)`;
+  // measured threshold: a 4MB meta body passes, 8MB throws `RangeError: Maximum call stack
+  // size exceeded` (V8 recurses in RegExp `Symbol.replace` on large strings). The code is
+  // not in this layer, but the contract requires a 10MB meta body not to crash — so a
+  // failing pin goes first; it turns red once the implementation is fixed and reminds us
+  // to flip it.
 });
 describe("hr_outline · hr-meta 注入与原型污染 · 续 1", () => {
   it("should survive a multi-megabyte meta body ([1MB])", () => {
@@ -117,7 +119,7 @@ describe("hr_outline · hr-meta 注入与原型污染 · 续 1", () => {
   // 把“偶发”钉成“必抛”会变成 flaky 测试；何况覆盖插桩会改变堆形态。故改为只容忍已知模式。
 });
 describe("hr_outline · hr-meta 注入与原型污染 · 续 1", () => {
-  it("should only ever fail a 10MB meta body with RangeError (D4 contract)", () => {
+  it("should only ever fail a 10MB meta body with RangeError (RangeError contract)", () => {
     try {
       const outline = outlineOf(withMeta("a".repeat(10 * 1024 * 1024)));
 
@@ -138,7 +140,7 @@ describe("hr_outline · hr-meta 注入与原型污染 · 续 1", () => {
     expect(outline.pendingAnnotations.map((pending) => pending.comment)).toEqual(["页头批注"]);
   });
 
-  it("should expose that the last hr-meta script wins (D3-family pin: LIFO scan)", () => {
+  it("should expose that the last hr-meta script wins (pin: LIFO scan)", () => {
     const outline = outlineOf(
       '<article data-hr-id="art">' +
         `<script id="hr-meta">${metaOf([annotation("sec", "第一个", "pending_ai")])}</script>` +

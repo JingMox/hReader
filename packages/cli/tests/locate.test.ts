@@ -147,7 +147,7 @@ describe("patch · 两跳都失败时的码与 `data`", () => {
   });
 });
 
-describe("outline · 无标题文档的端到端提示（docs/05:120）", () => {
+describe("outline · 无标题文档的端到端提示", () => {
   it("should print the two-line hint with the cwd-relative path, exit 0", async () => {
     await withTempDir(async (dir) => {
       seed(dir, "a.html", UNTITLED);

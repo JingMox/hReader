@@ -208,7 +208,7 @@ describe("主题 CSS", () => {
   });
 });
 
-describe("嵌套深度上限（L-40）", () => {
+describe("nesting depth limit", () => {
   const deepDoc = (depth: number): string =>
     `<article data-hr-id="r">${"<div>".repeat(depth)}x${"</div>".repeat(depth)}</article>`;
 

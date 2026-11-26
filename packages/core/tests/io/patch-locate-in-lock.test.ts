@@ -57,7 +57,7 @@ const swappingDeps = (staging: string, file: string, swapped: () => void): Patch
   });
 };
 
-describe("D3 · 一次 patch 只读一次盘", () => {
+describe("patch · the target file is read exactly once", () => {
   it("should read the target file exactly once", async () => {
     await withWorkspace(async (dir) => {
       await writeTextAt(join(dir, FILE), OLD_TREE);
@@ -78,7 +78,7 @@ describe("D3 · 一次 patch 只读一次盘", () => {
   });
 });
 
-describe("D3 · 取锁前被 mv 换掉：定位必须看到锁内那份字节", () => {
+describe("patch · mv-swapped before locking: the locator must see the bytes inside the lock", () => {
   it("should locate inside the lock, so the edit lands in the new tree (never the old one)", async () => {
     await withWorkspace(async (dir) => {
       const file = join(dir, FILE);

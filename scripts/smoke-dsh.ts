@@ -1,5 +1,5 @@
 // 这层管：dsh bundle 的手工烟测门——本仓依赖的是 `@deepseek-ai/*` 的 **rc** 版本，而
-// `dsh.compatibility.dshReleases` 又不在 `DshManifest` 类型里（见 docs/05），
+// `dsh.compatibility.dshReleases` 又不在 `DshManifest` 类型里（是照第三方插件的实证写法抄的），
 // 只有让真 `dsh` 装一次才知道它认不认这份清单。**不进 CI**（需要本机装 dsh、起真进程）。
 // 用法：`pnpm smoke:dsh`。
 //
