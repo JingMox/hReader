@@ -9,6 +9,9 @@
   <body>
     <style id="hr-theme"></style>
     <div id="hr-root">
+      <!-- 沉浸模式的兜底出口：iframe 拿焦会吃掉 Esc/i，壳收不到 keydown。
+           平时是顶边 8px 透明热区，悬停/聚焦长成顶栏按钮；只画在沉浸态。 -->
+      <button id="hr-immersive-exit" type="button"></button>
       <aside id="hr-library" class="library">
         <h2 id="hr-lib-title"></h2>
         <label id="hr-search-label" for="hr-search">搜索</label>
@@ -32,8 +35,13 @@
           <button id="hr-foreign-action" type="button" hidden></button>
           <span id="hr-foreign-error" class="foreign-error" role="alert"></span>
         </div>
-        <iframe id="hr-foreign-frame" class="foreign-frame" referrerpolicy="no-referrer" hidden>
-        </iframe>
+        <iframe
+          id="hr-foreign-frame"
+          class="foreign-frame"
+          referrerpolicy="no-referrer"
+          allow="fullscreen"
+          hidden
+        ></iframe>
       </main>
       <div id="hr-present">
         <span id="hr-present-pager" role="status"></span>
@@ -78,6 +86,7 @@
           <button id="hr-perm-scripts" type="button" class="perm-toggle"></button>
           <button id="hr-perm-network" type="button" class="perm-toggle"></button>
         </span>
+        <button id="hr-immersive-btn" type="button"></button>
         <span id="hr-shortcuts"></span>
         <span id="hr-hint" role="status"></span>
       </footer>

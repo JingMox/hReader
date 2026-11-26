@@ -27,6 +27,7 @@ const MENU_ACTIONS = {
     hrd.savePrefs({ ...hrd.state.prefs, focusMode: !hrd.state.prefs.focusMode });
     hrd.applyPrefs();
   },
+  "toggle-immersive": () => hrd.toggleImmersive(),
   "export-pdf": () => hrd.runExportAction("pdf"),
   "export-png": () => hrd.runExportAction("png"),
   "export-html": () => hrd.runExportAction("html"),

@@ -87,6 +87,8 @@ export const syncView = (view: {
   return (next: ReaderState): void => {
     for (const widget of widgets) widget.update(next);
     renderNotes?.(next);
+    // 沉浸态只翻根上的 data 属性：哪些外壳退场全在样式层（`data-hr-doc`/`data-hr-present` 同例）。
+    host.attr(ROOT, "data-hr-immersive", next.immersive ? "" : undefined);
     host.cls(`${ROOT} #hr-notes`, "sidenotes--open", next.panel === "sidenote" || next.diff.open);
     host.cls(`${ROOT} #hr-note-editor`, "sidenote-editor--open", next.noteEditorOpen);
     host.cls(`${ROOT} #hr-diff`, "diff--open", next.diff.open);

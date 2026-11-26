@@ -1044,3 +1044,23 @@ body[data-hrd-bar="floating"] .hrd-sb-btn {
   color: var(--hr-ink);
   background: var(--hrd-hover);
 }
+
+/* 沉浸模式：app 把状态写在 #hr-root[data-hr-immersive]，壳层镜像成
+   body[data-hrd-immersive] 后在这里收掉全部工作台装饰。
+   注意 #hr-root 的 grid 与 #hr-statusbar 的 fixed+flex 都是 !important——
+   这两处必须壳层自己压掉，app 的 display:none 赢不过 !important。 */
+body[data-hrd-immersive] #hr-root,
+body[data-hrd-immersive] #hr-root.hrd-notes-open {
+  grid-template-columns: 0px minmax(0, 1fr) 0px !important;
+}
+body[data-hrd-immersive] #hr-library,
+body[data-hrd-immersive] #hr-notes,
+body[data-hrd-immersive] #hr-statusbar,
+body[data-hrd-immersive] #hrd-sb-hotzone,
+body[data-hrd-immersive] #hrd-overlay-title,
+body[data-hrd-immersive] #hrd-block-gutter,
+body[data-hrd-immersive] #hrd-selection-popover,
+body[data-hrd-immersive] #hrd-float-menu,
+body[data-hrd-immersive] .hrd-modal-backdrop {
+  display: none !important;
+}

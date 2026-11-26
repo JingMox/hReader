@@ -1,7 +1,7 @@
-// 这层管：底部状态条（连接状态 / 版本 / 快捷键提示）。只写文本，不做判断以外的逻辑。
+// 这层管：底部状态条（连接状态 / 版本 / 沉浸入口 / 快捷键提示）。只写文本与事件，不做判断以外的逻辑。
 
 import type { Host } from "../dom.ts";
-import type { ConnState, ReaderState } from "../state.ts";
+import type { ConnState, ReaderIntent, ReaderState } from "../state.ts";
 import { COPY } from "./copy.ts";
 import type { Widget } from "./library.ts";
 
@@ -12,9 +12,24 @@ const CONN_TEXT: Readonly<Record<ConnState, string>> = {
   offline: COPY.statusOffline,
 };
 
-export const mountStatusbar = (host: Host, parent: string): Widget => {
+/** `onIntent` 缺省 = 沉浸按钮只画不接线（测试桩）；接线路径永远给 dispatch。 */
+export const mountStatusbar = (
+  host: Host,
+  parent: string,
+  onIntent?: (intent: ReaderIntent) => void,
+): Widget => {
   host.text(`${parent} #hr-version`, COPY.version);
   host.text(`${parent} #hr-shortcuts`, COPY.shortcuts);
+  host.text(`${parent} #hr-immersive-btn`, COPY.immersive);
+  host.attr(`${parent} #hr-immersive-btn`, "title", COPY.immersiveHint);
+  host.on(`${parent} #hr-immersive-btn`, "click", () => {
+    onIntent?.({ kind: "immersiveToggled" });
+  });
+  // 顶边热区浮出的兜底出口：iframe 拿焦会吃掉 Esc/i，与底栏按钮同一个意图。
+  host.text(`${parent} #hr-immersive-exit`, COPY.immersiveExit);
+  host.on(`${parent} #hr-immersive-exit`, "click", () => {
+    onIntent?.({ kind: "immersiveToggled" });
+  });
 
   let conn: ConnState | undefined = undefined;
   const update = (next: ReaderState): void => {

@@ -48,15 +48,18 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-diff",
   "#hr-diff-chunks",
   "#hr-diff-status",
-  // 底部状态栏：连接 / 版本 / 外来权限开关 / 快捷键 / `/` 的可见提示
+  // 底部状态栏：连接 / 版本 / 外来权限开关 / 沉浸入口 / 快捷键 / `/` 的可见提示
   "#hr-statusbar",
   "#hr-conn",
   "#hr-version",
   "#hr-perms",
   "#hr-perm-scripts",
   "#hr-perm-network",
+  "#hr-immersive-btn",
   "#hr-shortcuts",
   "#hr-hint",
+  // 沉浸模式的兜底出口（顶边热区按钮；iframe 拿焦吃掉 Esc/i 时的唯一退路）
+  "#hr-immersive-exit",
 ];
 
 /** 只被容器语义使用的锚点：内容由子元素或服务端渲染填充，JS 不直接写它们。

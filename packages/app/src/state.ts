@@ -52,6 +52,8 @@ export interface ReaderState extends NoteSlice, DiffSlice {
   readonly conn: ConnState;
   readonly searchOpen: boolean;
   readonly themePending: boolean;
+  /** 沉浸模式：隐藏全部外壳（横幅/底栏/侧栏），只留阅读面；与演示态相互独立。 */
+  readonly immersive: boolean;
   /** 最近一次取到的正文 HTML（块级 diff 的输入；`canvas` 用自己的 `revision` 记账）。 */
   readonly documentHtml: string;
   /** 最近一条 `doc.changed` 里点名的块（为空表示"整篇都可能变"）。 */
@@ -90,6 +92,7 @@ export type ReaderIntent =
   | { readonly kind: "presentMoved"; readonly page: number }
   | { readonly kind: "presentAdvanced" }
   | { readonly kind: "presentBack" }
+  | { readonly kind: "immersiveToggled" }
   | NoteIntent
   | DiffIntent;
 
@@ -111,6 +114,7 @@ export const initialState = (docId: string, theme: string): ReaderState => ({
   conn: "connecting",
   searchOpen: false,
   themePending: false,
+  immersive: false,
   documentHtml: "",
   changedNodes: [],
 });
@@ -295,6 +299,7 @@ export const reduce = (state: ReaderState, intent: ReaderIntent): ReaderState =>
   if (isNavIntent(intent)) return reduceNav(state, intent);
   if (isPanelIntent(intent)) return reducePanel(state, intent);
   if (isPresentIntent(intent)) return reducePresent(state, intent);
+  if (intent.kind === "immersiveToggled") return { ...state, immersive: !state.immersive };
   if (intent.kind === "conn") return reduceConn(state, intent);
   return reduceTheme(state, intent);
 };

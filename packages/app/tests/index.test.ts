@@ -52,6 +52,8 @@ const REQUIRED_ANCHOR_IDS: readonly string[] = [
   "#hr-notes-pending",
   "#hr-notes-resolved",
   "#hr-notes-title",
+  "#hr-immersive-btn",
+  "#hr-immersive-exit",
   "#hr-perms",
   "#hr-perm-scripts",
   "#hr-perm-network",
