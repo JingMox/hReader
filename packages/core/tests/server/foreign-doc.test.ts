@@ -1,11 +1,12 @@
-// 这层管：外来文档（无 / 多 <article>）——`hr serve` 能起来、`/s/` 照出 HTML、model/outline 仍 422、变更照推 doc.changed。
+// 这层管：外来文档（无 / 多 <article>）——`hr serve` 能起来、`/s/` 302 进 `/f/` 照出 HTML、
+// model/outline 仍 422、变更照推 doc.changed。
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { cookieOf, httpCall, jsonBodyOf, openSse, withServer } from "./harness";
+import { cookieOf, docPageOf, httpCall, jsonBodyOf, openSse, withServer } from "./harness";
 
 const FOREIGN = [
   "<!doctype html>",
@@ -27,16 +28,21 @@ describe("foreign doc · 启动", () => {
     }, foreignSeed);
   });
 
-  it("should serve the raw HTML with the sandboxed off-trust CSP for a foreign docId", async () => {
+  it("should 302 /s/ into the capability-gated /f/ page with the off-trust CSP", async () => {
     await withServer(async (ctx) => {
-      const response = await httpCall(ctx.port, {
+      const entry = await httpCall(ctx.port, {
         path: "/s/doc.html",
         headers: { cookie: cookieOf(ctx.token) },
       });
 
+      expect(entry.status).toBe(302);
+      expect(entry.headers["location"]).toMatch(/^\/f\/[A-Za-z0-9_-]{22}\/doc\.html$/u);
+
+      const response = await docPageOf(ctx.port, ctx.token, "doc.html");
       expect(response.status).toBe(200);
       expect(response.headers["content-security-policy"]).toBe(
-        "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; " +
+        "default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; " +
+          "img-src 'self' data:; font-src 'self'; media-src 'self'; " +
           "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox",
       );
       expect(response.body).toContain("外来内容");

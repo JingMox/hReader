@@ -137,12 +137,27 @@ const readMethodsOf = (
     runHooks(state, "lstat", path);
     const mtimeMs = state.mtimes.get(path) ?? state.seededAt;
     if (state.links.has(path)) {
-      return Promise.resolve({ isFile: () => false, isSymbolicLink: () => true, mtimeMs });
+      return Promise.resolve({
+        isFile: () => false,
+        isSymbolicLink: () => true,
+        mtimeMs,
+        size: 0,
+      });
     }
     if (state.dirs.has(path))
-      return Promise.resolve({ isFile: () => false, isSymbolicLink: () => false, mtimeMs });
+      return Promise.resolve({
+        isFile: () => false,
+        isSymbolicLink: () => false,
+        mtimeMs,
+        size: 0,
+      });
     if (state.files.has(path))
-      return Promise.resolve({ isFile: () => true, isSymbolicLink: () => false, mtimeMs });
+      return Promise.resolve({
+        isFile: () => true,
+        isSymbolicLink: () => false,
+        mtimeMs,
+        size: state.files.get(path)?.length ?? 0,
+      });
     throw systemError("ENOENT");
   },
   readdir: (dir) => {

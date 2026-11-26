@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { DOC, cookieOf, defaultSeed, httpCall, jsonBodyOf, withServer } from "./harness";
+import { DOC, cookieOf, defaultSeed, docPageOf, httpCall, jsonBodyOf, withServer } from "./harness";
 import { withPost } from "./wire";
 
 const richSeed = (workspace: string): void => {
@@ -180,11 +180,15 @@ describe("docId · /s/ 文档页", () => {
 
   it("should serve a subdirectory doc page through %2F", async () => {
     await withServer(async (ctx) => {
-      const response = await httpCall(ctx.port, {
+      // `/s/` resolves the docId and hands out the `/f/` frame URL under the
+      // sub-directory cap; the page itself is fetched on the second hop.
+      const entry = await httpCall(ctx.port, {
         path: "/s/sub%2Finner.html",
         headers: { cookie: cookieOf(ctx.token) },
       });
+      const response = await docPageOf(ctx.port, ctx.token, "sub/inner.html");
 
+      expect(entry.status).toBe(302);
       expect(response.status).toBe(200);
     }, richSeed);
   });

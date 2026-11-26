@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { cookieOf, defaultSeed, DOC, httpCall, jsonBodyOf, withServer } from "./harness";
+import { cookieOf, defaultSeed, DOC, docPageOf, httpCall, jsonBodyOf, withServer } from "./harness";
 import { withPost } from "./wire";
 
 const FOREIGN = '<!doctype html><html><body><div class="app">plain</div></body></html>';
@@ -50,10 +50,7 @@ describe("handlers · 响应头契约", () => {
 
   it("should answer the foreign document route with sandbox CSP and nosniff", async () => {
     await withServer(async (ctx) => {
-      const response = await httpCall(ctx.port, {
-        path: "/s/doc.html",
-        headers: { cookie: cookieOf(ctx.token) },
-      });
+      const response = await docPageOf(ctx.port, ctx.token, "doc.html");
       expect(response.status).toBe(200);
       const csp = String(response.headers["content-security-policy"] ?? "");
       expect(csp).toContain("sandbox");

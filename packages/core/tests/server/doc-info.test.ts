@@ -14,6 +14,7 @@ interface InfoBody {
   readonly reason?: string;
   readonly kind?: string;
   readonly revision?: string;
+  readonly frameUrl?: string;
   readonly code?: string;
 }
 
@@ -102,6 +103,34 @@ describe("doc info · foreign", () => {
       expect(body.scripts).toBe(true);
       expect(body.reason).toContain("<article>");
       expect(body.kind).toBeUndefined();
+    }, foreignHtml);
+  });
+});
+
+describe("doc info · frameUrl", () => {
+  it("should hand a /f/<cap>/<name> URL that serves the doc without a cookie", async () => {
+    await withServer(async (ctx) => {
+      const { status, body } = await infoOf(ctx.port, ctx.token);
+
+      expect(status).toBe(200);
+      expect(body.frameUrl).toMatch(/^\/f\/[A-Za-z0-9_-]{22}\/doc\.html$/u);
+      // Round-trip: the URL info hands out is the URL /s/ redirects to, and it
+      // serves on the cap alone.
+      const page = await httpCall(ctx.port, { path: body.frameUrl ?? "" });
+      expect(page.status).toBe(200);
+      expect(String(page.headers["content-type"])).toContain("text/html");
+    }, foreignHtml);
+  });
+
+  it("should match the /s/ redirect target exactly", async () => {
+    await withServer(async (ctx) => {
+      const { body } = await infoOf(ctx.port, ctx.token);
+      const entry = await httpCall(ctx.port, {
+        path: "/s/doc.html",
+        headers: { cookie: cookieOf(ctx.token) },
+      });
+      expect(entry.status).toBe(302);
+      expect(entry.headers["location"]).toBe(body.frameUrl);
     }, foreignHtml);
   });
 });

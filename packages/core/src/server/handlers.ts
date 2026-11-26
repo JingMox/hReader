@@ -39,6 +39,7 @@ import type { PatchAction, PatchRequest } from "../ops/patch-node";
 import { applyStyle } from "../style/apply-file";
 import type { StyleDeps } from "../style";
 import { appendAnnotation, type AnnotationInput, type AnnotationOutcome } from "./annotation";
+import type { CapabilityBook } from "./capability";
 import type { Reply } from "./contracts";
 import { diffNodes } from "./diff-nodes";
 import { integer, optionalString, parseBody, requiredString } from "./body";
@@ -52,6 +53,8 @@ export interface HandlerContext {
   readonly home: string;
   readonly deps: PatchDeps;
   readonly styleDeps: StyleDeps;
+  /** Doc-directory capability book: issues and resolves the caps `/f/` is gated by. */
+  readonly caps: CapabilityBook;
 }
 
 interface DocumentServe {
@@ -86,21 +89,31 @@ const HTML_HEADERS: Readonly<Record<string, string>> = {
 
 /**
  * 外来文档按生效权限（脚本 × 联网，2×2）下发的 CSP。`sandbox` 指令是关键防线：即使
- * 有人在浏览器标签页里直接打开 `/s/<docId>`（顶层、不在 iframe 里），文档也被强制成
+ * 有人在浏览器标签页里直接打开 `/f/<cap>/<doc>`（顶层、不在 iframe 里），文档也被强制成
  * opaque origin——脚本读不到 cookie，也碰不到同源的写接口。**`sandbox` 后绝不能加
  * `allow-same-origin`**。
  *
  * 「联网」是一个全包开关：网络资源加载（CDN 脚本/样式/图片/字体/媒体）与页面主动请求
  * （fetch/XHR/WebSocket/EventSource）共用同一组 `http: https:` 放宽 + `ws: wss:`。
  * 联网档访问不到 hReader 本机 API 的论证，三层独立兜底，缺一不可：
- *  1. CSP 不写 `'self'`：沙箱内页面是 opaque origin，对 CSP 而言 `'self'` 是
- *     `null` 源——就算写了也匹配不到真实 URL；而不写时 `http://127.0.0.1:<port>`
- *     与 `http:` scheme 匹配（同源不同端口算同一 scheme），fetch 能发出——
- *  2. 于是靠凭据兜底：页面带着 opaque origin，浏览器不给它发 `Cookie`（沙箱源的
+ *  1. 凭据兜底：页面带着 opaque origin，浏览器不给它发 `Cookie`（沙箱源的
  *     cookie 是隔离的，本地 API 要的会话 cookie 永远不在请求里）；
- *  3. 最后靠服务自身的 host/origin/CSRF 门槛：就算凭据泄露，`x-hr-csrf` 头不存在
- *     时写接口照旧拒绝，读接口被 `originAllowed` 与 host 白名单再挡一道。
- * `script-src`、`form-action`、`base-uri`、`frame-src`、`frame-ancestors` 与联网无关，
+ *  2. 服务自身的 host/origin/CSRF 门槛：就算凭据泄露，`x-hr-csrf` 头不存在
+ *     时写接口照旧拒绝，读接口被 `originAllowed` 与 host 白名单再挡一道——
+ *     `Origin: null` 只在 `/f/` 被放行，其余路由一律 403；
+ *  3. `/f/` 自身也只按 cap 服务一个目录：cap 不出目录，页面就碰不到
+ *     别的文档（cap 只对携带它的调用方可见，且无法伪造）。
+ *
+ * 本地资源（`/f/` 下的同目录文件）属于"本地"、不受联网开关约束，所以各档都带
+ * `'self'`。sandbox 下的 `'self'` 论证：CSP 的 `'self'` 匹配的是**文档 URL 的源**
+ * （`http://127.0.0.1:<port>`），不是 sandbox 产生的 opaque origin——后者只影响
+ * DOM/cookie/storage 那一侧。因此 `img-src 'self'` 之类允许页面请求同源的
+ * `/f/`、`/assets/`、`/api/theme` 与 `/healthz`（后三者本来就无需凭据，但页面的
+ * `Origin: null` 在非 `/f/` 路由上仍被 origin 闸门 403），而绝不允许它读到
+ * `/f/` 之外的东西：同源 HTTP 访问还需要 cookie（opaque 源拿不到）或 cap
+ * （伪造不了）。`script-src` 与 `connect-src` 只在脚本开档加 `'self'`：脚本关时
+ * 页面根本跑不了脚本与 fetch，给出这两个源只是徒增表面。
+ * `form-action`、`base-uri`、`frame-src`、`frame-ancestors` 与联网无关，
  * 四种组合里都保持收紧（`<base>` 改写与 meta-CSP 覆写对 HTTP 头下发的 CSP 无效——
  * 后下发的更严策略只会叠加，不会替换）。
  */
@@ -108,24 +121,27 @@ const HTML_HEADERS: Readonly<Record<string, string>> = {
 const FOREIGN_CSP: Readonly<Record<"off" | "on", Readonly<Record<"off" | "on", string>>>> = {
   off: {
     off:
-      "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; " +
+      "default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data:; font-src 'self'; media-src 'self'; " +
       "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox",
     on:
-      "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' http: https:; " +
-      "img-src http: https: data: blob:; media-src http: https: data: blob:; " +
-      "font-src http: https: data:; connect-src http: https: ws: wss:; " +
+      "default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline' http: https:; " +
+      "img-src 'self' http: https: data: blob:; media-src 'self' http: https: data: blob:; " +
+      "font-src 'self' http: https: data:; connect-src http: https: ws: wss:; " +
       "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox",
   },
   on: {
     off:
-      "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; " +
-      "img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; " +
-      "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts",
+      "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+      "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; " +
+      "font-src 'self' data:; connect-src 'self'; " +
+      "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; " +
+      "sandbox allow-scripts",
     on:
-      "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' http: https:; " +
-      "style-src 'unsafe-inline' http: https:; img-src http: https: data: blob:; " +
-      "media-src http: https: data: blob:; font-src http: https: data:; " +
-      "connect-src http: https: ws: wss:; frame-src 'none'; form-action 'none'; " +
+      "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; " +
+      "style-src 'self' 'unsafe-inline' http: https:; img-src 'self' http: https: data: blob:; " +
+      "media-src 'self' http: https: data: blob:; font-src 'self' http: https: data:; " +
+      "connect-src 'self' http: https: ws: wss:; frame-src 'none'; form-action 'none'; " +
       "base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts",
   },
 };
@@ -223,8 +239,18 @@ export const outlineReply = async (ctx: HandlerContext, docId: string): Promise<
   return jsonReply(200, { revision: doc.revision, outline });
 };
 
-export const documentReply = async (ctx: HandlerContext, docId: string): Promise<DocumentServe> => {
-  const doc = await loadDocument(ctx, docId);
+/**
+ * Serve one resolved document with the permission-matrix headers. `/f/` calls
+ * this for the doc-itself exception; `/s/` used to (it now only redirects);
+ * the unbuilt home page borrows it for the article excerpt.
+ * @internal
+ */
+export const documentServeOf = async (
+  ctx: HandlerContext,
+  target: ResolvedTarget,
+): Promise<DocumentServe> => {
+  const bytes = await bytesOf(ctx, target);
+  const doc = { target, bytes, revision: revisionOf(bytes) };
   const parsed = parseHtml(decodeUtf8(doc.bytes, doc.target.realPath));
   // 托管/可归一文档的响应头逐字节不动；外来文档才按生效权限换 CSP。
   if (classifyDocument(parsed).cls !== "foreign") return { ...doc, reply: htmlReply(doc.bytes) };
@@ -243,6 +269,24 @@ export const documentReply = async (ctx: HandlerContext, docId: string): Promise
     },
   };
 };
+
+export const documentReply = async (ctx: HandlerContext, docId: string): Promise<DocumentServe> =>
+  documentServeOf(ctx, await targetOf(ctx, docId));
+
+/**
+ * `/s/<docId>` no longer serves bytes — it hands out the frame URL. The page
+ * itself (and every sibling asset it references) is served by `/f/` under the
+ * directory cap this call registers. Query is dropped on purpose: the assets
+ * route sends `no-store`, so cache-busting tags have nothing left to defeat.
+ */
+export const documentRedirectOf = (ctx: HandlerContext, target: ResolvedTarget): Reply => ({
+  status: 302,
+  headers: {
+    location: ctx.caps.frameUrlOf(target),
+    "cache-control": "no-store",
+  },
+  body: "",
+});
 
 /** `kind` 只在恰好一个 `<article>` 时有意义：外来文档可能含多个 article，哪一个都不算"文档形态"。 */
 const docKindOf = (article: HtmlElementNode | undefined): DocKind | undefined => {
@@ -279,6 +323,8 @@ export const docInfoReply = async (ctx: HandlerContext, docId: string): Promise<
     ...(classification.reason === undefined ? {} : { reason: classification.reason }),
     // Stryker disable next-line ConditionalExpression: 同上，{ kind: undefined } 序列化后消失。
     ...(kind === undefined ? {} : { kind }),
+    // 阅读器 iframe 的直接入口（F1 多文件页面）：`/f/` 连页面带同目录资源一起服务。
+    frameUrl: ctx.caps.frameUrlOf(target),
   });
 };
 

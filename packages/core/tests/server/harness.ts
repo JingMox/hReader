@@ -173,6 +173,26 @@ export const httpCall = (port: number, options: HttpOptions): Promise<HttpRespon
 
 export const jsonBodyOf = (response: HttpResponse): unknown => JSON.parse(response.body);
 
+/**
+ * `/s/<docId>` is only the entry now: it 302s into the capability-gated
+ * `/f/<cap>/<name>` URL that actually serves the page. Follow the pair and
+ * return the frame response — deliberately without the cookie on the second
+ * hop, since the cap itself is the credential.
+ */
+export const docPageOf = async (
+  port: number,
+  token: string,
+  docId: string,
+): Promise<HttpResponse> => {
+  const entry = await httpCall(port, {
+    path: `/s/${encodeURIComponent(docId)}`,
+    headers: { cookie: cookieOf(token) },
+  });
+  const location = entry.headers["location"];
+  if (entry.status !== 302 || typeof location !== "string") return entry;
+  return httpCall(port, { path: location });
+};
+
 // SSE 连接拆在同目录 `sse-client.ts`（文件长度门禁），对外仍从 harness 取，保持既有调用点不变。
 export { openSse, SSE_DEADLINE_MS, type SseFrame } from "./sse-client";
 

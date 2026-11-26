@@ -164,12 +164,17 @@ describe("matchRoute · 批注与撤销", () => {
     });
   });
 
-  it("should freeze the table at 23 entries (12 + 5 + info + trust/normalize + permissions×3)", () => {
-    expect(ROUTES).toHaveLength(23);
+  it("should freeze the table at 24 entries (23 + the /f/ capability route)", () => {
+    expect(ROUTES).toHaveLength(24);
     expect(matchRoute("GET", "/api/doc/a.html/info")).toMatchObject({
       kind: "route",
       params: { docId: "a.html" },
       route: { kind: "docInfo", auth: "cookie" },
+    });
+    expect(matchRoute("GET", "/f/cap-value/sub/dir.css")).toMatchObject({
+      kind: "route",
+      params: { cap: "cap-value", path: "sub/dir.css" },
+      route: { kind: "docAsset", auth: "capability" },
     });
   });
 

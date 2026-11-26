@@ -9,10 +9,11 @@
     ".": "./src/index.ts"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "@types/write-file-atomic": "4.0.3",
     "eslint": "catalog:",
-    "vitest": "catalog:",
-    "@types/node": "catalog:"
+    "fast-check": "catalog:",
+    "vitest": "catalog:"
   },
   "dependencies": {
     "chokidar": "4.0.3",

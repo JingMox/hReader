@@ -9,7 +9,15 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { cookieOf, httpCall, jsonBodyOf, openSse, rawExchange, withServer } from "./harness";
+import {
+  cookieOf,
+  docPageOf,
+  httpCall,
+  jsonBodyOf,
+  openSse,
+  rawExchange,
+  withServer,
+} from "./harness";
 
 const host = (port: number): string => `127.0.0.1:${String(port)}`;
 
@@ -328,10 +336,7 @@ describe("docId · NUL / 超长 / 符号链接", () => {
   it("should still serve a symlink that resolves inside the workspace", async () => {
     await withServer(async (ctx) => {
       symlinkSync(join(ctx.workspace, "doc.html"), join(ctx.workspace, "inner.html"), "file");
-      const response = await httpCall(ctx.port, {
-        path: "/s/inner.html",
-        headers: { cookie: cookieOf(ctx.token) },
-      });
+      const response = await docPageOf(ctx.port, ctx.token, "inner.html");
       expect(response.status).toBe(200);
     });
   });
@@ -424,7 +429,7 @@ describe("foreign · 写入口的 derive gate", () => {
     }, foreignSeed);
   });
 
-  it("should let a trusted foreign doc fetch nothing: local CSP keeps connect-src 'none'", async () => {
+  it("should let a trusted foreign doc fetch only same-origin: local CSP keeps connect-src 'self'", async () => {
     await withServer(async (ctx) => {
       const grant = await httpCall(ctx.port, {
         method: "POST",
@@ -433,13 +438,10 @@ describe("foreign · 写入口的 derive gate", () => {
         body: JSON.stringify({ level: "local" }),
       });
       expect(grant.status).toBe(200);
-      const page = await httpCall(ctx.port, {
-        path: "/s/doc.html",
-        headers: { cookie: cookieOf(ctx.token) },
-      });
+      const page = await docPageOf(ctx.port, ctx.token, "doc.html");
       const csp = String(page.headers["content-security-policy"]);
       expect(csp).toContain("sandbox allow-scripts");
-      expect(csp).toContain("connect-src 'none'");
+      expect(csp).toContain("connect-src 'self'");
       expect(csp).not.toContain("allow-same-origin");
     }, foreignSeed);
   });

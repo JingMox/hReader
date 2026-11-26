@@ -3,7 +3,7 @@
 import { connect, type Socket } from "node:net";
 import { describe, expect, it } from "vitest";
 
-import { cookieOf, httpCall, rawExchange, withServer, type TestServer } from "./harness";
+import { cookieOf, docPageOf, httpCall, rawExchange, withServer, type TestServer } from "./harness";
 
 const statusLineOf = (raw: string): string => raw.split("\r\n")[0] ?? "";
 
@@ -178,10 +178,7 @@ describe("wire · 方法与版本（续）", () => {
 describe("wire · 响应头与安全头", () => {
   it("should send nosniff + CSP on the document page", async () => {
     await withServer(async (ctx) => {
-      const response = await httpCall(ctx.port, {
-        path: "/s/doc.html",
-        headers: { cookie: cookieOf(ctx.token) },
-      });
+      const response = await docPageOf(ctx.port, ctx.token, "doc.html");
 
       expect(response.status).toBe(200);
       expect(response.headers["content-type"]).toBe("text/html; charset=utf-8");

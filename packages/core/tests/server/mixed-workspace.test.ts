@@ -11,7 +11,7 @@ import { nodePatchDeps } from "../../src/io/node-fs";
 import { startServer } from "../../src/server/server";
 import type { WatchFn } from "../../src/server/watcher";
 import { nodeStyleDeps } from "../../src/style";
-import { cookieOf, DOC, httpCall, jsonBodyOf } from "./harness";
+import { cookieOf, DOC, docPageOf, httpCall, jsonBodyOf } from "./harness";
 
 const FOREIGN =
   '<!doctype html><html><body><div class="app"><script>1</script>外来</div></body></html>';
@@ -69,10 +69,13 @@ describe("startServer · 混合工作区", () => {
       const home = await httpCall(port, { path: "/", headers: { cookie: cookieOf(token) } });
       expect(home.status).toBe(200);
 
-      const doc = await httpCall(port, {
+      const entry = await httpCall(port, {
         path: "/s/doc.html",
         headers: { cookie: cookieOf(token) },
       });
+      expect(entry.status).toBe(302);
+
+      const doc = await docPageOf(port, token, "doc.html");
       expect(doc.status).toBe(200);
       // 托管文档的 CSP 靠 default-src 'none' 关死脚本，不带 sandbox——
       // sandbox 两档只对外来文档下发。

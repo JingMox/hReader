@@ -1,6 +1,6 @@
 // 这层管：CSP/沙箱的系统扫查——逐档核对 `sandbox` 指令、
 // `allow-scripts` 与 `allow-same-origin` 永不同现、`frame-src 'self'` 在 APP_CSP 里。
-// `/s/<docId>` 被顶层直接打开时下发的头与 iframe 内是同一份：隔离由 `sandbox` 指令兜住。
+// `/s/` 302 到的 `/f/<cap>/<doc>` 被顶层直接打开时下发的头与 iframe 内是同一份：隔离由 `sandbox` 指令兜住。
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import { startServer } from "../../src/server/server";
 import { nodeStyleDeps } from "../../src/style";
-import { cookieOf, defaultSeed, httpCall, withServer } from "./harness";
+import { cookieOf, defaultSeed, docPageOf, httpCall, withServer } from "./harness";
 import { withPost } from "./wire";
 
 const FOREIGN = [
@@ -20,13 +20,15 @@ const FOREIGN = [
 ].join("\r\n");
 
 const OFF_CSP =
-  "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; " +
+  "default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; " +
+  "img-src 'self' data:; font-src 'self'; media-src 'self'; " +
   "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox";
 const LOCAL_CSP =
-  "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; " +
-  "style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; " +
-  "connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; " +
-  "frame-ancestors 'self'; sandbox allow-scripts";
+  "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+  "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; " +
+  "font-src 'self' data:; connect-src 'self'; " +
+  "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; " +
+  "sandbox allow-scripts";
 const MANAGED_CSP = "default-src 'none'; style-src 'unsafe-inline'";
 
 const foreignSeed = (workspace: string): void => {
@@ -39,7 +41,10 @@ const cspOf = async (
   token: string,
   path: string,
 ): Promise<{ status: number; csp: string }> => {
-  const response = await httpCall(port, { path, headers: { cookie: cookieOf(token) } });
+  // `/s/` and `/` keep the cookie entry; `/f/` doc requests arrive without one.
+  const response = path.startsWith("/s/")
+    ? await docPageOf(port, token, path.slice(3))
+    : await httpCall(port, { path, headers: { cookie: cookieOf(token) } });
   return {
     status: response.status,
     csp: String(response.headers["content-security-policy"] ?? ""),
@@ -96,7 +101,7 @@ describe("CSP · 外来文档按信任档", () => {
   });
 });
 
-describe("CSP · 顶层直接打开 /s/", () => {
+describe("CSP · 顶层直接打开 /f/", () => {
   it("should keep the sandbox CSP when the doc page is the top-level navigation", async () => {
     await withServer(async (ctx) => {
       // 顶层打开没有 iframe sandbox 属性可依赖：沙箱只剩响应头这一条防线，必须原地生效。
@@ -106,6 +111,7 @@ describe("CSP · 顶层直接打开 /s/", () => {
       expect(csp).toContain("sandbox");
       expect(csp).not.toContain("allow-same-origin");
       expect(csp).toContain("default-src 'none'");
+      // 脚本关档不下发 connect-src 'self'：页面跑不了 fetch，给出这个源只是徒增表面。
       expect(csp).not.toContain("connect-src 'self'");
     }, foreignSeed);
   });

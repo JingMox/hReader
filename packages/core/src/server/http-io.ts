@@ -202,6 +202,8 @@ export const authOf = (
   token: string,
 ): AuthOutcome => {
   if (route.auth === "none") return {};
+  // `/f/` 只认 URL 里的 cap（分发层拿它查能力簿）；cookie 既不必须也不被采信。
+  if (route.auth === "capability") return {};
   const cookieOk = tokenMatches(cookieOf(headerOf(req, "cookie"), COOKIE_NAME), token);
   if (route.auth === "token") {
     // 两个参数名都认：`?t=` 是桌面壳与旧链接的形状，`?token=` 是 `hr serve` 打印地址的形状。

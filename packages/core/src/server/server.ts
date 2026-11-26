@@ -74,15 +74,20 @@ const hostCount = (req: IncomingMessage): number => {
   return count;
 };
 
-const gateOf = (env: ServeEnv, req: IncomingMessage): Reply | undefined => {
+const gateOf = (env: ServeEnv, req: IncomingMessage, nullOriginOk: boolean): Reply | undefined => {
   // 重复 Host（RFC 7230 §5.4 要求 400）：Node 只保留第一个，`req.headers` 看不出重复，只能数原文。
   if (hostCount(req) > 1) {
     return jsonOf(400, { code: "invalid_request", message: "重复的 Host 头" });
   }
   const port = env.port();
-  const hostOk =
-    hostAllowed(headerOf(req, "host"), port, env.allowHosts) &&
-    originAllowed(headerOf(req, "origin"), port, env.allowHosts);
+  const origin = headerOf(req, "origin");
+  // `Origin: null` is only tolerated on the capability route: sandboxed pages
+  // send it on CORS-mode subresource requests (fonts, module scripts, fetch).
+  // Every other route keeps rejecting it — the cap itself is the credential.
+  const originOk =
+    originAllowed(origin, port, env.allowHosts) ||
+    (nullOriginOk && origin?.trim().toLowerCase() === "null");
+  const hostOk = hostAllowed(headerOf(req, "host"), port, env.allowHosts) && originOk;
   return hostOk ? undefined : jsonOf(403, { code: "forbidden_origin" });
 };
 
@@ -91,9 +96,9 @@ const pageOf = (env: ServeEnv, route: Route): Reply | undefined =>
   route.kind === "healthz" ? healthzReply(env.now() - env.startedAt) : undefined;
 
 const planOf = (env: ServeEnv, req: IncomingMessage, url: URL): Plan => {
-  const gate = gateOf(env, req);
-  if (gate !== undefined) return { kind: "reply", reply: gate };
   const lookup = matchRoute(String(req.method), url.pathname);
+  const gate = gateOf(env, req, lookup.kind === "route" && lookup.route.auth === "capability");
+  if (gate !== undefined) return { kind: "reply", reply: gate };
   if (lookup.kind === "none") return { kind: "reply", reply: jsonOf(404, { code: "not_found" }) };
   if (lookup.kind === "method") return { kind: "reply", reply: methodNotAllowed(lookup.allowed) };
   const auth = authOf(lookup.route, req, url, env.token);

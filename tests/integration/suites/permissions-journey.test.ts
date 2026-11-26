@@ -2,6 +2,8 @@
 //   凭据隔离：联网开后 fetch 能"过线"到达 127.0.0.1 daemon（CSP connect-src 放 http:），
 //     但 opaque origin + HttpOnly + SameSite=Strict 三重保证请求里永远没有 hr cookie——
 //     读回包是 opaque 空壳，写请求被 401 拒（服务端 grant 不变作证）。
+//     connect-src 'self'（同目录资源新放开后）同样放行对 127.0.0.1 的请求——
+//     缺 cookie 仍是 401/403 + 无 ACAO，响应一样被没收。
 //   第四象限：脚本关+联网开，meta-CSP 覆写、<base> 劫持、外链 script、事件处理属性、
 //     javascript: 全部静默——后下发的 HTTP 头 CSP 只会叠加，meta 覆写无效。
 //   全局模式：三档写后立即推送 permissions.changed，底栏开关按"由设置统一控制"置灰。
@@ -142,7 +144,7 @@ describe.skipIf(skip !== undefined)("permissions-journey", () => {
     home.cleanup();
   });
 
-  test("脚本开+联网关：沙箱隔离全拦，connect-src 'none' 让 fetch 出不了门", async () => {
+  test("脚本开+联网关：沙箱隔离全拦，connect-src 'self' 过线也被凭据闸没收", async () => {
     const grant = await api.post(`${docApi("probe.html")}/permissions`, { scripts: true });
     assertEq(grant.status, 200, "scripts 授信 POST 状态码");
     const info = await infoOf("probe.html");
@@ -160,11 +162,17 @@ describe.skipIf(skip !== undefined)("permissions-journey", () => {
         `${key} 未被 opaque origin 拦住：${probes}`,
       );
     }
-    // 联网关：connect-src 'none'，fetch 连出门都不行——请求被拒在 CSP 层。
+    // 联网关：connect-src 'self' 放同目录资源，但 fetch 到 API 路由仍被服务端
+    // 401/403 拒掉——no-cors 拿到 opaque 空壳，体为空；cors 拿不到 ACAO → TypeError。
     const read = await waitMsg("pp:read=");
     assert(
-      read?.includes("TypeError") === true,
-      `联网关时 fetch 本机 API 竟然成功了：${String(read)}`,
+      read === "pp:read=0:opaque",
+      `no-cors fetch 应得 opaque 空壳（请求真实过线、凭据不在包里），实际 ${String(read)}`,
+    );
+    const readCors = await waitMsg("pp:readCors=");
+    assert(
+      readCors === "pp:readCors=TypeError",
+      `cors fetch 应被 CORS 没收响应（缺 ACAO），实际 ${String(readCors)}`,
     );
   });
 
@@ -207,14 +215,21 @@ describe.skipIf(skip !== undefined)("permissions-journey", () => {
   });
 
   test("脚本关+联网开：meta-CSP 覆写 / base 劫持 / 全部脚本向量静默", async () => {
-    // 先授权再取头：/s/ 的 CSP 跟授权走，顺序倒了拿到的是默认全关档。
+    // 先授权再取头：页面 CSP 跟授权走，顺序倒了拿到的是默认全关档。
     const grant = await api.post(`${docApi("sneaky.html")}/permissions`, { network: true });
     assertEq(grant.status, 200, "sneaky 联网授权 POST 状态码");
-    // 头部契约先钉死（组合 off|on 的确切 CSP），再看真实行为。
-    const res = await api.get(`/s/${encodeURIComponent("sneaky.html")}`);
+    // `/s/` 现在只发 302 入口：CSP 落在 `/f/<cap>/` 的页面响应上，跟过去取。
+    // api.get 走 fetch 默认 follow——要看 302 本身只能 redirect:"manual"。
+    const entry = await fetch(
+      `http://127.0.0.1:${String(daemon.port)}/s/${encodeURIComponent("sneaky.html")}`,
+      { redirect: "manual", headers: { cookie: api.cookie } },
+    );
+    const location = entry.headers.get("location") ?? "";
+    assert(location.startsWith("/f/"), `sneaky /s/ 应 302 到 /f/，实际 ${String(entry.status)}`);
+    const res = await api.get(location);
     const csp = res.headers.get("content-security-policy") ?? "";
     assert(csp.includes("script-src 'none'"), `scripts-off CSP 应禁脚本：${csp}`);
-    assert(csp.includes("img-src http: https:"), `network-on CSP 应放图片：${csp}`);
+    assert(csp.includes("img-src 'self' http: https:"), `network-on CSP 应放图片：${csp}`);
     assert(csp.includes("sandbox") && !csp.includes("allow-scripts"), "sandbox 不应带脚本");
 
     await page.navigate(

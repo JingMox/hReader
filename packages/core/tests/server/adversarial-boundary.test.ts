@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { nodePatchDeps } from "../../src/io/node-fs";
 import { originAllowed } from "../../src/server/auth";
+import { createCapabilityBook } from "../../src/server/capability";
 import { matchRoute } from "../../src/server/routes";
 import { startServer } from "../../src/server/server";
 import { assetReply } from "../../src/server/static";
@@ -155,6 +156,7 @@ describe("assets · 未构建", () => {
         home: "/nonexistent",
         deps: depsOf(fake.port, clock, sleep),
         styleDeps,
+        caps: createCapabilityBook(),
       },
       "leak.js",
     );

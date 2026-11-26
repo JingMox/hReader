@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { cookieOf, defaultSeed, httpCall, jsonBodyOf, withServer } from "./harness";
+import { defaultSeed, docPageOf, httpCall, jsonBodyOf, withServer } from "./harness";
 import { withPost } from "./wire";
 
 const FOREIGN =
@@ -34,10 +34,7 @@ const grant = (port: number, token: string, docId: string): Promise<number> =>
   }).then((response) => response.status);
 
 const cspOf = async (port: number, token: string, docId: string): Promise<string> => {
-  const response = await httpCall(port, {
-    path: `/s/${encodeURIComponent(docId)}`,
-    headers: { cookie: cookieOf(token) },
-  });
+  const response = await docPageOf(port, token, docId);
   return String(response.headers["content-security-policy"] ?? "");
 };
 

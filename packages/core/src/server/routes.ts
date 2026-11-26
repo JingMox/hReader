@@ -2,12 +2,14 @@
 
 export type HttpMethod = "GET" | "POST";
 
-/** `token` = 允许 `?t=` / `?token=` 的入口（`/` 与 `/s/<docId>`）；`cookie+csrf` = 写命令。 */
-export type AuthKind = "none" | "cookie" | "token" | "cookie+csrf";
+/** `token` = 允许 `?t=` / `?token=` 的入口（`/` 与 `/s/<docId>`）；`cookie+csrf` = 写命令；
+ *  `capability` = `/f/<cap>/` 的目录能力令牌——cookie 既不必须也不被采信，核对在分发层。 */
+export type AuthKind = "none" | "cookie" | "token" | "cookie+csrf" | "capability";
 
 export type RouteKind =
   | "home"
   | "assets"
+  | "docAsset"
   | "theme"
   | "themes"
   | "healthz"
@@ -37,6 +39,9 @@ const AN_PARAM = ":anId";
 
 /** 吞掉剩余全部段（`/assets/<path>`，允许子目录）；空段与越界由 `handlers.assetReply` 再判。 */
 const REST_PARAM = ":path";
+
+/** `/f/<cap>` 的目录能力令牌：只占一段，base64url 形状没有 `/` 可吞。 */
+const CAP_PARAM = ":cap";
 
 /** `%2F` 解码后可以带 `/`，所以只有 `DOC_PARAM` 与 `REST_PARAM` 两个占位符，不做正则。 */
 
@@ -68,6 +73,7 @@ export const ROUTES: readonly Route[] = Object.freeze([
   // `/` 也吃 token：`hr serve` 打印的就是 `/?token=…`，首访落 cookie 后 302 回干净的 `/`。
   route("GET", [], "token", "home"),
   route("GET", ["assets", REST_PARAM], "none", "assets"),
+  route("GET", ["f", CAP_PARAM, REST_PARAM], "capability", "docAsset"),
   route("GET", ["api", "theme"], "none", "themes"),
   route("GET", ["api", "theme", ":styleId"], "none", "theme"),
   route("GET", ["healthz"], "none", "healthz"),
