@@ -93,6 +93,17 @@ const isGrantShape = (value: unknown): value is DocGrant =>
   typeof Reflect.get(value, "network") === "boolean";
 
 /**
+ * Table keys come from untrusted disk contents and file names, so both maps
+ * are prototype-free: on a plain object a `__proto__` key would swap the
+ * prototype instead of landing as data (silently dropping the write) and
+ * reads of slot-colliding names like `scripts` would return polluted values.
+ */
+const emptyTable = (): TrustTable => ({
+  grants: Object.create(null) as Record<string, DocGrant>,
+  legacy: Object.create(null) as Record<string, LegacyLevel>,
+});
+
+/**
  * 读取的任何失败与任何损坏形状都回落成"没有任何授权"：信任是显式授予物，
  * 文件丢了/坏了必须掉回最严的全关，而不是把整个服务拖死。
  * 回落必须给**新对象**——写侧会把 grant 塞进返回的表，共享空表会把授权漏进下个世界。
@@ -102,16 +113,16 @@ const tableOf = async (deps: PatchDeps, path: string): Promise<TrustTable> => {
   try {
     parsed = JSON.parse(decodeUtf8(await deps.fs.readFile(path), path));
   } catch {
-    return { grants: {}, legacy: {} };
+    return emptyTable();
   }
-  if (typeof parsed !== "object" || parsed === null) return { grants: {}, legacy: {} };
-  const grants: Record<string, DocGrant> = {};
-  const legacy: Record<string, LegacyLevel> = {};
+  if (typeof parsed !== "object" || parsed === null) return emptyTable();
+  const table = emptyTable();
   for (const [key, value] of Object.entries(parsed)) {
-    if (isGrantShape(value)) grants[key] = { scripts: value.scripts, network: value.network };
-    else if (isLegacyLevel(value)) legacy[key] = value;
+    if (isGrantShape(value))
+      table.grants[key] = { scripts: value.scripts, network: value.network };
+    else if (isLegacyLevel(value)) table.legacy[key] = value;
   }
-  return { grants, legacy };
+  return table;
 };
 
 const DENIED: DocGrant = { scripts: false, network: false };
