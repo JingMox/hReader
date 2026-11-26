@@ -35,14 +35,14 @@ CSP highlights per effective combination (all four also pin `default-src 'none'`
 
 Even with `network` on — where `connect-src http: https:` lets a sandboxed page issue a request to `http://127.0.0.1:<port>` — three independent layers keep it out of hReader's own API:
 
-1. **Origin gate**: a sandboxed page runs in an opaque origin, so its requests carry `Origin: null`, which never matches the loopback allowlist and is answered 403 before routing.
+1. **Origin gate**: a sandboxed page runs in an opaque origin, so its CORS and POST requests carry `Origin: null`, which never matches the loopback allowlist and is answered 403 before routing. A "simple" GET without an `Origin` header does pass this check — but then fails authentication with 401, because it carries no session cookie (next layer).
 2. **Credentials**: the session credential is an `HttpOnly`, `SameSite=Strict` cookie — the page cannot read it, and the browser does not attach it to cross-site requests.
 3. **CSRF header and no CORS**: write routes additionally require the `x-hr-csrf` header, which a cross-site "simple request" cannot add. The server never emits `Access-Control-Allow-Origin`, so even a request that reaches the wire returns a response the page cannot read.
 
 ### Self-navigation and resource hints
 
 - With network off, the reader detects iframe loads it did not initiate (`meta refresh`, `target=_self`, `location=`) and navigates the frame back to `/s/`; on desktop, the same gate denies external navigation from a foreign frame without even handing it to the system browser.
-- Resource hints (`dns-prefetch`, `preconnect`, `prefetch`, `prerender`, `modulepreload`) are **not** governed by CSP. Every `/s/` response sends `X-DNS-Prefetch-Control: off`, and with network off those `<link>` elements are stripped from the served bytes — the file on disk is untouched.
+- Resource hints (`dns-prefetch`, `preconnect`, `prefetch`, `prerender`, `modulepreload`) are **not reliably** governed by CSP across engines — `prefetch`/`prerender` fall under `prefetch-src` where supported (`default-src` otherwise), and `modulepreload` under `script-src`, but `dns-prefetch` and `preconnect` sit outside it. Every `/s/` response sends `X-DNS-Prefetch-Control: off`, and with network off those `<link>` elements are stripped from the served bytes — the file on disk is untouched.
 
 ### Agents are read-only
 
@@ -50,7 +50,7 @@ Permission state is written only by the user in the reader UI (per-document togg
 
 ### Known boundaries
 
-- Prefetch-hint stripping applies to the markup as served. A page running with scripts enabled can create hint `<link>` nodes at runtime that the server never sees; `X-DNS-Prefetch-Control` support also varies across engines. The residual is at most a DNS lookup — the hint still cannot open a connection, because no CSP directive covering fetches is relaxed for it.
+- Prefetch-hint stripping applies to the markup as served. A page running with scripts enabled can create hint `<link>` nodes at runtime that the server never sees, and what such a node can still do depends on the hint and the engine: `dns-prefetch` costs at most a DNS lookup; `preconnect` may still establish a connection on some engines (without exchanging data); `prefetch`/`prerender` issue real requests and are only caught where the engine honors `prefetch-src` (or `default-src` as its fallback); `modulepreload` is governed by `script-src` and stays blocked under the current CSP. Keep `scripts` off for pages you do not trust — and treat the network-off serve-time stripping of these `<link>` elements as the first line of defense, not a complete one.
 - `network` is an all-or-nothing switch: a page granted network can issue requests to any `http:`/`https:` origin, including other loopback services. Origins that do not opt in via CORS still cannot be read back, and credentialed cross-site requests carry no cookies — but side-effect GETs on unauthenticated local services are reachable. Keep `network` off for pages you do not trust.
 
 ## Supported Versions

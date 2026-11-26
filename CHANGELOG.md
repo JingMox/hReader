@@ -14,9 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **`media-card` component**: one shell for audio/video with a caption and an optional collapsible transcript.
 - `atelier-editorial` theme: emphasized KPI figures, numbered timeline markers, sidebar metadata styling, and audio/video sizing inside `diagram-stage`.
 - GitHub Pages gallery (`site/`) with example documents, a Markdown vs. free-form HTML vs. hReader comparison, and `scripts/build-site.sh` to regenerate it.
-- **Open any HTML**: `hr serve` starts in any workspace and classifies each file as `managed`, `normalizable`, or `foreign`. Foreign pages are served from `/s/<docId>` inside a sandboxed iframe that never carries `allow-same-origin`, under a Content-Security-Policy picked per effective permission (see SECURITY.md). New additive routes: `GET /api/doc/:id/info`, `POST /api/doc/:id/trust`, `POST /api/doc/:id/normalize`.
+- **Open any HTML**: `hr serve` starts in any workspace and classifies each file as `managed`, `normalizable`, or `foreign`. Foreign pages are served from `/s/<docId>` inside a sandboxed iframe that never carries `allow-same-origin`, under a Content-Security-Policy picked per effective permission (see SECURITY.md). New additive routes: `GET /api/doc/:id/info`, `POST /api/doc/:id/trust`, `POST /api/doc/:id/normalize`, `POST /api/doc/:id/annotations/:anId/resolve`.
 - **`hr import` and the MCP tool `hr_import_doc`**: convert a foreign HTML file (saved web pages, scripted decks) into a managed `*.hr.html` document — scripts, event handlers and inline styles are stripped, sections get `data-hr-id`s, and a report lists what was dropped and why.
-- **Presentation mode**: `P`/`F5` or the button enters a keyboard-driven slide view for `slides` documents, with step reveal through `data-hr-step`, `#p=` deep links, and speaker notes hidden while presenting. Ships with `deck-noir`, a dark 16:9 theme.
+- **Presentation mode**: `P`/`F5` or the button enters a keyboard-driven paged view for any document — top-level `<section>`s become pages, or every top-level block when there are none — with step reveal through `data-hr-step`, `#p=` deep links, and speaker notes hidden while presenting. Ships with `deck-noir`, a dark 16:9 theme for `slides` documents.
 - **Script and network permissions for foreign HTML**: two independent dimensions. Each has a global mode — `allow`, `deny`, or `per-doc` (the default) — stored in `~/.hreader/permissions.json`; per-document grants are keyed by workspace-relative path in `<workspace>/.hreader/trust.json`, survive edits and theme switches, and are lost on rename or move. Legacy content-hash `local` grants migrate automatically to `{scripts: true, network: false}`. New routes `POST /api/doc/:id/permissions` and `GET`/`POST /api/permissions`, a `permissions.changed` SSE event, and an additive `permissions` field on `GET /api/doc/:id/info`. Grants are read-only for agents — no MCP tool or `hr` command can change them.
 - **Immersive mode and native fullscreen**: `i` or the status-bar button hides all reader chrome; Esc or the top-edge hot-zone button exits, and it also works on managed documents as a pure reading view. On desktop, ⌘⇧I toggles immersive mode and ^⌘F/F11 toggles native fullscreen. Foreign iframes carry `allow="fullscreen"`, so pages can call the Fullscreen API themselves.
 
@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fixed `</script>` injection into the desktop startup script.
 - Terminal escape sequences are stripped from CLI output.
 - MCP `ui://` resource views sanitize document HTML instead of inlining raw workspace bytes.
+- With the network permission off, a foreign page's self-navigation is blocked, and DNS-prefetch / preload `<link>` hints are stripped from the served markup.
 
 ## [1.0.0] - 2026-11-21
 
