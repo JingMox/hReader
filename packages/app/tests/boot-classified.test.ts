@@ -1,7 +1,7 @@
 // 这层管：`bootDocument` 的分流契约——info 先分档，managed 走原 `boot`、
 // normalizable/foreign 走 iframe 壳（SSE 刷新、normalize 重进、destroy 三条路都钉住）。
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { bootDocument, type ClassifiedBootDeps, type DocInfo } from "../src/boot.ts";
 import type { SseHandlers } from "../src/sse.ts";
@@ -85,6 +85,10 @@ const foreignInfo: DocInfo = {
   permissions: permsOf(),
 };
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("bootDocument · 三类分流", () => {
   it("should run the original boot path unchanged for a managed document", async () => {
     const h = harnessOf(true);
@@ -138,6 +142,63 @@ describe("bootDocument · 三类分流", () => {
     expect(lastText(h, TEXT)).toBe(COPY.normalizableBanner);
     expect(lastText(h, ACTION)).toBe(COPY.normalizableAction);
     expect(h.fetched.model).toBe(0);
+  });
+});
+
+describe("bootDocument · 桌面桥门栏上报", () => {
+  const stubBridge = (token?: string): string[] => {
+    const assigned: string[] = [];
+    vi.stubGlobal("window", {
+      ...(token === undefined ? {} : { __HR_DESKTOP_CTX__: { bridgeToken: token } }),
+      location: { assign: (url: string) => assigned.push(url) },
+    });
+    return assigned;
+  };
+
+  it("should push the doc gate through the bridge when a token exists", async () => {
+    const assigned = stubBridge("tok");
+    const h = harnessOf(true);
+    let info: DocInfo = foreignInfo;
+    const { deps, handlers } = classifiedOf(h, () => info);
+    const booted = await bootDocument(deps);
+
+    expect(assigned).toEqual([
+      "http://hr-desktop.local/doc-state?doc=doc.html&foreign=1&net=0&t=tok",
+    ]);
+
+    // 生效联网被打开后门栏重推：net 从 0 变 1，桌面壳立刻放宽外部导航。
+    info = { ...foreignInfo, permissions: permsOf({ network: true }) };
+    handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
+    await flush();
+    expect(assigned.at(-1)).toBe(
+      "http://hr-desktop.local/doc-state?doc=doc.html&foreign=1&net=1&t=tok",
+    );
+
+    // 卸载时把门栏清成"非外来"：桌面壳据此恢复 open-external 默认规则。
+    booted.destroy();
+    expect(assigned.at(-1)).toBe(
+      "http://hr-desktop.local/doc-state?doc=doc.html&foreign=0&net=0&t=tok",
+    );
+  });
+
+  it("should not navigate the bridge when the desktop context is absent", async () => {
+    const assigned = stubBridge();
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo);
+    const booted = await bootDocument(deps);
+    booted.destroy();
+
+    expect(assigned).toEqual([]);
+  });
+
+  it("should not navigate the bridge when the token is an empty string", async () => {
+    const assigned = stubBridge("");
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo);
+    const booted = await bootDocument(deps);
+    booted.destroy();
+
+    expect(assigned).toEqual([]);
   });
 });
 
