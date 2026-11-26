@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "style": { "visual": "atelier-editorial", "tone": "feynman-tech" },
+  "annotations": [
+    {
+      "id": "ann-01",
+      "targetId": "p-problem-1",
+      "selectedText": "假设网络发生分区",
+      "comment": "这里请用银行跨行转账的例子具象化解释一下脑裂问题",
+      "status": "pending_ai",
+      "createdAt": "2026-11-12T14:30:00Z"
+    }
+  ]
+}
