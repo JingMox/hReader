@@ -141,6 +141,17 @@ describe("log", () => {
     // 每层 message 只有十几个字符：没有层数上限的话 64 层会一字不少全写出来。
     expect(written).not.toContain("wrap 0");
   });
+
+  it("should stop at the depth bound even when the cause chain is cyclic", () => {
+    const stderr = stderrText();
+    const loop = new Error("self-cause");
+    // `cause` 指回自己是合法的运行期形状：不设上限 `while (current instanceof Error)` 就是死循环。
+    loop.cause = loop;
+
+    logFailure("hr_probe", loop);
+
+    expect(stderr.read()).toContain("truncated");
+  });
 });
 
 describe("绝对路径折叠", () => {
