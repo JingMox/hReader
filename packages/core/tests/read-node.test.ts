@@ -1,4 +1,7 @@
-// 这层管：`hr_read_node` 的批注投影、诊断子集、确定性、默认上限与性能；不测选择器文法与截断细节。
+// Covers `hr_read_node`: annotation projection, diagnostic subset, determinism
+// and the default byte limit — including the structural side of the 1MB case.
+// Absolute time budgets live in tests/perf/read-node.perf.test.ts; selector
+// grammar and truncation detail live in their own files.
 
 import { describe, expect, it } from "vitest";
 
@@ -215,27 +218,6 @@ const buildLarge = (sections: number): string =>
 
 const byteLength = (text: string): number => new TextEncoder().encode(text).length;
 
-/**
- * Milliseconds of CPU time burned by this process (user+system). Unlike wall
- * time it is not inflated by scheduling stalls, so a bound on it holds under
- * CPU contention; same-machine slowness (coverage, weak cores) is absorbed by
- * the slowdown factor below.
- */
-const cpuMs = (): number => {
-  const { user, system } = process.cpuUsage();
-  return (user + system) / 1000;
-};
-
-const fastest = (run: () => unknown, attempts: number): number => {
-  let best = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < attempts; index += 1) {
-    const started = cpuMs();
-    run();
-    best = Math.min(best, cpuMs() - started);
-  }
-  return best;
-};
-
 describe("default limit and performance", () => {
   it("should apply the 64KB default when maxBytes is omitted", () => {
     const result = read(DOC, "#s");
@@ -257,36 +239,29 @@ describe("default limit and performance", () => {
   });
 });
 
-describe("performance · one megabyte document", () => {
-  it("should read a 64KB subtree out of a 1MB document within 60ms", () => {
+// Structural half of the 1MB scenario: the byte-budget behavior is machine
+// independent, so it stays here; the absolute CPU budgets moved to
+// tests/perf/read-node.perf.test.ts.
+describe("one megabyte document", () => {
+  it("should read a subtree out of a 1MB document without truncating it", () => {
     const big = buildLarge(5_000);
-    const medium = buildLarge(500);
-    const reference = fastest(() => read(medium, "#s250"), 3);
-    const slowdown = Math.min(Math.max(reference / 2, 1), 20);
-    const elapsed = fastest(() => read(big, "#s2500"), 3);
+
+    const result = read(big, "#s2500");
 
     expect(byteLength(big)).toBeGreaterThan(1_000_000);
-    expect(
-      elapsed,
-      `1MB/${String(byteLength(big))}B read took ${elapsed.toFixed(1)}ms cpu (slowdown ${slowdown.toFixed(1)}x)`,
-    ).toBeLessThan(60 * slowdown);
-  }, 30_000);
+    expect(result.truncated).toBe(false);
+    expect(result.html).toContain("标题 2500");
+    expect(byteLength(result.html)).toBeLessThanOrEqual(65_536);
+  });
 
-  it("should truncate a full article read out of a 1MB document within 120ms", () => {
+  it("should truncate a full article read of a 1MB document to the 64KB budget", () => {
     const big = buildLarge(5_000);
-    const medium = buildLarge(500);
-    const reference = fastest(() => read(medium, "article"), 3);
-    const slowdown = Math.min(Math.max(reference / 5, 1), 8);
-    const elapsed = fastest(() => read(big, "article"), 3);
+
     const result = read(big, "article");
 
     expect(result.truncated).toBe(true);
     expect(byteLength(result.html)).toBeLessThanOrEqual(65_536);
-    expect(
-      elapsed,
-      `article read took ${elapsed.toFixed(1)}ms cpu (slowdown ${slowdown.toFixed(1)}x)`,
-    ).toBeLessThan(120 * slowdown);
-  }, 60_000);
+  });
 });
 
 describe("error identity across entries", () => {

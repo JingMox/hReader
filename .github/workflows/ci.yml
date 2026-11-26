@@ -77,6 +77,10 @@ jobs:
       - run: pnpm test:integration
         env:
           CHROME_BIN: /usr/bin/google-chrome
+      # Absolute-time perf gates (tests/perf): run without v8 coverage
+      # instrumentation — it slows src ~4x and would false-red any "<Nms"
+      # budget — on a single worker. Same check `pnpm verify` runs locally.
+      - run: pnpm test:perf
 
   desktop:
     runs-on: ${{ matrix.os }}
