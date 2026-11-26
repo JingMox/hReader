@@ -1,20 +1,20 @@
-// 这层管：假宿主——只按 `HostContext` 的三个方法记账，不做真实实现（不碰真 SystemPrompt）。
+// Fake host: only books the three `HostContext` methods, no real implementation (no real SystemPrompt).
 
 import type { HostContext, HreaderPromptSection } from "../src";
 
 interface FakeHost {
   readonly ctx: HostContext;
-  /** 当前活着的 section（名字 → section），dispose 后应为空。 */
+  /** Live sections (name → section); should be empty after dispose. */
   readonly sections: Map<string, HreaderPromptSection>;
-  /** 当前暴露的服务（名字 → 值），dispose 后应为空。 */
+  /** Exposed services (name → value); should be empty after dispose. */
   readonly services: Map<string, unknown>;
-  /** 跑掉所有已注册的清理器（等价于宿主卸载本插件）。 */
+  /** Runs all registered disposers (equivalent to the host unloading the plugin). */
   disposeAll: () => Promise<void>;
 }
 
 /**
- * 重复注册同名 section 会抛错：真 `SystemPrompt.section` 就是这个语义，
- * 假宿主照抄它，"重复 apply 只留一个 section" 这条才有分辨力。
+ * Re-registering a same-named section throws: the real `SystemPrompt.section` behaves this way, and
+ * the fake host copies it so that "repeat apply leaves only one section" stays discriminating.
  */
 export const fakeHostOf = (): FakeHost => {
   const sections = new Map<string, HreaderPromptSection>();
