@@ -15,24 +15,21 @@ import {
 import { tagBalanceDiagnostics } from "../src/html/balance";
 import type { HtmlNode } from "../src/index";
 
-/** Milliseconds of CPU time burned by this process (user+system); scheduling stalls do not inflate it. */
+/**
+ * Milliseconds of CPU time burned by this process (user+system). Unlike wall
+ * time it is not inflated by scheduling stalls, so a bound on it holds under
+ * CPU contention; the bounds here are orders of magnitude above real cost.
+ */
 const cpuMs = (): number => {
   const { user, system } = process.cpuUsage();
   return (user + system) / 1000;
 };
 
-/** One sample on both clocks: wall time balloons under CPU contention while own-CPU stays stable. */
-interface Sample {
-  readonly wall: number;
-  readonly cpu: number;
-}
-
-/** Times fn on both clocks (assertion-only; the bound is an order of magnitude, not a precise value). */
-const timed = (fn: () => void): Sample => {
-  const at = performance.now();
-  const atCpu = cpuMs();
+/** Times fn in this process's own CPU ms (assertion-only; the bound is an order of magnitude, not a precise value). */
+const timed = (fn: () => void): number => {
+  const at = cpuMs();
   fn();
-  return { wall: performance.now() - at, cpu: cpuMs() - atCpu };
+  return cpuMs() - at;
 };
 
 const deepDoc = (depth: number): string =>
@@ -68,8 +65,7 @@ describe("resource · 解析与清洗保持近线性", () => {
       serializeHtml({ root: parsed.root, diagnostics: [] });
     });
     // 全链近线性：3000 层若出现平方/指数退化，毫秒数会跳出两位数一个数量级不止。
-    expect(total.wall).toBeLessThan(2000);
-    expect(total.cpu).toBeLessThan(2000);
+    expect(total).toBeLessThan(2000);
   });
 
   it("should parse + sanitize 10k attributes on one element without quadratic blowup", () => {
@@ -78,8 +74,7 @@ describe("resource · 解析与清洗保持近线性", () => {
       const parsed = parseHtml(html);
       clean(parsed.root);
     });
-    expect(total.wall).toBeLessThan(2000);
-    expect(total.cpu).toBeLessThan(2000);
+    expect(total).toBeLessThan(2000);
   });
 
   it("should handle a 4 MiB single-line text node", () => {
@@ -91,8 +86,7 @@ describe("resource · 解析与清洗保持近线性", () => {
       hasExecutableContent(parsed.root);
       serializeHtml({ root: parsed.root, diagnostics: [] });
     });
-    expect(total.wall).toBeLessThan(4000);
-    expect(total.cpu).toBeLessThan(4000);
+    expect(total).toBeLessThan(4000);
   });
 
   it("should keep tag-balance regexes linear on quote storms (the nested-quantifier face)", () => {
@@ -100,8 +94,7 @@ describe("resource · 解析与清洗保持近线性", () => {
     // 实测 10k 规模仍亚毫秒——V8 对该形态线性；若未来换引擎/改正则，这条首先红。
     const html = quoteStormDoc(10_000);
     const total = timed(() => tagBalanceDiagnostics(html));
-    expect(total.wall).toBeLessThan(1000);
-    expect(total.cpu).toBeLessThan(1000);
+    expect(total).toBeLessThan(1000);
   });
 
   it("should keep executable-content scan linear on a doc with many candidate nodes", () => {
@@ -115,7 +108,6 @@ describe("resource · 解析与清洗保持近线性", () => {
       clean(parsed.root);
       hasExecutableContent(parsed.root);
     });
-    expect(total.wall).toBeLessThan(2000);
-    expect(total.cpu).toBeLessThan(2000);
+    expect(total).toBeLessThan(2000);
   });
 });

@@ -51,7 +51,11 @@ describe("diffText · 七种形态", () => {
 const long = "a".repeat(DIFF_CHAR_LIMIT);
 const longer = "a".repeat(DIFF_CHAR_LIMIT + 1);
 
-/** Milliseconds of CPU time burned by this process (user+system); scheduling stalls do not inflate it. */
+/**
+ * Milliseconds of CPU time burned by this process (user+system). Unlike wall
+ * time it is not inflated by scheduling stalls, so a bound on it holds under
+ * CPU contention.
+ */
 const cpuMs = (): number => {
   const { user, system } = process.cpuUsage();
   return (user + system) / 1000;
@@ -106,16 +110,13 @@ describe("diffText · 单侧超限与性能", () => {
     const before = Array.from({ length: 40 }, (_, i) => `第${String(i)}行`).join("\n");
     const padded = `${before}${"x".repeat(DIFF_CHAR_LIMIT - before.length + 1)}`;
     const after = `${padded.slice(0, -1)}y`;
-    const startedWall = performance.now();
-    const startedCpu = cpuMs();
+    const started = cpuMs();
     const result = diffText(padded, after);
-    const elapsedWall = performance.now() - startedWall;
-    const elapsedCpu = cpuMs() - startedCpu;
+    const elapsed = cpuMs() - started;
 
     expect(result.degraded).toBe(true);
     expect(result.chunks.length).toBeGreaterThan(0);
-    expect(elapsedWall).toBeLessThan(200);
-    expect(elapsedCpu).toBeLessThan(200);
+    expect(elapsed).toBeLessThan(200);
   });
 });
 

@@ -59,58 +59,54 @@ const nestedDocument = (depth: number): string =>
 const PERF_ITERATIONS = 16;
 const PERF_WINDOWS = 5;
 
-/** Milliseconds of CPU time burned by this process (user+system); scheduling stalls do not inflate it. */
+/**
+ * Milliseconds of CPU time burned by this process (user+system). Unlike wall
+ * time it is not inflated by scheduling stalls, so a bound on it holds under
+ * CPU contention; same-machine slowness (coverage, weak cores) lifts the
+ * shallow and deep costs together, leaving the growth ratio intact.
+ */
 const cpuMs = (): number => {
   const { user, system } = process.cpuUsage();
   return (user + system) / 1000;
 };
 
-/** One sample on both clocks: wall time balloons under CPU contention while own-CPU stays stable. */
-interface Sample {
-  readonly wall: number;
-  readonly cpu: number;
-}
-
 /**
- * 一个"窗口"= 连做 16 次 `injectNodeIds(parseHtml(...))` 取平均；窗口内平均把单次 1~3ms 的 GC 抖动摊平。
- * 关键在**交错**：浅/深两档在相邻窗口里各测一次再相除，CPU 争用同时抬高分子分母，比值因此抗噪。
- * 取 5 个窗口里最小的那个比值（争用是单向抬高，最小值最接近真实比）。
+ * One "window" = 16 iterations of `injectNodeIds(parseHtml(...))` averaged;
+ * the per-window average flattens 1~3ms GC jitter.
+ * The key is **interleaving**: shallow/deep are measured in adjacent windows
+ * and divided, so both ends share the same machine conditions — the ratio is
+ * noise-resistant. Take the smallest ratio over 5 windows (interference only
+ * ever raises a sample; the minimum is closest to the true ratio).
  */
-const injectionWindowMs = (depth: number): Sample => {
+const injectionWindowMs = (depth: number): number => {
   const html = nestedDocument(depth);
-  const started = performance.now();
-  const startedCpu = cpuMs();
+  const started = cpuMs();
   for (let index = 0; index < PERF_ITERATIONS; index += 1) {
     injectNodeIds(parseHtml(html));
   }
-  return {
-    wall: (performance.now() - started) / PERF_ITERATIONS,
-    cpu: (cpuMs() - startedCpu) / PERF_ITERATIONS,
-  };
+  return (cpuMs() - started) / PERF_ITERATIONS;
 };
 
-/** 交错测 5 对 (浅, 深)，返回最小的单对比值与两档各自的最小耗时。 */
+/** Interleave 5 (shallow, deep) pairs; return the smallest single-pair ratio and each depth's minimum cost. */
 const growthPair = (
   shallowDepth: number,
   deepDepth: number,
 ): {
   readonly growth: number;
-  readonly shallow: Sample;
-  readonly deep: Sample;
+  readonly shallow: number;
+  readonly deep: number;
 } => {
   injectionWindowMs(shallowDepth);
   injectionWindowMs(deepDepth);
   let growth = Number.POSITIVE_INFINITY;
-  const shallow = { wall: Number.POSITIVE_INFINITY, cpu: Number.POSITIVE_INFINITY };
-  const deep = { wall: Number.POSITIVE_INFINITY, cpu: Number.POSITIVE_INFINITY };
+  let shallow = Number.POSITIVE_INFINITY;
+  let deep = Number.POSITIVE_INFINITY;
   for (let window = 0; window < PERF_WINDOWS; window += 1) {
     const shallowCost = injectionWindowMs(shallowDepth);
     const deepCost = injectionWindowMs(deepDepth);
-    shallow.wall = Math.min(shallow.wall, shallowCost.wall);
-    shallow.cpu = Math.min(shallow.cpu, shallowCost.cpu);
-    deep.wall = Math.min(deep.wall, deepCost.wall);
-    deep.cpu = Math.min(deep.cpu, deepCost.cpu);
-    growth = Math.min(growth, deepCost.wall / shallowCost.wall);
+    shallow = Math.min(shallow, shallowCost);
+    deep = Math.min(deep, deepCost);
+    growth = Math.min(growth, deepCost / shallowCost);
   }
   return { growth, shallow, deep };
 };
@@ -127,8 +123,7 @@ describe("inject · 深嵌套耗时近似线性", () => {
     const { growth, deep } = growthPair(1000, 4000);
 
     expect(growth, `t(4000)/t(1000) = ${growth.toFixed(2)}`).toBeLessThan(6);
-    expect(deep.wall).toBeLessThan(200);
-    expect(deep.cpu).toBeLessThan(200);
+    expect(deep).toBeLessThan(200);
   }, 120_000);
 
   it("should inject an id into every nested <div> regardless of depth", () => {
