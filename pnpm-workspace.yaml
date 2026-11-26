@@ -1,7 +1,7 @@
 packages:
   - "packages/*"
 
-# 各包共享的依赖统一收敛到这里：包里只写 `catalog:`，版本只在这一处升级。
+# Shared dependencies converge here: packages write only `catalog:`, and versions bump in this one place.
 catalog:
   "@stryker-mutator/api": 10.1.1
   "@stryker-mutator/core": 10.1.1
@@ -17,6 +17,6 @@ catalog:
   yaml: 2.9.1
   zod: 3.25.76
 
-# esbuild 的 install 脚本负责落地平台二进制；vitest 依赖它，禁止静默跳过。
+# esbuild's install script lands the platform binary; vitest depends on it, so it must not be silently skipped.
 allowBuilds:
   esbuild: true

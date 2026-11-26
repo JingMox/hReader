@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 不给 `--home`（双击 .app 的主路径）时，壳只用应用私有目录，绝不碰用户的 ~/.hreader。
+# Without `--home` (the double-clicked .app's main path), the shell uses only its app-private dir and never touches the user's ~/.hreader.
 set -u
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 require_app
@@ -9,7 +9,7 @@ echo "root=$root"
 make_dirs "$root"
 make_cli_shim "$root/hr"
 shell_store="$HOME/Library/Application Support/com.hreader.desktop"
-# 本脚本故意用真实壳 app data：它会被下面整个删掉，跑之前备份、确认没有在跑实例。
+# This script deliberately uses the real shell app-data dir: it is deleted wholesale below — back up first and confirm no instance is running.
 [ "${HREADER_GUI_REAL_HOME:-}" = "1" ] || { echo "本脚本会删真实壳数据目录 ${shell_store}；确认后以 HREADER_GUI_REAL_HOME=1 重跑" >&2; exit 1; }
 rm -rf "$shell_store"
 snapshot() { if [ -d "$HOME/.hreader" ]; then ls -la "$HOME/.hreader" | md5; else echo absent; fi; }

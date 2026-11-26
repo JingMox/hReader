@@ -1,15 +1,18 @@
-// 这层管：dsh bundle 的手工烟测门——本仓依赖的是 `@deepseek-ai/*` 的 **rc** 版本，而
-// `dsh.compatibility.dshReleases` 又不在 `DshManifest` 类型里（是照第三方插件的实证写法抄的），
-// 只有让真 `dsh` 装一次才知道它认不认这份清单。**不进 CI**（需要本机装 dsh、起真进程）。
-// 用法：`pnpm smoke:dsh`。
+// Manual smoke gate for the dsh bundle — this repo depends on **rc** versions of `@deepseek-ai/*`,
+// and `dsh.compatibility.dshReleases` is not even in the `DshManifest` type (copied from a third-party
+// plugin's empirically-working form), so only a real `dsh` install proves whether the manifest is
+// accepted. **Not in CI** (requires a local dsh install and real processes).
+// Usage: `pnpm smoke:dsh`.
 //
-// 判定全部落在可复现的信号上：
-//   1. 本机没有 `dsh` → SKIP（不失败：这是可选门）；
-//   2. `packages/dsh-bundle` 的 `build` 能产出自包含的 `dist/index.js`；
-//   3. `dsh plugin --profile smoke add <包目录>` 退出码 0（清单被接受）；
-//   4. `dsh --profile smoke --dump-config` 的合成树里出现本插件（注释头 + id + name 三行）。
-// 真 dsh 的 `--profile` 收的是**名字**，不是路径；profile 落在 `$DSH_HOME/profiles/<name>`。
-// 故本次跑新建一个临时 `$DSH_HOME`，绝不碰用户 `~/.dsh`。
+// All verdicts land on reproducible signals:
+//   1. no local `dsh` → SKIP (not a failure: this is an optional gate);
+//   2. `packages/dsh-bundle`'s `build` produces a self-contained `dist/index.js`;
+//   3. `dsh plugin --profile smoke add <package dir>` exits 0 (manifest accepted);
+//   4. `dsh --profile smoke --dump-config`'s merged tree contains this plugin (comment header +
+//      id + name, three lines).
+// A real dsh's `--profile` takes a **name**, not a path; profiles live in
+// `$DSH_HOME/profiles/<name>`. So this run creates a temporary `$DSH_HOME` and never touches the
+// user's `~/.dsh`.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
@@ -24,7 +27,7 @@ const TIMEOUT_MS = 180_000;
 const TAIL_CHARS = 1200;
 
 interface Run {
-  /** 命令本身不在 PATH 上（ENOENT）：烟测把它当"没装"，不是失败。 */
+  /** The command itself is not on PATH (ENOENT): the smoke treats it as "not installed", not a failure. */
   readonly missing: boolean;
   readonly status: number | null;
   readonly stdout: string;
@@ -38,7 +41,7 @@ const run = (command: string, args: readonly string[], env?: NodeJS.ProcessEnv):
     timeout: TIMEOUT_MS,
     ...(env === undefined ? {} : { env }),
   });
-  // `spawnSync` 失败时把 errno 塞在 `error.code` 上，Node 的类型只声明了 `Error`。
+  // On `spawnSync` failure the errno lands on `error.code`; Node's types only declare `Error`.
   const missing =
     String(Object.getOwnPropertyDescriptor(result.error ?? {}, "code")?.value) === "ENOENT";
   if (result.error !== undefined && !missing) throw result.error;

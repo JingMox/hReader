@@ -1,4 +1,4 @@
-// 这层管：包间与分层边界（单向依赖、无环、不引未声明/开发依赖）；不管运行时行为。
+// Inter-package and layering boundaries (one-way deps, no cycles, no undeclared/dev deps); not runtime behavior.
 /** @type {import("dependency-cruiser").IConfiguration} */
 module.exports = {
   forbidden: [
@@ -90,19 +90,21 @@ module.exports = {
     },
   ],
   options: {
-    // 只控制遍历深度：node_modules 不展开，但 npm 边仍会被记录（否则上面两条 npm 规则永不触发）。
+    // Only bounds traversal depth: node_modules is not expanded, but npm edges are still recorded
+    // (otherwise the two npm rules above never fire).
     doNotFollow: { path: "node_modules" },
-    // 只排除顶层的产物目录：仓库根的 dist|coverage，以及 packages/<pkg>/dist|coverage。
-    // 不能写成 (^|/)(dist|coverage)/：它匹配任意层级的 dist，连 node_modules 里的也算；
-    // 而把 node_modules 塞进 exclude 会让 npm 边彻底消失，
-    // no-undeclared-external-dep / no-dev-dependency-from-src 重新变成死规则。
-    // 也不用 ^(packages/[^/]+/)?(dist|coverage)/：嵌套量词会让 depcruise 的 safe-regex 拒跑（star height 2），
-    // 因此拆成两条锚定分支。
+    // Exclude only top-level artifact dirs: repo-root dist|coverage and packages/<pkg>/dist|coverage.
+    // Cannot write (^|/)(dist|coverage)/: it matches dist at any depth, including inside
+    // node_modules — and excluding node_modules would remove npm edges entirely, leaving
+    // no-undeclared-external-dep / no-dev-dependency-from-src dead again.
+    // Nor ^(packages/[^/]+/)?(dist|coverage)/: nested quantifiers give depcruise's safe-regex a
+    // star height of 2 and it refuses to run — hence two anchored branches.
     exclude: { path: "^(dist|coverage)/|^packages/[^/]+/(dist|coverage)/" },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: "tsconfig.json" },
-    // 依赖的 `exports` 通配（如 `@modelcontextprotocol/sdk` 的 "./*"）只有显式打开导出字段才解析得到；
-    // 默认 enhanced-resolve 不读 exports，会让这类边一律 couldNotResolve（虚假红线）。
+    // A dependency's `exports` wildcard (e.g. `@modelcontextprotocol/sdk`'s "./*") resolves only
+    // with the export fields explicitly enabled; default enhanced-resolve does not read exports and
+    // would mark all such edges couldNotResolve (false red).
     enhancedResolveOptions: {
       exportsFields: ["exports"],
       conditionNames: ["import", "require", "node", "default"],

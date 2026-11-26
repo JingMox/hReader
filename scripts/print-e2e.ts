@@ -1,7 +1,9 @@
-// 这层管：真 Chrome 跑一遍打印稿（出 PDF → 断分页/纸张/背景/无外链；长图那半在 `print-e2e-png.ts`）；不进 `test:unit`。
+// Runs the print pipeline once in real Chrome (produces a PDF → verifies pagination/paper/
+// background/no external links; the long-image half lives in `print-e2e-png.ts`); not part of
+// `test:unit`.
 //
-// 规矩：Chrome 缺失或 `HREADER_SKIP_CHROME=1` 时**打印** SKIPPED + 原因并以 0 退出——
-// 静默跳过等于假装跑过。需要真跑的 CI 请显式给 `CHROME_BIN`。
+// Rule: when Chrome is missing or `HREADER_SKIP_CHROME=1`, **print** SKIPPED + the reason and exit
+// 0 — a silent skip would fake a pass. CI that must really run sets `CHROME_BIN` explicitly.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -11,10 +13,10 @@ import { join } from "node:path";
 import { skipLineOf, skipReasonOf } from "../packages/cli/src/commands/print-skip.ts";
 import { longCheckOf } from "./print-e2e-png.ts";
 
-/** 走真 CLI：这条烟测要证的正是"仓内各层接起来还能打"，直接 import 渲染器会绕开接线。 */
+/** Via the real CLI: what this smoke must prove is exactly "the repo's layers still print when wired together"; importing the renderer would bypass the wiring. */
 const CLI_MAIN = join(import.meta.dirname, "../packages/cli/src/main.ts");
 
-/** 产物从 CLI 拿，故脚本本身不需要 `@hreader/*` 依赖（根目录没有，也不该有）。 */
+/** Artifacts come from the CLI, so this script needs no `@hreader/*` dependency (the root has none, and should have none). */
 
 const CANDIDATES = [
   process.env["CHROME_BIN"],
@@ -23,7 +25,7 @@ const CANDIDATES = [
   "/usr/bin/chromium",
 ];
 
-/** 分四章：`section.chapter` 带 `break-before: page`，差分用例要靠它把"规则生效"与"内容恰好够长"分开。 */
+/** Four chapters: `section.chapter` carries `break-before: page`; the differential case needs it to tell "rule effective" from "content happens to be long". */
 const ARTICLE = [
   '<article data-hr-id="doc">',
   "<h1>打印冒烟稿</h1>",
@@ -43,7 +45,7 @@ const ARTICLE = [
   "</article>",
 ].join("");
 
-/** 探测结果经 `CHROME_BIN` 交回纯函数：判定与文案在 `print-skip.ts`（可单测），这里只管 fs 与退出。 */
+/** The probe result is handed to the pure function via `CHROME_BIN`: decision and wording live in `print-skip.ts` (unit-testable); this file only does fs and exit. */
 const chromeEnvOf = (
   env: Readonly<Record<string, string | undefined>>,
 ): Record<string, string | undefined> => ({
@@ -96,7 +98,7 @@ const check = (ok: boolean, name: string): void => {
   if (!ok) failures.push(name);
 };
 
-/** 纸张：A4 = 595.28 × 841.89 pt；Chrome 会舍入成 594.96 × 841.92，故按 1.5pt 容差比。 */
+/** Paper: A4 = 595.28 × 841.89 pt; Chrome rounds to 594.96 × 841.92, so compare with 1.5pt tolerance. */
 const isA4Of = (pdf: string): boolean => {
   const box = /\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/u.exec(pdf);
   const width = Number(box?.[1] ?? Number.NaN);
@@ -104,7 +106,7 @@ const isA4Of = (pdf: string): boolean => {
   return Math.abs(width - 595.28) < 1.5 && Math.abs(height - 841.89) < 1.5;
 };
 
-/** 背景：`--hr-bg` 的**最后**一条声明必须是白色（主题里靠后的 `@media print` 就是干这个的）。 */
+/** Background: the **last** declaration of `--hr-bg` must be white (that is what the trailing `@media print` in the theme is for). */
 const endsOnWhiteOf = (html: string): boolean => {
   const backgrounds = [...html.matchAll(/--hr-bg:\s*([^;]+);/gu)].map((match) =>
     (match[1] ?? "").trim().toLowerCase(),
@@ -112,20 +114,20 @@ const endsOnWhiteOf = (html: string): boolean => {
   return backgrounds.at(-1) === "#ffffff";
 };
 
-/** PDF 那一半：分页 / 纸张 / 白底 / 无外链。返回 OK 行用的一段。 */
+/** The PDF half: pagination / paper / white background / no external links. Returns the segment for the OK line. */
 const pdfChecksOf = (dir: string, html: string): string => {
   const pdf = pdfOf(html, dir).toString("latin1");
 
   check(pdf.startsWith("%PDF"), "产物不是 PDF");
-  // 分页：`/Type /Page`（不含 `/Pages`）出现两次以上才算真跨页。
+  // Pagination: `/Type /Page` (excluding `/Pages`) must occur at least twice to count as a real page break.
   check(countOf(pdf, /\/Type\s*\/Page[^s]/gu) >= 2, "没有跨页（页数 < 2）");
   check(isA4Of(pdf), "纸张不是 A4");
   check(endsOnWhiteOf(html), "纸面背景不是白色（暗色块压过了打印块）");
   check(/background:\s*#ffffff/iu.test(html), "缺少显式白底");
-  // 产物里不得有可联网的绝对地址。
+  // The artifact must not carry any networkable absolute address.
   check(!/https?:\/\//iu.test(html), "产物含 http(s):// 残留");
 
-  // 分页规则的直接证据：同一篇稿子抽掉分页规则后页数必须变，否则"2 页"只是恰好。
+  // Direct evidence for the pagination rule: the same page minus break rules must change page count, or "2 pages" is a coincidence.
   const stripped = html.replaceAll(
     /(?:^|[;{\s])(?:page-)?break-(?:before|after|inside)\s*:[^;}]*;?/giu,
     "",

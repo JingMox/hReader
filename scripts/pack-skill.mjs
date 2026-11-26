@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 将 Skill 打包为可脱离源码仓库独立分发的目录：`release-artifacts/hreader-skill/`。
+// Packs the Skill into a directory distributable without the source repo: `release-artifacts/hreader-skill/`.
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

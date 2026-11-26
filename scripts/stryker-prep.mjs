@@ -1,9 +1,12 @@
-// Stryker `buildCommand`：在每个 sandbox 里、初始测试运行前执行一次。
-// 两件事：
-// 1) sandbox 拷贝把文件权限全写成 0644，把被 spawn / 断言 shebang 的交付物补回 +x；
-// 2) node_modules 是符号链接，pnpm 10 判定为"外来"会触发 verify-deps-before-run 自动 install
-//    （无 TTY 直接 abort）——往 sandbox 的 pnpm-workspace.yaml 追加开关关掉它。
-// 只在 .stryker-tmp 沙箱里跑时改 workspace 配置；chmod 幂等，哪里跑都安全。
+// Stryker `buildCommand`: runs once in each sandbox before the initial test run.
+// Two jobs:
+// 1) the sandbox copy rewrites all permissions to 0644 — restore +x on deliverables that get
+//    spawned or whose shebang is asserted;
+// 2) node_modules is a symlink, which pnpm 10 judges "foreign" and triggers a
+//    verify-deps-before-run auto-install (aborts outright without a TTY) — append the switch that
+//    turns it off to the sandbox's pnpm-workspace.yaml.
+// Workspace config is touched only when running inside a .stryker-tmp sandbox; chmod is
+// idempotent and safe anywhere.
 
 import { appendFileSync, chmodSync, readFileSync } from "node:fs";
 
@@ -20,7 +23,7 @@ for (const file of EXEC_FILES) {
   try {
     chmodSync(file, 0o755);
   } catch {
-    // 文件不在 sandbox 拷贝里就跳过
+    // skip files absent from the sandbox copy
   }
 }
 

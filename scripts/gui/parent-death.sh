@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 稳态：daemon 已经 ready 之后父进程被 kill -9 → 1s 内自己退出、端口释放、daemon.json 消失。
+# Steady state: the parent is kill -9'd after the daemon is already ready → within 1s it exits on its own, the port frees, and daemon.json disappears.
 set -u
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 

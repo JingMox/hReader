@@ -1,11 +1,13 @@
-// 这层管：真 Chrome 的长图验收——`--scale` 与 `--max-height` 的口径只在真浏览器里成立。
-// 走真 CLI（不 import 渲染器）：要证的正是"仓内各层接起来还能出图"。不进 `test:unit`，跳过判据在调用方。
+// Full-page-image acceptance in real Chrome — the `--scale`/`--max-height` semantics only hold in
+// a real browser. Goes through the real CLI (no renderer import): what must be proven is exactly
+// "the repo's layers still produce an image when wired together". Not part of `test:unit`; the
+// skip decision lives at the call site.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** 从 `--json` 信封里按键取值，避免在脚本里写 `as` 断言。 */
+/** Reads a key out of the `--json` envelope, avoiding `as` assertions in the script. */
 const fieldOf = (value: unknown, key: string): unknown => Reflect.get(Object(value), key);
 
 interface Pixels {
@@ -14,12 +16,12 @@ interface Pixels {
 }
 
 interface LongImage extends Pixels {
-  /** 磁盘上那个 PNG：宽高一律自己从字节里读，不借 CLI 的自报值。 */
+  /** The PNG on disk: width/height are read from bytes directly, never borrowed from the CLI's self-report. */
   readonly path: string;
   readonly clipped: boolean;
 }
 
-/** PNG 签名 8 字节 + IHDR 长/类型 8 字节：宽高在 byte 16–23（大端）。 */
+/** PNG signature 8 bytes + IHDR length/type 8 bytes: width/height live at bytes 16–23 (big-endian). */
 const IHDR_WIDTH_AT = 16;
 const IHDR_HEIGHT_AT = 20;
 
@@ -30,7 +32,7 @@ const ihdrOf = (path: string): Pixels => {
 
 const pixelsLineOf = (pixels: Pixels): string => `${String(pixels.width)}×${String(pixels.height)}`;
 
-/** 第二双眼睛：`sips` 是系统解码器，倍率没乘对的产物在这里也会露形。无 `sips`（Linux）时为 `null`。 */
+/** A second pair of eyes: `sips` is the system decoder, and a wrongly-scaled artifact shows here too. `null` where `sips` is absent (Linux). */
 const sipsPixelsOf = (path: string): Pixels | null => {
   try {
     const text = execFileSync("sips", ["-g", "pixelWidth", "-g", "pixelHeight", path], {
@@ -48,7 +50,7 @@ const sipsPixelsOf = (path: string): Pixels | null => {
   }
 };
 
-/** `--json` 回包 → 盘上图：宽高是 CLI 自报值，它俩与 IHDR 同不同由 e2e 再断一次。 */
+/** `--json` reply → on-disk image: width/height are CLI self-reports; whether they match IHDR is decided once more in e2e. */
 const imageOf = (path: string, stdout: string): LongImage => {
   const data = fieldOf(JSON.parse(stdout), "data");
   const width = fieldOf(data, "width");
@@ -61,7 +63,8 @@ const imageOf = (path: string, stdout: string): LongImage => {
 };
 
 /**
- * 长图走真 CLI：`--json` 才给 `clipped`，像素以盘上 IHDR 为准；夹具稿与 PDF 那半共用 `source.html`。
+ * Long image via the real CLI: only `--json` yields `clipped`; pixels are authoritative from the
+ * on-disk IHDR. The fixture page shares `source.html` with the PDF half.
  */
 const longImageOf = (input: {
   readonly cliMain: string;
@@ -89,16 +92,18 @@ const longImageOf = (input: {
       stdio: "pipe",
       encoding: "utf8",
       timeout: 120_000,
-      // `--json` 把整张图的 base64 也交回来：默认 1MB 的 maxBuffer 会在长图上半路 ENOBUFS。
+      // `--json` also returns the whole image's base64: the default 1MB maxBuffer would ENOBUFS
+      // halfway through a long image.
       maxBuffer: 256 * 1024 * 1024,
-      // 走 CLI 就要由 CLI 的探测口找 Chrome：`CHROME_BIN` 是脚本自己的跳过判据，不是 CLI 的。
+      // Going through the CLI means finding Chrome via the CLI's probe: `CHROME_BIN` is the
+      // script's own skip criterion, not the CLI's.
       env: { ...process.env, HREADER_CHROME: input.chrome },
     },
   );
   return imageOf(path, stdout);
 };
 
-/** 失败要能自判：CLI 的 stderr 里是带错误码的 envelope，只截头几行，别把整段栈贴进结果。 */
+/** A failure must self-diagnose: the CLI's stderr carries an envelope with the error code — take only its head, do not paste the whole stack into results. */
 const failureTextOf = (error: unknown): string => {
   const stderr = fieldOf(error, "stderr");
   const message = error instanceof Error ? error.message : String(error);
@@ -113,7 +118,7 @@ interface Shots {
   readonly clipped: LongImage;
 }
 
-/** 同一篇稿子出三档：`--scale 1` 那档是倍率的对照组（两档只差倍率，其余输入逐字节相同）。 */
+/** Three runs of one page: the `--scale 1` run is the scale control (the two runs differ only in scale, every other input byte-identical). */
 const shotsOf = (input: {
   readonly cliMain: string;
   readonly chrome: string;
@@ -133,14 +138,14 @@ type Check = (ok: boolean, name: string) => void;
 const scaleChecksOf = (check: Check, long: Pixels, single: Pixels): void => {
   check(long.width === 2400, `长图宽不是 2400（IHDR ${pixelsLineOf(long)}）`);
   check(long.height > 4000, `长图不比裁剪高更长（IHDR ${pixelsLineOf(long)}），长图退化成了首屏`);
-  // 高若不是严格两倍，就是某个轴没乘 `--scale`：半分辨率的图出得来，只有像素数是证据。
+  // If the height is not exactly double, some axis missed `--scale`: a half-resolution image still renders — only pixel counts prove it.
   check(
     long.height === 2 * single.height,
     `--scale 2 的高不是 --scale 1 的两倍（${pixelsLineOf(long)} vs ${pixelsLineOf(single)}）`,
   );
 };
 
-/** `--json` 自报的宽高必须与盘上 IHDR 同值：两个真源不一致时，人读行与下游会各说各话。 */
+/** The `--json` self-reported width/height must equal the on-disk IHDR: when the two sources disagree, the human-readable line and downstream would tell different stories. */
 const reportChecksOf = (check: Check, image: LongImage): void => {
   const pixels = ihdrOf(image.path);
   check(
@@ -150,7 +155,7 @@ const reportChecksOf = (check: Check, image: LongImage): void => {
 };
 
 export interface LongCheck {
-  /** OK 行用的一段；失败时为空。 */
+  /** The segment used in the OK line; empty on failure. */
   readonly note: string;
   readonly failures: readonly string[];
 }

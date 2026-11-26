@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SIGTERM 之后壳与它拉起的 daemon 都要走、daemon.json 都不能留。
+# After SIGTERM, the shell and the daemon it spawned must both exit, leaving no daemon.json.
 set -u
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 require_app

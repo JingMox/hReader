@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 重新生成 GitHub Pages 示例库：给 site/examples/*.html 补块 id、套 atelier-editorial 主题、检查禁用词。
-# 用法：bash scripts/build-site.sh [--shots]
-#   --shots  额外用本机 Google Chrome 重新截取 site/img/compare.png（需先 pnpm -C packages/cli build）。
+# Regenerates the GitHub Pages sample library: adds block ids to site/examples/*.html,
+# applies the atelier-editorial theme, and checks banned words. Usage: build-site.sh [--shots]
+#   --shots  also re-captures site/img/compare.png with Chrome (requires pnpm -C packages/cli build).
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

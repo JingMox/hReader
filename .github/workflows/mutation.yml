@@ -1,9 +1,9 @@
 name: Mutation
-# 变异测试太贵，不进 PR 门禁：每周定期跑 + 手动触发。防退化阈值在 stryker.config.mjs 的 thresholds.break。
+# Mutation testing is too expensive for the PR gate: weekly schedule + manual trigger. The anti-regression threshold is thresholds.break in stryker.config.mjs.
 
 on:
   schedule:
-    - cron: "0 18 * * 0" # UTC 周日 18:00
+    - cron: "0 18 * * 0" # 18:00 UTC Sundays
   workflow_dispatch:
     inputs:
       mutate:

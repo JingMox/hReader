@@ -1,14 +1,19 @@
-// 这层管：Pi 扩展的手工烟测门——扩展的 Pi 类型是手抄的窄接口（本仓没有编译器盯着它），
-// 唯一的真验证是让真 `pi` 加载这个文件一次。**不进 CI**（需要本机装 pi、要起真进程）。
-// 用法：`pnpm smoke:pi`。
+// Manual smoke gate for the Pi extension — the extension's Pi types are a hand-copied narrow
+// interface (no compiler in this repo watches it), so the only real verification is loading this
+// file once under real `pi`. **Not in CI** (requires a local pi install and real processes).
+// Usage: `pnpm smoke:pi`.
 //
-// 判定全部落在可复现的信号上，不看模型措辞：
-//   1. 本机 pi 版本 == 抄签名时的版本（漂了就该重抄 `pi-hreader.ts` 头部那四段）；
-//   2. 加载不报 `Failed to load extension`——这条同时覆盖注册期校验：Pi 的 `registerCommand`
-//      会检查 name 非空 + handler 是函数，`registerTool` 会检查 `parameters` 是对象 schema，
-//      任一处签名抄错都会在加载时炸成这条错误；
-//   3. `/hreader` 与 `/hr-style` 被当成**命令**处理：print 模式下无 UI，处理器静默结束 → 空输出 + 退出 0；
-//   4. 对照组：不加载扩展时同一个 `/hreader` 会被当成提示词送进模型 → 输出非空。
+// All verdicts land on reproducible signals, never on model phrasing:
+//   1. local pi version == the version the signatures were copied from (if it drifted, re-copy the
+//      four blocks at the top of `pi-hreader.ts`);
+//   2. loading does not report `Failed to load extension` — this also covers registration-time
+//      validation: Pi's `registerCommand` checks a non-empty name + function handler,
+//      `registerTool` checks `parameters` is an object schema, and any miscopied signature blows up
+//      into this same error at load;
+//   3. `/hreader` and `/hr-style` are handled as **commands**: print mode has no UI, the handler
+//      finishes silently → empty output + exit 0;
+//   4. control: without the extension loaded, the same `/hreader` is sent to the model as a prompt
+//      → nonempty output.
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
@@ -16,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** 抄 `ExtensionAPI`/`ExtensionContext` 等签名时的版本（见 `pi-hreader.ts` 头部注释）。 */
+/** The pi version in effect when the `ExtensionAPI`/`ExtensionContext` signatures were copied (see the header comment of `pi-hreader.ts`). */
 const SIGNATURE_PI_VERSION = "1.5.2";
 const EXTENSION = fileURLToPath(new URL("../packages/pi-extension/pi-hreader.ts", import.meta.url));
 const TIMEOUT_MS = 120_000;
@@ -27,7 +32,7 @@ interface Run {
   readonly output: string;
 }
 
-/** 在空目录里跑：仓库的 AGENTS.md、技能、模板都会影响提示词路径，对照组就不干净了。 */
+/** Runs in an empty directory: the repo's AGENTS.md, skills, and templates would all perturb the prompt path and dirty the control group. */
 const SANDBOX = mkdtempSync(join(tmpdir(), "hreader-smoke-"));
 
 const runPi = (args: readonly string[]): Run => {
@@ -41,7 +46,7 @@ const runPi = (args: readonly string[]): Run => {
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
 };
 
-/** json 模式每行一个事件；只关心 `type` 字段。 */
+/** json mode emits one event per line; only the `type` field matters. */
 const eventTypesOf = (output: string): readonly string[] =>
   output
     .split("\n")
@@ -104,7 +109,8 @@ check(
   `退出码 ${String(control.status)}；事件：${controlTypes.join(",") || "无"}；输出：${control.output}`,
 );
 
-// 也要一条真加载的证据：`/hr-style` 同样必须是**命令**（print 模式下静默结束，不进模型回合）。
+// One more real-load proof: `/hr-style` must also be a **command** (finishes silently in print
+// mode, never reaching a model turn).
 const styled = runPi([...BASE, "--extension", EXTENSION, "--print", "/hr-style"]);
 const styledTypes = eventTypesOf(styled.output);
 check(
