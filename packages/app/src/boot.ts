@@ -21,8 +21,10 @@ import { COPY } from "./widgets/copy.ts";
 import { mountPresent, type PresentShell, type PresentWidget } from "./widgets/present.ts";
 import {
   mountForeign,
+  type DocPermissions,
   type ForeignHandle,
   type ForeignInput,
+  type PermissionPatch,
   type TrustLevel,
 } from "./widgets/foreign.ts";
 import { syncView } from "./wiring.ts";
@@ -71,7 +73,7 @@ export interface Booted {
   readonly selection?: (selection: RawSelection) => void;
 }
 
-/** `GET /api/doc/<id>/info`：启动分流唯一依据；`trust`/`scripts` 只对外来文档有意义。 */
+/** `GET /api/doc/<id>/info`：启动分流唯一依据；`trust`/`scripts`/`permissions` 只对外来文档有意义。 */
 export interface DocInfo {
   readonly revision: string;
   readonly cls: "managed" | "normalizable" | "foreign";
@@ -79,6 +81,8 @@ export interface DocInfo {
   readonly kind?: string;
   readonly trust?: TrustLevel;
   readonly scripts?: boolean;
+  /** 外来文档的生效权限视图（脚本/联网 + 来源 + 全局模式）；managed/normalizable 无此字段。 */
+  readonly permissions?: DocPermissions;
 }
 
 /** managed 路径才需要的页面数据（主题清单 + 正文 HTML）；iframe 路径不拉正文。 */
@@ -96,8 +100,8 @@ export interface ClassifiedBootDeps extends Omit<
   readonly fetchInfo: () => Promise<DocInfo>;
   /** managed 分支的数据源：foreign/normalizable 首屏不调它（iframe 自己加载 `/s/`）。 */
   readonly fetchPage: () => Promise<ManagedPage>;
-  /** `POST /trust`；resolve 的值为服务端确认的档位。 */
-  readonly postTrust: (level: TrustLevel) => Promise<TrustLevel>;
+  /** `POST /api/doc/:docId/permissions`；resolve 的值为服务端确认的生效视图。 */
+  readonly postPermissions: (patch: PermissionPatch) => Promise<DocPermissions>;
   /** `POST /normalize`；响应体不读——成功后靠 `bootDocument` 重取 info 分流。 */
   readonly postNormalize: () => Promise<unknown>;
   /** `GET /api/theme`：外来壳的主题下拉也要清单（managed 从 `fetchPage` 一起拿）。 */
@@ -391,10 +395,15 @@ export const boot = (deps: BootDeps): Booted => {
 
 const foreignSseOf = (store: Store, foreign: ForeignHandle, resync: () => void): SseHandlers => ({
   onEvent: (event: SseEvent): void => {
+    // 全局权限模式变更影响所有打开的外来文档：回拉 info 让 syncInfo 决定要不要重载 iframe。
+    if (event.type === "permissions.changed") {
+      resync();
+      return;
+    }
     if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
     const revision = event.payload["revision"];
     foreign.refresh(typeof revision === "string" ? revision : undefined);
-    // 写盘/换 sha 之后服务端的 trust/cls 都可能变：异步回拉 info 对账，不只换 src。
+    // 写盘/换 sha 之后服务端的权限/cls 都可能变：异步回拉 info 对账，不只换 src。
     resync();
   },
   onState: (conn: ConnState): void => {
@@ -423,10 +432,10 @@ const bootForeign = (
     docId: store.get().docId,
     info: {
       cls,
-      trust: info.trust ?? "off",
       scripts: info.scripts === true,
+      ...(info.permissions === undefined ? {} : { permissions: info.permissions }),
     },
-    setTrust: deps.postTrust,
+    setPermissions: deps.postPermissions,
     normalize: async () => {
       await deps.postNormalize();
       await reboot();
@@ -457,8 +466,8 @@ const bootForeign = (
         }
         foreign.syncInfo({
           cls: next.cls,
-          trust: next.trust ?? "off",
           scripts: next.scripts === true,
+          ...(next.permissions === undefined ? {} : { permissions: next.permissions }),
         });
       });
     }),

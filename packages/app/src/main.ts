@@ -30,7 +30,7 @@ export {
 import { createStore, type Store } from "./store.ts";
 import { createStyleSwitch } from "./style-switch.ts";
 import type { PresentShell } from "./widgets/present.ts";
-import type { TrustLevel } from "./widgets/foreign.ts";
+import type { DocPermissions, PermissionMode, PermissionSource } from "./widgets/foreign.ts";
 
 /** 浏览器全局的最小声明（本仓库 tsconfig 不带 DOM lib）：只写我们真正用到的成员。 */
 declare const document: DocumentLike;
@@ -166,12 +166,34 @@ export const isOutlineResponse = (value: unknown): value is OutlineResponse =>
 const isDocClass = (value: unknown): value is DocInfo["cls"] =>
   value === "managed" || value === "normalizable" || value === "foreign";
 
-/** `GET /api/doc/<id>/info`：启动分流的唯一依据；`trust`/`scripts` 缺席即"无信任档/无脚本"。 */
-export const isDocInfo = (value: unknown): value is DocInfo =>
-  isRecord(value) && typeof value["revision"] === "string" && isDocClass(value["cls"]);
+const isPermissionMode = (value: unknown): value is PermissionMode =>
+  value === "allow" || value === "deny" || value === "per-doc";
 
-const isTrustResponse = (value: unknown): value is { readonly trust: TrustLevel } =>
-  isRecord(value) && (value["trust"] === "off" || value["trust"] === "local");
+const isPermissionSource = (value: unknown): value is PermissionSource =>
+  value === "doc" || value === "global";
+
+/** `info.permissions` / `POST /permissions` 应答里嵌套的生效视图：形状不对时宁可启动失败也不猜。 */
+export const isDocPermissions = (value: unknown): value is DocPermissions =>
+  isRecord(value) &&
+  typeof value["scripts"] === "boolean" &&
+  typeof value["network"] === "boolean" &&
+  isPermissionSource(value["scriptsSource"]) &&
+  isPermissionSource(value["networkSource"]) &&
+  isRecord(value["modes"]) &&
+  isPermissionMode(value["modes"]["scripts"]) &&
+  isPermissionMode(value["modes"]["network"]);
+
+const isPermissionsReply = (
+  value: unknown,
+): value is { readonly permissions: DocPermissions } =>
+  isRecord(value) && isDocPermissions(value["permissions"]);
+
+/** `GET /api/doc/<id>/info`：启动分流的唯一依据；`permissions` 存在时必须形状完整。 */
+export const isDocInfo = (value: unknown): value is DocInfo =>
+  isRecord(value) &&
+  typeof value["revision"] === "string" &&
+  isDocClass(value["cls"]) &&
+  (value["permissions"] === undefined || isDocPermissions(value["permissions"]));
 
 const isNormalizeResponse = (
   value: unknown,
@@ -368,8 +390,14 @@ export const bootDocumentWith = async (input: BootDocumentInput): Promise<Booted
       ]);
       return { themes: themes.themes, defaultTheme: themes.default, documentHtml };
     },
-    postTrust: async (level) =>
-      (await postJson(io, `/api/doc/${encoded}/trust`, { level }, isTrustResponse)).trust,
+    postPermissions: async (patch) => {
+      const body: Record<string, unknown> = {};
+      if (patch.scripts !== undefined) body["scripts"] = patch.scripts;
+      if (patch.network !== undefined) body["network"] = patch.network;
+      return (
+        await postJson(io, `/api/doc/${encoded}/permissions`, body, isPermissionsReply)
+      ).permissions;
+    },
     postNormalize: async () => {
       await postJson(io, `/api/doc/${encoded}/normalize`, {}, isNormalizeResponse);
     },
