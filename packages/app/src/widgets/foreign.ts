@@ -94,6 +94,8 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   let info = deps.info;
   let perms = info.permissions;
   let loads = 0;
+  /** 自触发导航计数：每次由我们写 `src` 先记一笔，`load` 事件核销；核销不上 = 文档自导航。 */
+  let expectedLoads = 0;
   /** 写请求在途时动作位/开关不再接受点击：normalize/permissions 串行化。 */
   let pending = false;
   /** destroy 后落地的写请求续跑一律丢弃：横幅已归还，复活它会污染下一个文档的壳。 */
@@ -102,6 +104,12 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   const srcOf = (tag: string | undefined): string => {
     const base = `/s/${encodeURIComponent(deps.docId)}`;
     return tag === undefined ? base : `${base}?r=${encodeURIComponent(tag)}`;
+  };
+
+  /** 我们自己发起的 frame 导航：写 `src` 前先记账，随后的 load 事件核销得上。 */
+  const frameNavigate = (src: string): void => {
+    expectedLoads += 1;
+    host.attr(FRAME, "src", src);
   };
 
   /**
@@ -176,7 +184,23 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     if (dead) return;
     // 事件带 revision 就用它做 cache-bust；没带才动用本地计数（计数只为兜底，不掺进正常路径）。
     const tag = revision ?? `n${String((loads += 1))}`;
-    host.attr(FRAME, "src", srcOf(tag));
+    frameNavigate(srcOf(tag));
+  };
+
+  /**
+   * 不是我们发起的 load：meta refresh / target=_self / location= 把文档页带离了 /s/。
+   * 「联网」是全包语义——开档时框架内导航照放；关档时拉回 /s/ 并在横幅上提示已阻止。
+   */
+  const onFrameLoad = (): void => {
+    if (dead) return;
+    if (expectedLoads > 0) {
+      expectedLoads -= 1;
+      return;
+    }
+    if (perms?.network === true) return;
+    host.attr(BANNER, "hidden", undefined);
+    host.text(ERROR, COPY.foreignNavBlocked);
+    frameNavigate(srcOf(undefined));
   };
 
   /** 生效组合变化判定：sandbox 与 CSP 都只在导航时采样，生效值变了不重载等于没变。 */
@@ -293,8 +317,9 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     );
     host.attr(THEME_SELECT, "value", selected);
   }
-  host.attr(FRAME, "src", srcOf(undefined));
+  frameNavigate(srcOf(undefined));
   host.attr(FRAME, "hidden", undefined);
+  const offLoad = host.on(FRAME, "load", onFrameLoad);
   const offAction = host.on(ACTION, "click", runAction);
   const offScripts = host.on(PERM_SCRIPTS, "click", onToggle("scripts"));
   const offNetwork = host.on(PERM_NETWORK, "click", onToggle("network"));
@@ -312,6 +337,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     },
     destroy: () => {
       dead = true;
+      offLoad();
       offAction();
       offScripts();
       offNetwork();
