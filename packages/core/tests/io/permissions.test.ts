@@ -44,6 +44,10 @@ interface World {
   readonly fs: FakeFs;
   readonly read: (bytes?: Uint8Array, doc?: string) => Promise<DocGrant>;
   readonly write: (grant: DocGrant, doc?: string) => Promise<void>;
+  readonly patch: (
+    patch: { readonly scripts?: boolean; readonly network?: boolean },
+    doc?: string,
+  ) => Promise<DocGrant>;
   readonly targetOf: (doc: string) => ReturnType<typeof resolveTarget>;
 }
 
@@ -64,6 +68,10 @@ const worldOf = (
     read: async (bytes = DOC_BYTES, doc = DOC) =>
       readDocGrant({ target: await targetOf(doc), bytes }, deps),
     write: async (grant, doc = DOC) => writeDocGrant({ target: await targetOf(doc), grant }, deps),
+    // Resolved through a dynamic import so the suite still loads while the API
+    // is under test: a missing `patchDocGrant` fails only these cases, not the file.
+    patch: async (patch, doc = DOC) =>
+      (await import("../../src/io")).patchDocGrant({ target: await targetOf(doc), patch }, deps),
   };
 };
 
@@ -438,6 +446,39 @@ describe("permissions · hostile key names (__proto__/prototype slots)", () => {
       scripts: true,
       network: true,
     });
+  });
+});
+
+describe("patchDocGrant · in-lock partial merge", () => {
+  it("should merge a partial patch into the stored grant and return the merged value", async () => {
+    const world = worldOf({});
+    await world.write({ scripts: true, network: false });
+
+    const merged = await world.patch({ network: true });
+
+    expect(merged).toEqual({ scripts: true, network: true });
+    expect(await world.read()).toEqual({ scripts: true, network: true });
+  });
+
+  it("should leave a missing record as the merge base instead of inventing grants", async () => {
+    const world = worldOf({});
+
+    const merged = await world.patch({ network: true });
+
+    expect(merged).toEqual({ scripts: false, network: true });
+    expect(await world.read()).toEqual({ scripts: false, network: true });
+  });
+
+  it("should read the merge base inside the lock so racing patches keep both dimensions", async () => {
+    // Two partial patches on one record must both survive. A merge base read
+    // outside the lock is already stale when a parallel write — another
+    // process, or an alias docId slipping past the per-doc request queue —
+    // commits first: the last write then silently drops the other's dimension.
+    const world = worldOf({});
+
+    await Promise.all([world.patch({ scripts: true }), world.patch({ network: true })]);
+
+    expect(await world.read()).toEqual({ scripts: true, network: true });
   });
 });
 

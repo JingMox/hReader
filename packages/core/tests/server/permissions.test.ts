@@ -459,6 +459,38 @@ describe("doc permissions · 路径键语义", () => {
       expect(response.status).toBe(403);
     }, foreignSeed());
   });
+
+  it("should land an alias docId spelling on the same resolved grant key", async () => {
+    await withServer(async (ctx) => {
+      const { status } = await postDocPermissions(
+        ctx.port,
+        ctx.token,
+        { scripts: true },
+        "./doc.html",
+      );
+
+      expect(status).toBe(200);
+      expect(await cspOf(ctx.port, ctx.token)).toBe(CSP["on|off"]);
+    }, foreignSeed());
+  });
+
+  it("should keep both dimensions when alias spellings of one doc patch in parallel", async () => {
+    // `./doc.html` and `doc.html` resolve to the same grant record, but the doc
+    // queue serializes on the raw docId — an alias spelling slips past the
+    // queue, so the partial-write merge must happen inside the grant lock.
+    await withServer(async (ctx) => {
+      const [direct, alias] = await Promise.all([
+        postDocPermissions(ctx.port, ctx.token, { scripts: true }),
+        postDocPermissions(ctx.port, ctx.token, { network: true }, "./doc.html"),
+      ]);
+
+      expect(direct.status).toBe(200);
+      expect(alias.status).toBe(200);
+      expect(await infoOf(ctx.port, ctx.token)).toMatchObject({
+        permissions: { scripts: true, network: true },
+      });
+    }, foreignSeed());
+  });
 });
 
 describe("doc permissions · 旧 sha 键迁移（HTTP 级）", () => {
