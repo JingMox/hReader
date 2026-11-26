@@ -1529,6 +1529,47 @@ mod tests {
         assert_eq!(safe_new_filename("note.html", ws), "note.html");
     }
 
+    /// D2：外来 iframe 的外部导航裁决——联网关时连系统浏览器都不给开，
+    /// 联网开时留在框架内（联网是全包语义）；非外来壳照旧交系统浏览器。
+    #[test]
+    fn foreign_doc_external_nav_is_gated_by_the_network_dimension() {
+        assert_eq!(external_nav_action(None), ExternalAction::Open);
+        assert_eq!(
+            external_nav_action(Some(DocGate { network: true })),
+            ExternalAction::Allow
+        );
+        assert_eq!(
+            external_nav_action(Some(DocGate { network: false })),
+            ExternalAction::Deny
+        );
+    }
+
+    /// `/doc-state` 桥载荷的解析与落闸：只认当前文档，晚到的旧文档上报不改新文档的
+    /// 裁决；`foreign=0`（外来壳离场）归还门栏。
+    #[test]
+    fn doc_state_reports_gate_only_the_current_doc() {
+        use tauri::Url;
+        let url =
+            |q: &str| Url::parse(&format!("http://hr-desktop.local/doc-state?{q}")).expect("url");
+
+        let mut gate = None;
+        let report = parse_doc_gate(&url("doc=a.html&foreign=1&net=0&t=x"));
+        apply_doc_gate(&mut gate, &report, "a.html");
+        assert_eq!(gate, Some(DocGate { network: false }));
+
+        let report = parse_doc_gate(&url("doc=a.html&foreign=1&net=1&t=x"));
+        apply_doc_gate(&mut gate, &report, "a.html");
+        assert_eq!(gate, Some(DocGate { network: true }));
+
+        let report = parse_doc_gate(&url("doc=a.html&foreign=1&net=0&t=x"));
+        apply_doc_gate(&mut gate, &report, "b.html");
+        assert_eq!(gate, Some(DocGate { network: true }));
+
+        let report = parse_doc_gate(&url("doc=b.html&foreign=0&net=0&t=x"));
+        apply_doc_gate(&mut gate, &report, "b.html");
+        assert_eq!(gate, None);
+    }
+
     #[test]
     fn doc_error_keeps_the_workspace_and_clears_only_the_document() {
         let root = std::env::temp_dir().join(format!("hr-win-docerr-{}", std::process::id()));
