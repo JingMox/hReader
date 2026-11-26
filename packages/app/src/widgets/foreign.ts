@@ -131,11 +131,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     return perms.scripts ? COPY.foreignDisallow : COPY.foreignAllow;
   };
 
-  const paintToggle = (
-    selector: string,
-    dim: "scripts" | "network",
-    label: string,
-  ): void => {
+  const paintToggle = (selector: string, dim: "scripts" | "network", label: string): void => {
     if (perms === undefined) return;
     const on = perms[dim];
     const controlled = perms.modes[dim] !== "per-doc";

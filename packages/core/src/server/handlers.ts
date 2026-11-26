@@ -262,7 +262,9 @@ export const docInfoReply = async (ctx: HandlerContext, docId: string): Promise<
     cls: classification.cls,
     // 冻结契约：`trust` 字段映射为"脚本是否生效"，老客户端语义不变。
     // Stryker disable next-line ConditionalExpression: perms===undefined 时 trust 恒 "off"，与分支同义。
-    ...(perms === undefined ? { trust: "off" as TrustLevel } : { trust: levelOfScripts(perms.effective.scripts) }),
+    ...(perms === undefined
+      ? { trust: "off" as TrustLevel }
+      : { trust: levelOfScripts(perms.effective.scripts) }),
     scripts: hasExecutableContent(parsed.root),
     // Stryker disable next-line ConditionalExpression: { permissions: undefined } 被 JSON.stringify 丢键，与 {} 同输出。
     ...(perms === undefined ? {} : { permissions: permissionInfo(perms) }),

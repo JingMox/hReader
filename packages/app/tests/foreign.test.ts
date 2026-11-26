@@ -52,8 +52,7 @@ const depsOf = (fake: FakeHost, over: Partial<ForeignDeps> = {}): ForeignDeps =>
   parent: ROOT,
   docId: "外 文档.html",
   info: { cls: "foreign", scripts: true, permissions: permsOf() },
-  setPermissions: (patch: PermissionPatch) =>
-    Promise.resolve({ ...permsOf(), ...patch }),
+  setPermissions: (patch: PermissionPatch) => Promise.resolve({ ...permsOf(), ...patch }),
   normalize: () => Promise.resolve(),
   theme: undefined,
   ...over,
@@ -221,9 +220,7 @@ describe("foreign · 权限开关", () => {
 
   it("should surface a failed write in the banner and keep the current state", async () => {
     const fake = createFakeHost();
-    mountForeign(
-      depsOf(fake, { setPermissions: () => Promise.reject(new Error("权限写入失败")) }),
-    );
+    mountForeign(depsOf(fake, { setPermissions: () => Promise.reject(new Error("权限写入失败")) }));
 
     fake.fire(PERM_SCRIPTS, "click", {});
     await flush();

@@ -63,8 +63,7 @@ const worldOf = async (
     targetOf,
     read: async (bytes = DOC_BYTES, doc = DOC) =>
       readDocGrant({ target: await targetOf(doc), bytes }, deps),
-    write: async (grant, doc = DOC) =>
-      writeDocGrant({ target: await targetOf(doc), grant }, deps),
+    write: async (grant, doc = DOC) => writeDocGrant({ target: await targetOf(doc), grant }, deps),
   };
 };
 

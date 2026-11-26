@@ -180,10 +180,7 @@ describe.skipIf(skip !== undefined)("permissions-journey", () => {
     );
     const body = await waitMsg("pp:readBody=");
     assert(body !== undefined, "readBody 消息缺失");
-    assert(
-      body === "pp:readBody=\"\"",
-      `凭据隔离：opaque 响应体应为空串，实际 ${body}`,
-    );
+    assert(body === 'pp:readBody=""', `凭据隔离：opaque 响应体应为空串，实际 ${body}`);
     // 默认 cors 读：服务端已 401 拒绝（无 hr cookie），无 ACAO → TypeError 没收。
     const readCors = await waitMsg("pp:readCors=", 5_000);
     assert(
@@ -191,10 +188,7 @@ describe.skipIf(skip !== undefined)("permissions-journey", () => {
       `默认模式 fetch 应被 CORS 没收响应，实际 ${String(readCors)}`,
     );
     const write = await waitMsg("pp:write=0:opaque");
-    assert(
-      write !== undefined,
-      `写请求应返回 opaque（拿到的是 ${JSON.stringify(await msgs())}）`,
-    );
+    assert(write !== undefined, `写请求应返回 opaque（拿到的是 ${JSON.stringify(await msgs())}）`);
     // 服务端视角的否决证据：iframe 里那次 POST 想把 scripts 关掉——grant 必须原样。
     const info = await infoOf("probe.html");
     const perms = info["permissions"] as Record<string, unknown> | undefined;
@@ -209,10 +203,7 @@ describe.skipIf(skip !== undefined)("permissions-journey", () => {
     );
     const setCookie = boot.headers.get("set-cookie") ?? "";
     assert(setCookie.includes("HttpOnly"), `会话 cookie 缺 HttpOnly：${setCookie}`);
-    assert(
-      setCookie.includes("SameSite=Strict"),
-      `会话 cookie 缺 SameSite=Strict：${setCookie}`,
-    );
+    assert(setCookie.includes("SameSite=Strict"), `会话 cookie 缺 SameSite=Strict：${setCookie}`);
   });
 
   test("脚本关+联网开：meta-CSP 覆写 / base 劫持 / 全部脚本向量静默", async () => {
@@ -226,7 +217,9 @@ describe.skipIf(skip !== undefined)("permissions-journey", () => {
     assert(csp.includes("img-src http: https:"), `network-on CSP 应放图片：${csp}`);
     assert(csp.includes("sandbox") && !csp.includes("allow-scripts"), "sandbox 不应带脚本");
 
-    await page.navigate(`http://127.0.0.1:${String(daemon.port)}/?doc=${encodeURIComponent("sneaky.html")}`);
+    await page.navigate(
+      `http://127.0.0.1:${String(daemon.port)}/?doc=${encodeURIComponent("sneaky.html")}`,
+    );
     await installCollector();
     const loaded = await page.wait(
       `(() => { const f = document.querySelector('#hr-foreign-frame'); return f && !f.hidden && f.getAttribute('sandbox') === ''; })()`,
@@ -241,7 +234,9 @@ describe.skipIf(skip !== undefined)("permissions-journey", () => {
   });
 
   test("全局接管：POST /api/permissions 广播 permissions.changed，底栏开关置灰", async () => {
-    await page.navigate(`http://127.0.0.1:${String(daemon.port)}/?doc=${encodeURIComponent("probe.html")}`);
+    await page.navigate(
+      `http://127.0.0.1:${String(daemon.port)}/?doc=${encodeURIComponent("probe.html")}`,
+    );
     await installCollector();
     await waitLive();
     const sse = await api.openSse();

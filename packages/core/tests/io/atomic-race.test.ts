@@ -89,14 +89,8 @@ describe("writeDocGrant · 并发合表", () => {
 
       // trust.lock 串行化读-改-写：两份授权都要落盘，而不是后者把整表覆盖回 {}。
       await Promise.all([
-        writeDocGrant(
-          { target: targetA, grant: { scripts: true, network: false } },
-          nodePatchDeps,
-        ),
-        writeDocGrant(
-          { target: targetB, grant: { scripts: false, network: true } },
-          nodePatchDeps,
-        ),
+        writeDocGrant({ target: targetA, grant: { scripts: true, network: false } }, nodePatchDeps),
+        writeDocGrant({ target: targetB, grant: { scripts: false, network: true } }, nodePatchDeps),
       ]);
 
       expect(await readDocGrant({ target: targetA, bytes }, nodePatchDeps)).toEqual({

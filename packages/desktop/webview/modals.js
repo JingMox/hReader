@@ -78,8 +78,7 @@ function buildModeOptionsHtml(current) {
   ];
   return opts
     .map(
-      ([v, label]) =>
-        `<option value="${v}" ${v === current ? "selected" : ""}>${label}</option>`,
+      ([v, label]) => `<option value="${v}" ${v === current ? "selected" : ""}>${label}</option>`,
     )
     .join("");
 }

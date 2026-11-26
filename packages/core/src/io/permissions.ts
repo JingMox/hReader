@@ -187,10 +187,8 @@ const SETTINGS_DIR = ".hreader";
 const SETTINGS_FILE = "permissions.json";
 const SETTINGS_LOCK = "settings.lock";
 
-export const settingsPathOf = (home: string): string =>
-  join(home, SETTINGS_DIR, SETTINGS_FILE);
-const settingsLockOf = (home: string): string =>
-  join(home, SETTINGS_DIR, "locks", SETTINGS_LOCK);
+export const settingsPathOf = (home: string): string => join(home, SETTINGS_DIR, SETTINGS_FILE);
+const settingsLockOf = (home: string): string => join(home, SETTINGS_DIR, "locks", SETTINGS_LOCK);
 
 const DEFAULT_MODES: GlobalModes = { scripts: "per-doc", network: "per-doc" };
 
@@ -242,10 +240,7 @@ export const writeGlobalModes = async (
       network: input.modes.network ?? current.network,
     };
     await mkdirOrFail(deps, dirname(path));
-    await writeAtomic(
-      { path, workspace, data: encodeUtf8(JSON.stringify(next)) },
-      deps,
-    );
+    await writeAtomic({ path, workspace, data: encodeUtf8(JSON.stringify(next)) }, deps);
     return next;
   });
 };

@@ -181,12 +181,15 @@ describe("doc permissions · 拒绝面", () => {
   });
 
   it("should answer 409 needs_normalize for a normalizable doc", async () => {
-    await withServer(async (ctx) => {
-      const { status, body } = await postDocPermissions(ctx.port, ctx.token, { scripts: true });
+    await withServer(
+      async (ctx) => {
+        const { status, body } = await postDocPermissions(ctx.port, ctx.token, { scripts: true });
 
-      expect(status).toBe(409);
-      expect(body).toMatchObject({ code: "needs_normalize" });
-    }, foreignSeed({ "doc.html": "<article><p>没有 id</p></article>" }));
+        expect(status).toBe(409);
+        expect(body).toMatchObject({ code: "needs_normalize" });
+      },
+      foreignSeed({ "doc.html": "<article><p>没有 id</p></article>" }),
+    );
   });
 
   it("should answer 400 invalid_payload when body.docId disagrees with the path", async () => {
@@ -340,15 +343,12 @@ describe("global permissions · 模式 × 单文档合成", () => {
     ["allow", CSP["on|off"]],
     ["deny", CSP["off|off"]],
     ["per-doc", CSP["off|off"]],
-  ])(
-    "should apply scripts mode %s over a denied doc grant",
-    async (mode, expected) => {
-      await withServer(async (ctx) => {
-        await postModes(ctx.port, ctx.token, { scripts: mode });
-        expect(await cspOf(ctx.port, ctx.token)).toBe(expected);
-      }, foreignSeed());
-    },
-  );
+  ])("should apply scripts mode %s over a denied doc grant", async (mode, expected) => {
+    await withServer(async (ctx) => {
+      await postModes(ctx.port, ctx.token, { scripts: mode });
+      expect(await cspOf(ctx.port, ctx.token)).toBe(expected);
+    }, foreignSeed());
+  });
 
   it("should let global allow override a denied doc grant, and global deny override a granted one", async () => {
     await withServer(async (ctx) => {

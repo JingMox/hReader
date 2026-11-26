@@ -311,7 +311,13 @@ describe("bootDocument · 权限对账", () => {
     expect(attrsOf(h, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
 
     // 外部改盘（比如改名）：按路径记的授权随之失效。
-    current = { revision: "r2", cls: "foreign", trust: "off", scripts: true, permissions: permsOf() };
+    current = {
+      revision: "r2",
+      cls: "foreign",
+      trust: "off",
+      scripts: true,
+      permissions: permsOf(),
+    };
     handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
     await flush();
 
@@ -360,7 +366,13 @@ describe("bootDocument · 权限对账", () => {
     await bootDocument(deps);
     expect(lastText(h, TEXT)).toBe(COPY.normalizableBanner);
 
-    current = { revision: "r2", cls: "foreign", trust: "off", scripts: true, permissions: permsOf() };
+    current = {
+      revision: "r2",
+      cls: "foreign",
+      trust: "off",
+      scripts: true,
+      permissions: permsOf(),
+    };
     handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
     await flush();
 

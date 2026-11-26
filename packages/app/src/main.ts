@@ -183,9 +183,7 @@ export const isDocPermissions = (value: unknown): value is DocPermissions =>
   isPermissionMode(value["modes"]["scripts"]) &&
   isPermissionMode(value["modes"]["network"]);
 
-const isPermissionsReply = (
-  value: unknown,
-): value is { readonly permissions: DocPermissions } =>
+const isPermissionsReply = (value: unknown): value is { readonly permissions: DocPermissions } =>
   isRecord(value) && isDocPermissions(value["permissions"]);
 
 /** `GET /api/doc/<id>/info`：启动分流的唯一依据；`permissions` 存在时必须形状完整。 */
@@ -394,9 +392,8 @@ export const bootDocumentWith = async (input: BootDocumentInput): Promise<Booted
       const body: Record<string, unknown> = {};
       if (patch.scripts !== undefined) body["scripts"] = patch.scripts;
       if (patch.network !== undefined) body["network"] = patch.network;
-      return (
-        await postJson(io, `/api/doc/${encoded}/permissions`, body, isPermissionsReply)
-      ).permissions;
+      return (await postJson(io, `/api/doc/${encoded}/permissions`, body, isPermissionsReply))
+        .permissions;
     },
     postNormalize: async () => {
       await postJson(io, `/api/doc/${encoded}/normalize`, {}, isNormalizeResponse);
