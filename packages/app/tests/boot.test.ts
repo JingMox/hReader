@@ -8,7 +8,7 @@ import { intentOf } from "../src/keys.ts";
 import { COPY } from "../src/widgets/copy.ts";
 
 const ROOT = "#hr-root";
-import type { BootDeps, ReaderIntent } from "./support/boot-harness.ts";
+import type { BootDeps, Harness, ReaderIntent } from "./support/boot-harness.ts";
 import {
   blocksOf,
   captureUnhandled,
@@ -248,5 +248,55 @@ describe("boot · 服务器没给任何主题", () => {
     await flush();
     expect(h.selectCalls).toEqual([{ theme: "manuscript", current: "manuscript" }]);
     booted.destroy();
+  });
+});
+
+describe("boot · 沉浸模式", () => {
+  const immersiveAttrs = (h: Harness): readonly string[] =>
+    h.fake.calls
+      .filter(
+        (call) =>
+          call.op === "attr" && call.args[0] === ROOT && call.args[1] === "data-hr-immersive",
+      )
+      .map((call) => call.args[2] ?? "<removed>");
+
+  it("should flip data-hr-immersive through i, the statusbar button and Escape", () => {
+    const h = harnessOf(true);
+    boot(h.deps);
+    expect(immersiveAttrs(h).at(-1)).toBe("<removed>");
+
+    h.type("i");
+    expect(h.store.get().immersive).toBe(true);
+    expect(immersiveAttrs(h).at(-1)).toBe("");
+
+    // 底栏按钮与快捷键同一个出口：再点一次退出沉浸。
+    h.fake.fire(`${ROOT} #hr-immersive-btn`, "click", {});
+    expect(h.store.get().immersive).toBe(false);
+    expect(immersiveAttrs(h).at(-1)).toBe("<removed>");
+
+    h.fake.fire(`${ROOT} #hr-immersive-btn`, "click", {});
+    expect(h.store.get().immersive).toBe(true);
+    h.type("Escape");
+    expect(h.store.get().immersive).toBe(false);
+    expect(immersiveAttrs(h).at(-1)).toBe("<removed>");
+  });
+
+  it("should paint the immersive button label and hint at mount", () => {
+    const h = harnessOf(true);
+    boot(h.deps);
+
+    const texts = h.fake.calls
+      .filter((call) => call.op === "text" && call.args[0] === `${ROOT} #hr-immersive-btn`)
+      .map((call) => call.args[1]);
+    const titles = h.fake.calls
+      .filter(
+        (call) =>
+          call.op === "attr" &&
+          call.args[0] === `${ROOT} #hr-immersive-btn` &&
+          call.args[1] === "title",
+      )
+      .map((call) => call.args[2]);
+    expect(texts).toEqual([COPY.immersive]);
+    expect(titles).toEqual([COPY.immersiveHint]);
   });
 });

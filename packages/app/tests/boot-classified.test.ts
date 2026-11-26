@@ -120,11 +120,12 @@ describe("bootDocument · 三类分流", () => {
     expect(attrsOf(h, FRAME, "sandbox")).toEqual([""]);
     expect(lastText(h, TEXT)).toContain(COPY.foreignReadonly);
     expect(lastText(h, `${ROOT} #hr-shortcuts`)).toBe(COPY.foreignShortcuts);
-    // model 系功能不接线：正文不注入、model/outline 不拉、键盘不绑、主题不选。
+    // model 系功能不接线：正文不注入、model/outline 不拉、主题不选。
+    // 键盘只绑一条（沉浸 i/Esc 与面板键共用的入口；块导航意图对空 blocks 自然空转）。
     expect(h.fake.ops()).not.toContain("html");
     expect(h.fetched.model).toBe(0);
     expect(h.fetched.outline).toBe(0);
-    expect(h.keysBound()).toBe(0);
+    expect(h.keysBound()).toBe(1);
     expect(pageCalls.count).toBe(0);
     expect(booted.selection).toBeUndefined();
 
@@ -142,6 +143,32 @@ describe("bootDocument · 三类分流", () => {
     expect(lastText(h, TEXT)).toBe(COPY.normalizableBanner);
     expect(lastText(h, ACTION)).toBe(COPY.normalizableAction);
     expect(h.fetched.model).toBe(0);
+  });
+
+  it("should flip data-hr-immersive through i and Escape in the foreign shell", async () => {
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo);
+    await bootDocument(deps);
+
+    const attrs = () =>
+      h.fake.calls
+        .filter(
+          (call) =>
+            call.op === "attr" && call.args[0] === ROOT && call.args[1] === "data-hr-immersive",
+        )
+        .map((call) => call.args[2] ?? "<removed>")
+        .at(-1);
+    // 外来壳没有首个派发：syncView 尚未跑，attr 还没写过（非沉浸即无属性）。
+    expect(attrs() ?? "<removed>").toBe("<removed>");
+
+    // 外来壳的沉浸与托管同源：i 进、Esc 出，意图走的还是 store.dispatch。
+    h.type("i");
+    expect(h.store.get().immersive).toBe(true);
+    expect(attrs()).toBe("");
+
+    h.type("Escape");
+    expect(h.store.get().immersive).toBe(false);
+    expect(attrs()).toBe("<removed>");
   });
 });
 

@@ -39,6 +39,50 @@ describe("intentOf · 单键命令", () => {
   });
 });
 
+describe("intentOf · 沉浸模式", () => {
+  const immersed = (over: Partial<ReaderState> = {}) => stateOf({ immersive: true, ...over });
+
+  it("should toggle immersive on i in reading mode", () => {
+    expect(intentOf(key("i"), stateOf())).toEqual({ kind: "immersiveToggled" });
+  });
+
+  it("should exit immersive on i or Escape", () => {
+    expect(intentOf(key("i"), immersed())).toEqual({ kind: "immersiveToggled" });
+    expect(intentOf(key("Escape"), immersed())).toEqual({ kind: "immersiveToggled" });
+  });
+
+  it("should prefer exiting immersive over closing a panel on Escape", () => {
+    // 侧栏/面板在沉浸里不可见；Esc 先退沉浸，下一次 Esc 才轮到 panelClosed。
+    expect(intentOf(key("Escape"), immersed({ panel: "sidenote", sidenoteId: "hr-a" }))).toEqual({
+      kind: "immersiveToggled",
+    });
+  });
+
+  it("should keep the other reading keys working while immersed", () => {
+    expect(intentOf(key("j"), immersed())).toEqual({ kind: "move", delta: 1 });
+    expect(intentOf(key("p"), immersed())).toEqual({ kind: "presentEntered" });
+  });
+
+  it("should not respond to i while presenting", () => {
+    const presenting = stateOf({ present: { active: true, page: 0 }, pages: ["a"] });
+    expect(intentOf(key("i"), presenting)).toBeUndefined();
+    // 演示 + 沉浸叠态同样不响应：演示壳独占键盘，Esc 先退演示。
+    expect(intentOf(key("i"), { ...presenting, immersive: true })).toBeUndefined();
+    expect(intentOf(key("Escape"), { ...presenting, immersive: true })).toEqual({
+      kind: "presentExited",
+    });
+  });
+
+  it("should suppress i with modifiers and inside editable targets", () => {
+    expect(intentOf(key("i", { metaKey: true }), stateOf())).toBeUndefined();
+    expect(intentOf(key("i", { ctrlKey: true }), stateOf())).toBeUndefined();
+    expect(intentOf(key("i", { target: { tagName: "INPUT" } }), stateOf())).toBeUndefined();
+    expect(
+      intentOf(key("i", { target: { tagName: "DIV", isContentEditable: true } }), stateOf()),
+    ).toBeUndefined();
+  });
+});
+
 describe("intentOf · 演示态按键", () => {
   const presenting = (over: Partial<ReaderState> = {}) =>
     stateOf({ present: { active: true, page: 1 }, pages: ["a", "b", "c"], ...over });

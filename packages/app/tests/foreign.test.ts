@@ -69,6 +69,7 @@ describe("foreign · 挂载与横幅", () => {
     expect(attrsOf(fake, FRAME, "sandbox")).toEqual([""]);
     expect(attrsOf(fake, FRAME, "hidden")).toEqual(["<removed>"]);
     expect(attrsOf(fake, FRAME, "title")).toEqual([COPY.foreignFrameTitle]);
+    expect(attrsOf(fake, FRAME, "allow")).toEqual(["fullscreen"]);
     expect(attrsOf(fake, ROOT, "data-hr-doc")).toEqual(["framed"]);
     expect(attrsOf(fake, BANNER, "hidden")).toEqual(["<removed>"]);
 

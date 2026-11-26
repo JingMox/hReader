@@ -115,6 +115,7 @@ describe("main · 外来文档首屏", () => {
     expect(frame?.attrs.get("src")).toBe("/s/doc.html");
     expect(frame?.attrs.get("sandbox")).toBe("");
     expect(frame?.attrs.get("referrerpolicy")).toBe("no-referrer");
+    expect(frame?.attrs.get("allow")).toBe("fullscreen");
     expect(frame?.attrs.has("hidden")).toBe(false);
     expect(el(TEXT)?.textContent).toContain(COPY.foreignReadonly);
     expect(el(TEXT)?.textContent).toContain(COPY.foreignNoEdit);

@@ -238,3 +238,28 @@ describe("reduce · 主题失败回退", () => {
     );
   });
 });
+
+describe("reduce · 沉浸模式", () => {
+  it("should toggle immersive on and back off", () => {
+    const on = reduce(stateOf(), { kind: "immersiveToggled" });
+    expect(on.immersive).toBe(true);
+    const off = reduce(on, { kind: "immersiveToggled" });
+    expect(off.immersive).toBe(false);
+  });
+
+  it("should keep present state and panels untouched while toggling", () => {
+    const base = stateOf({
+      present: { active: true, page: 1 },
+      pages: ["a", "b", "c"],
+      panel: "sidenote",
+      sidenoteId: "hr-a",
+    });
+    const next = reduce(base, { kind: "immersiveToggled" });
+
+    // 沉浸只翻自己这一位：演示态、面板、活动块原样保留（叠态的组合行为在 keys 层钉过）。
+    expect(next.immersive).toBe(true);
+    expect(next.present).toEqual(base.present);
+    expect(next.panel).toBe("sidenote");
+    expect(next.activeId).toBe(base.activeId);
+  });
+});
