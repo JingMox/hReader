@@ -25,6 +25,11 @@ export const mountStatusbar = (
   host.on(`${parent} #hr-immersive-btn`, "click", () => {
     onIntent?.({ kind: "immersiveToggled" });
   });
+  // 顶边热区浮出的兜底出口：iframe 拿焦会吃掉 Esc/i，与底栏按钮同一个意图。
+  host.text(`${parent} #hr-immersive-exit`, COPY.immersiveExit);
+  host.on(`${parent} #hr-immersive-exit`, "click", () => {
+    onIntent?.({ kind: "immersiveToggled" });
+  });
 
   let conn: ConnState | undefined = undefined;
   const update = (next: ReaderState): void => {

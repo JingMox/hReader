@@ -352,6 +352,40 @@ body {
   box-sizing: border-box;
 }
 
+/* 沉浸兜底出口（`#hr-immersive-exit`）：iframe 拿焦时 Esc/i 到不了壳，这是唯一的
+   退出通道。非沉浸态整颗不画（不占 tab 序）；沉浸态它是一条横跨顶边的 8px 透明
+   热区——悬停或键盘聚焦（`:focus`）时长成顶栏按钮。不用 `visibility:hidden`：
+   那样它会被移出 tab 序，"键盘也要能聚焦"就断了；`opacity:0` 保持可聚焦。 */
+#hr-immersive-exit {
+  display: none;
+}
+
+#hr-root[data-hr-immersive] #hr-immersive-exit {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 20;
+  opacity: 0;
+  padding: 0;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--hr-ink);
+  background: var(--hr-paper);
+  border: 0;
+  border-bottom: 1px solid var(--hr-rule);
+}
+
+#hr-root[data-hr-immersive] #hr-immersive-exit:hover,
+#hr-root[data-hr-immersive] #hr-immersive-exit:focus {
+  height: auto;
+  min-height: 26px;
+  padding: 4px 10px;
+  opacity: 1;
+}
+
 /* 1100px 折点：两栏（书库折叠成抽屉），旁注落到正文下方。 */
 @media (max-width: 1100px) {
   #hr-root {

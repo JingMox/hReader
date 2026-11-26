@@ -58,6 +58,8 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-immersive-btn",
   "#hr-shortcuts",
   "#hr-hint",
+  // 沉浸模式的兜底出口（顶边热区按钮；iframe 拿焦吃掉 Esc/i 时的唯一退路）
+  "#hr-immersive-exit",
 ];
 
 /** 只被容器语义使用的锚点：内容由子元素或服务端渲染填充，JS 不直接写它们。

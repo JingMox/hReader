@@ -9,6 +9,9 @@
   <body>
     <style id="hr-theme"></style>
     <div id="hr-root">
+      <!-- 沉浸模式的兜底出口：iframe 拿焦会吃掉 Esc/i，壳收不到 keydown。
+           平时是顶边 8px 透明热区，悬停/聚焦长成顶栏按钮；只画在沉浸态。 -->
+      <button id="hr-immersive-exit" type="button"></button>
       <aside id="hr-library" class="library">
         <h2 id="hr-lib-title"></h2>
         <label id="hr-search-label" for="hr-search">搜索</label>

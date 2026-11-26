@@ -33,4 +33,5 @@ export const COPY = {
   permControlled: "由设置统一控制",
   immersive: "沉浸",
   immersiveHint: "沉浸模式（i 进入，Esc 退出）",
+  immersiveExit: "退出沉浸",
 } as const;
