@@ -115,23 +115,29 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
   };
 
   /**
-   * Install beacon/probe collectors and a load counter on the iframe element.
-   * Must be re-installed after every navigate: the execution context dies with it.
+   * Beacon/probe collectors and the iframe load counter, installed as an
+   * init script: it runs before any page or iframe script on every new
+   * document, so parse-time postMessages and early load events can never
+   * outrun the listeners (a post-navigate eval can, under load).
    */
-  const installCollectors = async (): Promise<void> => {
-    await page.eval(`(() => {
-      window.__pp = [];
-      window.addEventListener('message', (e) => {
-        if (e.data === 'landed' || (typeof e.data === 'string' && e.data.startsWith('probe:'))) {
-          window.__pp.push(e.data);
-        }
-      });
+  const COLLECTOR_SOURCE = `(() => {
+    window.__pp = [];
+    window.__loads = 0;
+    window.addEventListener('message', (e) => {
+      if (e.data === 'landed' || (typeof e.data === 'string' && e.data.startsWith('probe:'))) {
+        window.__pp.push(e.data);
+      }
+    });
+    const attach = () => {
       const f = document.querySelector('#hr-foreign-frame');
-      window.__loads = 0;
-      if (f) f.addEventListener('load', () => { window.__loads += 1; });
-      return true;
-    })()`);
-  };
+      if (f && !f.__hrLc) {
+        f.__hrLc = true;
+        f.addEventListener('load', () => { window.__loads += 1; });
+      }
+    };
+    new MutationObserver(attach).observe(document, { childList: true, subtree: true });
+    attach();
+  })()`;
 
   const msgs = async (): Promise<string[]> => {
     const value = await page.eval(`Array.isArray(window.__pp) ? window.__pp : []`);
@@ -194,6 +200,7 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
     api = await connect(daemon.port, daemon.token);
     browser = await launchBrowser();
     page = await browser.open(daemon.url);
+    await page.onNewDocument(COLLECTOR_SOURCE);
     // Beacon and self-nav docs need the scripts dimension to act; the network
     // dimension is set per test.
     await grant("nav-target.html", { scripts: true });
@@ -214,7 +221,6 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
 
   test("should reset the frame and show a blocked banner when a meta refresh self-navigates same-origin with network off", async () => {
     await page.navigate(urlOf("nav-meta.html"));
-    await installCollectors();
     await waitFrame();
     await waitBlocked();
     const src = await frameSrc();
@@ -226,7 +232,6 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
 
   test("should reset the frame when a target=_self link self-navigates same-origin with network off", async () => {
     await page.navigate(urlOf("nav-self.html"));
-    await installCollectors();
     await waitFrame();
     await waitBlocked();
     const src = await frameSrc();
@@ -235,7 +240,6 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
 
   test("should reset the frame when location= self-navigates same-origin with network off", async () => {
     await page.navigate(urlOf("nav-loc.html"));
-    await installCollectors();
     await waitFrame();
     await waitBlocked();
     const src = await frameSrc();
@@ -245,7 +249,6 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
   test("should let a same-origin self-navigation commit in-frame with network on", async () => {
     await grant("nav-meta.html", { network: true });
     await page.navigate(urlOf("nav-meta.html"));
-    await installCollectors();
     await waitFrame();
     // The initial /s/ load and the meta-refresh nav both hit the counter:
     // >=2 means the nav committed unblocked.
@@ -273,7 +276,6 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
   test("should see zero external hits when a meta refresh targets cross-origin (shell frame-src vetoes first)", async () => {
     const before = ext.hits.length;
     await page.navigate(urlOf("nav-meta-xo.html"));
-    await installCollectors();
     await waitFrame();
     // Give refresh + the vetoed nav a window to fire; hits staying at 0 is the proof.
     await new Promise((resolve) => setTimeout(resolve, 2500));
@@ -286,7 +288,6 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
 
   test("should never fire a same-origin meta refresh when scripts are off", async () => {
     await page.navigate(urlOf("nav-meta-so.html"));
-    await installCollectors();
     await waitFrame();
     await new Promise((resolve) => setTimeout(resolve, 2500));
     assertEq(
@@ -299,7 +300,6 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
 
   test("should land a parse-time location= only on a credentialless dead page when it steals the mount credit", async () => {
     await page.navigate(urlOf("nav-loc-early.html"));
-    await installCollectors();
     await waitFrame();
     await waitMsg("probe:assigned");
     await new Promise((resolve) => setTimeout(resolve, 800));
