@@ -19,6 +19,17 @@ const { version } = JSON.parse(
   readFileSync(join(import.meta.dirname, "../../../packages/app/package.json"), "utf8"),
 ) as { readonly version: string };
 
+/** The only tolerable error entry: `http 404: <url>` where the URL path is exactly /favicon.ico. */
+const isFavicon404 = (entry: string): boolean => {
+  const url = /^http 404: (\S+)$/.exec(entry)?.[1];
+  if (url === undefined) return false;
+  try {
+    return new URL(url).pathname === "/favicon.ico";
+  } catch {
+    return false;
+  }
+};
+
 const skip = chromeSkipReason();
 describe.skipIf(skip !== undefined)("version-journey", () => {
   const DOC = "doc.hr.html";
@@ -55,8 +66,11 @@ describe.skipIf(skip !== undefined)("version-journey", () => {
     const ready = await page.wait(`document.querySelector('#hr-doc') !== null`);
     assert(ready !== false, "reader did not render #hr-doc within 20s");
     // favicon.ico 404s on every load (the server ships no icon) — pre-existing, not a
-    // module failure; everything else must be clean.
-    const errors = page.consoleErrors().filter((entry) => !entry.includes("favicon.ico"));
+    // module failure; everything else must be clean. The whitelist admits only that one
+    // record shape: an `http 404:` entry whose URL path is exactly /favicon.ico. A
+    // substring match would also hide a real failure at e.g. /assets/favicon.ico.png or
+    // a 500 on the same path.
+    const errors = page.consoleErrors().filter((entry) => !isFavicon404(entry));
     assert(errors.length === 0, `console errors / failed requests: ${JSON.stringify(errors)}`);
   });
 });
