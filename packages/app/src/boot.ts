@@ -420,9 +420,8 @@ const foreignSseOf = (store: Store, foreign: ForeignHandle, resync: () => void):
 const reportDocGate = (gate: DocGate): void => {
   // 浏览器外（单测）没有 window：桌面上下文必缺席，与无令牌同一条早退路。
   if (typeof window === "undefined") return;
-  const token = (
-    window as { __HR_DESKTOP_CTX__?: { bridgeToken?: string } }
-  ).__HR_DESKTOP_CTX__?.bridgeToken;
+  const token = (window as { __HR_DESKTOP_CTX__?: { bridgeToken?: string } }).__HR_DESKTOP_CTX__
+    ?.bridgeToken;
   if (typeof token !== "string" || token === "") return;
   const query = `doc=${encodeURIComponent(gate.docId)}&foreign=${gate.foreign ? "1" : "0"}&net=${
     gate.network ? "1" : "0"

@@ -250,7 +250,10 @@ describe.skipIf(skip !== undefined)("foreign-nav-guard", () => {
     // The initial /s/ load and the meta-refresh nav both hit the counter:
     // >=2 means the nav committed unblocked.
     const settled = await page.wait(`window.__loads >= 2`, 20_000);
-    assert(settled === true, `self-nav did not commit with network on (loads=${String(await loadCount())})`);
+    assert(
+      settled === true,
+      `self-nav did not commit with network on (loads=${String(await loadCount())})`,
+    );
     assertEq(await errorText(), "", "blocked banner must not appear with network on");
     const src = await frameSrc();
     assert(

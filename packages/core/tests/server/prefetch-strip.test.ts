@@ -87,7 +87,13 @@ describe("/s/ responses · prefetch link stripping", () => {
     await withServer(async (ctx) => {
       const res = await serveDoc(ctx.port, ctx.token);
 
-      for (const token_ of ["dns-prefetch", "preconnect", "prefetch", "prerender", "modulepreload"]) {
+      for (const token_ of [
+        "dns-prefetch",
+        "preconnect",
+        "prefetch",
+        "prerender",
+        "modulepreload",
+      ]) {
         expect(res.body, `rel=${token_} must be stripped`).not.toContain(token_);
       }
       // 非预取类的 <link> 不属于残余通道：canonical 照常下发。
@@ -160,7 +166,8 @@ describe("stripPrefetchLinks · unit edge cases", () => {
   });
 
   it("should survive malformed markup without throwing", () => {
-    const html = '<link rel="dns-prefetch" href="//a"><link rel="preconnect" href="//b"><div unclosed';
+    const html =
+      '<link rel="dns-prefetch" href="//a"><link rel="preconnect" href="//b"><div unclosed';
     const out = stripPrefetchLinks(html);
 
     expect(out).not.toContain("//a");
@@ -168,8 +175,7 @@ describe("stripPrefetchLinks · unit edge cases", () => {
   });
 
   it("should remove only the link element span and keep surrounding bytes", () => {
-    const html =
-      "<head>x<link rel='prefetch' href='//a'>y</head>";
+    const html = "<head>x<link rel='prefetch' href='//a'>y</head>";
     const out = stripPrefetchLinks(html);
 
     expect(out).toBe("<head>xy</head>");
