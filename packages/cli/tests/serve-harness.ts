@@ -13,7 +13,7 @@ import type { Readable } from "node:stream";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { fieldOf, MAIN } from "./harness";
+import { fieldOf, MAIN } from "./harness.ts";
 
 const START_TIMEOUT_MS = 15_000;
 
