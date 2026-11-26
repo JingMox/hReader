@@ -20,6 +20,7 @@ const WORKBENCH_JS_MODULES: &[&str] = &[
     include_str!("../../../webview/modals.js"),
     include_str!("../../../webview/sidebar.js"),
     include_str!("../../../webview/statusbar.js"),
+    include_str!("../../../webview/immersive.js"),
     include_str!("../../../webview/menu-shortcuts.js"),
     include_str!("../../../webview/bootstrap.js"),
 ];

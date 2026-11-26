@@ -186,6 +186,7 @@ function setupWorkbench() {
   hrd.buildSidebarEnhancements();
   hrd.buildNotesDrawerChrome();
   hrd.buildStatusbarEnhancements();
+  hrd.wireImmersiveSync();
   hrd.ensureGutter();
   hrd.ensureSelectionPopover();
   hrd.updateDocBadge();

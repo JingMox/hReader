@@ -491,6 +491,18 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             "专注模式",
             Some("CmdOrCtrl+Shift+F"),
         )?)
+        .item(&item(
+            app,
+            "toggle-immersive",
+            "沉浸模式",
+            Some("CmdOrCtrl+Shift+I"),
+        )?)
+        .item(&item(
+            app,
+            "toggle-native-fullscreen",
+            "进入全屏",
+            Some(NATIVE_FULLSCREEN_ACCEL),
+        )?)
         .separator()
         .item(&item(app, "reload", "刷新窗口视图", Some("CmdOrCtrl+R"))?)
         .build()?;
@@ -530,11 +542,21 @@ fn reload_themes(app: &tauri::AppHandle, shared: &SharedState) {
     }
 }
 
+/// 原生全屏的菜单键：macOS 沿用系统习惯 `^⌘F`，其他平台给 F11。
+#[cfg(target_os = "macos")]
+const NATIVE_FULLSCREEN_ACCEL: &str = "Ctrl+CmdOrCtrl+F";
+#[cfg(not(target_os = "macos"))]
+const NATIVE_FULLSCREEN_ACCEL: &str = "F11";
+
 fn handle_menu_event(app: &tauri::AppHandle, shared: &SharedState, id: &str) {
     let Some(win) = app.get_webview_window("main") else {
         return;
     };
     match id {
+        "toggle-native-fullscreen" => {
+            let next = !win.is_fullscreen().unwrap_or(false);
+            let _ = win.set_fullscreen(next);
+        }
         "pick-file" => pick_file_async(app.clone(), Arc::clone(shared)),
         "pick-folder" => pick_folder_async(app.clone(), Arc::clone(shared)),
         "welcome" => open_welcome(app.clone(), Arc::clone(shared)),
