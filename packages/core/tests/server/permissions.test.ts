@@ -558,46 +558,52 @@ describe("doc permissions · opaque-origin and hostile-key adversarial", () => {
   it("should run the full grant flow for a doc literally named __proto__", async () => {
     // A foreign doc named `__proto__` is legal on disk and as a trust.json
     // key: it must work end to end without leaking into other docs' reads.
-    await withServer(async (ctx) => {
-      const { status } = await postDocPermissions(
-        ctx.port,
-        ctx.token,
-        { scripts: true },
-        "__proto__",
-      );
-      expect(status).toBe(200);
-      expect(await cspOf(ctx.port, ctx.token, "__proto__")).toBe(CSP["on|off"]);
+    await withServer(
+      async (ctx) => {
+        const { status } = await postDocPermissions(
+          ctx.port,
+          ctx.token,
+          { scripts: true },
+          "__proto__",
+        );
+        expect(status).toBe(200);
+        expect(await cspOf(ctx.port, ctx.token, "__proto__")).toBe(CSP["on|off"]);
 
-      const table: unknown = JSON.parse(
-        readFileSync(join(ctx.workspace, ".hreader", "trust.json"), "utf8"),
-      );
-      expect(Object.hasOwn(table as object, "__proto__")).toBe(true);
-      // A doc without a grant still reads denied: no prototype-slot leakage.
-      expect(await cspOf(ctx.port, ctx.token, "other.html")).toBe(CSP["off|off"]);
-      // An object-literal `__proto__:` key sets the prototype instead of
-      // seeding the file, so the seed map is built via fromEntries.
-    }, foreignSeed(
-      Object.fromEntries([
-        ["doc.html", FOREIGN],
-        ["other.html", FOREIGN],
-        ["__proto__", FOREIGN],
-      ]),
-    ));
+        const table: unknown = JSON.parse(
+          readFileSync(join(ctx.workspace, ".hreader", "trust.json"), "utf8"),
+        );
+        expect(Object.hasOwn(table as object, "__proto__")).toBe(true);
+        // A doc without a grant still reads denied: no prototype-slot leakage.
+        expect(await cspOf(ctx.port, ctx.token, "other.html")).toBe(CSP["off|off"]);
+        // An object-literal `__proto__:` key sets the prototype instead of
+        // seeding the file, so the seed map is built via fromEntries.
+      },
+      foreignSeed(
+        Object.fromEntries([
+          ["doc.html", FOREIGN],
+          ["other.html", FOREIGN],
+          ["__proto__", FOREIGN],
+        ]),
+      ),
+    );
   });
 
   it("should keep grants for two different docs written in parallel on the shared table", async () => {
     // Both docs share one trust.json; the lock must serialize the merges so
     // neither grant is lost.
-    await withServer(async (ctx) => {
-      const [a, b] = await Promise.all([
-        postDocPermissions(ctx.port, ctx.token, { scripts: true }, "doc.html"),
-        postDocPermissions(ctx.port, ctx.token, { network: true }, "other.html"),
-      ]);
+    await withServer(
+      async (ctx) => {
+        const [a, b] = await Promise.all([
+          postDocPermissions(ctx.port, ctx.token, { scripts: true }, "doc.html"),
+          postDocPermissions(ctx.port, ctx.token, { network: true }, "other.html"),
+        ]);
 
-      expect(a.status).toBe(200);
-      expect(b.status).toBe(200);
-      expect(await cspOf(ctx.port, ctx.token, "doc.html")).toBe(CSP["on|off"]);
-      expect(await cspOf(ctx.port, ctx.token, "other.html")).toBe(CSP["off|on"]);
-    }, foreignSeed({ "doc.html": FOREIGN, "other.html": FOREIGN }));
+        expect(a.status).toBe(200);
+        expect(b.status).toBe(200);
+        expect(await cspOf(ctx.port, ctx.token, "doc.html")).toBe(CSP["on|off"]);
+        expect(await cspOf(ctx.port, ctx.token, "other.html")).toBe(CSP["off|on"]);
+      },
+      foreignSeed({ "doc.html": FOREIGN, "other.html": FOREIGN }),
+    );
   });
 });

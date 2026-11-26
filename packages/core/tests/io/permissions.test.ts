@@ -435,10 +435,11 @@ describe("permissions · hostile key names (__proto__/prototype slots)", () => {
     // `"__proto__":{grant}`. It may only be the grant of the doc named
     // `__proto__`; other docs (including names like `scripts` that collide
     // with prototype slots) must never inherit it.
-    const world = worldOf(
-      { [TRUST_PATH]: '{"__proto__":{"scripts":true,"network":true}}' },
-      [DOC, "scripts", "__proto__"],
-    );
+    const world = worldOf({ [TRUST_PATH]: '{"__proto__":{"scripts":true,"network":true}}' }, [
+      DOC,
+      "scripts",
+      "__proto__",
+    ]);
 
     expect(await world.read()).toEqual(DENIED);
     expect(await world.read(DOC_BYTES, "scripts")).toEqual(DENIED);
@@ -510,10 +511,10 @@ describe("permissions · 迁移与怪异但合法的路径", () => {
   it("should migrate each path independently when two docs share one legacy sha grant", async () => {
     // Two identical files share one legacy sha key: each read migrates only its
     // own path, and the shared sha stays for any doc that has not migrated yet.
-    const world = worldOf(
-      { [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "local" }) },
-      ["a.html", "b.html"],
-    );
+    const world = worldOf({ [TRUST_PATH]: JSON.stringify({ [sha256Of(DOC_BYTES)]: "local" }) }, [
+      "a.html",
+      "b.html",
+    ]);
 
     expect(await world.read(DOC_BYTES, "a.html")).toEqual({ scripts: true, network: false });
     expect(await world.read(DOC_BYTES, "b.html")).toEqual({ scripts: true, network: false });

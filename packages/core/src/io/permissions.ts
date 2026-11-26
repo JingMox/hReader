@@ -127,8 +127,7 @@ const tableOf = async (deps: PatchDeps, path: string): Promise<TrustTable> => {
   if (typeof parsed !== "object" || parsed === null) return emptyTable();
   const table = emptyTable();
   for (const [key, value] of Object.entries(parsed)) {
-    if (isGrantShape(value))
-      table.grants[key] = { scripts: value.scripts, network: value.network };
+    if (isGrantShape(value)) table.grants[key] = { scripts: value.scripts, network: value.network };
     else if (isLegacyLevel(value)) table.legacy[key] = value;
   }
   return table;
