@@ -14,7 +14,6 @@ export { patchFile } from "./patch-file";
 export type { Clock, FileStat, FileSystem, PatchDeps } from "./ports";
 export {
   effectiveOf,
-  grantOfLevel,
   levelOfScripts,
   patchDocGrant,
   readDocGrant,

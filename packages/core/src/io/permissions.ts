@@ -67,11 +67,6 @@ export const effectiveOf = (modes: GlobalModes, grant: DocGrant): EffectivePermi
   networkSource: modes.network === "per-doc" ? "doc" : "global",
 });
 
-export const grantOfLevel = (level: TrustLevel): DocGrant => ({
-  scripts: level === "local",
-  network: false,
-});
-
 export const levelOfScripts = (scripts: boolean): TrustLevel => (scripts ? "local" : "off");
 
 // ---- 单文档授权：`<workspace>/.hreader/trust.json`，键 = `ResolvedTarget.relative` ----
