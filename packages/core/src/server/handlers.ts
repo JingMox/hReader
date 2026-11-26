@@ -17,7 +17,6 @@ import {
   patchDocGrant,
   readDocGrant,
   readGlobalModes,
-  writeDocGrant,
   writeGlobalModes,
   type DocGrant,
   type EffectivePermissions,
