@@ -82,6 +82,12 @@ const FORBIDDEN = [
     label: "import.meta module resolution (import.meta.resolve)",
     re: /\bimport\.meta\.resolve\b/,
   },
+  {
+    // Same list as eslint's no-restricted-globals for packages/app/src, reached through
+    // globalThis: member access carries no bare identifier, so it dodges the globals ban.
+    label: "Node globals via globalThis (globalThis.<node global>)",
+    re: /\bglobalThis\.(process|Buffer|__dirname|__filename|global|require|module|exports|setImmediate|clearImmediate)\b/,
+  },
 ];
 
 const jsFilesOf = async (dir) => {
