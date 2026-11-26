@@ -49,9 +49,6 @@ const buildDocument = (sections: number): string => {
 const wide = (paragraphs: number): string =>
   `<article>${Array.from({ length: paragraphs }, (_, index) => `<p>第 ${String(index)} 段</p>`).join("\n")}</article>`;
 
-/** 空载机器上 `buildDocument(300)` 走完整条流水线的耗时（毫秒）：校准系数的分母。 */
-const IDLE_REFERENCE_MS = 4;
-
 /**
  * Milliseconds of CPU time burned by this process (user+system). Unlike wall
  * time it is not inflated by scheduling stalls, so a bound on it holds under
@@ -178,8 +175,10 @@ describe("toDocumentModel · 深度与性能", () => {
 
   // 抗噪形态：**交错取样**。每一轮先测 1/10 参考、紧接着测 1MB 大文档，两端在相邻时间窗里
   // 吃同一份 CPU 争用，因此 `big/ref` 的比值稳定（线性 ≈10）；GC 成本按分配量增长，做比值时同比例抵消。
-  // 绝对值门禁仍用"参考耗时推出的减速系数"，但系数取 5 轮里的最小值（争用是单向抬高）。
-  it("should keep a 1MB document under 200ms and grow linearly against a 1/10 reference", () => {
+  // The absolute `200ms` half of this case moved to tests/perf/model.perf.test.ts:
+  // an absolute budget false-reds under v8 coverage instrumentation. The ratio
+  // stays — it is instrumentation-invariant.
+  it("should grow linearly against a 1/10 reference on a 1MB document", () => {
     const referenceHtml = buildDocument(300);
     const bigHtml = buildDocument(3000);
 
@@ -187,34 +186,18 @@ describe("toDocumentModel · 深度与性能", () => {
     measure(bigHtml);
     measure(referenceHtml);
     let ratio = Number.POSITIVE_INFINITY;
-    let bestBig = Number.POSITIVE_INFINITY;
-    let bestReference = Number.POSITIVE_INFINITY;
     for (let window = 0; window < 5; window += 1) {
       const reference = measure(referenceHtml);
       const big = measure(bigHtml);
-      bestReference = Math.min(bestReference, reference);
-      bestBig = Math.min(bestBig, big);
       ratio = Math.min(ratio, big / reference);
     }
-    const slowdown = Math.min(Math.max(bestReference / IDLE_REFERENCE_MS, 1), 8);
 
-    expect(
-      bestBig,
-      `${String(bigHtml.length)} chars took ${bestBig.toFixed(1)}ms cpu (reference ${bestReference.toFixed(1)}ms)`,
-    ).toBeLessThan(200 * slowdown);
     // 体量 10 倍：线性 ≈10，平方 ≈100。
     expect(ratio, `best big/reference ratio ${ratio.toFixed(1)}`).toBeLessThan(14);
   }, 120_000);
 });
 
 describe("toDocumentModel · 深度与性能 · 续", () => {
-  it("should stay under a coarse ceiling on a node-dense 1MB document", () => {
-    const html = wide(64_000);
-
-    expect(html.length).toBeGreaterThan(1_000_000);
-    expect(fastest(html, 2)).toBeLessThan(8_000);
-  }, 30_000);
-
   it("should stay close to linear in the number of blocks", () => {
     fastest(wide(5_000), 1);
     const small = fastest(wide(10_000), 2);

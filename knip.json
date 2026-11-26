@@ -34,7 +34,8 @@
         "skills/hreader/scripts/hr.mjs",
         "scripts/**/*.ts",
         "scripts/**/*.mjs",
-        "tests/integration/**/*.ts"
+        "tests/integration/**/*.ts",
+        "tests/perf/**/*.ts"
       ]
     },
     "packages/app": {

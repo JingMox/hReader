@@ -120,10 +120,12 @@ const growthPair = (
 // 不用 t(4000)/t(500)：分母 0.3~1.5ms，与分子不在同一时间窗，实测比值 2.7~7.3 乱跳，曾 16.35/16 假红。
 describe("inject · 深嵌套耗时近似线性", () => {
   it("should grow linearly (not quadratically) with nesting depth", () => {
-    const { growth, deep } = growthPair(1000, 4000);
+    const { growth } = growthPair(1000, 4000);
 
+    // The absolute `deep < 200ms` half of this case moved to
+    // tests/perf/html.perf.test.ts: an absolute budget false-reds under v8
+    // coverage instrumentation. The ratio stays — it is instrumentation-invariant.
     expect(growth, `t(4000)/t(1000) = ${growth.toFixed(2)}`).toBeLessThan(6);
-    expect(deep).toBeLessThan(200);
   }, 120_000);
 
   it("should inject an id into every nested <div> regardless of depth", () => {

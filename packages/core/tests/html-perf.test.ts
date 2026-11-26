@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { injectNodeIds, parseHtml, serializeHtml } from "../src/index";
 
-const BUDGET_MS = 300;
 const TIMEOUT_MS = 120_000;
 
 /**
@@ -47,18 +46,10 @@ const fastest = (html: string, runs: number): number => {
   return best;
 };
 
-// Self-calibration of the 300ms CPU bound: coverage instrumentation slows
-// `src/**` as a whole (~4x measured), so a bare absolute bound would false-red
-// there. Budget = max(300ms, CPU cost of the same pipeline at 1/4 size * 8).
-// A real O(n^2) regression would also trip the next case's large/small ratio
-// gate and the 8x relation here.
-const budgetFor = (html: string): { readonly cost: number; readonly budget: number } => {
-  fastest(buildDocument(20), 2);
-  const quarterCost = fastest(buildDocument(750), 3);
-  const cost = fastest(html, 3);
-  return { cost, budget: Math.max(BUDGET_MS, quarterCost * 8) };
-};
-
+// The absolute 300ms gate of this scenario moved to tests/perf/html.perf.test.ts:
+// v8 coverage instrumentation slows `src/**` as a whole (~4x measured), so a
+// bare absolute bound false-reds here. The large/small ratio below is
+// instrumentation-invariant and stays — a real O(n^2) regression trips both.
 /** Interleaved sampling: adjacent windows measure each size once and divide, so both ends share the same machine conditions; returns the minimum ratio over 5 windows. */
 const growthRatio = (small: string, large: string): number => {
   fastest(small, 2);
@@ -72,23 +63,6 @@ const growthRatio = (small: string, large: string): number => {
 };
 
 describe("性能 · 1MB 文档", () => {
-  it(
-    "should parse and inject a 1MB document within 300ms",
-    () => {
-      const html = buildDocument(3000);
-      expect(html.length).toBeGreaterThan(1_000_000);
-
-      const { cost, budget } = budgetFor(html);
-
-      expect(html.length, `body size ${String(html.length)}`).toBeGreaterThan(1_000_000);
-      expect(
-        cost,
-        `parse+inject of ${String(html.length)} chars took ${cost.toFixed(1)}ms cpu, budget ${budget.toFixed(0)}ms`,
-      ).toBeLessThanOrEqual(budget);
-    },
-    TIMEOUT_MS,
-  );
-
   it(
     "should scale sub-quadratically when the document grows 4x",
     () => {

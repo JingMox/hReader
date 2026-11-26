@@ -49,11 +49,12 @@ pnpm format          # Prettier 修复
 pnpm desktop:check   # 桌面壳门禁：rustfmt + clippy -D warnings + cargo test
 ```
 
-端到端与集成检查（CI 的 `checks` job 会跑这两条；`test:e2e` 与 `test:integration` 本地都需要 Chrome/Edge/Chromium，桌面冒烟在无桌面环境自动 SKIP）：
+端到端、集成与性能检查（CI 的 `e2e` job 会跑这三条；`test:e2e` 与 `test:integration` 本地都需要 Chrome/Edge/Chromium，桌面冒烟在无桌面环境自动 SKIP，`test:perf` 无外部依赖）：
 
 ```bash
 pnpm test:e2e          # 打印稿分页 + 外来文档沙箱（真 Chrome）
 pnpm test:integration  # 跨包集成/用户旅程（真 dist 产物 + 真 Chrome）
+pnpm test:perf         # 绝对时间预算性能门（tests/perf/**，不开覆盖率、单 worker 串行）
 ```
 
 仍属本地按需（CI 不跑）：
@@ -98,6 +99,7 @@ CI 把上面这些 package scripts 拆成并行的 `lint` / `test` / `e2e` job�
 - 不 mock 被测单元本体；fs/网络/时间等外部依赖通过注入的替身控制。
 - 临时目录用 `mkdtemp` 并在 `finally` 里清理。
 - 禁止 `test.only`、注释掉的测试、无种子随机、直读 `Date.now()`、真实网络、`setTimeout` 轮询。
+- 断言绝对时间预算（"< N ms"，不管墙钟还是 `process.cpuUsage()`）的测试放 `tests/perf/**/*.perf.test.ts`，由 `pnpm test:perf` 单跑（`vitest.perf.config.ts`：不开覆盖率、单 worker 顺序执行）——v8 插桩会让 `src/**` 慢好几倍，开覆盖率的运行里绝对预算必然随机红。单元测试里只保留与机器速度无关的断言：复杂度/线性增长比值（插桩下比值大体不变）、结构性上界（字节数、节点数、截断位置）、功能正确性。
 - 交付物测试对**构建产物**跑真子进程（`cli` 的 `dist/cli.mjs`、`mcp-server` 的 `dist/main.js`），不是只测 src。
 
 ## 变异测试
