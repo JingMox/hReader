@@ -1,4 +1,4 @@
-// 单包测试入口：`pnpm -F @hreader/dsh-bundle test`。共享约定在仓库根 vitest.shared.ts。
+// Single-package test entry: `pnpm -F @hreader/dsh-bundle test`. Shared conventions live in the repo-root vitest.shared.ts.
 import { definePackageConfig } from "../../vitest.shared.ts";
 
 export default definePackageConfig();

@@ -1,57 +1,62 @@
-// 这层管：本插件对宿主的类型契约（事件 + 服务）。只有编译器能验证它，所以单独一文件。
+// The plugin's type contract with the host (events + services). Only the compiler can verify it,
+// hence the dedicated file.
 //
-// 本文件**不**从 `@hreader/core` 取类型：core 在 package.json 里只是 `workspace:*` 的 devDependency，
-// 一旦进了 `dist/events.d.ts`，装到 profile 的人就会 tsc 报 `Cannot find module '@hreader/core'`。
-// 同理不从 `@deepseek-ai/*` 取类型（它们不在 `dependencies`，声明文件里一个裸 `import type` 就足以让
-// 只装了本包的使用方报 TS2307）。对外形状一律本地镜像 + 测试盯着漂移；唯一的例外是
-// 下面那行 `import type {}` 空种子（不绑名字、会被 tsc 从 d.ts 擦掉，理由见原处）。
+// This file must **not** import types from `@hreader/core`: core is only a `workspace:*` devDependency
+// in package.json, and once it lands in `dist/events.d.ts`, anyone installing into a profile gets a tsc
+// `Cannot find module '@hreader/core'`. Same for `@deepseek-ai/*` (they are not in `dependencies`, and one
+// bare `import type` in the declaration file is enough to throw TS2307 on a user with only this package
+// installed). External shapes are mirrored locally, with tests watching for drift; the one exception is
+// the bare `import type {}` seed below (binds nothing and is wiped from the d.ts by tsc — see the site).
 
 /**
- * `PatchAction` 的形状镜像：字段与取值逐字对齐 `packages/core/src/ops/patch-node/constants.ts:3`。
+ * Mirror of `PatchAction`: fields and values align verbatim with `packages/core/src/ops/patch-node/constants.ts:3`.
  */
 export type HreaderPatchAction = "replace" | "insert_before" | "insert_after" | "append" | "delete";
 
 /**
- * `PatchRequest` 的形状镜像（结构相同、字段与可选性逐字对齐）：
- * 源定义在 `packages/core/src/ops/patch-node/constants.ts:5`。漂移由两条断言合起来抓：
- * 字段与可选性靠 `tests/drift.test-d.ts` 的双向子类型，**多出可选字段**靠
- * `tests/shape-no-extra-keys.test-d.ts` 的 `keyof` 差集（可选增量对双向可赋值不可见）。
+ * Mirror of `PatchRequest` (same structure, fields and optionality verbatim):
+ * source is `packages/core/src/ops/patch-node/constants.ts:5`. Drift is caught by two assertions:
+ * fields and optionality via the two-way subtyping in `tests/drift.test-d.ts`, **extra optional fields**
+ * via the `keyof` difference in `tests/shape-no-extra-keys.test-d.ts` (an optional addition is invisible
+ * to two-way assignability).
  */
 export interface HreaderPatchRequestShape {
-  /** 目标的 `data-hr-id`；`"root"` 指最外层 `<article>` 自身（保留其属性）。 */
+  /** The target's `data-hr-id`; `"root"` means the outermost `<article>` itself (attributes kept). */
   readonly targetId: string;
   readonly action: HreaderPatchAction;
-  /** replace / insert_before / insert_after / append 必填；delete 必须不传。 */
+  /** Required for replace / insert_before / insert_after / append; must be absent for delete. */
   readonly html?: string;
 }
 
 /**
- * `hreader/patch-request` 的载荷：宿主把一条 patch 请求交给 hreader 的补丁引擎。
- * 模块名必须是 `@deepseek-ai/cordis`（dsh 实际解析的那条发布线，不是 `cordis`）——
- * 写成 `cordis` 不会报错，只会让整个 `Events` 合并静默失效。
+ * Payload of `hreader/patch-request`: the host hands a patch request to hreader's patch engine.
+ * The module name must be `@deepseek-ai/cordis` (the release line dsh actually resolves, not `cordis`) —
+ * writing `cordis` errors nothing, it just silently disables the whole `Events` merge.
  */
 export interface HreaderPatchRequest {
   /**
-   * hreader 工作区根。落在它之内由消费方的写侧保证：
-   * 词法 + realpath 两道校验在 `packages/core/src/io/paths.ts:73-79`（`resolveTarget`），
-   * 落盘前的父目录复核在 `packages/core/src/io/atomic.ts`。本包只读风格文件、不写盘。
+   * hreader workspace root. Being inside it is guaranteed by the consumer's write side:
+   * lexical + realpath checks in `packages/core/src/io/paths.ts:73-79` (`resolveTarget`),
+   * parent-directory re-check before write in `packages/core/src/io/atomic.ts`. This package only
+   * reads style files and never writes.
    */
   readonly workspace: string;
   readonly request: HreaderPatchRequestShape;
 }
 
-/** `ctx.provide('hreader', …)` 暴露给其他插件的只读面。 */
+/** The read-only surface `ctx.provide('hreader', …)` exposes to other plugins. */
 export interface HreaderService {
   readonly styleId: string;
-  /** 已编译的语言规约全文（`compileTone` 的输出，逐字节）。 */
+  /** The compiled language-spec text (`compileTone` output, byte-for-byte). */
   readonly prompt: string;
 }
 
 /**
- * `ctx.systemPrompt.section()` 的入参形状镜像：结构相同，字段与官方 `PromptSection`
- * （`@deepseek-ai/dsh-system-prompt@0.2.2-rc.1` 的 `lib/types/index.d.ts:47`）逐字对齐。
- * 不用官方类型是因为它会把裸依赖带进 `dist/events.d.ts`（见文件头）。漂移由
- * `tests/drift.test-d.ts` 盯：官方改了 `name`/`order`/`text` 的类型，那条赋值立刻红。
+ * Mirror of `ctx.systemPrompt.section()`'s parameter shape: same structure, fields verbatim with the
+ * official `PromptSection` (`lib/types/index.d.ts:47` of `@deepseek-ai/dsh-system-prompt@0.2.2-rc.1`).
+ * The official type is not used because it would drag a bare dependency into `dist/events.d.ts` (see
+ * the header). Drift is watched by `tests/drift.test-d.ts`: an official type change to
+ * `name`/`order`/`text` turns that assignment red.
  */
 export interface HreaderPromptSection {
   readonly name: string;
@@ -60,11 +65,12 @@ export interface HreaderPromptSection {
 }
 
 /**
- * `import type {}` 不是残余：下面那条 `declare module "@deepseek-ai/cordis"` 只是合并声明，
- * **自己不去载入** cordis 的增强链（`lib/types/events.d.ts`、`fiber.d.ts`、`reflect.d.ts` 各自
- * `declare module './context.ts'`）。缺这一行时本包看到的 `Context` 只剩基础面（`emit`/`provide`/
- * `effect` 全无），`tests/types.test-d.ts` 直接 TS2349/TS2339 红。空绑定会被 tsc 从
- * `dist/events.d.ts` 里整个擦掉，所以使用方侧仍是零裸依赖（`tests/dist.test.ts` 盯着）。
+ * The `import type {}` is not leftover: the `declare module "@deepseek-ai/cordis"` below is only a
+ * merge declaration and does **not itself load** cordis's augmentation chain (`lib/types/events.d.ts`,
+ * `fiber.d.ts`, `reflect.d.ts` each `declare module './context.ts'`). Without this line, the `Context`
+ * this package sees is only the base surface (`emit`/`provide`/`effect` all missing) and
+ * `tests/types.test-d.ts` turns TS2349/TS2339 red. tsc wipes the empty binding from `dist/events.d.ts`
+ * entirely, so the user side still has zero bare dependencies (`tests/dist.test.ts` watches).
  */
 import type {} from "@deepseek-ai/cordis";
 
