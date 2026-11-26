@@ -280,6 +280,73 @@ describe("show-all-files preference", () => {
   });
 });
 
+describe("asset open safety contract", () => {
+  it("should route every non-document row through /open-asset regardless of type", () => {
+    // The renderer never decides executability: .command/.app/extensionless
+    // rows all hit the same bridge path; Rust picks open vs reveal.
+    const s = createSandbox({
+      ctx: {
+        files: ["a.html"],
+        tree: [
+          {
+            name: "a.html",
+            path: "a.html",
+            kind: "file",
+            assets: [
+              { name: "run.command", path: "a_files/run.command", kind: "file", hidden: true },
+              { name: "bundle.app", path: "a_files/bundle.app", kind: "file", hidden: true },
+              { name: "noext", path: "a_files/noext", kind: "file", hidden: true },
+            ],
+          },
+        ],
+      },
+    });
+    s.hrd.renderFilesPanel("");
+    const row = mustGet(s.document, '[data-hrd-asset="a_files/run.command"]') as HTMLElement;
+    row.click();
+    expect(s.window.location.href).toBe(
+      "http://hr-desktop.local/open-asset?doc=a_files%2Frun.command&t=test-token",
+    );
+    // No row ever becomes a document open: dangerous names still carry
+    // data-hrd-asset, never data-hrd-file.
+    const p = panel(s);
+    expect(p.querySelector('[data-hrd-file="a_files/run.command"]')).toBeNull();
+    expect(p.querySelector('[data-hrd-file="a_files/bundle.app"]')).toBeNull();
+    expect(p.querySelector('[data-hrd-file="a_files/noext"]')).toBeNull();
+    s.dispose();
+  });
+
+  it("should render a symlink-shaped leaf as an asset row, never a dir or doc", () => {
+    const s = createSandbox({
+      ctx: {
+        files: ["a.html", "b.html"],
+        tree: [
+          { name: "a.html", path: "a.html", kind: "file" },
+          { name: "b.html", path: "b.html", kind: "file" },
+          { name: "linked-outside", path: "linked-outside", kind: "file", hidden: true },
+        ],
+      },
+    });
+    s.hrd.renderFilesPanel("");
+    const p = panel(s);
+    // Hidden leaf: invisible in the folded view...
+    expect(p.querySelector('[data-hrd-asset="linked-outside"]')).toBeNull();
+    expect(p.querySelector('[data-hrd-dir="linked-outside"]')).toBeNull();
+    // ...visible under show-all, and only via the bridge.
+    s.hrd.savePrefs({ ...s.hrd.state.prefs, showAllFiles: true });
+    s.hrd.renderFilesPanel("");
+    const row = mustGet(
+      s.document,
+      '[data-hrd-asset="linked-outside"]',
+    ) as HTMLElement;
+    row.click();
+    expect(s.window.location.href).toBe(
+      "http://hr-desktop.local/open-asset?doc=linked-outside&t=test-token",
+    );
+    s.dispose();
+  });
+});
+
 describe("keyboard and search regression", () => {
   it("should still open the search box on / with the folded tree rendered", () => {
     const s = makePageSandbox();

@@ -762,9 +762,12 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// Symlinks are never followed (watcher parity: `followSymlinks: false`):
+    /// a link pointing outside the workspace becomes a hidden leaf, never a
+    /// directory the scan descends into.
     #[cfg(unix)]
     #[test]
-    fn symlink_pointing_outside_workspace_is_followed_like_a_dir() {
+    fn symlinked_dirs_are_not_followed() {
         let dir = temp_ws("symlink-out");
         let outside = std::env::temp_dir().join(format!("hr-wb-out-{}", std::process::id()));
         let _ = fs::remove_dir_all(&outside);
@@ -775,44 +778,82 @@ mod tests {
         write(&dir.join("b.html"));
         std::os::unix::fs::symlink(&outside, dir.join("linked")).expect("symlink");
 
-        // The symlinked directory scans like a real one (existing semantics);
-        // inside it the single HTML page claims the other file as its asset.
         let tree = scan_workspace_tree(&dir);
-        assert_eq!(tree_names(&tree), vec!["linked", "a.html", "b.html"]);
-        let linked = &tree[0];
-        assert_eq!(tree_names(&linked.children), vec!["external.html"]);
-        assert_eq!(tree_names(&linked.children[0].assets), vec!["res.png"]);
+        // `linked` is a non-document leaf: hidden by default, no children, and
+        // the outside directory's HTML never enters the tree.
+        assert_eq!(tree_names(&tree), vec!["a.html", "b.html", "linked"]);
+        let linked = &tree[2];
+        assert_eq!(linked.kind, TreeEntryKind::File);
+        assert!(linked.hidden);
+        assert!(linked.children.is_empty());
+        assert_eq!(list_html_files(&dir), vec!["a.html", "b.html"]);
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_dir_all(&outside);
     }
 
+    /// A symlink loop cannot recurse at all: the link is a leaf, so the scan
+    /// terminates immediately instead of chasing the cycle to the depth cap.
     #[cfg(unix)]
     #[test]
-    fn symlink_cycle_terminates_at_the_depth_cap() {
+    fn symlink_cycle_is_a_leaf_not_a_recursion() {
         let dir = temp_ws("symlink-loop");
         write(&dir.join("a.html"));
         write(&dir.join("b.html"));
         std::os::unix::fs::symlink(".", dir.join("loop")).expect("symlink loop");
 
-        // A looped directory contains HTML -> never asset-clean; recursion is
-        // bounded by MAX_TREE_DEPTH so the scan returns a finite tree.
         let tree = scan_workspace_tree(&dir);
-        assert_eq!(tree_names(&tree), vec!["loop", "a.html", "b.html"]);
-        let mut node = &tree[0];
-        let mut depth = 0usize;
-        while let Some(next) = node.children.iter().find(|n| n.kind == TreeEntryKind::Dir) {
-            node = next;
-            depth += 1;
-            assert!(
-                depth <= MAX_TREE_DEPTH,
-                "symlink loop escaped the depth cap"
-            );
-        }
-        assert!(
-            depth > 0,
-            "the looped directory should recurse a few levels"
-        );
+        assert_eq!(tree_names(&tree), vec!["a.html", "b.html", "loop"]);
+        let node = &tree[2];
+        assert_eq!(node.kind, TreeEntryKind::File);
+        assert!(node.hidden);
+        assert!(node.children.is_empty());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Even a link pointing back *inside* the workspace is not followed: the
+    /// rule is uniform (the bridge re-verifies the real path at open time).
+    #[cfg(unix)]
+    #[test]
+    fn inside_pointing_symlink_is_also_a_leaf() {
+        let dir = temp_ws("symlink-in");
+        fs::create_dir_all(dir.join("real")).expect("real dir");
+        fs::write(dir.join("real/doc.html"), "").expect("doc");
+        write(&dir.join("a.html"));
+        write(&dir.join("b.html"));
+        std::os::unix::fs::symlink(dir.join("real"), dir.join("alias")).expect("link");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["real", "a.html", "alias", "b.html"]);
+        let alias = &tree[2];
+        assert_eq!(alias.kind, TreeEntryKind::File);
+        assert!(alias.hidden);
+        assert!(alias.children.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A symlinked `.html` file is a leaf too — it must not appear as an
+    /// openable document (the watcher would not follow it either).
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_html_file_is_not_a_document() {
+        let dir = temp_ws("symlink-html");
+        let outside = std::env::temp_dir().join(format!("hr-wb-outhtml-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&outside);
+        fs::create_dir_all(&outside).expect("outside");
+        fs::write(outside.join("external.html"), "").expect("external");
+        write(&dir.join("a.html"));
+        write(&dir.join("b.html"));
+        std::os::unix::fs::symlink(outside.join("external.html"), dir.join("linked.html"))
+            .expect("html link");
+
+        let tree = scan_workspace_tree(&dir);
+        assert_eq!(tree_names(&tree), vec!["a.html", "b.html", "linked.html"]);
+        let node = &tree[2];
+        assert_eq!(node.kind, TreeEntryKind::File);
+        assert!(node.hidden);
+        assert_eq!(list_html_files(&dir), vec!["a.html", "b.html"]);
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&outside);
     }
 
     #[test]
