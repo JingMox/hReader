@@ -20,7 +20,7 @@ const CORPUS = ["engineering-playbook.md", "plugin-usage-notes.md", "style-autho
 );
 
 /** 每篇语料的**篇首独有串**：按 argv 顺序出现才证明"三篇都进了 prompt 且顺序没被打乱"。 */
-const ANCHORS = ["## 工程实践手册", "### 宿主插件使用说明", "# 访谈式自定义风格"];
+const ANCHORS = ["## 阳台园艺手记", "### 宿主插件使用说明", "# 访谈式自定义风格"];
 
 /**
  * 逆字典序传同一批语料：按路径排序后再拼 prompt 的实现在升序 `CORPUS` 下也能过，
@@ -30,7 +30,7 @@ const REVERSED = ["style-authoring.md", "plugin-usage-notes.md", "engineering-pl
   (name) => join(REPO, "fixtures/extract", name),
 );
 
-const REVERSED_ANCHORS = ["# 访谈式自定义风格", "### 宿主插件使用说明", "## 工程实践手册"];
+const REVERSED_ANCHORS = ["# 访谈式自定义风格", "### 宿主插件使用说明", "## 阳台园艺手记"];
 
 const RECORDED = readFileSync(join(REPO, "fixtures/llm/ok.json"), "utf8");
 

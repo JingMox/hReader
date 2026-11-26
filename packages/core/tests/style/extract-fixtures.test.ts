@@ -22,8 +22,8 @@ const CORPUS_FILES = [
 
 /** 真值钉在字节上：语料一改，统计量就没有"真值"可言了。 */
 const SHA256: Readonly<Record<string, string>> = {
-  "engineering-playbook.md": "8e6d460ff52fb1114f77978f761e4c74f34d76fcdf3568cb878e902be40dc930",
-  "plugin-usage-notes.md": "0ba0b4209b5ca58b39178e6f4fb5d74b0bb37b9af36c98df4e30282767b98eff",
+  "engineering-playbook.md": "bdd2b964bb09c4cd380643efece3b270889ab04f9847f5eacc97847ec34222cd",
+  "plugin-usage-notes.md": "02b98afc10f659f3f0adf7b3c300d24ebe3e6e26cee279d6de831df95f569cf0",
   "style-authoring.md": "9a45eac503e9bc96cf155593aad46fcc95f203311e3157cbbc7d54f231348690",
 };
 
@@ -55,9 +55,9 @@ describe("fixtures/extract · 语料字节", () => {
 describe("extractStyle · 真语料的统计量", () => {
   it("should report exactly the pinned stats", () => {
     expect(EXTRACTED.stats).toEqual({
-      paragraphs: 145,
-      sentences: 209,
-      averageSentenceChars: 51,
+      paragraphs: 55,
+      sentences: 83,
+      averageSentenceChars: 61,
       maxParagraphSentences: 2,
     });
   });
