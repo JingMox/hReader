@@ -258,6 +258,19 @@ describe("run · core 错误与内部错误", () => {
     expect(code).toBe(70);
     expect(err.join("")).toBe("stdin 炸了\n");
   });
+
+  it("should bound the stderr line even when the error echoes a megabyte-sized argument", async () => {
+    const { io, out, err } = capture();
+    // `文档里没有匹配 "<选择器>" 的节点。` 会原样回显入参：MB 级单行能把终端与日志管线卡死。
+    const code = await run(["read", "a.html", `#${"x".repeat(2 * 1024 * 1024)}`], io);
+
+    expect(code).toBe(1);
+    expect(out).toEqual([]);
+    const written = err.join("");
+    expect(written).toContain("文档里没有匹配");
+    expect(written).toContain("…[truncated ");
+    expect(written.length).toBeLessThan(10_000);
+  });
 });
 
 describe("run · HR_DEBUG", () => {

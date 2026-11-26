@@ -13,15 +13,7 @@ import {
   rpcErrorOf,
 } from "../src/errors";
 import { logFailure, logLine, messageOf } from "../src/log";
-
-const stderrText = (): { read(): string } => {
-  const written: string[] = [];
-  vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
-    written.push(String(chunk));
-    return true;
-  });
-  return { read: () => written.join("") };
-};
+import { longestLineOf, stderrText } from "./harness";
 
 const textOf = (result: { content: readonly unknown[] }): string =>
   result.content
@@ -107,6 +99,58 @@ describe("log", () => {
   it("should stringify a non-Error reason", () => {
     expect(messageOf("裸字符串")).toBe("裸字符串");
     expect(messageOf(new Error("boom"))).toBe("boom");
+  });
+
+  it("should bound a line even when the logged text is megabytes", () => {
+    const stderr = stderrText();
+
+    logLine("x".repeat(2 * 1024 * 1024));
+
+    const written = stderr.read();
+    // runner 是被 MB 级单行卡死的：上限按"行"断言，截断处标出被截掉的长度。
+    expect(written).toContain("…[truncated ");
+    expect(written).toContain(" chars]");
+    expect(longestLineOf(written)).toBeLessThan(10_000);
+  });
+
+  it("should bound every layer of a cause chain with megabyte-sized stacks", () => {
+    const stderr = stderrText();
+    const inner = new Error("y".repeat(1024 * 1024));
+    const outer = new HrError("not_found", "z".repeat(1024 * 1024), { cause: inner });
+
+    logFailure("hr_probe", outer);
+
+    const written = stderr.read();
+    // 链尾的错因不能丢：截断发生在每层内部，`caused by` 的骨架必须还在。
+    expect(written).toContain("caused by");
+    expect(written).toContain("…[truncated ");
+    expect(longestLineOf(written)).toBeLessThan(10_000);
+  });
+
+  it("should bound the depth of a cause chain instead of unrolling it without limit", () => {
+    const stderr = stderrText();
+    let error = new Error("root");
+    for (let index = 0; index < 64; index += 1) {
+      error = new Error(`wrap ${String(index)}`, { cause: error });
+    }
+
+    logFailure("hr_probe", error);
+
+    const written = stderr.read();
+    expect(written).toContain("truncated");
+    // 每层 message 只有十几个字符：没有层数上限的话 64 层会一字不少全写出来。
+    expect(written).not.toContain("wrap 0");
+  });
+
+  it("should stop at the depth bound even when the cause chain is cyclic", () => {
+    const stderr = stderrText();
+    const loop = new Error("self-cause");
+    // `cause` 指回自己是合法的运行期形状：不设上限 `while (current instanceof Error)` 就是死循环。
+    loop.cause = loop;
+
+    logFailure("hr_probe", loop);
+
+    expect(stderr.read()).toContain("truncated");
   });
 });
 

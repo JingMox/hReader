@@ -55,6 +55,16 @@ const BIDI = /[\u202a-\u202e\u2066-\u2069]/g;
 export const term = (text: string): string =>
   text.replace(OSC, "").replace(CSI, "").replace(CONTROL, "").replace(BIDI, "");
 
+/** stderr 单次写入的字符上限：错误文案会原样回显不受限的入参（巨型选择器、超长路径），
+ * MB 级单行能把终端与日志管线卡死。只用于 stderr 诊断通道——
+ * stdout 是字节契约（报告、envelope、文档产物），一个字都不能截。 */
+const STDERR_MAX_CHARS = 8 * 1024;
+
+export const bounded = (text: string): string =>
+  text.length <= STDERR_MAX_CHARS
+    ? text
+    : `${text.slice(0, STDERR_MAX_CHARS)}…[truncated ${String(text.length - STDERR_MAX_CHARS)} chars]`;
+
 /**
  * 回执里的路径一律按用户视角回显：文档在 cwd 内就用相对 cwd 的形式（用户本来就是这么写的），
  * 在 cwd 外（或 cwd 就是它）才印绝对路径。命令层只知道 workspace 相对名、`--out` 只知道真实路径，

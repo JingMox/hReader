@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { vi } from "vitest";
 
 import { createServer } from "../src/server";
 
@@ -84,3 +85,17 @@ export const uiUriOf = (result: unknown): string => {
   const ui = isRecord(meta) ? meta["ui"] : undefined;
   return isRecord(ui) && typeof ui["resourceUri"] === "string" ? ui["resourceUri"] : "";
 };
+
+/** 把 stderr 收进内存里断言：巨型输入的失败日志不许漏进测试输出（MB 级单行曾把 CI runner 卡死）。 */
+export const stderrText = (): { read(): string } => {
+  const written: string[] = [];
+  vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+    written.push(String(chunk));
+    return true;
+  });
+  return { read: () => written.join("") };
+};
+
+/** 一段文本里最长一行的长度：日志边界用"行"量，与 runner 卡死的计量方式一致。 */
+export const longestLineOf = (text: string): number =>
+  text.split("\n").reduce((max, line) => Math.max(max, line.length), 0);

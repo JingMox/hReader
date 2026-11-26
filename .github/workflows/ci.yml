@@ -1,14 +1,42 @@
 name: CI
-# checks job 与 pnpm verify 同序：本地和 CI 跑同一套门禁。
+# Jobs run the same gate set as `pnpm verify`, split so lint / test / e2e run in parallel.
 
 on:
   push:
     branches: [main]
   pull_request:
 
+# A new push to the same ref cancels the stale run: old results are worthless, and a
+# wedged run would otherwise burn runner minutes until its timeout.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  checks:
+  lint:
     runs-on: ubuntu-latest
+    # Hard ceiling: a wedged step fails in minutes instead of the 6h default.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm lint:sh
+      - run: pnpm typecheck
+      - run: pnpm depcruise
+      - run: pnpm knip
+      - run: pnpm theme:check
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -21,30 +49,38 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - run: pnpm format:check
-      - run: pnpm lint
-      - run: pnpm lint:sh
-      - run: pnpm typecheck
       - run: pnpm build
-      - run: pnpm test:coverage
-      # 乱序回归：顺序敏感的失败（共享状态、泄漏句柄、隐式文件依赖）只有打乱才暴露；
-      # 种子每次随机，vitest 会在输出里打出 seed，失败可按它复现。
-      - run: pnpm vitest run --sequence.shuffle
-      # ubuntu-latest 自带 Chrome：两个 e2e 自检脚本（打印稿分页、外来文档沙箱）在 CI 真跑。
+      # Shuffle regression folded into the coverage run instead of a second full
+      # vitest pass: same order-sensitivity coverage, half the test time. The random
+      # seed is printed in the output so failures stay reproducible.
+      - run: pnpm test:coverage --sequence.shuffle
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # ubuntu-latest ships Chrome: both e2e probes (print pagination, foreign
+      # document sandbox) run for real in CI.
       - run: pnpm test:e2e
         env:
           CHROME_BIN: /usr/bin/google-chrome
-      - run: pnpm theme:check
-      # 跨包集成/用户旅程（真 dist 产物 + 真 Chrome；ubuntu runner 自带 Chrome，desktop 冒烟会自动 SKIP）。
+      # Cross-package integration / user journeys (real dist artifacts + real
+      # Chrome; the desktop smoke check SKIPs itself on a plain runner).
       - run: pnpm test:integration
         env:
           CHROME_BIN: /usr/bin/google-chrome
-      - run: pnpm depcruise
-      - run: pnpm knip
 
   desktop:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -57,8 +93,9 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: packages/desktop/src-tauri
-      - name: 装 Linux 上 Tauri 需要的系统库
+      - name: Install the system libraries Tauri needs on Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-      # 与 `pnpm verify` 并列的独立 job：Rust 门禁不掺进 node matrix。
+      # Independent job alongside `pnpm verify`: the Rust gates stay out of the
+      # node matrix.
       - run: bash packages/desktop/scripts/check.sh
