@@ -79,9 +79,13 @@ export const intentOf = (event: KeyLike, state: ReaderState): ReaderIntent | und
   if (modified(event) || isEditableTarget(event.target)) return undefined;
   if (state.present.active) {
     // 演示态把 Shift 也算修饰键：它没有 Shift+D 这类命令要放行，Shift+方向键翻页就是误触发。
+    // 沉浸快捷键（i）在演示中不响应——演示壳自己有退出键，两态不叠快捷键。
     return event.shiftKey === true ? undefined : presentIntentOf(event, state);
   }
-  if (event.key === "Escape") return { kind: "panelClosed" };
+  // Esc 先退沉浸再关面板：沉浸是更外层的壳，且沉浸里侧栏根本不可见，"关面板"无意义。
+  if (event.key === "Escape")
+    return state.immersive ? { kind: "immersiveToggled" } : { kind: "panelClosed" };
+  if (event.key === "i") return { kind: "immersiveToggled" };
   if (event.key === "p" || event.key === "F5") return { kind: "presentEntered" };
   return isPrintableShortcut(event, state);
 };

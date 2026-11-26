@@ -171,7 +171,7 @@ const mountAll = (deps: BootDeps, forward: (intent: ReaderIntent) => void): Moun
         onIntent: forward,
       }),
       mountSidenotes(deps.host, ROOT),
-      mountStatusbar(deps.host, ROOT),
+      mountStatusbar(deps.host, ROOT, forward),
       present,
     ],
     present,
@@ -476,8 +476,13 @@ const bootForeign = (
           },
     reportGate: reportDocGate,
   });
-  const statusbar = mountStatusbar(host, ROOT);
+  // 外来壳也接键盘与沉浸开关：j/k 等块导航意图对空 blocks 自然空转，只有沉浸与连接态有出口。
+  const dispatchIntent = (intent: ReaderIntent): void => {
+    store.dispatch(intent);
+  };
+  const statusbar = mountStatusbar(host, ROOT, dispatchIntent);
   host.text(`${ROOT} #hr-shortcuts`, COPY.foreignShortcuts);
+  const unbindKeys = deps.keySource(keyHandlerOf(store, dispatchIntent));
   const unsubscribe = deps.store.subscribe(syncView({ host, widgets: [statusbar] }));
   const sse = deps.openSse(
     foreignSseOf(store, foreign, () => {
@@ -514,6 +519,7 @@ const bootForeign = (
   // 点击回调只可能晚于装配完成，hoist 的函数声明让 normalize/reboot 能向前引用它。
   function teardown(): void {
     sse.close();
+    unbindKeys();
     unsubscribe();
     foreign.destroy();
   }
