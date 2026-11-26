@@ -1,17 +1,17 @@
-// 旅程 2（外来 HTML 全闭环）：JS 驱动动画演示稿放进工作区 → 阅读器只读横幅 → 点"允许运行脚本"授信
-// local 档、脚本真跑（allow-scripts 下 iframe 是 opaque origin，脚本活性用 postMessage 探针）→
-// 阅读器切主题（页内 0-token，允许）+ /api/style 写盘（<style id="hr-theme"> 进文件）→
-// sha 变化信任失效（钉住预期行为：info 回 off、脚本被 CSP 掐死、不白屏）→
-// undo 回原字节 → 原 sha 信任恢复、脚本复活 → `hr import` 收编为 *.hr.html。
+// 旅程 2（外来 HTML 全闭环）：JS 驱动动画演示稿放进工作区 → 阅读器只读横幅 → 点"允许运行脚本"，
+// 授权按路径键落盘（scripts 维单开）→ iframe allow-scripts、脚本真跑（opaque origin，活性靠
+// postMessage 探针）→ 阅读器切主题（页内 0-token）+ /api/style 写盘 → **路径键授权不失效**，
+// 心跳不停 → undo 回字节授权照样在（键不看内容）→ `hr import` 收编为 *.hr.html。
+// 路径语义与全局模式的对抗面在 permissions-journey 里，这里只钉旅程主链。
 
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 
 import { afterAll, beforeAll, describe, test } from "vitest";
 
 import { assert, assertEq, assertIncludes } from "../harness/check.ts";
 import { dataOf, docPath, hr } from "../harness/cli.ts";
 import { launchBrowser, type Browser, type Page } from "../harness/chrome.ts";
-import { chromeSkipReason, sandbox, sha256File, type TestHome } from "../harness/env.ts";
+import { chromeSkipReason, sandbox, sha256File, until, type TestHome } from "../harness/env.ts";
 import { connect, docApi, type Api } from "../harness/http.ts";
 import { killAllTracked } from "../harness/proc.ts";
 import { startServe, type Daemon } from "../harness/serve.ts";
@@ -30,6 +30,18 @@ const FOREIGN_HTML = `<!DOCTYPE html>
 </script>
 </body></html>`;
 
+interface DocInfo {
+  readonly trust?: unknown;
+  readonly cls?: unknown;
+  readonly permissions?: {
+    readonly scripts?: unknown;
+    readonly network?: unknown;
+    readonly scriptsSource?: unknown;
+    readonly networkSource?: unknown;
+    readonly modes?: unknown;
+  };
+}
+
 describe.skipIf(skip !== undefined)("foreign-journey", () => {
   const DOC = "deck.html";
   let home: TestHome;
@@ -39,8 +51,8 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
   let page: Page;
   let originalSha = "";
 
-  const docInfo = async (): Promise<{ trust?: unknown; cls?: unknown }> =>
-    await api.getJson(`${docApi(DOC)}/info`);
+  const docInfo = async (docId = DOC): Promise<DocInfo> =>
+    await api.getJson(`${docApi(docId)}/info`);
 
   /** 探针计数：读 window.__foreignMsgs.length（监听器在页面加载后立即挂上）。 */
   const msgCount = async (): Promise<number> => {
@@ -83,10 +95,13 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
     home.cleanup();
   });
 
-  test("外来文档：trust=off + 只读横幅 + sandbox 全限制，脚本不跑", async () => {
+  test("外来文档：trust=off + permissions 两维全关 + 只读横幅 + sandbox 全限制，脚本不跑", async () => {
     const info = await docInfo();
     assertEq(info.trust, "off", "外来文档初始 trust");
     assertEq(info.cls, "foreign", "外来文档分类");
+    assertEq(info.permissions?.scripts, false, "外来文档初始 scripts");
+    assertEq(info.permissions?.network, false, "外来文档初始 network");
+    assertEq(info.permissions?.scriptsSource, "doc", "初始 scripts 出处");
     const banner = await page.wait(
       `(() => { const el = document.querySelector('#hr-foreign'); return el && !el.hidden && el.textContent.includes('只读'); })()`,
       25_000,
@@ -100,7 +115,7 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
     assert(!(await beating(1200)), "trust=off 时外来脚本竟然有心跳");
   });
 
-  test("点'允许运行脚本'授信 local：sandbox=allow-scripts，脚本真跑", async () => {
+  test("点'允许运行脚本'：POST {scripts:true} → sandbox=allow-scripts，脚本真跑", async () => {
     const clicked = await page.eval(`(() => {
       const el = document.querySelector('#hr-foreign-action');
       if (!el) return false;
@@ -113,15 +128,17 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
     );
     assert(granted === true, "授信后 sandbox 没有变成 allow-scripts");
     const info = await docInfo();
-    assertEq(info.trust, "local", "授信 local 后 trust");
+    assertEq(info.trust, "local", "授信后 trust（兼容字段=脚本生效）");
+    assertEq(info.permissions?.scripts, true, "授信后 scripts");
+    assertEq(info.permissions?.network, false, "授信后 network 仍关");
     const ran = await page.wait(
       `Array.isArray(window.__foreignMsgs) && window.__foreignMsgs.length > 0`,
       15_000,
     );
-    assert(ran === true, "授信 local 后 iframe 里脚本没有心跳");
+    assert(ran === true, "授信后 iframe 里脚本没有心跳");
   });
 
-  test("写盘（/api/style）→ sha 变、trust 失效、脚本被掐、不白屏", async () => {
+  test("写盘（/api/style）改字节：路径键授权不失效，trust 仍 local、心跳不停", async () => {
     // framed 模式的主题选择器接了 themes 清单，切换即写盘——和托管文档共用
     // /api/style 路径，与桌面端行为一致。钉住：选项非空、可交互、当前值在清单里。
     const themeCtl = await page.eval(`(() => {
@@ -154,17 +171,9 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
     );
 
     // 写盘路径：经选择器触发 /api/style——<style id="hr-theme"> 写进外来文档，
-    // sha 变、sha 键信任失效。挑一个与当前值不同的主题，保证 change 真的发起写。
+    // 内容变了但路径键授权按设计保留（本特性存在的意义）。
     const target = ids.find((id) => id !== current);
     assert(target !== undefined, "/api/theme 清单没有可切换的备选主题");
-    // 先挂 load 计数再触发写盘：iframe 元素被复用、靠 src 重写导航，
-    // `load` 提交 = 旧文档（旧心跳源）已死——比"心跳停了"更早的确定性信号。
-    await page.eval(`(() => {
-      const f = document.querySelector('#hr-foreign-frame');
-      f.__hrLoads = 0;
-      f.addEventListener('load', () => { f.__hrLoads += 1; });
-      return true;
-    })()`);
     const switched = await page.eval(`(() => {
       const sel = document.querySelector('#hr-theme-select');
       sel.value = ${JSON.stringify(target)};
@@ -172,53 +181,57 @@ describe.skipIf(skip !== undefined)("foreign-journey", () => {
       return sel.value;
     })()`);
     assertEq(switched, target, "选择器切换主题返回值");
-    const off = await page.wait(
-      `(async () => { const res = await fetch('/api/doc/${encodeURIComponent(DOC)}/info'); if (!res.ok) return false; const j = await res.json(); return j.trust === 'off'; })()`,
-      15_000,
+    // 写盘是异步 fetch：轮询文件直到 <style id="hr-theme"> 落盘（不许用 sleep 硬等）。
+    const fileNow = await until(
+      async () => await readFile(docPath(home.ws, DOC), "utf8"),
+      (text) => text.includes('id="hr-theme"'),
+      { timeoutMs: 15_000 },
     );
-    assert(off === true, "主题写盘后 trust 没有失效回 off");
-    const themeWritten = (await readFile(docPath(home.ws, DOC), "utf8")).includes('id="hr-theme"');
-    assert(themeWritten, "主题 <style id=hr-theme> 没有写进文件");
-    // iframe 被 doc.changed 重载、服务端 CSP 按 off 档收口：导航提交与 sandbox 收紧先钉死。
-    const reloaded = await page.wait(
-      `(() => { const f = document.querySelector('#hr-foreign-frame'); return f && f.__hrLoads >= 1 && f.getAttribute('sandbox') === ''; })()`,
-      15_000,
+    assert(fileNow.includes('id="hr-theme"'), "主题 <style id=hr-theme> 没有写进文件");
+
+    // 路径键语义核心断言：sha 变了，授权不变。
+    const info = await docInfo();
+    assertEq(info.trust, "local", "写盘后 trust 必须仍是 local（路径键不看字节）");
+    assertEq(info.permissions?.scripts, true, "写盘后 scripts 仍开");
+    // 生效组合没变 → widget 不重载 iframe：心跳应当连续，不经历"先死再活"。
+    assert(await beating(1500), "写盘后外来脚本心跳停了（组合没变不该重载）");
+    const sandboxAttr = await page.eval(
+      `document.querySelector('#hr-foreign-frame').getAttribute('sandbox')`,
     );
-    assert(reloaded === true, "trust 失效后 iframe 没有按 off 档重载");
-    // 剩下的负向窗口只证"在途心跳已尽"：postMessage 已派发的帧导航后仍可送达，
-    // 这段窗量的是排空余量，不是事件本身的时序。
-    const stopped = await page.wait(
-      `new Promise(resolve => {
-        const before = window.__foreignMsgs.length;
-        setTimeout(() => resolve(window.__foreignMsgs.length === before), 900);
-      })`,
-      15_000,
-    );
-    assert(stopped === true, "trust 失效后外来脚本仍在跑（心跳未停）");
-    const alive = await page.eval(
-      `document.body.children.length > 0 && !document.querySelector('#hr-foreign').hidden`,
-    );
-    assert(alive === true, "信任失效后页面白屏/横幅丢失");
+    assertEq(sandboxAttr, "allow-scripts", "写盘后 sandbox 应保持 allow-scripts");
   });
 
-  test("undo 回到原字节后，原 sha 的信任自动恢复（脚本复活）", async () => {
+  test("undo 回到原字节：路径键授权与内容无关，仍然 local", async () => {
     const undo = await hr(["undo", DOC, "--workspace", home.ws, "--json"], { cwd: home.ws });
     assertEq(undo.code, 0, "undo 主题写盘退出码");
     const restoredSha = sha256File(await readFile(docPath(home.ws, DOC)));
     assertEq(restoredSha, originalSha, "undo 后 sha 应回到外来文档原字节");
-    const back = await page.wait(
-      `(async () => { const res = await fetch('/api/doc/${encodeURIComponent(DOC)}/info'); if (!res.ok) return false; const j = await res.json(); return j.trust === 'local'; })()`,
-      15_000,
-    );
-    assert(back === true, "undo 回原 sha 后 trust 没有恢复 local");
-    // iframe 再重载：sandbox 仍是 allow-scripts + CSP 回到 local → 心跳恢复。
-    // 正向等待：等到"计数涨过采样值"就算活，不睡固定窗口再比大小。
+    const info = await docInfo();
+    assertEq(info.trust, "local", "undo 后 trust 仍应 local（与字节无关）");
     const beforeBeats = await msgCount();
     const beatingAgain = await page.wait(
       `Array.isArray(window.__foreignMsgs) && window.__foreignMsgs.length > ${String(beforeBeats)}`,
       15_000,
     );
-    assert(beatingAgain === true, "信任恢复后外来脚本没有复活");
+    assert(beatingAgain === true, "undo 后外来脚本心跳没有恢复");
+  });
+
+  test("路径语义：改名即失效（新地址无授权），改回原路径授权恢复", async () => {
+    const ROAM = "roam.html";
+    const MOVED = "roam-moved.html";
+    await writeFile(docPath(home.ws, ROAM), FOREIGN_HTML, "utf8");
+    const grant = await api.post(`${docApi(ROAM)}/permissions`, { scripts: true });
+    assertEq(grant.status, 200, "roam.html 授信退出码");
+
+    await rename(docPath(home.ws, ROAM), docPath(home.ws, MOVED));
+    const moved = await docInfo(MOVED);
+    assertEq(moved.cls, "foreign", "改名后分类");
+    assertEq(moved.permissions?.scripts, false, "改名后 scripts 必须失效（新地址无授权）");
+    assertEq(moved.trust, "off", "改名后 trust");
+
+    await rename(docPath(home.ws, MOVED), docPath(home.ws, ROAM));
+    const back = await docInfo(ROAM);
+    assertEq(back.permissions?.scripts, true, "路径复原后授权应回来（同径重建保留）");
   });
 
   test("hr import 收编为 *.hr.html：原文件字节不变，进入托管流程", async () => {
