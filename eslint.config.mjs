@@ -93,7 +93,8 @@ export default tseslint.config(
           patterns: [
             {
               group: ["@hreader/*/src/*", "@hreader/*/dist/*"],
-              message: "跨包只能走 @hreader/<name> 的公开入口，禁止深层导入。",
+              message:
+                "cross-package imports must go through the public entry of @hreader/<name>; deep imports are forbidden.",
             },
           ],
         },
@@ -108,11 +109,30 @@ export default tseslint.config(
     rules: {
       "no-restricted-globals": [
         "error",
-        { name: "document", message: "纯层不得碰 DOM：全局只允许出现在 main.ts / dom.ts。" },
-        { name: "window", message: "纯层不得碰 DOM：全局只允许出现在 main.ts / dom.ts。" },
-        { name: "fetch", message: "纯层不得发请求：IO 由 boot/main 经注入的 deps 提供。" },
-        { name: "EventSource", message: "纯层不得建连接：SSE 走注入的 SourceLike。" },
-        { name: "localStorage", message: "纯层不得持久化：状态集中在 state.ts，不做浏览器存储。" },
+        {
+          name: "document",
+          message:
+            "the pure layer must not touch the DOM: globals are only allowed in main.ts / dom.ts.",
+        },
+        {
+          name: "window",
+          message:
+            "the pure layer must not touch the DOM: globals are only allowed in main.ts / dom.ts.",
+        },
+        {
+          name: "fetch",
+          message:
+            "the pure layer must not make requests: IO comes from boot/main through injected deps.",
+        },
+        {
+          name: "EventSource",
+          message:
+            "the pure layer must not open connections: SSE goes through the injected SourceLike.",
+        },
+        {
+          name: "localStorage",
+          message: "the pure layer must not persist: state lives in state.ts; no browser storage.",
+        },
       ],
       "no-restricted-imports": [
         "error",
@@ -121,18 +141,21 @@ export default tseslint.config(
             {
               name: "../dom.ts",
               importNames: ["createDomHost"],
-              message: "纯层只认 Host 类型，不得进 DOM 适配器。",
+              message:
+                "the pure layer only knows the Host type; it must not reach into DOM adapters.",
             },
             {
               name: "./dom.ts",
               importNames: ["createDomHost"],
-              message: "纯层只认 Host 类型，不得进 DOM 适配器。",
+              message:
+                "the pure layer only knows the Host type; it must not reach into DOM adapters.",
             },
           ],
           patterns: [
             {
               group: ["@hreader/*/src/*", "@hreader/*/dist/*"],
-              message: "跨包只能走 @hreader/<name> 的公开入口，禁止深层导入。",
+              message:
+                "cross-package imports must go through the public entry of @hreader/<name>; deep imports are forbidden.",
             },
           ],
         },
@@ -151,18 +174,21 @@ export default tseslint.config(
             {
               name: "../dom.ts",
               importNames: ["createDomHost"],
-              message: "widget 只依赖 Host 接口，不得进适配器实现。",
+              message:
+                "widgets only depend on the Host interface; they must not reach into adapter implementations.",
             },
             {
               name: "./dom.ts",
               importNames: ["createDomHost"],
-              message: "widget 只依赖 Host 接口，不得进适配器实现。",
+              message:
+                "widgets only depend on the Host interface; they must not reach into adapter implementations.",
             },
           ],
           patterns: [
             {
               group: ["@hreader/*/src/*", "@hreader/*/dist/*"],
-              message: "跨包只能走 @hreader/<name> 的公开入口，禁止深层导入。",
+              message:
+                "cross-package imports must go through the public entry of @hreader/<name>; deep imports are forbidden.",
             },
           ],
         },

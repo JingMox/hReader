@@ -57,7 +57,7 @@ const imageOf = (path: string, stdout: string): LongImage => {
   const height = fieldOf(data, "height");
   const clipped = fieldOf(data, "clipped");
   if (typeof width !== "number" || typeof height !== "number" || typeof clipped !== "boolean") {
-    throw new Error(`png 的 --json 回包缺宽高/clipped：${stdout.slice(0, 200)}`);
+    throw new Error(`png --json reply lacks width/height/clipped: ${stdout.slice(0, 200)}`);
   }
   return { path, width, height, clipped };
 };
@@ -108,7 +108,7 @@ const failureTextOf = (error: unknown): string => {
   const stderr = fieldOf(error, "stderr");
   const message = error instanceof Error ? error.message : String(error);
   return typeof stderr === "string"
-    ? `${message}｜stderr: ${stderr.trim().split(/\r?\n/u).slice(0, 3).join(" ")}`
+    ? `${message} | stderr: ${stderr.trim().split(/\r?\n/u).slice(0, 3).join(" ")}`
     : message;
 };
 
@@ -136,12 +136,15 @@ const shotsOf = (input: {
 type Check = (ok: boolean, name: string) => void;
 
 const scaleChecksOf = (check: Check, long: Pixels, single: Pixels): void => {
-  check(long.width === 2400, `长图宽不是 2400（IHDR ${pixelsLineOf(long)}）`);
-  check(long.height > 4000, `长图不比裁剪高更长（IHDR ${pixelsLineOf(long)}），长图退化成了首屏`);
+  check(long.width === 2400, `long image width is not 2400 (IHDR ${pixelsLineOf(long)})`);
+  check(
+    long.height > 4000,
+    `long image is no taller than the clip height (IHDR ${pixelsLineOf(long)}); it degenerated to the first screen`,
+  );
   // If the height is not exactly double, some axis missed `--scale`: a half-resolution image still renders — only pixel counts prove it.
   check(
     long.height === 2 * single.height,
-    `--scale 2 的高不是 --scale 1 的两倍（${pixelsLineOf(long)} vs ${pixelsLineOf(single)}）`,
+    `--scale 2 height is not 2x --scale 1 (${pixelsLineOf(long)} vs ${pixelsLineOf(single)})`,
   );
 };
 
@@ -150,7 +153,7 @@ const reportChecksOf = (check: Check, image: LongImage): void => {
   const pixels = ihdrOf(image.path);
   check(
     image.width === pixels.width && image.height === pixels.height,
-    `${image.path} 自报 ${String(image.width)}×${String(image.height)} 与 IHDR ${pixelsLineOf(pixels)} 不一致`,
+    `${image.path} reports ${String(image.width)}×${String(image.height)}, which disagrees with IHDR ${pixelsLineOf(pixels)}`,
   );
 };
 
@@ -176,19 +179,19 @@ export const longCheckOf = (input: {
     scaleChecksOf(check, long, ihdrOf(shots.single.path));
     check(
       clipped.width === 2400 && clipped.height === 4000,
-      `--max-height 2000 没裁成 2400×4000（IHDR ${pixelsLineOf(clipped)}）`,
+      `--max-height 2000 did not clip to 2400×4000 (IHDR ${pixelsLineOf(clipped)})`,
     );
-    check(!shots.long.clipped, "默认 --max-height 20000 被误报 clipped");
-    check(shots.clipped.clipped, "--max-height 2000 时 --json 的 clipped 不是 true");
+    check(!shots.long.clipped, "default --max-height 20000 wrongly reports clipped");
+    check(shots.clipped.clipped, "--json clipped is not true with --max-height 2000");
     reportChecksOf(check, shots.long);
     reportChecksOf(check, shots.clipped);
     const sips = sipsPixelsOf(shots.long.path);
     check(
       sips === null || (sips.width === long.width && sips.height === long.height),
-      `sips 与 IHDR 不一致（${sips === null ? "无 sips" : pixelsLineOf(sips)} vs ${pixelsLineOf(long)}）`,
+      `sips disagrees with IHDR (${sips === null ? "no sips" : pixelsLineOf(sips)} vs ${pixelsLineOf(long)})`,
     );
-    return { note: `长图 ${pixelsLineOf(long)}、裁剪 ${pixelsLineOf(clipped)}`, failures };
+    return { note: `long ${pixelsLineOf(long)}, clipped ${pixelsLineOf(clipped)}`, failures };
   } catch (error) {
-    return { note: "", failures: [`长图没出成：${failureTextOf(error)}`] };
+    return { note: "", failures: [`long image not produced: ${failureTextOf(error)}`] };
   }
 };

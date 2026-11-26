@@ -25,4 +25,4 @@ cpSync(SKILL_SRC, OUT, { recursive: true });
 cpSync(CLI_BUNDLE, join(OUT, "scripts/cli.mjs"));
 cpSync(STYLES_SRC, join(OUT, "scripts/styles"), { recursive: true });
 
-process.stdout.write(`已打包独立 Skill 到 ${OUT}\n`);
+process.stdout.write(`packed standalone Skill to ${OUT}\n`);

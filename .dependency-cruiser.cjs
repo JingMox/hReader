@@ -6,7 +6,7 @@ module.exports = {
       name: "no-unresolvable",
       severity: "error",
       comment:
-        "import 必须能解析到真实文件；指向不存在模块的边会让所有 to.path 规则静默失效（虚假绿灯）。",
+        "imports must resolve to real files; an edge to a missing module silently disables every to.path rule (a false green).",
       from: { path: "^packages/" },
       to: { couldNotResolve: true },
     },
@@ -19,14 +19,16 @@ module.exports = {
     {
       name: "core-is-a-foundation",
       severity: "error",
-      comment: "@hreader/core 不得依赖任何其他 @hreader/* 包（依赖方向单向）。",
+      comment:
+        "@hreader/core must not depend on any other @hreader/* package (the dependency direction is one-way).",
       from: { path: "^packages/core/(src|tests)" },
       to: { path: "^packages/(renderer-html|app)/" },
     },
     {
       name: "renderer-html-ignores-hosts",
       severity: "error",
-      comment: "@hreader/renderer-html 是被宿主消费的渲染层，不得反向依赖宿主包。",
+      comment:
+        "@hreader/renderer-html is the rendering layer consumed by hosts; it must not depend back on host packages.",
       from: { path: "^packages/renderer-html/(src|tests)" },
       to: { path: "^packages/(app)/" },
     },
@@ -50,7 +52,7 @@ module.exports = {
       name: "cli-parse-and-commands-stay-pure",
       severity: "error",
       comment:
-        "args/* 与 commands/* 不得碰进程、文件系统或子进程：进程边界只允许在 main.ts / run.ts。",
+        "args/* and commands/* must not touch process, filesystem, or subprocesses: the process boundary lives only in main.ts / run.ts.",
       from: { path: "^packages/cli/src/(args/|commands/)" },
       to: {
         path: "^(node:)?(process|fs|fs/promises|child_process|os)$",
@@ -60,7 +62,8 @@ module.exports = {
     {
       name: "src-must-not-import-tests",
       severity: "error",
-      comment: "生产代码不得反向依赖测试代码（测试辅助函数会因此漏进发布产物）。",
+      comment:
+        "production code must not depend back on test code (test helpers would leak into release artifacts).",
       from: { path: "^packages/[^/]+/src" },
       to: { path: "^packages/[^/]+/tests" },
     },
@@ -68,7 +71,7 @@ module.exports = {
       name: "no-undeclared-external-dep",
       severity: "error",
       comment:
-        "源码与测试只能引用 package.json 里声明过的外部依赖（npm-no-pkg / npm-unknown 表示未声明）。",
+        "source and tests may only reference external dependencies declared in package.json (npm-no-pkg / npm-unknown marks undeclared).",
       from: { path: "^packages/[^/]+/(src|tests)" },
       to: { dependencyTypes: ["npm-no-pkg", "npm-unknown"] },
     },

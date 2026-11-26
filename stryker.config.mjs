@@ -9,10 +9,10 @@ const config = {
     // html: sanitize (incl. CSS escape decoding, hasExecutableContent), serialize
     "packages/core/src/html/sanitize.ts",
     "packages/core/src/html/serialize.ts",
-    // model：classify、load
+    // model: classify, load
     "packages/core/src/model/classify.ts",
     "packages/core/src/model/load.ts",
-    // ops：patch-node、undo/history、import、normalize
+    // ops: patch-node, undo/history, import, normalize
     "packages/core/src/ops/patch-node/**/*.ts",
     "packages/core/src/ops/import.ts",
     "packages/core/src/ops/normalize-file.ts",
@@ -24,7 +24,7 @@ const config = {
     "packages/core/src/style/apply-file.ts",
     "packages/core/src/style/css.ts",
     "packages/core/src/style/theme.ts",
-    // io：paths、trust、lock、atomic write、digest
+    // io: paths, trust, lock, atomic write, digest
     "packages/core/src/io/paths.ts",
     "packages/core/src/io/trust.ts",
     "packages/core/src/io/lock.ts",

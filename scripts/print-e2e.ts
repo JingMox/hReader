@@ -118,21 +118,24 @@ const endsOnWhiteOf = (html: string): boolean => {
 const pdfChecksOf = (dir: string, html: string): string => {
   const pdf = pdfOf(html, dir).toString("latin1");
 
-  check(pdf.startsWith("%PDF"), "产物不是 PDF");
+  check(pdf.startsWith("%PDF"), "artifact is not a PDF");
   // Pagination: `/Type /Page` (excluding `/Pages`) must occur at least twice to count as a real page break.
-  check(countOf(pdf, /\/Type\s*\/Page[^s]/gu) >= 2, "没有跨页（页数 < 2）");
-  check(isA4Of(pdf), "纸张不是 A4");
-  check(endsOnWhiteOf(html), "纸面背景不是白色（暗色块压过了打印块）");
-  check(/background:\s*#ffffff/iu.test(html), "缺少显式白底");
+  check(countOf(pdf, /\/Type\s*\/Page[^s]/gu) >= 2, "no page break (page count < 2)");
+  check(isA4Of(pdf), "paper is not A4");
+  check(
+    endsOnWhiteOf(html),
+    "page background is not white (a dark block overrode the print block)",
+  );
+  check(/background:\s*#ffffff/iu.test(html), "missing explicit white background");
   // The artifact must not carry any networkable absolute address.
-  check(!/https?:\/\//iu.test(html), "产物含 http(s):// 残留");
+  check(!/https?:\/\//iu.test(html), "artifact contains http(s):// residue");
 
   // Direct evidence for the pagination rule: the same page minus break rules must change page count, or "2 pages" is a coincidence.
   const stripped = html.replaceAll(
     /(?:^|[;{\s])(?:page-)?break-(?:before|after|inside)\s*:[^;}]*;?/giu,
     "",
   );
-  check(stripped !== html, "产物里没有 break-* 规则，差分用例不成立");
+  check(stripped !== html, "artifact has no break-* rules; the differential case does not hold");
   const pages = countOf(pdf, /\/Type\s*\/Page[^s]/gu);
   const pagesWithoutBreaks = countOf(
     pdfOf(stripped, dir, "nobreaks").toString("latin1"),
@@ -140,9 +143,9 @@ const pdfChecksOf = (dir: string, html: string): string => {
   );
   check(
     pagesWithoutBreaks < pages,
-    `去掉分页规则后页数没变（${String(pages)} → ${String(pagesWithoutBreaks)}），规则层未生效`,
+    `page count unchanged after removing break rules (${String(pages)} → ${String(pagesWithoutBreaks)}); the rule layer did not take effect`,
   );
-  return `分页 / A4 / 白底 / 无外链（${String(pages)} 页；抽掉分页规则后 ${String(pagesWithoutBreaks)} 页）`;
+  return `pagination / A4 / white background / no external links (${String(pages)} pages; ${String(pagesWithoutBreaks)} pages without break rules)`;
 };
 
 const main = (): void => {
@@ -157,7 +160,7 @@ const main = (): void => {
     process.stdout.write(`FAILED: ${failures.join("; ")}\n`);
     process.exit(1);
   }
-  process.stdout.write(`OK: ${notes.join("｜")}\n`);
+  process.stdout.write(`OK: ${notes.join(" | ")}\n`);
 };
 
 main();

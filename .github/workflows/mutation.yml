@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       mutate:
-        description: "限定变异范围的 glob（逗号分隔）；留空跑 stryker.config.mjs 里的全量范围"
+        description: "glob that limits the mutation scope (comma-separated); leave empty to run the full scope from stryker.config.mjs"
         required: false
         default: ""
 
@@ -23,7 +23,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 跑变异测试（全量或指定范围）
+      - name: Run mutation tests (full or scoped)
         run: |
           if [ -n "${{ inputs.mutate }}" ]; then
             pnpm test:mutation --mutate "${{ inputs.mutate }}"

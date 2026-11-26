@@ -132,38 +132,50 @@ const main = (): void => {
   );
 
   // Circumstantial evidence of pierced top navigation: the whole page is replaced by about:blank, marker included.
-  check(dom.includes('id="results"'), "父页被顶层导航带走（dump-dom 里找不到 results）");
+  check(
+    dom.includes('id="results"'),
+    "parent page was taken over by top navigation (no results node in dump-dom)",
+  );
 
   const nav = /id="nav">([^<]*)</u.exec(dom)?.[1] ?? "";
-  check(nav === "blocked", `顶层导航/表单提交未被拦截（nav=${nav}）`);
+  check(nav === "blocked", `top navigation / form submit was not blocked (nav=${nav})`);
 
   const off = /id="off">([^<]*)</u.exec(dom)?.[1] ?? "";
-  check(off === "silent", `sandbox="" 的 iframe 里脚本居然跑了（off=${off}）`);
+  check(off === "silent", `script ran inside a sandbox="" iframe (off=${off})`);
 
   const raw = /id="results">([^<]*)</u.exec(dom)?.[1] ?? "";
   const results = JSON.parse(raw === "" ? "{}" : raw) as AttackResults;
-  check(results.alive === true, "allow-scripts 的 iframe 没有回传结果（脚本没跑或消息没到）");
+  check(
+    results.alive === true,
+    "allow-scripts iframe returned no result (script did not run or message never arrived)",
+  );
 
   // Chrome answers SecurityError to cookie/storage/cross-origin DOM access from opaque origins.
   for (const key of ["cookie", "storage", "parentDom", "topGlobal"] as const) {
-    check(results[key] === "SecurityError", `${key} 未被拦（${String(results[key])}）`);
+    check(results[key] === "SecurityError", `${key} was not blocked (${String(results[key])})`);
   }
-  check(results.windowOpen === "blocked", `window.open 未被拦（${String(results.windowOpen)}）`);
+  check(
+    results.windowOpen === "blocked",
+    `window.open was not blocked (${String(results.windowOpen)})`,
+  );
   check(
     results.topNav === "attempted" || results.topNav === "SecurityError",
-    `top.location 赋值出意外（${String(results.topNav)}）`,
+    `top.location assignment misbehaved (${String(results.topNav)})`,
   );
 
   // Forged object message: the parent can only "receive" — the real reader installs no message listener (a forged message has no receiver).
   const forged = /id="forged">([^<]*)</u.exec(dom)?.[1] ?? "";
-  check(forged === "received-object" || forged === "clean", `伪造消息检测本身坏了（${forged}）`);
+  check(
+    forged === "received-object" || forged === "clean",
+    `forged-message check itself is broken (${forged})`,
+  );
 
   if (failures.length > 0) {
     process.stdout.write(`FAILED: ${failures.join("; ")}\n`);
     process.exit(1);
   }
   process.stdout.write(
-    `OK: 沙箱对抗全拦（cookie/storage/DOM/弹窗/导航/表单；off 档静默；伪造 postMessage 无监听方）\n`,
+    `OK: all sandbox attacks blocked (cookie/storage/DOM/popups/navigation/forms; off tier silent; forged postMessage had no listener)\n`,
   );
 };
 

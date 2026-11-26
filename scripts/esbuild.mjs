@@ -58,7 +58,7 @@ export function copyRepoStyles(...targets) {
   const source = `${REPO_ROOT}styles`;
   if (!existsSync(source)) {
     process.stderr.write(
-      "[build] 缺少仓库根 styles/：本包构建需在源码树内执行，发行版自带 styles/\n",
+      "[build] missing repo-root styles/: this package must build inside the source tree (releases ship their own styles/)\n",
     );
     process.exit(1);
   }

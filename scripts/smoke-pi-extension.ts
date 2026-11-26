@@ -84,29 +84,29 @@ const BASE = [
 const version = runPi(["--version"]).output.trim();
 check(
   version === SIGNATURE_PI_VERSION,
-  `pi 版本是抄签名时的 ${SIGNATURE_PI_VERSION}`,
-  `实测 ${version}：比对 pi-hreader.ts 头部四段签名后再改这个常量`,
+  `pi version matches the one the signatures were copied from: ${SIGNATURE_PI_VERSION}`,
+  `actual ${version}: re-check the four signature segments at the top of pi-hreader.ts before changing this constant`,
 );
 
 const loaded = runPi([...BASE, "--extension", EXTENSION, "--print", "/hreader"]);
 check(
   !loaded.output.includes(LOAD_FAILURE),
-  "扩展加载通过 Pi 的注册期校验（命令名/handler、工具 parameters）",
+  "extension loads through Pi's registration checks (command name/handler, tool parameters)",
   loaded.output,
 );
 const loadedTypes = eventTypesOf(loaded.output);
 check(
   loaded.status === 0 && loadedTypes.length > 0 && loadedTypes.every((type) => type === "session"),
-  "`/hreader` 作为命令被执行（print 模式无 UI → 只有 session 事件，没有模型回合）",
-  `退出码 ${String(loaded.status)}；事件：${loadedTypes.join(",") || "无"}；输出：${loaded.output}`,
+  "`/hreader` executes as a command (print mode has no UI → only session events, no model turn)",
+  `exit code ${String(loaded.status)}; events: ${loadedTypes.join(",") || "none"}; output: ${loaded.output}`,
 );
 
 const control = runPi([...BASE, "--print", "/hreader"]);
 const controlTypes = eventTypesOf(control.output);
 check(
   controlTypes.some((type) => type !== "session"),
-  "对照组：不加载扩展时 `/hreader` 落到模型（出现模型回合事件，不是恒真断言）",
-  `退出码 ${String(control.status)}；事件：${controlTypes.join(",") || "无"}；输出：${control.output}`,
+  "control: without the extension, `/hreader` falls through to the model (a model-turn event appears, so this is not a vacuous assertion)",
+  `exit code ${String(control.status)}; events: ${controlTypes.join(",") || "none"}; output: ${control.output}`,
 );
 
 // One more real-load proof: `/hr-style` must also be a **command** (finishes silently in print
@@ -115,13 +115,15 @@ const styled = runPi([...BASE, "--extension", EXTENSION, "--print", "/hr-style"]
 const styledTypes = eventTypesOf(styled.output);
 check(
   styled.status === 0 && styledTypes.length > 0 && styledTypes.every((type) => type === "session"),
-  "`/hr-style` 也作为命令被执行（注册面含两条命令，不是只认 `/hreader`）",
-  `退出码 ${String(styled.status)}；事件：${styledTypes.join(",") || "无"}；输出：${styled.output}`,
+  "`/hr-style` also executes as a command (the registration surface has two commands, not just `/hreader`)",
+  `exit code ${String(styled.status)}; events: ${styledTypes.join(",") || "none"}; output: ${styled.output}`,
 );
 
 if (failures.length > 0) {
-  process.stderr.write(`\n烟测失败 ${String(failures.length)} 条：\n${failures.join("\n")}\n`);
+  process.stderr.write(`\nsmoke failures (${String(failures.length)}):\n${failures.join("\n")}\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write("\n烟测通过：真 pi 能加载本扩展并执行 `/hreader` 与 `/hr-style`。\n");
+  process.stdout.write(
+    "\nsmoke passed: real pi loads this extension and executes `/hreader` and `/hr-style`.\n",
+  );
 }

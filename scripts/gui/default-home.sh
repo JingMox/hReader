@@ -10,7 +10,7 @@ make_dirs "$root"
 make_cli_shim "$root/hr"
 shell_store="$HOME/Library/Application Support/com.hreader.desktop"
 # This script deliberately uses the real shell app-data dir: it is deleted wholesale below — back up first and confirm no instance is running.
-[ "${HREADER_GUI_REAL_HOME:-}" = "1" ] || { echo "本脚本会删真实壳数据目录 ${shell_store}；确认后以 HREADER_GUI_REAL_HOME=1 重跑" >&2; exit 1; }
+[ "${HREADER_GUI_REAL_HOME:-}" = "1" ] || { echo "this script deletes the real shell data dir ${shell_store}; confirm by rerunning with HREADER_GUI_REAL_HOME=1" >&2; exit 1; }
 rm -rf "$shell_store"
 snapshot() { if [ -d "$HOME/.hreader" ]; then ls -la "$HOME/.hreader" | md5; else echo absent; fi; }
 before=$(snapshot)

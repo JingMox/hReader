@@ -18,13 +18,13 @@ ppid_of() { ps -o ppid= -p "$1" 2>/dev/null | tr -d ' '; }
 
 # Evidence dirs use `mktemp -d`: a fixed `/tmp/hr-*` would let concurrent scripts wipe each
 # other's dirs. A failure must stop at once: an empty string turns `"$root/home"` into `/home`.
-mktemp_root() { mktemp -d "${TMPDIR:-/tmp}/$1.XXXXXX" || { echo "mktemp 失败：$1" >&2; exit 1; }; }
+mktemp_root() { mktemp -d "${TMPDIR:-/tmp}/$1.XXXXXX" || { echo "mktemp failed: $1" >&2; exit 1; }; }
 
 # One-shot workspace (with doc.html) + empty home: left for the caller to inspect after each run; the script does not clean up.
 make_dirs() {
   local root=$1
   # Guard here too so correctness doesn't depend on every call site writing `|| exit 1`.
-  [ -n "$root" ] || { echo "make_dirs: root 为空（mktemp 失败？）" >&2; exit 1; }
+  [ -n "$root" ] || { echo "make_dirs: root is empty (mktemp failed?)" >&2; exit 1; }
   mkdir -p "$root/home" "$root/ws" || exit 1
   printf '<!doctype html><html><body><article data-hr-id="hr-a"><p>x</p></article></body></html>' \
     > "$root/ws/doc.html"
@@ -41,7 +41,7 @@ field_of() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))[sys.
 
 require_app() {
   if [ ! -x "$APP_BIN" ]; then
-    echo "缺少打包产物：$APP_BIN（先 pnpm --dir packages/desktop build）"
+    echo "missing packaged artifact: $APP_BIN (run pnpm --dir packages/desktop build first)"
     exit 1
   fi
 }

@@ -151,7 +151,7 @@ const check = (theme, mode, label, fgVal, bgVal, min, required) => {
   const fg = parseColor(fgVal);
   const bg = parseColor(bgVal);
   if (fg === undefined || bg === undefined) {
-    failures.push(`${theme} [${mode}] ${label}: 无法解析色值 ${fgVal} / ${bgVal}`);
+    failures.push(`${theme} [${mode}] ${label}: cannot parse color values ${fgVal} / ${bgVal}`);
     return;
   }
   const bgFlat = composite(bg, { r: 255, g: 255, b: 255, a: 1 });
@@ -180,15 +180,15 @@ for (const dir of readdirSync(STYLES_DIR).sort()) {
   for (const [mode, tokens] of Object.entries(modes)) {
     const bg = tokens["--hr-bg"];
     if (bg === undefined) {
-      failures.push(`${dir} [${mode}]: 缺 --hr-bg`);
+      failures.push(`${dir} [${mode}]: missing --hr-bg`);
       continue;
     }
     for (const [name, label] of [
-      ["--hr-fg", "正文 fg/bg"],
-      ["--hr-muted", "次要 muted/bg"],
+      ["--hr-fg", "body fg/bg"],
+      ["--hr-muted", "secondary muted/bg"],
     ]) {
       if (tokens[name] === undefined) {
-        failures.push(`${dir} [${mode}]: 缺 ${name}`);
+        failures.push(`${dir} [${mode}]: missing ${name}`);
         continue;
       }
       check(dir, mode, label, tokens[name], bg, 4.5, true);
@@ -211,22 +211,22 @@ for (const dir of readdirSync(STYLES_DIR).sort()) {
 
   // Structural checks
   if (!/@media\s+print/u.test(clean)) {
-    failures.push(`${dir}: 缺 @media print`);
+    failures.push(`${dir}: missing @media print`);
   }
   const hasMotion = /\btransition\b|\banimation\b|@keyframes/u.test(clean);
   const hasReducedMotion = /prefers-reduced-motion/u.test(clean);
   if (hasMotion && !hasReducedMotion) {
-    failures.push(`${dir}: 有动效但无 prefers-reduced-motion`);
+    failures.push(`${dir}: has motion but no prefers-reduced-motion`);
   }
   rows.push(
-    `| ${dir} | - | reduced-motion | ${hasMotion ? (hasReducedMotion ? "guarded" : "MISSING") : "n/a (无动效)"} | - | ${hasMotion && !hasReducedMotion ? "FAIL" : "ok"} |`,
+    `| ${dir} | - | reduced-motion | ${hasMotion ? (hasReducedMotion ? "guarded" : "MISSING") : "n/a (no motion)"} | - | ${hasMotion && !hasReducedMotion ? "FAIL" : "ok"} |`,
   );
   rows.push(
     `| ${dir} | - | @media print | ${/@media\s+print/u.test(clean) ? "present" : "MISSING"} | - | ${/@media\s+print/u.test(clean) ? "ok" : "FAIL"} |`,
   );
   for (const chrome of SHELL_CHROME) {
     if (clean.includes(chrome)) {
-      failures.push(`${dir}: 选择器泄漏到应用外壳 ${chrome}`);
+      failures.push(`${dir}: selector leaks into app chrome ${chrome}`);
     }
   }
 }
@@ -236,8 +236,8 @@ process.stdout.write("|---|---|---|---|---|---|\n");
 for (const row of rows) process.stdout.write(`${row}\n`);
 
 if (failures.length > 0) {
-  process.stderr.write("\n主题可访问性检查失败：\n");
+  process.stderr.write("\nTheme accessibility checks failed:\n");
   for (const f of failures) process.stderr.write(`  ✗ ${f}\n`);
   process.exit(1);
 }
-process.stdout.write(`\n${String(rows.length)} 项检查全部通过。\n`);
+process.stdout.write(`\nAll ${String(rows.length)} checks passed.\n`);
