@@ -367,9 +367,7 @@ describe("docRelocatorOf · D49 fallback chain levels", () => {
   });
 
   it("should keep exact+context disambiguation mandatory at every level", () => {
-    const relocate = docRelocatorOf(
-      '<body><div data-hr-id="n1">AB AB</div><p>先 AB 后</p></body>',
-    );
+    const relocate = docRelocatorOf('<body><div data-hr-id="n1">AB AB</div><p>先 AB 后</p></body>');
     const result = relocate(
       note({
         nodeId: "n1",
