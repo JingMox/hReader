@@ -205,7 +205,104 @@ describe("parseSidecarFile · per-record dirt", () => {
   });
 });
 
+describe("parseSidecarFile · author normalization", () => {
+  it.each([
+    ["admin", '"admin"'],
+    [42, "42"],
+    [null, "null"],
+    [true, "true"],
+    [{ role: "admin" }, '{"role":"admin"}'],
+  ])(
+    "should read a non-user/agent author %j as user and name it in a diagnostic",
+    (author, shown) => {
+      const parsed = parseSidecarFile(fileOf(validRecord({ author })), PATH);
+
+      expect(parsed.annotations[0]?.author).toBe("user");
+      expect(parsed.diagnostics).toEqual([
+        `annotations[0].author 无法识别：${shown}，按 user 处理`,
+      ]);
+    },
+  );
+
+  it.each([undefined, "user", "agent"])(
+    "should normalize a clean author %s without any diagnostic",
+    (author) => {
+      const parsed = parseSidecarFile(fileOf(validRecord({ author })), PATH);
+
+      expect(parsed.annotations[0]?.author).toBe(author ?? "user");
+      expect(parsed.diagnostics).toEqual([]);
+    },
+  );
+
+  it("should name a bad reply author under its reply label and read it as user", () => {
+    const parsed = parseSidecarFile(
+      fileOf(validRecord({ replies: [{ id: "rp-1", createdAt: "t", author: "bot" }] })),
+      PATH,
+    );
+
+    expect(parsed.annotations[0]?.replies[0]?.author).toBe("user");
+    expect(parsed.diagnostics).toEqual([
+      'annotations[0].replies[0].author 无法识别："bot"，按 user 处理',
+    ]);
+  });
+});
+
 describe("parseSidecarFile · replies", () => {
+  it("should keep the first reply when reply ids repeat and skip the rest", () => {
+    const parsed = parseSidecarFile(
+      fileOf(
+        validRecord({
+          replies: [
+            { id: "rp-1", createdAt: "t", note: "第一条" },
+            { id: "rp-2", createdAt: "t", note: "中间" },
+            { id: "rp-1", createdAt: "t", note: "第二条" },
+          ],
+        }),
+      ),
+      PATH,
+    );
+
+    expect(parsed.annotations[0]?.replies).toEqual([
+      { id: "rp-1", author: "user", note: "第一条", createdAt: "t" },
+      { id: "rp-2", author: "user", note: "中间", createdAt: "t" },
+    ]);
+    expect(parsed.diagnostics).toEqual(["annotations[0] 回复 id 重复：rp-1，已跳过"]);
+  });
+
+  it("should dedupe reply ids per annotation, not across annotations", () => {
+    const parsed = parseSidecarFile(
+      fileOf(
+        validRecord({ replies: [{ id: "rp-1", createdAt: "t", note: "a" }] }),
+        validRecord({
+          id: "an-11111111",
+          replies: [{ id: "rp-1", createdAt: "t", note: "b" }],
+        }),
+      ),
+      PATH,
+    );
+
+    expect(parsed.annotations[0]?.replies).toHaveLength(1);
+    expect(parsed.annotations[1]?.replies).toHaveLength(1);
+    expect(parsed.diagnostics).toEqual([]);
+  });
+
+  it("should drop a repeated reply's own diagnostics along with the reply", () => {
+    const parsed = parseSidecarFile(
+      fileOf(
+        validRecord({
+          replies: [
+            { id: "rp-1", createdAt: "t", note: "第一条" },
+            { id: "rp-1", createdAt: "t", note: "n".repeat(NOTE_LIMIT + 1) },
+          ],
+        }),
+      ),
+      PATH,
+    );
+
+    expect(parsed.annotations[0]?.replies).toHaveLength(1);
+    expect(parsed.diagnostics).toEqual(["annotations[0] 回复 id 重复：rp-1，已跳过"]);
+  });
+
   it("should ignore a non-array replies field with a diagnostic", () => {
     const parsed = parseSidecarFile(fileOf(validRecord({ replies: "x" })), PATH);
 
