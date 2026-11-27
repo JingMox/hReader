@@ -5,6 +5,8 @@ export type {
   CreateFromTemplateInput,
   CreateFromTemplateResult,
   LoadedTemplate,
+  SavedTemplate,
+  SaveTemplateInput,
   TemplateDeps,
   TemplateDiagnostic,
   TemplateFormat,
@@ -15,5 +17,6 @@ export type {
   TemplateSummary,
 } from "./contracts";
 export { createFromTemplate } from "./create";
+export { saveTemplate } from "./save";
 export { listTemplates, readTemplate } from "./service";
 export { nodeTemplateDeps } from "./node";

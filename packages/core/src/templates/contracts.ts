@@ -99,3 +99,23 @@ export interface CreateFromTemplateResult {
   /** Asset files actually written (forward-slash paths relative to the workspace). */
   readonly assets: readonly string[];
 }
+
+/** `saveTemplate`'s input: save the page plus its `<stem>_files/` dir as `<root>/<id>/`; `style`/`guide` override extraction. */
+export interface SaveTemplateInput {
+  readonly file: string;
+  readonly id: string;
+  readonly global?: boolean;
+  readonly name?: string;
+  readonly description?: string;
+  readonly style?: string;
+  readonly guide?: string;
+}
+
+/** `saveTemplate`'s result: template id, the on-disk dir, detected format, the tier it landed in and the copied assets. */
+export interface SavedTemplate {
+  readonly id: string;
+  readonly dir: string;
+  readonly format: TemplateFormat;
+  readonly scope: "workspace" | "user";
+  readonly assets: readonly string[];
+}

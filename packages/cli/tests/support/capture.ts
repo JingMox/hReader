@@ -9,7 +9,11 @@ export interface Captured {
 }
 
 /** `cwd` doubles as the default workspace: cases pass a temp dir and never need `--workspace` again. */
-export const runIn = async (cwd: string, argv: readonly string[]): Promise<Captured> => {
+export const runIn = async (
+  cwd: string,
+  argv: readonly string[],
+  extra: Partial<CliIo> = {},
+): Promise<Captured> => {
   const out: string[] = [];
   const err: string[] = [];
   const io: CliIo = {
@@ -19,6 +23,7 @@ export const runIn = async (cwd: string, argv: readonly string[]): Promise<Captu
     readStdin: () => Promise.resolve(new Uint8Array()),
     debug: false,
     launchParentPid: process.ppid,
+    ...extra,
   };
   const code = await run(argv, io);
   return { code, stdout: out.join(""), stderr: err.join("") };

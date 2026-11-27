@@ -27,6 +27,10 @@ node skills/hreader/scripts/hr.mjs style report.html --visual atelier-editorial
 node skills/hreader/scripts/hr.mjs style report.html --tone atelier-editorial
 node skills/hreader/scripts/hr.mjs style report.html --lint
 node skills/hreader/scripts/hr.mjs check report.html               # layout-constraint check
+node skills/hreader/scripts/hr.mjs template list                   # templates across builtin/user/workspace tiers
+node skills/hreader/scripts/hr.mjs template show note              # manifest + guide + sizes for one template
+node skills/hreader/scripts/hr.mjs template new draft.html --template note   # draft from a template
+node skills/hreader/scripts/hr.mjs template save report.html --id my-style   # page → reusable template
 ```
 
 Exit codes: `0` success, `1` business failure (missing node / invalid fragment / locked), `2` usage error, `3` IO and path problems, `70` internal error. **On any non-zero exit, read the error text on stderr first — do not guess.**
@@ -47,6 +51,15 @@ Do not hand-write a whole HTML skeleton. `new` generates a starter document of t
 - `delete` whole sections you don't need; to add a page/section, `insert_after` a neighboring `<section>`.
 - `slides` says one thing per page: one `<h2>` plus one component or two or three sentences. Scrolling in a browser turns pages; printing / saving to PDF yields one landscape page each — no script needed.
 - When `<file>` already exists you need `--force`; without `--title` the file name is used.
+
+## Drafting from a template (`template`)
+
+Templates sit one level above kinds: a kind is a fixed skeleton, a template is a saved directory (`template.json` + entry HTML + `style.css` + `guide.md` + optional `assets/`) found in three tiers — builtin < `~/.hreader/templates` < `<workspace>/.hreader/templates`; deeper tiers shadow by id.
+
+- `template list` prints every visible template (id, name, format, source, tags); broken entries warn on stderr and appear under `diagnostics` in `--json`.
+- `template show <id>` prints the manifest fields, the full `guide.md`, and the entry/style byte sizes. **Read the guide before drafting from a template** — it carries the template's writing rules.
+- `template new <file> --template <id> [--title t]` drafts a document from the template; `hr new <file> --template <id>` does the same (and combining `--template` with `--kind`/`--visual` is a usage error).
+- `template save <file> --id <id> [--global]` distills an existing page into a reusable template: the `<style id="hr-theme">` content becomes `style.css`, `<stem>_files/` becomes `assets/`, and a `guide.md` draft is generated from the page's heading outline — **fill in the "Writing guidelines" section after saving**. `--global` writes to the user tier (`~/.hreader/templates`, honor `HREADER_HOME`); without it the template lands in `<workspace>/.hreader/templates`. There is no `--force`: an existing id fails with `file_exists`, pick another id.
 
 ## The five-primitive workflow
 
@@ -142,6 +155,8 @@ In other words: **when the user asks "how do I make the AI always write in this 
 | `locked`                 | another process is writing the same file | retry after 2s; if it keeps failing, stop and ask |
 | `not_a_file`             | path doesn't exist or isn't a file       | confirm the file path first                       |
 | `needs_normalize`        | document lacks `data-hr-id`s             | run `hr normalize <file> --write` first           |
+| `unknown_template`       | template id exists in no tier            | run `template list` and pick a printed id         |
+| `invalid_template`       | template fails validation / too large    | fix the template directory or pick another id     |
 | `file_exists`            | target file already exists               | add `--force`, or pick another path               |
 
 ## Don'ts

@@ -8,7 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- **`HREADER_HOME` environment variable**: relocates the hReader config root (the directory holding `.hreader/permissions.json` and `daemon.json`) for commands that resolve it from `io.home` — `serve` without `--home`, and the foreign-document permission lookup in `hr pdf` / `hr png`. Unlike `HOME`, it is not inherited by the spawned Chrome.
+- **Document templates**: draft documents from saved template directories across three tiers — builtin < `~/.hreader/templates` < `<workspace>/.hreader/templates` (deeper tiers shadow by id). A template is a directory holding `template.json`, an entry HTML, `style.css`, `guide.md` and an optional `assets/`.
+  - **CLI**: `hr template list` (merged table + `diagnostics` for broken entries), `hr template show <id>` (manifest fields, full guide, entry/style byte sizes), `hr template new <file> --template <id>` (draft from a template; assets land under `<stem>_files/`), and `hr template save <file> --id <id> [--global] [--name n] [--description d]` — the `<style id="hr-theme">` content becomes `style.css`, `<stem>_files/` becomes `assets/`, a `guide.md` draft is generated from the page's heading outline, and the write is all-or-nothing via a sibling staging dir (`file_exists` if the id is taken; no `--force`). `hr new <file> --template <id>` is an alias for `hr template new`; combining `--template` with `--kind`/`--visual` is a usage error. `HREADER_HOME` relocates the user template tier.
+  - **MCP tools**: `hr_list_templates`, `hr_get_template` (bounded `entry`/`style`/`guide` with truncation markers), `hr_create_from_template` (`id` defaults to `blank-html`), and `hr_save_template` (`style`/`guide` args override the auto-extracted values, each bounded at 1 MiB).
+  - **MCP prompt** `extract-template`: reads 1–5 sample pages (`hr_outline`, `hr_read_node`), derives shared visual and writing rules, and calls `hr_save_template`.
+- **`HREADER_HOME` environment variable**: relocates the hReader config root (the directory holding `.hreader/permissions.json` and `daemon.json`) for commands that resolve it from `io.home` — `serve` without `--home`, `hr template` (the user tier and `save --global`), and the foreign-document permission lookup in `hr pdf` / `hr png`. Unlike `HOME`, it is not inherited by the spawned Chrome.
 
 ### Fixed
 

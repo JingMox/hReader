@@ -63,11 +63,15 @@ describe("dist/main.js · tool surface", () => {
     expect([...toolNamesOf(frames)].sort()).toEqual([
       "hr_apply_style",
       "hr_create_doc",
+      "hr_create_from_template",
+      "hr_get_template",
       "hr_import_doc",
+      "hr_list_templates",
       "hr_outline",
       "hr_patch_node",
       "hr_read_node",
       "hr_resolve_annotation",
+      "hr_save_template",
       "hr_undo",
     ]);
   }, 30_000);

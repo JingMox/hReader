@@ -127,6 +127,7 @@ const PUBLIC = [
   "revertLast",
   "sanitizedAttributesOf",
   "saveStyleText",
+  "saveTemplate",
   "serializeHtml",
   "serializeSidecarFile",
   "startServer",

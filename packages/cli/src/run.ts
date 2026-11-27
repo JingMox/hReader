@@ -21,6 +21,12 @@ import { pngCommand } from "./commands/png";
 import { readCommand } from "./commands/read";
 import { styleCommand } from "./commands/style";
 import { styleExtractCommand } from "./commands/style-extract";
+import {
+  templateListCommand,
+  templateNewCommand,
+  templateSaveCommand,
+  templateShowCommand,
+} from "./commands/template";
 import { undoCommand } from "./commands/undo";
 import { HintedError, StrictFailure } from "./errors";
 import { EXIT_FAILURE, EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, exitCodeOf } from "./exit-codes";
@@ -305,6 +311,54 @@ const runImport = async (
   });
 };
 
+type TemplateKind = "templateList" | "templateShow" | "templateNew" | "templateSave";
+
+/** One home resolution for all four subcommands: `--home` must exist (like serve); the default is `resolvedIoOf`'s `HREADER_HOME`-aware value. */
+const runTemplate = async (
+  intent: Extract<Runnable, { kind: TemplateKind }>,
+  io: ResolvedIo,
+): Promise<string> => {
+  const home = intent.home === undefined ? io.home : homeRealpathOf(intent.home);
+  if (intent.kind === "templateList") {
+    return templateListCommand({
+      workspace: workspaceRealpathOf(intent.workspace),
+      home,
+      json: intent.json,
+      warn: io.stderr,
+    });
+  }
+  if (intent.kind === "templateShow") {
+    return templateShowCommand({
+      id: intent.id,
+      workspace: workspaceRealpathOf(intent.workspace),
+      home,
+      json: intent.json,
+    });
+  }
+  const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+  return intent.kind === "templateNew"
+    ? templateNewCommand({
+        file: paths.file,
+        template: intent.template,
+        title: intent.title,
+        workspace: paths.workspace,
+        home,
+        json: intent.json,
+        displayPath: displayedPathOf(intent.path, io.cwd),
+      })
+    : templateSaveCommand({
+        file: paths.file,
+        id: intent.id,
+        global: intent.global,
+        name: intent.name,
+        description: intent.description,
+        workspace: paths.workspace,
+        home,
+        json: intent.json,
+        cwd: io.cwd,
+      });
+};
+
 type RemainingKind =
   "patch" | "pdf" | "png" | "serve" | "undo" | "styleExtract" | "normalize" | "style" | "import";
 
@@ -345,6 +399,14 @@ const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
     return checkCommand({ ...intent, displayPath: displayedPathOf(intent.path, io.cwd) });
   }
   if (intent.kind === "new") return runNew(intent, io.cwd);
+  if (
+    intent.kind === "templateList" ||
+    intent.kind === "templateShow" ||
+    intent.kind === "templateNew" ||
+    intent.kind === "templateSave"
+  ) {
+    return runTemplate(intent, io);
+  }
   return intent.kind === "export" ? runExport(intent, io) : await runRemaining(intent, io);
 };
 
@@ -353,8 +415,11 @@ const usageFailure = (message: string, topic: CommandName | undefined, io: CliIo
   return EXIT_USAGE;
 };
 
-/** `styleExtract` is a `style` subcommand: help and usage errors both land in the `style` section. */
-const topicOf = (kind: Runnable["kind"]): CommandName => (kind === "styleExtract" ? "style" : kind);
+/** `styleExtract` is a `style` subcommand and all `template*` intents report under `template`: help and usage errors land in the matching section. */
+const topicOf = (kind: Runnable["kind"]): CommandName => {
+  if (kind === "styleExtract") return "style";
+  return kind.startsWith("template") ? "template" : (kind as CommandName);
+};
 
 const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {
   if (!(error instanceof HrError)) {

@@ -21,12 +21,21 @@ import {
   type ParsedArgs,
 } from "./intent";
 import type { Raw } from "./raw";
+import { templateConflictOf } from "./template";
 
 const MAX_BYTES_CEILING = 10_000_000;
 
 const ACTIONS: readonly string[] = ["replace", "insert_before", "insert_after", "append", "delete"];
 
-const NEW_FLAGS = ["--force", "--json", "--kind", "--title", "--visual", "--workspace"];
+const NEW_FLAGS = [
+  "--force",
+  "--json",
+  "--kind",
+  "--template",
+  "--title",
+  "--visual",
+  "--workspace",
+];
 
 const IMPORT_FLAGS = ["--force", "--json", "--kind", "--out", "--title", "--workspace"];
 
@@ -76,6 +85,7 @@ const newShapeProblemOf = (raw: Raw, rest: readonly string[]): string | undefine
   const [file = "", ...extra] = rest;
   if (extra.length > 0) return `new 只接受 1 个位置参数，多出 ${String(extra.length)} 个`;
   if (file === "") return "new 缺少 <file>";
+  if (raw.values.get("--template") === "") return "--template 不能为空";
   if (raw.values.get("--title") === "") return "--title 不能为空";
   return unusedFlag(raw, NEW_FLAGS);
 };
@@ -84,6 +94,23 @@ export const newIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
   const problem = newShapeProblemOf(raw, rest);
   if (problem !== undefined) return failure(problem, "new");
   const [file = ""] = rest;
+  // `hr new --template <id>` is an alias for `hr template new`: same intent, so both paths share one output contract.
+  const template = raw.values.get("--template");
+  if (template !== undefined) {
+    const conflict = templateConflictOf(raw);
+    if (conflict !== undefined) return failure(conflict, "new");
+    return {
+      ok: true,
+      intent: {
+        kind: "templateNew",
+        path: absoluteOf(file, cwd),
+        template,
+        title: raw.values.get("--title"),
+        home: undefined,
+        ...commonOf(raw, cwd),
+      },
+    };
+  }
   const docKind = raw.values.get("--kind") ?? DEFAULT_DOC_KIND;
   if (!isDocKind(docKind)) {
     return failure(`未知的 --kind：${docKind}（可选：${DOC_KINDS.join(" | ")}）`, "new");

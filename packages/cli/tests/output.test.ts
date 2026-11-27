@@ -213,9 +213,9 @@ describe("output · human-readable text", () => {
 });
 
 describe("usage · single source of truth", () => {
-  it("should name all thirteen commands", () => {
+  it("should name all fourteen commands", () => {
     expect(COMMAND_NAMES.join(" ")).toBe(
-      "new import normalize outline read patch check style undo export pdf png serve",
+      "new import normalize outline read patch check style undo export pdf png serve template",
     );
     expect(isCommandName("patch")).toBe(true);
     expect(isCommandName("nope")).toBe(false);
