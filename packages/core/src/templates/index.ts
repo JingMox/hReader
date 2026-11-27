@@ -14,5 +14,6 @@ export type {
   TemplateSource,
   TemplateSummary,
 } from "./contracts";
+export { createFromTemplate } from "./create";
 export { listTemplates, readTemplate } from "./service";
 export { nodeTemplateDeps } from "./node";
