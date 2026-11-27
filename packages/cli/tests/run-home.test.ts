@@ -31,13 +31,18 @@ afterAll(() => {
   rmSync(sandbox, { recursive: true, force: true });
 });
 
-const ioWith = (homePath: string | undefined, stop: Promise<void>): CliIo => ({
+const ioWith = (
+  homePath: string | undefined,
+  stop: Promise<void>,
+  env: Readonly<Record<string, string>> = {},
+): CliIo => ({
   cwd: dir,
   stdout: () => undefined,
   stderr: () => undefined,
   readStdin: () => Promise.resolve(new Uint8Array()),
   debug: false,
   launchParentPid: process.ppid,
+  env,
   stop,
   ...(homePath === undefined ? {} : { home: homePath }),
 });
@@ -66,6 +71,49 @@ it("should write daemon.json under the injected home when --home is absent", asy
 
   const running = run(["serve", "a.html", "--port", "0", "--json"], ioWith(home, stop));
   const daemon = join(home, ".hreader", "daemon.json");
+  const appeared = await waitForOf(() => existsSync(daemon));
+  release();
+
+  expect(await running).toBe(0);
+  expect(appeared).toBe(true);
+  expect(await waitForOf(() => !existsSync(daemon))).toBe(true);
+}, 20_000);
+
+// `HREADER_HOME` is the env-level way to relocate the config root: unlike `HOME` it is not
+// inherited by the spawned Chrome (an empty/poisoned HOME stalls the browser's network stack).
+it("should write daemon.json under HREADER_HOME when io.home is unset", async () => {
+  const envHome = realpathSync(mkdtempSync(join(tmpdir(), "hr-env-home-")));
+  let release: () => void = () => undefined;
+  const stop = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  const running = run(
+    ["serve", "a.html", "--port", "0", "--json"],
+    ioWith(undefined, stop, { HREADER_HOME: envHome }),
+  );
+  const daemon = join(envHome, ".hreader", "daemon.json");
+  const appeared = await waitForOf(() => existsSync(daemon));
+  release();
+
+  expect(await running).toBe(0);
+  expect(appeared).toBe(true);
+  expect(await waitForOf(() => !existsSync(daemon))).toBe(true);
+  rmSync(envHome, { recursive: true, force: true });
+}, 20_000);
+
+it("should treat an empty HREADER_HOME as unset and fall back to homedir()", async () => {
+  let release: () => void = () => undefined;
+  const stop = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  // The module-top sandbox owns homedir(): daemon.json lands under it, not under "".
+  const running = run(
+    ["serve", "a.html", "--port", "0", "--json"],
+    ioWith(undefined, stop, { HREADER_HOME: "" }),
+  );
+  const daemon = join(sandbox, ".hreader", "daemon.json");
   const appeared = await waitForOf(() => existsSync(daemon));
   release();
 

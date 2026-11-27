@@ -5,10 +5,11 @@ import { dirname } from "node:path";
 
 import { HrError, nodePatchDeps } from "@hreader/core";
 
-import type { LongImage } from "../chrome/types";
+import type { LongImage, RenderSource } from "../chrome/types";
 import { assertPixelRequestOf } from "../chrome/pixels";
 import { assertPngOf, pngSizeOf } from "../chrome/png";
 import { dataPng, humanPng, jsonOk, type PngReport } from "../output";
+import { foreignPlanOf } from "./export-foreign";
 import {
   assertOutInsideOf,
   assertTargetFreeOf,
@@ -18,7 +19,8 @@ import {
 } from "./export-print";
 
 export type RenderPng = (input: {
-  readonly html: string;
+  /** `sheet` = the managed print sheet; `foreign` = the capability-gated raw page. */
+  readonly source: RenderSource;
   readonly width: number;
   readonly scale: number;
   readonly maxHeight: number;
@@ -43,6 +45,8 @@ export interface PngCommandInput {
   readonly out: string;
   readonly force: boolean;
   readonly workspace: string;
+  /** User config root for global permission modes (`run.ts` resolves it at the process boundary). */
+  readonly home: string;
   readonly json: boolean;
   readonly warn: (message: string) => void;
   /** The `--out` printed in the receipt (user's view): falls back to the real path when not given. */
@@ -105,21 +109,41 @@ export const pngCommand = async (input: PngCommandInput): Promise<string> => {
   assertPixelRequestOf({ width, scale, maxHeight, maxHeightExplicit: input.maxHeightExplicit });
   await assertPngOutOf(input);
   await assertTargetFreeOf(input.out, input.force, nodePatchDeps);
-  const product = await printProductOf({
+  // Same split `hr pdf` makes: foreign docs render raw behind the permission
+  // gate; everything else keeps the managed print sheet.
+  const foreign = await foreignPlanOf({
     path: input.path,
-    visual: input.visual,
-    // Tall images lay out at A4 content width, ignoring `--page-size`: PNG has no paper, only a viewport width.
-    paper: "a4",
     workspace: input.workspace,
-    warn: input.warn,
+    home: input.home,
   });
-  const image = await input.render({
-    html: product.html,
-    width,
-    scale,
-    maxHeight,
-    timeoutMs: input.timeoutMs,
-  });
+  const image =
+    foreign !== undefined
+      ? await input.render({
+          source: { kind: "foreign", page: foreign },
+          width,
+          scale,
+          maxHeight,
+          timeoutMs: input.timeoutMs,
+        })
+      : await input.render({
+          source: {
+            kind: "sheet",
+            html: (
+              await printProductOf({
+                path: input.path,
+                visual: input.visual,
+                // Tall images lay out at A4 content width, ignoring `--page-size`: PNG has no paper, only a viewport width.
+                paper: "a4",
+                workspace: input.workspace,
+                warn: input.warn,
+              })
+            ).html,
+          },
+          width,
+          scale,
+          maxHeight,
+          timeoutMs: input.timeoutMs,
+        });
   assertPngOf(image.bytes);
   await writeOutOf({
     path: input.out,

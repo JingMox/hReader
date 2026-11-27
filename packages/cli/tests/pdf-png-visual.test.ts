@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { pdfCommand, type PdfCommandInput, type RenderPdf } from "../src/commands/pdf";
 import { pngCommand, type PngCommandInput, type RenderPng } from "../src/commands/png";
-import { pdfOf, pngOf } from "./chrome-helpers";
+import { pdfOf, pngOf, sheetHtmlOf } from "./chrome-helpers";
 import { expectFailure, parse } from "./args-helpers";
 import { withTempDir } from "./harness";
 
@@ -66,6 +66,7 @@ describe("pdfCommand · theme passthrough", () => {
     out: join(dir, "out.pdf"),
     force: false,
     workspace: dir,
+    home: dir,
     json: false,
     warn: () => undefined,
     visual,
@@ -76,7 +77,7 @@ describe("pdfCommand · theme passthrough", () => {
     await withDir(async (dir) => {
       let html = "";
       const render: RenderPdf = (input) => {
-        html = input.html;
+        html = sheetHtmlOf(input.source);
         return Promise.resolve({ bytes: Buffer.from(pdfOf(1)) });
       };
       await pdfCommand(inputOf(dir, "deck-noir", render));
@@ -107,7 +108,7 @@ describe("pdfCommand · theme passthrough", () => {
       writeFileSync(join(dir, "doc.html"), themed);
       let html = "";
       const render: RenderPdf = (input) => {
-        html = input.html;
+        html = sheetHtmlOf(input.source);
         return Promise.resolve({ bytes: Buffer.from(pdfOf(1)) });
       };
       await pdfCommand(inputOf(dir, undefined, render));
@@ -122,7 +123,7 @@ describe("pdfCommand · theme passthrough", () => {
     await withDir(async (dir) => {
       let html = "";
       const render: RenderPdf = (input) => {
-        html = input.html;
+        html = sheetHtmlOf(input.source);
         return Promise.resolve({ bytes: Buffer.from(pdfOf(1)) });
       };
       await pdfCommand(inputOf(dir, undefined, render));
@@ -138,7 +139,7 @@ describe("pngCommand · theme passthrough", () => {
     await withDir(async (dir) => {
       let html = "";
       const render: RenderPng = (input) => {
-        html = input.html;
+        html = sheetHtmlOf(input.source);
         return Promise.resolve({
           bytes: pngOf(256, 10),
           width: 256,
@@ -157,6 +158,7 @@ describe("pngCommand · theme passthrough", () => {
         timeoutMs: 60_000,
         force: false,
         workspace: dir,
+        home: dir,
         json: false,
         warn: () => undefined,
         visual: "deck-noir",
@@ -176,7 +178,7 @@ describe("pngCommand · theme passthrough", () => {
       writeFileSync(join(dir, "doc.html"), themed);
       let html = "";
       const render: RenderPng = (input) => {
-        html = input.html;
+        html = sheetHtmlOf(input.source);
         return Promise.resolve({
           bytes: pngOf(256, 10),
           width: 256,
@@ -195,6 +197,7 @@ describe("pngCommand · theme passthrough", () => {
         timeoutMs: 60_000,
         force: false,
         workspace: dir,
+        home: dir,
         json: false,
         warn: () => undefined,
         visual: undefined,

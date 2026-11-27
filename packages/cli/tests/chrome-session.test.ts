@@ -1,4 +1,6 @@
+import type { SpawnOptions } from "node:child_process";
 import { existsSync } from "node:fs";
+import { userInfo } from "node:os";
 import { join } from "node:path";
 
 import { HrError } from "@hreader/core";
@@ -39,7 +41,9 @@ const until = async (ready: () => boolean, what: string): Promise<void> => {
 };
 
 const renderWithOf = (setup: SessionSetup, timeoutMs = 1000): Promise<Uint8Array> =>
-  renderPdfOf(inputOf(setup.deps, { html: "<p>hi</p>", timeoutMs })).then((result) => result.bytes);
+  renderPdfOf(
+    inputOf(setup.deps, { source: { kind: "sheet", html: "<p>hi</p>" }, timeoutMs }),
+  ).then((result) => result.bytes);
 
 const connectToPageOf =
   (options = {}) =>
@@ -107,7 +111,9 @@ describe("renderPdfOf · startup failure", () => {
       env: { HREADER_CHROME: "/nope/chrome" },
       exists: (path) => path === "/usr/bin/google-chrome",
     });
-    const error = await failureOf(renderPdfOf(inputOf(deps, { html: "<p>x</p>" })));
+    const error = await failureOf(
+      renderPdfOf(inputOf(deps, { source: { kind: "sheet", html: "<p>x</p>" } })),
+    );
     expect(error.code).toBe("chrome_missing");
     expect(fake.signals).toEqual([]);
   });
@@ -214,6 +220,40 @@ describe("renderPdfOf · success path", () => {
   });
 });
 
+describe("renderPdfOf · child environment", () => {
+  it("should strip HREADER_HOME from the Chrome child's env while HOME stays pinned to the passwd home", async () => {
+    const fake = fakeChromeOf();
+    const dirs: string[] = [];
+    const envs: SpawnOptions["env"][] = [];
+    const base = depsWithOf({
+      chrome: fake.chrome,
+      dirs,
+      connect: connectToPageOf(),
+      env: {
+        HREADER_CHROME: "/fake/chrome",
+        // A poisoned pair: the config-root redirect must never reach the child
+        // (README contract) and the ambient HOME must not either.
+        HREADER_HOME: "/relocated/hreader-home",
+        HOME: "/poisoned/home",
+      },
+    });
+    const deps = {
+      ...base,
+      spawn: (file: string, args: readonly string[], options: SpawnOptions) => {
+        envs.push(options.env);
+        return base.spawn(file, args, options);
+      },
+    };
+    const pending = renderPdfOf(inputOf(deps));
+    fake.stderr(DEVTOOLS_LINE);
+    await pending;
+    expect(envs).toHaveLength(1);
+    const env = envs[0] ?? {};
+    expect(Object.hasOwn(env, "HREADER_HOME")).toBe(false);
+    expect(env["HOME"]).toBe(userInfo().homedir);
+  });
+});
+
 describe("renderPdfOf · interruption", () => {
   it("should report chrome_failed the moment stop fires and still collect the process group and temp dir", async () => {
     const setup = renderSetupOf({ pdf: "hang" });
@@ -221,7 +261,9 @@ describe("renderPdfOf · interruption", () => {
     const stopping = new Promise<void>((resolve) => {
       stop = resolve;
     });
-    const pending = renderPdfOf(inputOf(setup.deps, { html: "<p>x</p>", stop: stopping }));
+    const pending = renderPdfOf(
+      inputOf(setup.deps, { source: { kind: "sheet", html: "<p>x</p>" }, stop: stopping }),
+    );
     setup.fake.stderr(DEVTOOLS_LINE);
     // Wait until rendering really reaches page.pdf (the hang mode records the call then never returns) before stop —
     // otherwise stop may land before spawn/connect, and what gets aborted is not the "mid-render" path at all.
@@ -240,7 +282,7 @@ describe("renderPngOf · long image path", () => {
   it("should return IHDR dimensions for the long image on success and collect the process group and temp dir", async () => {
     const setup = renderSetupOf({ contentHeight: 900 });
     const pending = renderPngOf({
-      html: "<p>x</p>",
+      source: { kind: "sheet", html: "<p>x</p>" },
       width: 800,
       scale: 2,
       maxHeight: 20_000,
@@ -259,7 +301,7 @@ describe("renderPngOf · long image path", () => {
   it("should pass the error through and collect the temp dir when rendering fails", async () => {
     const setup = renderSetupOf({ png: "not-png" });
     const pending = renderPngOf({
-      html: "<p>x</p>",
+      source: { kind: "sheet", html: "<p>x</p>" },
       width: 800,
       scale: 1,
       maxHeight: 20_000,

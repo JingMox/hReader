@@ -37,9 +37,10 @@ const config = {
     "packages/core/src/server/http-io.ts",
     "packages/core/src/server/body.ts",
     "packages/core/src/server/static.ts",
-    // cli: term() and argument parsing
+    // cli: term(), argument parsing, and the export-side permission gate
     "packages/cli/src/output.ts",
     "packages/cli/src/args/**/*.ts",
+    "packages/cli/src/commands/export-foreign.ts",
     // app widgets
     "packages/app/src/widgets/present.ts",
     "packages/app/src/widgets/foreign.ts",

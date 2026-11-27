@@ -18,10 +18,36 @@ export { buildOutline, locateTarget, patchTargetIdOf, readNode } from "./ops";
 export type { LocatedTarget, Outline, OutlineNode, PendingAnnotation, ReadNodeResult } from "./ops";
 export { applyPatch, parseFragment } from "./ops";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./ops";
-export { isInside, isInsideOrSelf, nodePatchDeps, patchFile, undoPatch, writeAtomic } from "./io";
-export type { TrustLevel } from "./io";
-export { startServer } from "./server";
-export type { DaemonInfo, RunningServer, ServerDeps, ServerOptions } from "./server";
+export {
+  effectiveOf,
+  isInside,
+  isInsideOrSelf,
+  nodePatchDeps,
+  patchFile,
+  readDocGrant,
+  readGlobalModes,
+  resolveTarget,
+  undoPatch,
+  writeAtomic,
+} from "./io";
+export type { DocGrant, EffectivePermissions, GlobalModes, ResolvedTarget, TrustLevel } from "./io";
+export {
+  createCapabilityBook,
+  decodeParams,
+  docAssetReply,
+  matchRoute,
+  paramOf,
+  startServer,
+} from "./server";
+export type {
+  CapabilityBook,
+  DaemonInfo,
+  HandlerContext,
+  Reply,
+  RunningServer,
+  ServerDeps,
+  ServerOptions,
+} from "./server";
 export {
   applyStyle,
   assertThemeSafe,

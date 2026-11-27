@@ -98,6 +98,7 @@ CI 把上面这些 package scripts 拆成并行的 `lint` / `test` / `e2e` job�
 - 断言具体值与错误 `code`，不只断言"抛了错"。
 - 不 mock 被测单元本体；fs/网络/时间等外部依赖通过注入的替身控制。
 - 临时目录用 `mkdtemp` 并在 `finally` 里清理。
+- 隔离配置根（`~/.hreader`，即 `permissions.json`、`daemon.json` 所在）用 `HREADER_HOME`，不要改写 `HOME`：`HOME` 会被 Chrome 子进程继承——空 `HOME` 会让浏览器网络栈起不来、渲染卡到 deadline；`HREADER_HOME` 不进 Chrome 视野。
 - 禁止 `test.only`、注释掉的测试、无种子随机、直读 `Date.now()`、真实网络、`setTimeout` 轮询。
 - 断言绝对时间预算（"< N ms"，不管墙钟还是 `process.cpuUsage()`）的测试放 `tests/perf/**/*.perf.test.ts`，由 `pnpm test:perf` 单跑（`vitest.perf.config.ts`：不开覆盖率、单 worker 顺序执行）——v8 插桩会让 `src/**` 慢好几倍，开覆盖率的运行里绝对预算必然随机红。单元测试里只保留与机器速度无关的断言：复杂度/线性增长比值（插桩下比值大体不变）、结构性上界（字节数、节点数、截断位置）、功能正确性。
 - 交付物测试对**构建产物**跑真子进程（`cli` 的 `dist/cli.mjs`、`mcp-server` 的 `dist/main.js`），不是只测 src。

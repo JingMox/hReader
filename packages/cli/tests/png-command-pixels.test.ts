@@ -38,6 +38,7 @@ const inputOf = (dir: string, overrides: Partial<PngCommandInput> = {}): PngComm
   out: join(dir, "out.png"),
   force: false,
   workspace: dir,
+  home: dir,
   json: false,
   warn: () => undefined,
   render: () => Promise.resolve(imageOf()),

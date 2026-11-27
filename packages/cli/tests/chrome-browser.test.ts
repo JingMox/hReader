@@ -22,10 +22,17 @@ interface Calls {
   readonly pdf: unknown[];
   readonly screenshot: unknown[];
   readonly setViewport: unknown[];
+  readonly jsEnabled: boolean[];
+  readonly interception: boolean[];
+  readonly evaluate: string[];
+  /** The "request" handler registered via page.on — tests fire synthetic requests through it. */
+  requestHandler: ((request: unknown) => void) | undefined;
   sessions: number;
 }
 
-type Failures = Partial<Record<"goto" | "pdf" | "screenshot" | "setViewport" | "metrics", Error>>;
+type Failures = Partial<
+  Record<"goto" | "pdf" | "screenshot" | "setViewport" | "metrics" | "evaluate", Error>
+>;
 
 const stubOf = <T, R>(calls: T[], failure: Error | undefined, ok: R): ((arg: T) => Promise<R>) => {
   return (arg) => {
@@ -33,6 +40,10 @@ const stubOf = <T, R>(calls: T[], failure: Error | undefined, ok: R): ((arg: T) 
     return failure === undefined ? Promise.resolve(ok) : Promise.reject(failure);
   };
 };
+
+/** Shared identity object: `request.frame() === page.mainFrame()` is an object-identity check. */
+const MAIN_FRAME = { frame: "main" } as const;
+const SUB_FRAME = { frame: "sub" } as const;
 
 const puppeteerPageOf = (calls: Calls, failures: Failures = {}) => ({
   goto: (url: string, options: { waitUntil: "load"; timeout: number }) => {
@@ -51,9 +62,32 @@ const puppeteerPageOf = (calls: Calls, failures: Failures = {}) => ({
           : Promise.reject(failures.metrics),
     });
   },
+  setJavaScriptEnabled: (enabled: boolean) => {
+    calls.jsEnabled.push(enabled);
+    return Promise.resolve();
+  },
+  evaluate: stubOf(calls.evaluate, failures.evaluate, null),
+  setRequestInterception: (value: boolean) => {
+    calls.interception.push(value);
+    return Promise.resolve();
+  },
+  mainFrame: () => MAIN_FRAME,
+  on: (_event: "request", handler: (request: never) => void) => {
+    calls.requestHandler = handler as (request: unknown) => void;
+  },
 });
 
-const callsOf = (): Calls => ({ goto: [], pdf: [], screenshot: [], setViewport: [], sessions: 0 });
+const callsOf = (): Calls => ({
+  goto: [],
+  pdf: [],
+  screenshot: [],
+  setViewport: [],
+  jsEnabled: [],
+  interception: [],
+  evaluate: [],
+  requestHandler: undefined,
+  sessions: 0,
+});
 
 const failureOf = async (promise: Promise<unknown>): Promise<HrError> => {
   try {
@@ -109,6 +143,107 @@ describe("pageLikeOf · method mapping", () => {
   });
 });
 
+describe("pageLikeOf · request routing", () => {
+  interface RequestCalls {
+    readonly responded: unknown[];
+    continued: number;
+    aborted: number;
+  }
+
+  const puppeteerRequestOf = (
+    url: string,
+    calls: RequestCalls,
+    nav: { navigation: boolean; mainFrame: boolean } = { navigation: true, mainFrame: true },
+  ) => ({
+    url: () => url,
+    method: () => "GET",
+    isNavigationRequest: () => nav.navigation,
+    frame: () => (nav.mainFrame ? MAIN_FRAME : SUB_FRAME),
+    respond: (reply: unknown) => {
+      calls.responded.push(reply);
+      return Promise.resolve();
+    },
+    continue: () => {
+      calls.continued += 1;
+      return Promise.resolve();
+    },
+    abort: () => {
+      calls.aborted += 1;
+      return Promise.resolve();
+    },
+  });
+
+  const flushOf = (): Promise<void> =>
+    new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+
+  it("should arm interception and hand each request the three verdict verbs", async () => {
+    const calls = callsOf();
+    const page = pageLikeOf(puppeteerPageOf(calls));
+    await page.routeRequests(async (request) => {
+      if (request.url.endsWith("/blocked")) await request.abort();
+      else if (request.url.endsWith("/passed")) await request.continue();
+      else await request.respond({ status: 200, headers: { "x-a": "b" }, body: "ok" });
+    });
+    expect(calls.interception).toEqual([true]);
+    const fire = async (url: string): Promise<RequestCalls> => {
+      const hits: RequestCalls = { responded: [], continued: 0, aborted: 0 };
+      calls.requestHandler?.(puppeteerRequestOf(url, hits));
+      await flushOf();
+      return hits;
+    };
+    const served = await fire("http://hreader-export.invalid/f/cap/doc.html");
+    expect(served.responded).toEqual([{ status: 200, headers: { "x-a": "b" }, body: "ok" }]);
+    expect((await fire("https://cdn.example/passed")).continued).toBe(1);
+    expect((await fire("https://cdn.example/blocked")).aborted).toBe(1);
+  });
+
+  it("should abort the request when the gate itself throws — fail closed, never leak", async () => {
+    const calls = callsOf();
+    const page = pageLikeOf(puppeteerPageOf(calls));
+    await page.routeRequests(() => Promise.reject(new Error("gate exploded")));
+    const hits: RequestCalls = { responded: [], continued: 0, aborted: 0 };
+    calls.requestHandler?.(puppeteerRequestOf("https://cdn.example/x", hits));
+    await flushOf();
+    expect(hits.aborted).toBe(1);
+    expect(hits.responded).toEqual([]);
+    expect(hits.continued).toBe(0);
+  });
+
+  it("should expose isNavigationRequest and the main-frame identity on each routed request", async () => {
+    const calls = callsOf();
+    const page = pageLikeOf(puppeteerPageOf(calls));
+    const seen: { navigation: boolean; mainFrame: boolean }[] = [];
+    await page.routeRequests((request) => {
+      seen.push({ navigation: request.navigation, mainFrame: request.mainFrame });
+      return request.abort();
+    });
+    const hits: RequestCalls = { responded: [], continued: 0, aborted: 0 };
+    calls.requestHandler?.(
+      puppeteerRequestOf("http://hreader-export.invalid/f/cap/doc.html", hits),
+    );
+    calls.requestHandler?.(
+      puppeteerRequestOf("https://cdn.example/x.png", hits, {
+        navigation: false,
+        mainFrame: true,
+      }),
+    );
+    calls.requestHandler?.(
+      puppeteerRequestOf("http://hreader-export.invalid/f/cap/inner.html", hits, {
+        navigation: true,
+        mainFrame: false,
+      }),
+    );
+    await flushOf();
+    expect(seen).toEqual([
+      { navigation: true, mainFrame: true },
+      { navigation: false, mainFrame: true },
+      { navigation: true, mainFrame: false },
+    ]);
+  });
+});
+
 describe("pageLikeOf · error folding", () => {
   it("should fold a plain error's first line into chrome_failed", async () => {
     const calls = callsOf();
@@ -123,6 +258,22 @@ describe("pageLikeOf · error folding", () => {
     const page = pageLikeOf(puppeteerPageOf(calls, { pdf: protocolErrorOf("Print job failed") }));
     const error = await failureOf(page.pdf(printOf(false)));
     expect(error.message).toBe("Page.printToPDF 失败：Print job failed");
+  });
+
+  it("should embed the fallback name in the title evaluate and fold a failure as Runtime.evaluate", async () => {
+    const calls = callsOf();
+    const page = pageLikeOf(puppeteerPageOf(calls));
+    await page.setTitleFallback('say "hi".html');
+    expect(calls.evaluate).toHaveLength(1);
+    const expression = calls.evaluate[0] ?? "";
+    // The name travels as a JSON literal — quotes stay inside the expression.
+    expect(expression).toContain('document.title === ""');
+    expect(expression).toContain('("say \\"hi\\".html")');
+
+    const failing = pageLikeOf(puppeteerPageOf(callsOf(), { evaluate: new Error("eval gone") }));
+    const error = await failureOf(failing.setTitleFallback("x.html"));
+    expect(error.code).toBe("chrome_failed");
+    expect(error.message).toBe("Runtime.evaluate 失败：eval gone");
   });
 });
 

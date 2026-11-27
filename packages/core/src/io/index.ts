@@ -8,7 +8,8 @@ export type {
   UndoResult,
 } from "./contracts";
 export { writeAtomic } from "./atomic";
-export { isInside, isInsideOrSelf } from "./paths";
+export { isInside, isInsideOrSelf, resolveTarget } from "./paths";
+export type { ResolvedTarget } from "./paths";
 export { nodePatchDeps } from "./node-fs";
 export { patchFile } from "./patch-file";
 export type { Clock, FileStat, FileSystem, PatchDeps } from "./ports";

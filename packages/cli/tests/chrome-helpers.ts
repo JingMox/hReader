@@ -10,13 +10,23 @@ import type {
   PageLike,
   PdfPrintOptions,
   PngShotOptions,
+  RoutedRequest,
   ViewportSpec,
 } from "../src/chrome/browser";
 import type { ChromeDeps, ChromeProcess } from "../src/chrome/process";
+import type { RenderSource } from "../src/chrome/types";
 
 import { pngOf } from "./chrome-png";
 
 export { pngBase64Of, pngOf } from "./chrome-png";
+
+/** Managed-doc render sources always carry the print sheet; read it or fail loudly. */
+export const sheetHtmlOf = (source: RenderSource): string => {
+  if (source.kind !== "sheet") {
+    throw new Error(`expected a sheet render source, got ${source.kind}`);
+  }
+  return source.html;
+};
 
 /** A promise that never resolves: the "hang" mode of goto/metrics/pdf parks rendering on it (so the outer timeout/abort wins). */
 const HANG: Promise<never> = new Promise<never>(() => undefined);
@@ -105,6 +115,8 @@ export interface FakePageOptions {
   /** `cssContentSize.height`; `"none"` = do not provide the field. */
   readonly contentHeight?: number | "none" | "hang";
   readonly png?: "ok" | "error" | "hang" | "not-png" | "half-width" | "half-height";
+  /** `setTitleFallback` mode; `"error"` rejects so the render's degrade path is exercised. */
+  readonly titleFallback?: "ok" | "error";
 }
 
 export interface FakePage extends PageLike {
@@ -112,6 +124,12 @@ export interface FakePage extends PageLike {
   readonly pdfCalls: PdfPrintOptions[];
   readonly shotCalls: PngShotOptions[];
   readonly viewports: ViewportSpec[];
+  /** `setJavaScriptEnabled` history — the foreign branch always disables JS, the sheet branch never calls it. */
+  readonly jsEnabled: boolean[];
+  /** `setTitleFallback` history — the foreign branch always hands over the doc's file name. */
+  readonly titleFallbacks: string[];
+  /** The request handler armed via `routeRequests`; `undefined` = interception was never wired. */
+  readonly routed: ((request: RoutedRequest) => Promise<void>) | undefined;
 }
 
 /** Half-resolution fixture: only half of width or height is given, to verify the post-screenshot scale cross-check. */
@@ -193,11 +211,19 @@ export const fakePageOf = (options: FakePageOptions = {}): FakePage => {
   const pdfCalls: PdfPrintOptions[] = [];
   const shotCalls: PngShotOptions[] = [];
   const viewports: ViewportSpec[] = [];
+  const jsEnabled: boolean[] = [];
+  const titleFallbacks: string[] = [];
+  const routedRef: { current: FakePage["routed"] } = { current: undefined };
   return {
     goneTo,
     pdfCalls,
     shotCalls,
     viewports,
+    jsEnabled,
+    titleFallbacks,
+    get routed() {
+      return routedRef.current;
+    },
     goto: gotoOf(goneTo, options.goto),
     pdf: pdfCallOf(pdfCalls, options),
     screenshot: shotCallOf(shotCalls, viewports, options),
@@ -206,6 +232,21 @@ export const fakePageOf = (options: FakePageOptions = {}): FakePage => {
       return Promise.resolve();
     },
     metrics: metricsOf(options.contentHeight),
+    setJavaScriptEnabled: (enabled) => {
+      jsEnabled.push(enabled);
+      return Promise.resolve();
+    },
+    setTitleFallback: (name) => {
+      titleFallbacks.push(name);
+      if (options.titleFallback === "error") {
+        return Promise.reject(new HrError("chrome_failed", "Runtime.evaluate 失败：eval boom"));
+      }
+      return Promise.resolve();
+    },
+    routeRequests: (handler) => {
+      routedRef.current = handler;
+      return Promise.resolve();
+    },
   };
 };
 

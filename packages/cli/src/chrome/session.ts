@@ -18,8 +18,8 @@ import {
   type ChromeDeps,
   type ChromeRun,
 } from "./process";
-import { renderPdfOnBrowserOf, renderPngOnBrowserOf } from "./render";
-import type { LongImage, PdfPageSize } from "./types";
+import { renderPdfOnBrowserOf, renderPngOnBrowserOf, type RequestAudit } from "./render";
+import type { LongImage, PdfPageSize, RenderSource } from "./types";
 
 const KILL_GRACE_MS = 2000;
 
@@ -37,11 +37,13 @@ export const chromeDepsOf = (env: Readonly<Record<string, string | undefined>>):
 
 /** Shared stop handle for render commands: `run.ts` passes `io.stop`; in-process tests pass a never-settling promise. */
 interface ChromeRenderInput {
-  readonly html: string;
+  readonly source: RenderSource;
   readonly timeoutMs: number;
   /** Required: `main.ts` already suppresses the default signal behavior, so without this nothing can interrupt (Ctrl-C would wait out `--timeout`). */
   readonly stop: Promise<void>;
   readonly deps: ChromeDeps;
+  /** Foreign-doc request audit: `run.ts` leaves it off; tests wire it to prove the gate held. */
+  readonly audit?: RequestAudit | undefined;
 }
 
 interface RenderPdfInput extends ChromeRenderInput {
@@ -67,21 +69,23 @@ const connectBrowserOf = async (deps: ChromeDeps, run: ChromeRun): Promise<Brows
 const sessionPdfOf = async (input: RenderPdfInput, run: ChromeRun): Promise<Uint8Array> =>
   renderPdfOnBrowserOf({
     browser: await connectBrowserOf(input.deps, run),
-    html: input.html,
+    source: input.source,
     dir: run.dir,
     pageSize: input.pageSize,
     outline: input.outline,
     preferCSSPageSize: input.preferCSSPageSize,
+    audit: input.audit,
   });
 
 const sessionPngOf = async (input: RenderPngInput, run: ChromeRun): Promise<LongImage> =>
   renderPngOnBrowserOf({
     browser: await connectBrowserOf(input.deps, run),
-    html: input.html,
+    source: input.source,
     dir: run.dir,
     width: input.width,
     scale: input.scale,
     maxHeight: input.maxHeight,
+    audit: input.audit,
   });
 
 /** `stop` only resolves: turning it into a "stop here" rejection lets `Promise.race` abandon a still-running render. */

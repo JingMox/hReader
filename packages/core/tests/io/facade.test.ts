@@ -44,6 +44,7 @@ describe("门面导出面", () => {
       "patchFile",
       "readDocGrant",
       "readGlobalModes",
+      "resolveTarget",
       "settingsPathOf",
       "undoPatch",
       "writeAtomic",

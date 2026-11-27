@@ -2,6 +2,7 @@
 // Messaging and page semantics live in `render.ts`/`browser.ts`; render deadline and interruption in `session.ts`.
 
 import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { userInfo } from "node:os";
 import { join } from "node:path";
 
 import { HrError } from "@hreader/core";
@@ -115,13 +116,41 @@ export interface ChromeRun {
   stopped: boolean;
 }
 
+/**
+ * The Chrome child's `HOME` is the passwd home, never the inherited `$HOME`:
+ * the browser resolves machine state (`~/Library`, keychain, its network
+ * stack's bootstrap) under it, and a relocated or empty `HOME` — a legitimate
+ * CLI-level config redirect — leaves the network service stuck before the
+ * first request can even reach interception. `userInfo()` goes through
+ * getpwuid, not the env; where no entry exists (scratch images), the ambient
+ * `HOME` is left alone.
+ */
+const chromeHomeOf = (): string | undefined => {
+  try {
+    return userInfo().homedir;
+    /* v8 ignore start — getpwuid only throws for an account without a passwd entry (scratch images); unreachable on normal machines */
+  } catch {
+    return undefined;
+  }
+  /* v8 ignore stop */
+};
+
 export const startChromeOf = (deps: ChromeDeps): ChromeRun => {
   const binary = chromeBinaryOf(deps);
   const dir = deps.tempDir();
+  const env = { ...deps.env };
+  // HREADER_HOME is our own config-root redirect; the child must never see it
+  // (the documented contract: Chrome children never inherit it).
+  delete env["HREADER_HOME"];
+  const home = chromeHomeOf();
+  // chromeHomeOf is always set on machines with a passwd entry; the undefined branch only appears on scratch images (unreachable).
+  /* v8 ignore next */
+  if (home !== undefined) env["HOME"] = home;
   try {
     const child = deps.spawn(binary, chromeArgsOf(dir), {
       detached: true,
       stdio: ["ignore", "ignore", "pipe"],
+      env,
     });
     const exited = new Promise<void>((resolve) => {
       child.onExit(() => {

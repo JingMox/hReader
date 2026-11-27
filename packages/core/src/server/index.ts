@@ -2,11 +2,15 @@
 
 export { startServer } from "./server";
 export type { RunningServer, ServerDeps } from "./server";
-export type { ServerOptions } from "./contracts";
+export type { Reply, ServerOptions } from "./contracts";
 export type { DaemonInfo } from "./daemon";
-export { matchRoute } from "./routes";
+export { decodeParams, matchRoute, paramOf } from "./routes";
 export { statusOf } from "./status";
 export { READY_FRAME, createEventRing } from "./event-ring";
 export { createHub } from "./hub";
 export { createWatcher } from "./watcher";
 export { daemonFileOf } from "./daemon";
+export { createCapabilityBook } from "./capability";
+export type { CapabilityBook } from "./capability";
+export { docAssetReply } from "./doc-assets";
+export type { HandlerContext } from "./handlers";

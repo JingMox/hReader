@@ -42,6 +42,7 @@ const inputOf = (dir: string, overrides: Overrides = {}): PdfCommandInput => ({
   out: join(dir, "out.pdf"),
   force: false,
   workspace: dir,
+  home: dir,
   json: false,
   warn: () => undefined,
   render: (input) => Promise.resolve({ bytes: pdfWithBookmarksOf(input.outline ? 2 : 0) }),
