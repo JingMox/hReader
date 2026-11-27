@@ -274,6 +274,32 @@ describe("listWorkspaceAnnotations · store-record discovery", () => {
 
     expect(result.diagnostics.some((line) => line.includes("plain failure"))).toBe(true);
   });
+
+  it("should fold workspace-absolute paths inside diagnostics to workspace-relative", async () => {
+    const fs = fakeFs({
+      [`${WS}/bad.html`]: "<html><body><p>x</p></body></html>",
+      [`${WS}/.hreader/annotations/${storeNameOf("gone.html")}`]: storeJson("gone.html", [record()]),
+    });
+    dirsOf(fs, [WS, `${WS}/.hreader`]);
+    fs.fail("readFile", systemError("EACCES"), (path) => path.endsWith("bad.html"));
+
+    const result = await scan(fs);
+
+    // Same fold as single-doc errors: a path under the workspace root collapses to relative.
+    expect(
+      result.diagnostics.some((line) =>
+        line.includes("指向不可达文档 gone.html（realpath时路径不存在：gone.html）"),
+      ),
+    ).toBe(true);
+    expect(
+      result.diagnostics.some(
+        (line) => line.startsWith("文档 bad.html：") && line.includes("bad.html"),
+      ),
+    ).toBe(true);
+    for (const line of result.diagnostics) {
+      expect(line).not.toContain(`${WS}/`);
+    }
+  });
 });
 
 describe("listWorkspaceAnnotations · walk resilience", () => {
