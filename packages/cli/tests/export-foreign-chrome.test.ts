@@ -31,7 +31,14 @@
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -41,6 +48,7 @@ import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRef, PDFStrin
 import { describe, expect, it } from "vitest";
 
 import { foreignPlanOf } from "../src/commands/export-foreign";
+import { pdfCommand } from "../src/commands/pdf";
 import { chromeProcessOf, type ChromeDeps } from "../src/chrome/process";
 import { chromeDepsOf, renderPdfOf, renderPngOf } from "../src/chrome/session";
 import { skipLineOf, skipReasonOf } from "../src/commands/print-skip";
@@ -583,20 +591,35 @@ describe.skipIf(SKIP_REASON !== null)("foreign export · PDF /Title", () => {
   }, 90_000);
 });
 
-// ---- link annotations: the minted capability URL must never reach the artifact ----
+// ---- link annotations: no leaked URL or local path may reach the artifact ----
 
+// Every DOM shape the D44 in-page rewrite missed, plus the shapes it handled:
+// an SVG <a href> FIRST (anchor.href is SVGAnimatedString there — the old
+// evaluate threw and left every later link annotated), xlink:href, declarative
+// shadow DOM (invisible to light-DOM querySelectorAll), an <area> imagemap,
+// a javascript: scheme, and the ordinary sibling/subdir/../absolute/query
+// forms. The post-processor verdict never looks at the DOM, so all of them
+// collapse to the same rule: http/https/mailto off the export host survives.
 const LINKS_HTML = `<!DOCTYPE html><html><head>
 <script>
   fetch("{{EXT}}/beacon-inline.png");
   document.documentElement.setAttribute("data-pwned", "1");
 </script>
 </head><body>
+<svg viewBox="0 0 10 10"><a href="svg-first.png"><text x="0" y="5">svg</text></a></svg>
 <article><h1 id="sec">One</h1></article><article><h1>Two</h1></article>
 <a href="img.png">sibling</a>
 <a href="sub/pic.png">subdir</a>
-<a href="#sec">fragment</a>
-<a href="{{EXT}}/x.png">external</a>
 <a href="../secret.png">outside</a>
+<a href="/f/other/x.png">absolute-f</a>
+<a href="./x.png?q=1#frag">query-frag</a>
+<a href="#sec">fragment</a>
+<a href="https://example.com/ext.png">external</a>
+<a href="javascript:fetch('{{EXT}}/js-scheme.png')">js-scheme</a>
+<a href="mailto:a@b.c">mail</a>
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10"><a xlink:href="svg-xlink.png"><text x="0" y="5">xlink</text></a></svg>
+<template shadowrootmode="open"><a href="shadow.png">shadow</a></template>
+<img usemap="#m" src="img.png" width="40" height="40"><map name="m"><area shape="rect" coords="0,0,20,20" href="area.png" alt="a"></map>
 </body></html>`;
 
 const linksSandboxOf = (ext: string): Sandbox => {
@@ -611,6 +634,61 @@ const linksSandboxOf = (ext: string): Sandbox => {
   writeFileSync(join(ws, "page", "sub", "pic.png"), PIC.bytes);
   writeFileSync(join(ws, "secret.png"), SECRET.bytes);
   return { ws, home, doc };
+};
+
+// A single <article> with no data-hr-id is normalizable (sheet path, no gate);
+// the same body carrying a valid id is managed. Their relative links resolve
+// against the sheet's file:// temp dir — the pre-D45 leak this file's
+// normalizable case pins closed.
+const SHEET_HTML = `<!DOCTYPE html><html><head></head><body>
+<article{{ID}}><h1 id="sec">One</h1>
+<a href="img.png">sibling</a>
+<a href="https://example.com/sheet.png">external</a>
+</article></body></html>`;
+
+const sheetSandboxOf = (html: string): Sandbox => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hr-fx-sheet-")));
+  const ws = join(root, "ws");
+  const home = join(root, "home");
+  mkdirSync(join(ws, "page"), { recursive: true });
+  mkdirSync(home, { recursive: true });
+  const doc = join(ws, "page", "index.html");
+  writeFileSync(doc, html);
+  return { ws, home, doc };
+};
+
+/** `hr pdf` end-to-end in-process: the command reads, plans, renders through real Chrome, sanitizes and writes. */
+const commandPdfOf = async (
+  doc: string,
+  ws: string,
+  home: string,
+  audit: ExportRequestRecord[],
+): Promise<Uint8Array> => {
+  const out = join(ws, "out.pdf");
+  await pdfCommand({
+    path: doc,
+    pageSize: "a4",
+    timeoutMs: 30_000,
+    outline: true,
+    outlineConflict: false,
+    visual: undefined,
+    out,
+    force: false,
+    workspace: ws,
+    home,
+    json: false,
+    warn: () => undefined,
+    render: (input) =>
+      renderPdfOf({
+        ...input,
+        stop: NEVER,
+        deps: depsOf(),
+        audit: (r) => {
+          audit.push(r);
+        },
+      }),
+  });
+  return readFileSync(out);
 };
 
 interface LinkAnnots {
@@ -649,43 +727,32 @@ const linkAnnotsOf = async (pdf: Uint8Array): Promise<LinkAnnots> => {
 /**
  * A same-origin anchor resolves onto the minted capability URL, and
  * printToPDF stamps that URL verbatim into the PDF's /URI annotations —
- * a dead `hreader-export.invalid` link leaking the capability. The export
- * neutralizes those anchors before printing: a fragment link to the
- * document itself stays internal (/Dest); every other same-origin link
- * loses its href — Chrome always writes absolute URIs, so even a file:
- * rewrite would leak the exporting machine's absolute paths, and the link
- * is useless off that machine anyway. External links pass through
- * untouched.
+ * a dead `hreader-export.invalid` link leaking the capability. `hr pdf`
+ * passes every artifact through a PDF-level post-processor before writing
+ * (D45): /URI annotations survive only when the scheme is http/https/mailto
+ * and the host is not the export origin; /Dest internal links are kept.
+ * The verdict never consults the DOM, so DOM shapes no rewrite could reach
+ * — SVG anchors, shadow roots, imagemaps — sanitize identically.
  */
 describe.skipIf(SKIP_REASON !== null)("foreign export · PDF link annotations", () => {
-  it("leaks no capability URL into /URI annotations while keeping external and internal links", async () => {
+  it("keeps only the allowlisted URIs across every DOM link shape", async () => {
     const ext = await startExtSite();
     try {
       const { ws, home, doc } = linksSandboxOf(ext.url);
-      const plan = await foreignPlanOf({ path: doc, workspace: ws, home });
-      expect(plan).not.toBeUndefined();
-      if (plan === undefined) return;
-      const cap = /\/f\/([^/]+)\//.exec(plan.url)?.[1] ?? "";
       const audit: ExportRequestRecord[] = [];
-      const { bytes: pdf } = await renderPdfOf({
-        source: { kind: "foreign", page: plan },
-        pageSize: "a4",
-        outline: true,
-        preferCSSPageSize: false,
-        timeoutMs: 30_000,
-        stop: NEVER,
-        deps: depsOf(),
-        audit: (r) => {
-          audit.push(r);
-        },
-      });
+      const pdf = await commandPdfOf(doc, ws, home, audit);
       const { uris, dests } = await linkAnnotsOf(pdf);
+
+      // The cap rides on the served /f/ request URLs, not the plan handle.
+      const cap = /\/f\/([^/]+)\//.exec(
+        audit.find((r) => r.action === "serve")?.url ?? "",
+      )?.[1] ?? "";
+      expect(cap.length).toBeGreaterThan(0);
 
       // The leak oracle: no annotation may carry the minted origin, the cap,
       // a file: URL, or any local path — the exporting machine's layout must
       // never reach the artifact.
       const localDirs = [ws, home, dirname(doc)];
-      expect(cap.length).toBeGreaterThan(0);
       for (const uri of uris) {
         expect(uri.startsWith("file:")).toBe(false);
         expect(uri).not.toContain("hreader-export.invalid");
@@ -694,20 +761,48 @@ describe.skipIf(SKIP_REASON !== null)("foreign export · PDF link annotations", 
           expect(uri).not.toContain(dir);
         }
       }
-      // Every same-origin non-fragment link — sibling, subdir, ../escape —
-      // loses its href and produces no annotation; the only URI left is the
-      // external one, passed through untouched.
-      expect(uris).toEqual([`${ext.url}/x.png`]);
+      // The exact surviving set: the external link and the mailto — every
+      // same-origin shape, the javascript: link, and the /f/ absolute link
+      // produce no annotation at all.
+      expect([...uris].sort()).toEqual(
+        ["https://example.com/ext.png", "mailto:a@b.c"].sort(),
+      );
       // The fragment link stays an internal /Dest — never a URI annotation.
       expect(dests.some((d) => d.endsWith("sec"))).toBe(true);
       expect(dests.every((d) => !d.includes("secret"))).toBe(true);
 
-      // The rewrite runs under the same snapshot contract: the inline script's
-      // beacon never fired and its DOM flag never landed.
+      // The sanitizer runs under the same snapshot contract: the inline
+      // script's beacon never fired and its DOM flag never landed.
       expect(ext.hits).toEqual([]);
       expect(audit.filter((r) => r.url.includes("beacon"))).toEqual([]);
     } finally {
       await ext.close();
     }
+  }, 90_000);
+
+  it("strips the temp-dir file: URI a normalizable doc's relative link would leave", async () => {
+    const { ws, home, doc } = sheetSandboxOf(SHEET_HTML.split("{{ID}}").join(""));
+    const audit: ExportRequestRecord[] = [];
+    const pdf = await commandPdfOf(doc, ws, home, audit);
+    const { uris } = await linkAnnotsOf(pdf);
+
+    // No file: and no local path — the sheet's temp dir must not leak.
+    for (const uri of uris) {
+      expect(uri.startsWith("file:")).toBe(false);
+      expect(uri).not.toContain(ws);
+      expect(uri).not.toContain(dirname(doc));
+    }
+    // The sheet's own TOC lands as /Dest; the only /URI is the external link.
+    expect(uris).toEqual(["https://example.com/sheet.png"]);
+  }, 90_000);
+
+  it("keeps a managed doc's benign external link through the same sanitizer", async () => {
+    const { ws, home, doc } = sheetSandboxOf(
+      SHEET_HTML.split("{{ID}}").join(' data-hr-id="hr-doc"'),
+    );
+    const audit: ExportRequestRecord[] = [];
+    const pdf = await commandPdfOf(doc, ws, home, audit);
+    const { uris } = await linkAnnotsOf(pdf);
+    expect(uris).toEqual(["https://example.com/sheet.png"]);
   }, 90_000);
 });
