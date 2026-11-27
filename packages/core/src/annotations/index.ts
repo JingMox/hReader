@@ -1,4 +1,5 @@
-// 这层管：批注纯层门面（锚定 / 模型 / 持久化 / diff / 侧车模型 / 重定位）；本组文件零 IO、零 `new Date()`。
+// Pure annotation facade (anchoring / model / persistence / diff / sidecar model / relocation); no IO
+// and no `new Date()` anywhere in this group of files.
 
 export { matchAnchorInText, resolveAnchor } from "./anchor";
 export type { AnchorDocument, AnchorFailure, AnchorResult } from "./anchor";

@@ -40,7 +40,7 @@ const sidecarIds = async (dir: string): Promise<readonly string[]> => {
   );
 };
 
-describe("并发 · 两个子进程同时 add 同一文档的侧车", () => {
+describe("sidecar concurrency: two child processes add to the same document", () => {
   it("should land every annotation exactly once with zero lost", { timeout: 60_000 }, async () => {
     await withWorkspace(async (dir) => {
       await writeTextAt(join(dir, FILE), MANAGED);
@@ -70,7 +70,7 @@ describe("并发 · 两个子进程同时 add 同一文档的侧车", () => {
   });
 });
 
-describe("并发 · migrate 与 add 同时跑", () => {
+describe("sidecar concurrency: migrate and add run at the same time", () => {
   it(
     "should end with the union of meta and added annotations and an empty hr-meta",
     { timeout: 60_000 },

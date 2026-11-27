@@ -1,5 +1,6 @@
-// 这层管：真实子进程的并发侧车批注试验体——跑真 `addSidecarAnnotation`/`migrateMetaAnnotations`
-// （真 fs、真锁），只把结果经 IPC 回给父进程。
+// Real child-process worker for sidecar annotation concurrency tests: runs the real
+// `addSidecarAnnotation`/`migrateMetaAnnotations` (real fs, real lock) and only reports results to
+// the parent over IPC.
 
 import { loadSrc } from "./load-src.mjs";
 

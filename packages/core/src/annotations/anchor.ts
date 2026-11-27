@@ -51,9 +51,11 @@ const onlyOf = (list: readonly number[]): number => list.reduce((first) => first
 const needleOf = (anchor: TextAnchor): string => anchor.exact;
 
 /**
- * 纯文本段内的锚点匹配：`exact` 有没有命中 → **唯一命中直接采用**（不看上下文）→
- * 多处命中才用 `prefix`/`suffix` 消歧 → 仍多命中取最接近 `start` 的；一个都不合上下文 = `ambiguous`。
- * 与 `resolveAnchor` 的区别只在少了"块还在吗"那一层——侧车批注的文本域由调用方决定（选择器命中元素或 body 兜底）。
+ * Matches an anchor within a plain text span: does `exact` occur at all → a **single hit is taken
+ * as is** (context ignored) → several hits are disambiguated by `prefix`/`suffix` → if several still
+ * fit, the one closest to `start` wins; if none fits the context, the result is `ambiguous`.
+ * Unlike `resolveAnchor` there is no "is the block still there" step: for sidecar annotations the
+ * caller picks the text span (the element the selector hits, or the body as a fallback).
  */
 export const matchAnchorInText = (text: string, anchor: TextAnchor): AnchorResult => {
   const needle = needleOf(anchor);
@@ -70,8 +72,9 @@ export const matchAnchorInText = (text: string, anchor: TextAnchor): AnchorResul
 };
 
 /**
- * 解析顺序：块还在吗 → `exact` 有没有命中 → **唯一命中直接采用**（不看上下文）→
- * 多处命中才用 `prefix`/`suffix` 消歧 → 仍多命中取最接近 `start` 的；一个都不合上下文 = `ambiguous`。
+ * Resolution order: is the block still there → does `exact` occur → a **single hit is taken as is**
+ * (context ignored) → several hits are disambiguated by `prefix`/`suffix` → if several still fit, the
+ * one closest to `start` wins; if none fits the context, the result is `ambiguous`.
  */
 export const resolveAnchor = (annotation: Annotation, doc: AnchorDocument): AnchorResult => {
   if (!doc.nodeIds.includes(annotation.nodeId)) return { ok: false, reason: "orphaned" };
