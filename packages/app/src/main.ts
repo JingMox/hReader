@@ -191,6 +191,7 @@ export const isDocInfo = (value: unknown): value is DocInfo =>
   isRecord(value) &&
   typeof value["revision"] === "string" &&
   isDocClass(value["cls"]) &&
+  (value["frameUrl"] === undefined || typeof value["frameUrl"] === "string") &&
   (value["permissions"] === undefined || isDocPermissions(value["permissions"]));
 
 const isNormalizeResponse = (
