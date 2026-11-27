@@ -35,7 +35,7 @@ import {
   type ResolvedTarget,
 } from "@hreader/core";
 
-import type { ExportGateAnswer, ExportLinkRewrite, ForeignPagePlan } from "../chrome/types";
+import type { ExportGateAnswer, ForeignPagePlan } from "../chrome/types";
 import { readTextFile } from "../input";
 
 /**
@@ -213,14 +213,9 @@ export const foreignPlanOf = async (
   };
   const network = effectiveOf(modes, grant).network;
   const framePath = ctx.caps.frameUrlOf(target);
-  const linkRewrite: ExportLinkRewrite = {
-    origin: EXPORT_ORIGIN,
-    framePath,
-  };
   return {
     url: `${EXPORT_ORIGIN}${framePath}`,
     docName: basename(target.realPath),
-    linkRewrite,
     gate: async (rawUrl, method) => {
       let parsed: URL;
       try {

@@ -147,17 +147,6 @@ interface PdfRenderInput {
 
 export const renderPdfOnBrowserOf = async (input: PdfRenderInput): Promise<Uint8Array> => {
   const page = await openPageOf(input.browser, input.source, input.dir, input.audit);
-  if (input.source.kind === "foreign") {
-    // Same hygiene as the /Title fallback in openPageOf: printToPDF stamps
-    // resolved hrefs into the artifact's link annotations, so anchors that
-    // resolved onto the dead capability origin are neutralized first —
-    // fragments stay internal, everything else loses its href (a file:
-    // rewrite would leak the machine's absolute paths). PNG has no
-    // annotations, so the PNG path skips it.
-    // Best-effort like the title fix: a failed evaluate must not kill the
-    // render — it degrades to the same dead-URL noise as before.
-    await page.rewriteExportLinks(input.source.page.linkRewrite).catch(() => undefined);
-  }
   const params = input.preferCSSPageSize
     ? cssPageParamsOf(input.outline)
     : printParamsOf(input.pageSize, input.outline);

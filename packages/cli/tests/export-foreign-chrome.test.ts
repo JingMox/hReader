@@ -618,7 +618,7 @@ const LINKS_HTML = `<!DOCTYPE html><html><head>
 <a href="javascript:fetch('{{EXT}}/js-scheme.png')">js-scheme</a>
 <a href="mailto:a@b.c">mail</a>
 <svg xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10"><a xlink:href="svg-xlink.png"><text x="0" y="5">xlink</text></a></svg>
-<template shadowrootmode="open"><a href="shadow.png">shadow</a></template>
+<div><template shadowrootmode="open"><a href="shadow.png">shadow</a></template></div>
 <img usemap="#m" src="img.png" width="40" height="40"><map name="m"><area shape="rect" coords="0,0,20,20" href="area.png" alt="a"></map>
 </body></html>`;
 

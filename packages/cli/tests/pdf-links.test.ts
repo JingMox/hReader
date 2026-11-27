@@ -15,6 +15,7 @@ import {
   PDFDocument,
   PDFHexString,
   PDFName,
+  type PDFObject,
   PDFRef,
   PDFString,
 } from "pdf-lib";
@@ -24,22 +25,25 @@ import { HrError } from "@hreader/core";
 
 import { sanitizePdfLinks } from "../src/pdf/links";
 
-/** One /Link annotation dict; `action` is the /A dictionary body. */
+/** The value shapes `context.obj` accepts: scalars, arrays, nested dicts, and real PDFObjects (names, strings, refs). */
+type LitValue = string | number | boolean | number[] | PDFObject | { [key: string]: LitValue };
+
+/** One /Link annotation dict; `action` is the /A dictionary body. Name-typed values ride `PDFName.of` — `context.obj` turns a bare string into a PDFString, which is not what producers emit. */
 const linkAnnotOf = (
   doc: PDFDocument,
-  action: Record<string, unknown>,
-  extra: Record<string, unknown> = {},
+  action: Record<string, LitValue>,
+  extra: Record<string, LitValue> = {},
 ): PDFDict =>
   doc.context.obj({
-    Type: "Annot",
-    Subtype: "Link",
+    Type: PDFName.of("Annot"),
+    Subtype: PDFName.of("Link"),
     Rect: [0, 0, 120, 20],
     A: action,
     ...extra,
   });
 
 const uriAnnotOf = (doc: PDFDocument, uri: string): PDFDict =>
-  linkAnnotOf(doc, { S: "URI", URI: PDFString.of(uri) });
+  linkAnnotOf(doc, { S: PDFName.of("URI"), URI: PDFString.of(uri) });
 
 /** A one-page PDF; every annot is registered and referenced like a real producer emits. */
 const buildPdfOf = async (annots: PDFDict[]): Promise<Uint8Array> => {
@@ -49,7 +53,7 @@ const buildPdfOf = async (annots: PDFDict[]): Promise<Uint8Array> => {
     const array = doc.context.obj(annots.map((annot) => doc.context.register(annot)));
     page.node.set(PDFName.of("Annots"), array);
   }
-  return doc.save({ updateMetadata: false });
+  return doc.save();
 };
 
 interface LinkAnnots {
@@ -122,8 +126,8 @@ describe("sanitizePdfLinks · /URI allowlist", () => {
     const indirectUri = doc.context.register(PDFString.of("file:///tmp/indirect.png"));
     const hexUri = PDFHexString.fromText("file:///tmp/hex.png");
     const bytes = await buildPdfOf([
-      linkAnnotOf(doc, { S: "URI", URI: hexUri }),
-      linkAnnotOf(doc, { S: "URI", URI: indirectUri }),
+      linkAnnotOf(doc, { S: PDFName.of("URI"), URI: hexUri }),
+      linkAnnotOf(doc, { S: PDFName.of("URI"), URI: indirectUri }),
       uriAnnotOf(doc, "https://example.com/keep"),
     ]);
     const { uris } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
@@ -133,7 +137,7 @@ describe("sanitizePdfLinks · /URI allowlist", () => {
   it("should drop a /URI action whose value is not a string at all", async () => {
     const doc = await PDFDocument.create();
     const bytes = await buildPdfOf([
-      linkAnnotOf(doc, { S: "URI", URI: PDFName.of("NotAString") }),
+      linkAnnotOf(doc, { S: PDFName.of("URI"), URI: PDFName.of("NotAString") }),
       uriAnnotOf(doc, "https://example.com/keep"),
     ]);
     const { uris } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
@@ -145,11 +149,11 @@ describe("sanitizePdfLinks · action and annotation kinds", () => {
   it("should delete Launch/GoToR/JavaScript/SubmitForm actions but keep GoTo and Dest", async () => {
     const doc = await PDFDocument.create();
     const bytes = await buildPdfOf([
-      linkAnnotOf(doc, { S: "Launch", F: PDFString.of("run.exe") }),
-      linkAnnotOf(doc, { S: "GoToR", F: PDFString.of("other.pdf") }),
-      linkAnnotOf(doc, { S: "JavaScript", JS: PDFString.of("app.alert(1)") }),
-      linkAnnotOf(doc, { S: "SubmitForm", F: PDFString.of("https://x") }),
-      linkAnnotOf(doc, { S: "GoTo", D: [0, 0, 0] }),
+      linkAnnotOf(doc, { S: PDFName.of("Launch"), F: PDFString.of("run.exe") }),
+      linkAnnotOf(doc, { S: PDFName.of("GoToR"), F: PDFString.of("other.pdf") }),
+      linkAnnotOf(doc, { S: PDFName.of("JavaScript"), JS: PDFString.of("app.alert(1)") }),
+      linkAnnotOf(doc, { S: PDFName.of("SubmitForm"), F: PDFString.of("https://x") }),
+      linkAnnotOf(doc, { S: PDFName.of("GoTo"), D: [0, 0, 0] }),
       linkAnnotOf(doc, {}, { Dest: PDFName.of("sec") }),
     ]);
     const { annots } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
@@ -160,10 +164,10 @@ describe("sanitizePdfLinks · action and annotation kinds", () => {
     const doc = await PDFDocument.create();
     const bytes = await buildPdfOf([
       doc.context.obj({
-        Type: "Annot",
-        Subtype: "Text",
+        Type: PDFName.of("Annot"),
+        Subtype: PDFName.of("Text"),
         Rect: [0, 0, 20, 20],
-        A: { S: "URI", URI: PDFString.of("file:///tmp/x.png") },
+        A: { S: PDFName.of("URI"), URI: PDFString.of("file:///tmp/x.png") },
       }),
     ]);
     const { annots } = await linkAnnotsOf(await sanitizePdfLinks(bytes));

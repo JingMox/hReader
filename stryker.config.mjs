@@ -49,6 +49,8 @@ const config = {
     "packages/cli/src/output.ts",
     "packages/cli/src/args/**/*.ts",
     "packages/cli/src/commands/export-foreign.ts",
+    // cli: the fail-closed link-annotation sanitizer every hr pdf artifact passes through
+    "packages/cli/src/pdf/links.ts",
     // app widgets
     "packages/app/src/widgets/present.ts",
     "packages/app/src/widgets/foreign.ts",
