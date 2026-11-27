@@ -192,6 +192,9 @@ describe("sanitizePdfLinks · /URI allowlist", () => {
   it("should drop a /URI action whose value is not a string at all", async () => {
     const bytes = await buildPdfOf((doc) => [
       linkAnnotOf(doc, { S: PDFName.of("URI"), URI: PDFName.of("NotAString") }),
+      linkAnnotOf(doc, { S: PDFName.of("URI"), URI: { Host: PDFString.of("example.com") } }),
+      linkAnnotOf(doc, { S: PDFName.of("URI"), URI: [PDFString.of("https://example.com")] }),
+      linkAnnotOf(doc, { S: PDFName.of("URI"), URI: 42 }),
       uriAnnotOf(doc, "https://example.com/keep"),
     ]);
     const { uris } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
@@ -513,6 +516,29 @@ describe("sanitizePdfLinks · structural strictness", () => {
   it("should fail closed on a dangling reference inside an annotation dict", async () => {
     const bytes = await buildPdfOf((doc) => [
       linkAnnotOf(doc, { S: PDFName.of("GoTo"), D: [0, 0, 0] }, { Border: PDFRef.of(9997, 0) }),
+    ]);
+    const failure = await failureOf(bytes);
+    expect(failure).toBeInstanceOf(HrError);
+    expect((failure as HrError).code).toBe("render_empty");
+  });
+
+  it("should fail closed on a dangling reference nested inside the action dict", async () => {
+    const bytes = await buildPdfOf((doc) => [
+      linkAnnotOf(doc, { S: PDFName.of("GoTo"), D: PDFRef.of(9996, 0) }),
+    ]);
+    const failure = await failureOf(bytes);
+    expect(failure).toBeInstanceOf(HrError);
+    expect((failure as HrError).code).toBe("render_empty");
+  });
+
+  it("should fail closed on a dangling reference nested inside an array value", async () => {
+    const bytes = await buildPdfOf((doc) => [
+      destAnnotOf(doc, [PDFName.of("Fit"), PDFRef.of(9995, 0)]),
+      linkAnnotOf(
+        doc,
+        { S: PDFName.of("GoTo"), D: [0, 0, 0] },
+        { Border: [0, 0, PDFRef.of(9994, 0)] },
+      ),
     ]);
     const failure = await failureOf(bytes);
     expect(failure).toBeInstanceOf(HrError);
