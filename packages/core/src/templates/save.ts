@@ -43,6 +43,12 @@ import { inspectTemplateDir } from "./inspect";
 /** `.hreader` matches io/paths.ts's STORE_DIR: the staging dir sits next to `templates/` inside it. */
 const HREADER_DIR = ".hreader";
 
+/** Staging dirs are siblings of `templates/` under `.hreader/`; a leftover is invisible to `listTemplateDirs`. */
+const STAGING_PREFIX = ".hr-template-save-";
+
+/** A crash-leftover older than this is reaped on the next save; a fresher one may still be in flight. */
+const STAGING_MAX_AGE_MS = 3_600_000;
+
 /** Tags whose subtree never yields visible text — heading collection skips them (same set outline uses). */
 const NON_TEXT_TAGS = new Set(["script", "style", "template", "head"]);
 
@@ -96,6 +102,36 @@ const removeTree = async (fsApi: FileSystem, dir: string): Promise<void> => {
   await rmdirQuiet(fsApi, dir);
 };
 
+/**
+ * Best-effort sweep of crash-leftover staging dirs under `<scopeBase>/.hreader/`. Reaping never
+ * fails a save: a failed list/stat/remove just leaves the dir for the next run. Only
+ * `.hr-template-save-*` directories old enough by dir mtime are touched — nothing else.
+ */
+const reapStaleStagingDirs = async (
+  parent: string,
+  fsApi: FileSystem,
+  nowMs: number,
+): Promise<void> => {
+  let names: readonly string[];
+  try {
+    names = await fsApi.readdir(parent);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!name.startsWith(STAGING_PREFIX)) continue;
+    const dir = join(parent, name);
+    try {
+      const stat = await fsApi.lstat(dir);
+      if (isDirStat(stat) && stat.mtimeMs + STAGING_MAX_AGE_MS <= nowMs) {
+        await removeTree(fsApi, dir);
+      }
+    } catch {
+      continue;
+    }
+  }
+};
+
 interface CollectedAsset {
   readonly rel: string;
   readonly source: string;
@@ -132,6 +168,13 @@ const collectAssets = async (
   }
   if (!isInside(workspace, assetsReal)) {
     throw new HrError("path_outside_workspace", `资源目录真实路径跑出 workspace：${assetsReal}`);
+  }
+  // Same store-area stance as `resolveTarget`: `.hreader/**` is hreader's own data, not page assets.
+  if (isInsideOrSelf(join(workspace, HREADER_DIR), assetsReal)) {
+    throw new HrError(
+      "path_outside_workspace",
+      `资源目录真实路径落在 .hreader 存储区内：${assetsReal}`,
+    );
   }
   const assets: CollectedAsset[] = [];
   let totalBytes = 0;
@@ -324,6 +367,9 @@ export const saveTemplate = async (
   const format: TemplateFormat = classifyDocument(parsed).cls === "managed" ? "managed" : "html";
   // Provided `style` replaces the extracted theme; the extracted one is left exactly as authored.
   const style = input.style ?? embeddedThemeCssOf(html);
+  // An extracted theme faces the same gate a provided `style` passed above: it lands in style.css
+  // verbatim, and would otherwise save a template every `createFromTemplate` refuses.
+  if (input.style === undefined && style !== undefined) assertThemeSafe(style);
   const stem = basename(source.realPath, ext);
   const assetsDir = join(dirname(source.realPath), `${stem}_files`);
   const assets = await collectAssets(assetsDir, source.workspace, deps.fs);
@@ -367,9 +413,10 @@ export const saveTemplate = async (
   const finalDir = join(tierRoot, input.id);
   await assertTargetFree(finalDir, deps.fs);
   await mkdirOrFail(deps, tierRoot);
+  await reapStaleStagingDirs(join(scopeBase, HREADER_DIR), deps.fs, deps.clock.now().getTime());
   // The staging dir is a sibling of `templates/` inside `.hreader/`: same filesystem → rename is atomic,
   // and a crash-leftover is invisible to `listTemplateDirs` (it only scans the tier root itself).
-  const staging = join(scopeBase, HREADER_DIR, `.hr-template-save-${nonce()}`);
+  const staging = join(scopeBase, HREADER_DIR, `${STAGING_PREFIX}${nonce()}`);
   const stagedAssets: StagedAsset[] = assets.map((asset) => ({
     rel: `${ASSETS_DIR}/${asset.rel}`,
     dest: join(staging, ASSETS_DIR, ...asset.rel.split("/")),

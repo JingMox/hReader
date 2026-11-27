@@ -14,6 +14,7 @@ import {
   absoluteOf,
   commonOf,
   failure,
+  homeOf,
   intInRange,
   strictOf,
   unusedFlag,
@@ -36,6 +37,9 @@ const NEW_FLAGS = [
   "--visual",
   "--workspace",
 ];
+
+/** With `--template` the command is the `hr template new` alias, which understands `--home`; the skeleton path does not. */
+const NEW_TEMPLATE_FLAGS = [...NEW_FLAGS, "--home"];
 
 const IMPORT_FLAGS = ["--force", "--json", "--kind", "--out", "--title", "--workspace"];
 
@@ -87,7 +91,10 @@ const newShapeProblemOf = (raw: Raw, rest: readonly string[]): string | undefine
   if (file === "") return "new 缺少 <file>";
   if (raw.values.get("--template") === "") return "--template 不能为空";
   if (raw.values.get("--title") === "") return "--title 不能为空";
-  return unusedFlag(raw, NEW_FLAGS);
+  return unusedFlag(
+    raw,
+    raw.values.get("--template") === undefined ? NEW_FLAGS : NEW_TEMPLATE_FLAGS,
+  );
 };
 
 export const newIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
@@ -106,7 +113,7 @@ export const newIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
         path: absoluteOf(file, cwd),
         template,
         title: raw.values.get("--title"),
-        home: undefined,
+        ...homeOf(raw, cwd),
         ...commonOf(raw, cwd),
       },
     };
