@@ -138,6 +138,33 @@ describe("sidecar merge into the pending push", () => {
     expect(fake.sentMessages[0]?.content).toContain("（批注没有节点锚点，按摘录位置处理）");
   });
 
+  it("should name the node in the injection header for a meta push, exactly as before sidecar", async () => {
+    const { fake } = await runOf({
+      events: [CHANGED],
+      annotations: [annotationsReplyOf([metaAnnotationOf("an-m", "p1", "meta 批注")])],
+    });
+    expect(fake.sentMessages).toHaveLength(1);
+    expect(fake.sentMessages[0]?.content).toContain("（文档 docs/a.html，节点 p1）");
+    expect(fake.sentMessages[0]?.content).not.toContain("锚点");
+  });
+
+  it("should name the node for a sidecar entry that carries a nodeId, and the anchor only without one", async () => {
+    const { fake } = await runOf({
+      events: [CHANGED],
+      annotations: [annotationsReplyOf([])],
+      sidecar: [
+        sidecarReplyOf([
+          sidecarEntryOf({ id: "an-sel" }),
+          sidecarEntryOf({ id: "an-node", nodeId: "p2" }),
+        ]),
+      ],
+    });
+    expect(fake.sentMessages).toHaveLength(2);
+    expect(fake.sentMessages[0]?.content).toContain("（文档 docs/a.html，锚点 body > p:nth-of-type(1)）");
+    expect(fake.sentMessages[0]?.content).not.toContain("，节点");
+    expect(fake.sentMessages[1]?.content).toContain("（文档 docs/a.html，节点 p2）");
+  });
+
   it("should fall back to the anchored excerpt then the id when neither nodeId nor selector is present", async () => {
     const { fake } = await runOf({
       events: [CHANGED],
