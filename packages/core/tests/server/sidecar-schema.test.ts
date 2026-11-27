@@ -10,14 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { ANCHOR_LIMITS, NOTE_LIMIT } from "../../src/annotations";
 import { sha1Of } from "../io/harness";
-import {
-  cookieOf,
-  defaultSeed,
-  httpCall,
-  withServer,
-  type HttpResponse,
-  type TestServer,
-} from "./harness";
+import { defaultSeed, httpCall, withServer, type HttpResponse, type TestServer } from "./harness";
 import { withPost } from "./wire";
 
 const ANCHOR = { exact: "正文一", prefix: "", suffix: "", start: 0 };
@@ -66,8 +59,9 @@ describe("sidecar add · body shape", () => {
 
   it.each(["note", "anchor"])("should refuse a missing %s", async (key) => {
     await withServer(async (ctx) => {
-      const body: Record<string, unknown> = { anchor: ANCHOR, note: "n" };
-      delete body[key];
+      const body = Object.fromEntries(
+        Object.entries({ anchor: ANCHOR, note: "n" }).filter(([name]) => name !== key),
+      );
 
       expectInvalid(await postAdd(ctx, body));
     }, defaultSeed);
@@ -77,8 +71,7 @@ describe("sidecar add · body shape", () => {
     "should refuse a missing anchor.%s",
     async (key) => {
       await withServer(async (ctx) => {
-        const anchor: Record<string, unknown> = { ...ANCHOR };
-        delete anchor[key];
+        const anchor = Object.fromEntries(Object.entries(ANCHOR).filter(([name]) => name !== key));
 
         expectInvalid(await postAdd(ctx, { anchor, note: "n" }));
       }, defaultSeed);

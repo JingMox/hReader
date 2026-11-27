@@ -18,9 +18,7 @@ import { startServe, type Daemon } from "../harness/serve.ts";
 const DOC = "sidecar-doc.html";
 const BODY = `<!doctype html><html><body><div><p>first paragraph</p><p>second paragraph</p></div></body></html>`;
 
-interface JsonMap {
-  readonly [key: string]: unknown;
-}
+type JsonMap = Record<string, unknown>;
 
 const annotationsOf = (body: JsonMap): readonly JsonMap[] =>
   (body["annotations"] as readonly JsonMap[] | undefined) ?? [];
@@ -114,6 +112,7 @@ describe("sidecar-annotations", () => {
       selector: "body > div:nth-of-type(1) > p:nth-of-type(1)",
       note: "second",
     });
+    assert(typeof added["id"] === "string", `second add reply: ${JSON.stringify(added)}`);
     const event = await sse.next("doc.annotations");
     assert(event !== undefined, "no doc.annotations after the second add");
     assertEq(event.data["docId"], DOC, "doc.annotations payload");

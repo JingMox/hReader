@@ -89,8 +89,9 @@ const record = (patch: Partial<SidecarAnnotation> = {}): SidecarAnnotation => ({
 /** A record minus the listed keys — for seeded records that must carry no locating info. */
 const withoutKeys = (source: SidecarAnnotation, keys: readonly string[]): SidecarAnnotation => {
   const copy = JSON.parse(JSON.stringify(source)) as Record<string, unknown>;
-  for (const key of keys) delete copy[key];
-  return copy as SidecarAnnotation;
+  return Object.fromEntries(
+    Object.entries(copy).filter(([key]) => !keys.includes(key)),
+  ) as unknown as SidecarAnnotation;
 };
 
 const postSidecar = async (
