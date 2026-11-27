@@ -302,6 +302,17 @@ describe("listWorkspaceAnnotations · store-record discovery", () => {
       expect(line).not.toContain(`${WS}/`);
     }
   });
+
+  it("should not fold anything when the workspace root itself is /", async () => {
+    const fs = fakeFs({ "/doc.html": "<html><body><p>x</p></body></html>" });
+    dirsOf(fs, ["/"]);
+    fs.fail("readdir", systemError("EACCES"), (dir) => dir === "/");
+
+    const result = await listWorkspaceAnnotations({ workspace: "/" }, deps(fs.port));
+
+    // A "/" root prefixes every absolute path: folding it would mangle the text, so it stays.
+    expect(result.diagnostics.some((line) => line.includes("目录不可读：.（"))).toBe(true);
+  });
 });
 
 describe("listWorkspaceAnnotations · walk resilience", () => {
