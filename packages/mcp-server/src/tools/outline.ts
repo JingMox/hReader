@@ -3,7 +3,7 @@
 // against the same bytes the outline was built from (one read, one relocation domain), and a doc
 // without a sidecar store returns output identical to before — no new keys appear.
 
-import { relative } from "node:path";
+import { relative, sep } from "node:path";
 
 import {
   buildOutline,
@@ -54,12 +54,15 @@ const sidecarPartOf = async (
   ]).catch((error: unknown) => {
     throw coreFailureOf(error, target);
   });
-  const resolved = await resolveTarget(
-    { workspace: workspaceReal, file: relative(workspaceReal, absoluteReal) },
-    nodePatchDeps.fs,
-  ).catch((error: unknown) => {
-    throw coreFailureOf(error, target);
-  });
+  // `.hreader/**` docs are hreader's own store files (history snapshots, template index pages):
+  // readable on the read gate, but no sidecar can exist for them — `resolveTarget`'s store
+  // exclusion is write-domain, so the block is skipped rather than allowed to trip it.
+  const relativePath = relative(workspaceReal, absoluteReal).split(sep).join("/");
+  if (relativePath === ".hreader" || relativePath.startsWith(".hreader/")) return {};
+  const resolved = await resolveTarget({ workspace: workspaceReal, file: relativePath }, nodePatchDeps.fs)
+    .catch((error: unknown) => {
+      throw coreFailureOf(error, target);
+    });
   const file = await readSidecarFile(resolved, nodePatchDeps).catch((error: unknown) => {
     throw coreFailureOf(error, target);
   });
