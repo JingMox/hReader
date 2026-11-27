@@ -278,7 +278,9 @@ describe("listWorkspaceAnnotations · store-record discovery", () => {
   it("should fold workspace-absolute paths inside diagnostics to workspace-relative", async () => {
     const fs = fakeFs({
       [`${WS}/bad.html`]: "<html><body><p>x</p></body></html>",
-      [`${WS}/.hreader/annotations/${storeNameOf("gone.html")}`]: storeJson("gone.html", [record()]),
+      [`${WS}/.hreader/annotations/${storeNameOf("gone.html")}`]: storeJson("gone.html", [
+        record(),
+      ]),
     });
     dirsOf(fs, [WS, `${WS}/.hreader`]);
     fs.fail("readFile", systemError("EACCES"), (path) => path.endsWith("bad.html"));

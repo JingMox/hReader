@@ -59,10 +59,12 @@ const sidecarPartOf = async (
   // exclusion is write-domain, so the block is skipped rather than allowed to trip it.
   const relativePath = relative(workspaceReal, absoluteReal).split(sep).join("/");
   if (relativePath === ".hreader" || relativePath.startsWith(".hreader/")) return {};
-  const resolved = await resolveTarget({ workspace: workspaceReal, file: relativePath }, nodePatchDeps.fs)
-    .catch((error: unknown) => {
-      throw coreFailureOf(error, target);
-    });
+  const resolved = await resolveTarget(
+    { workspace: workspaceReal, file: relativePath },
+    nodePatchDeps.fs,
+  ).catch((error: unknown) => {
+    throw coreFailureOf(error, target);
+  });
   const file = await readSidecarFile(resolved, nodePatchDeps).catch((error: unknown) => {
     throw coreFailureOf(error, target);
   });

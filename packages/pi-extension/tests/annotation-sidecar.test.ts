@@ -160,7 +160,9 @@ describe("sidecar merge into the pending push", () => {
       ],
     });
     expect(fake.sentMessages).toHaveLength(2);
-    expect(fake.sentMessages[0]?.content).toContain("（文档 docs/a.html，锚点 body > p:nth-of-type(1)）");
+    expect(fake.sentMessages[0]?.content).toContain(
+      "（文档 docs/a.html，锚点 body > p:nth-of-type(1)）",
+    );
     expect(fake.sentMessages[0]?.content).not.toContain("，节点");
     expect(fake.sentMessages[1]?.content).toContain("（文档 docs/a.html，节点 p2）");
   });

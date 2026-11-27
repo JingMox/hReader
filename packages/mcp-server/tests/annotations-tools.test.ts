@@ -343,7 +343,11 @@ describe("hr_list_annotations · schema boundary", () => {
 // the read-side contract.
 describe("path errors · frozen verdicts and wording", () => {
   const seedEscape = async (): Promise<void> => {
-    const outside = join(workspace, "..", `escape-outside-${createHash("sha1").update(workspace).digest("hex").slice(0, 8)}`);
+    const outside = join(
+      workspace,
+      "..",
+      `escape-outside-${createHash("sha1").update(workspace).digest("hex").slice(0, 8)}`,
+    );
     await mkdir(outside, { recursive: true });
     await writeFile(join(outside, "hosts"), FOREIGN_DOC, "utf8");
     await symlink(outside, join(workspace, "escape"));
@@ -416,7 +420,11 @@ describe("path errors · frozen verdicts and wording", () => {
 describe("hr_outline · .hreader/** docs", () => {
   it("should outline a history snapshot like any readable doc", async () => {
     await mkdir(join(workspace, ".hreader", "history", "deadbeef"), { recursive: true });
-    await writeFile(join(workspace, ".hreader", "history", "deadbeef", "snap.html"), FOREIGN_DOC, "utf8");
+    await writeFile(
+      join(workspace, ".hreader", "history", "deadbeef", "snap.html"),
+      FOREIGN_DOC,
+      "utf8",
+    );
 
     const result = await outlineOf(".hreader/history/deadbeef/snap.html");
 
@@ -427,7 +435,11 @@ describe("hr_outline · .hreader/** docs", () => {
 
   it("should outline a template doc under .hreader/templates", async () => {
     await mkdir(join(workspace, ".hreader", "templates", "base"), { recursive: true });
-    await writeFile(join(workspace, ".hreader", "templates", "base", "index.html"), FOREIGN_DOC, "utf8");
+    await writeFile(
+      join(workspace, ".hreader", "templates", "base", "index.html"),
+      FOREIGN_DOC,
+      "utf8",
+    );
 
     const result = await outlineOf(".hreader/templates/base/index.html");
 
