@@ -46,6 +46,8 @@ pub struct WorkbenchContext {
     pub is_macos: bool,
     /// `Some` 时当前没有打开成功的文档：前端在正文区渲染"这份文档打不开"。
     pub doc_error: Option<DocError>,
+    /// Default template id from settings: `None` = new documents use the blank path.
+    pub default_template: Option<String>,
     /// 原生桥导航（`hr-desktop.local`）的会话令牌：页面 JS 必须回带它壳才认账。
     /// **只经 `sync_payload_js` 投递**（`win.eval` 只跑主 frame）；`init_script`
     /// 里该字段恒为空串——见那里的注释。
@@ -133,6 +135,7 @@ mod tests {
                 css: String::new(),
             }],
             is_macos: true,
+            default_template: None,
             bridge_token: "t".to_string(),
             doc_error: None,
         };
@@ -179,6 +182,7 @@ mod tests {
                 css: "a{}</script><script>alert(2)</script>".to_string(),
             }],
             is_macos: true,
+            default_template: None,
             bridge_token: "t".to_string(),
             doc_error: Some(DocError {
                 doc_id: "bad.html".to_string(),
@@ -204,6 +208,7 @@ mod tests {
             tree: vec![],
             custom_themes: vec![],
             is_macos: true,
+            default_template: None,
             bridge_token: "s3cr3t-bridge-token".to_string(),
             doc_error: None,
         };
@@ -231,6 +236,7 @@ mod tests {
             tree: vec![],
             custom_themes: vec![],
             is_macos: true,
+            default_template: None,
             bridge_token: "tok-3".to_string(),
             doc_error: None,
         };
@@ -254,6 +260,7 @@ mod tests {
             tree: vec![],
             custom_themes: vec![],
             is_macos: true,
+            default_template: None,
             bridge_token: "t".to_string(),
             doc_error: Some(DocError {
                 doc_id: "bad.html".to_string(),

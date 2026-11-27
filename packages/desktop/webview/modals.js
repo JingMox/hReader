@@ -62,10 +62,22 @@ function buildSettingsBodyHtml(themeOpts) {
       <span>运行脚本</span>
       <select id="hrd-set-perm-scripts" disabled>${buildModeOptionsHtml("per-doc")}</select>
     </div>
-    <div class="hrd-field" style="border-bottom:none;">
+    <div class="hrd-field">
       <span>联网加载资源</span>
       <select id="hrd-set-perm-network" disabled>${buildModeOptionsHtml("per-doc")}</select>
     </div>
+    <div class="hrd-menu-hdr" style="margin-top:14px;">文档模板</div>
+    <div class="hrd-field">
+      <div>
+        <div>模板目录</div>
+        <div style="font-size:11px;color:var(--hr-muted);margin-top:2px;">~/.hreader/templates 与 工作区 .hreader/templates</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button type="button" class="hrd-btn" id="hrd-set-tpl-open-user">打开用户目录…</button>
+        <button type="button" class="hrd-btn" id="hrd-set-tpl-open-ws">打开工作区目录…</button>
+      </div>
+    </div>
+    <div id="hrd-tpl-section"><div style="font-size:12px;color:var(--hr-muted);padding:4px 0;">正在加载模板…</div></div>
   `;
 }
 
@@ -202,7 +214,178 @@ function openSettingsModal() {
       .catch((err) => hrd.showToast("权限设置复位失败：" + err.message, true));
   });
   m.querySelector("#hrd-set-done").addEventListener("click", () => applySettingsFromModal(m));
+  m.querySelector("#hrd-set-tpl-open-user").addEventListener("click", () => {
+    hrd.bridgeNavigate("/template-open-dir?scope=user");
+  });
+  m.querySelector("#hrd-set-tpl-open-ws").addEventListener("click", () => {
+    hrd.bridgeNavigate("/template-open-dir?scope=workspace");
+  });
   hydratePermissionSelects(m);
+  hrd.requestTemplates();
+}
+
+// The new-doc select and the settings section share one pushed list
+// (`__hrTemplateResult`); both renderers tolerate "still loading" and "failed".
+function renderNewDocTemplateFields() {
+  const sel = document.getElementById("hrd-new-template");
+  if (!sel) return;
+  const hint = document.getElementById("hrd-new-template-hint");
+  const tpl = hrd.state.templates;
+  const previous = sel.value;
+  sel.innerHTML = '<option value="">空白文档（默认）</option>';
+  if (tpl.status === "ready") {
+    for (const t of tpl.list) {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = `${t.name || t.id}（${t.source}）`;
+      sel.appendChild(opt);
+    }
+    const wanted = hrd.state.ctx.defaultTemplate;
+    sel.value = wanted && tpl.list.some((t) => t.id === wanted) ? wanted : previous;
+  }
+  if (hint) {
+    hint.textContent =
+      tpl.status === "error"
+        ? "模板列表加载失败，仍可创建空白文档"
+        : tpl.status === "ready" && tpl.diagnostics.length
+          ? `${tpl.diagnostics.length} 个模板未能加载，详见偏好设置`
+          : "";
+  }
+}
+
+function openDeleteTemplateModal(id) {
+  const m = hrd.ensureModal(
+    "tpl-delete",
+    "删除模板",
+    `<div style="font-size:13px;">确认删除模板 <code>${hrd.escapeHtmlText(id)}</code>？目录将移入废纸篓。</div>`,
+    `
+      <button type="button" class="hrd-btn" id="hrd-tpldel-cancel">取消</button>
+      <button type="button" class="hrd-btn" id="hrd-tpldel-ok" style="color:#a3341a;">删除</button>
+    `,
+  );
+  const backToSettings = () => {
+    hrd.closeModal();
+    hrd.openSettingsModal();
+  };
+  m.querySelector("#hrd-tpldel-cancel").addEventListener("click", backToSettings);
+  m.querySelector("#hrd-tpldel-ok").addEventListener("click", () => {
+    hrd.closeModal();
+    hrd.bridgeNavigate("/template-delete?id=" + encodeURIComponent(id));
+    hrd.openSettingsModal();
+  });
+}
+
+function renderTemplateSection() {
+  const box = document.getElementById("hrd-tpl-section");
+  if (!box) return;
+  const tpl = hrd.state.templates;
+  const note = (text) =>
+    `<div style="font-size:12px;color:var(--hr-muted);padding:4px 0;">${text}</div>`;
+  if (tpl.status === "error") {
+    box.innerHTML = note(`模板列表加载失败：${hrd.escapeHtmlText(tpl.error)}`);
+    return;
+  }
+  if (tpl.status !== "ready") {
+    box.innerHTML = note("正在加载模板…");
+    return;
+  }
+  const defaultId = hrd.state.ctx.defaultTemplate || "";
+  const diagnostics = tpl.diagnostics
+    .map(
+      (d) =>
+        `<div style="font-size:11.5px;color:#a3341a;padding:2px 0;">${hrd.escapeHtmlText(d.source)} 层模板 ${hrd.escapeHtmlText(d.id)} 已跳过 — ${hrd.escapeHtmlText(d.message)}</div>`,
+    )
+    .join("");
+  const rows = tpl.list
+    .map((t) => {
+      const isDefault = Boolean(defaultId) && t.id === defaultId;
+      const meta =
+        `${hrd.escapeHtmlText(t.id)} · ${hrd.escapeHtmlText(t.source)}` +
+        (t.format ? ` · ${hrd.escapeHtmlText(t.format)}` : "");
+      const defaultBtn = isDefault
+        ? '<button type="button" class="hrd-btn" data-tpl-clear>清除默认</button>'
+        : `<button type="button" class="hrd-btn" data-tpl-default="${hrd.escapeHtmlText(t.id)}">设为默认</button>`;
+      const delBtn =
+        t.source === "builtin"
+          ? ""
+          : `<button type="button" class="hrd-btn" data-tpl-delete="${hrd.escapeHtmlText(t.id)}" style="color:#a3341a;">删除</button>`;
+      return `
+        <div class="hrd-field" style="border-bottom:none;padding:8px 0;">
+          <div>
+            <div>${hrd.escapeHtmlText(t.name || t.id)}${isDefault ? '<span style="color:var(--hr-muted);font-size:11px;">（默认）</span>' : ""}</div>
+            <div style="font-size:11px;color:var(--hr-muted);margin-top:2px;">${meta}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">${defaultBtn}${delBtn}</div>
+        </div>`;
+    })
+    .join("");
+  box.innerHTML = diagnostics + (rows || note("还没有可用的模板"));
+  [...box.querySelectorAll("[data-tpl-default]")].forEach((btn) =>
+    btn.addEventListener("click", () => {
+      hrd.bridgeNavigate(
+        "/template-set-default?id=" + encodeURIComponent(btn.getAttribute("data-tpl-default")),
+      );
+    }),
+  );
+  [...box.querySelectorAll("[data-tpl-clear]")].forEach((btn) =>
+    btn.addEventListener("click", () => hrd.bridgeNavigate("/template-clear-default")),
+  );
+  [...box.querySelectorAll("[data-tpl-delete]")].forEach((btn) =>
+    btn.addEventListener("click", () =>
+      openDeleteTemplateModal(btn.getAttribute("data-tpl-delete")),
+    ),
+  );
+}
+
+function renderTemplateUi() {
+  renderNewDocTemplateFields();
+  renderTemplateSection();
+}
+
+function openSaveAsTemplateModal() {
+  if (hrd.isEmptyMode()) {
+    hrd.showToast("当前未打开文档，请先新建或打开一个 HTML 文件", true);
+    return;
+  }
+  const m = hrd.ensureModal(
+    "save-template",
+    "存为模板",
+    `
+      <div class="hrd-field"><span>模板 ID（小写字母、数字与连字符）</span><input type="text" id="hrd-tpl-id" placeholder="例如：weekly-report"/></div>
+      <div class="hrd-field"><span>名称（留空用 ID）</span><input type="text" id="hrd-tpl-name" placeholder="例如：周报"/></div>
+      <div class="hrd-field"><span>描述</span><input type="text" id="hrd-tpl-desc"/></div>
+      <div class="hrd-field" style="border-bottom:none;"><span>保存到全局（所有工作区可用）</span><input type="checkbox" id="hrd-tpl-global"/></div>
+    `,
+    `
+      <button type="button" class="hrd-btn" id="hrd-tpl-cancel">取消</button>
+      <button type="button" class="hrd-btn hrd-btn-primary" id="hrd-tpl-ok">保存</button>
+    `,
+  );
+  const idInput = m.querySelector("#hrd-tpl-id");
+  idInput.focus();
+  const submit = () => {
+    const id = idInput.value.trim();
+    // Same gate as core's TEMPLATE_ID — refuse before the bridge call exists.
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
+      hrd.showToast("模板 ID 只能由小写字母、数字与连字符组成，且不超过 64 字符", true);
+      return;
+    }
+    const name = m.querySelector("#hrd-tpl-name").value.trim();
+    const desc = m.querySelector("#hrd-tpl-desc").value.trim();
+    const isGlobal = m.querySelector("#hrd-tpl-global").checked;
+    hrd.closeModal();
+    let url =
+      "/template-save?doc=" +
+      encodeURIComponent(hrd.currentDocId()) +
+      "&id=" +
+      encodeURIComponent(id);
+    if (name) url += "&name=" + encodeURIComponent(name);
+    if (desc) url += "&desc=" + encodeURIComponent(desc);
+    if (isGlobal) url += "&global=1";
+    hrd.bridgeNavigate(url);
+  };
+  m.querySelector("#hrd-tpl-cancel").addEventListener("click", hrd.closeModal);
+  m.querySelector("#hrd-tpl-ok").addEventListener("click", submit);
 }
 
 function openNewDocModal() {
@@ -211,7 +394,9 @@ function openNewDocModal() {
     "新建排版文档",
     `
       <div class="hrd-field"><span>文档标题</span><input type="text" id="hrd-new-title" placeholder="例如：Q4 产品路线复盘" value="未命名文档"/></div>
-      <div class="hrd-field" style="border-bottom:none;"><span>文件名（自动补 .html）</span><input type="text" id="hrd-new-name" placeholder="例如：q4-review.html"/></div>
+      <div class="hrd-field"><span>文件名（自动补 .html）</span><input type="text" id="hrd-new-name" placeholder="例如：q4-review.html"/></div>
+      <div class="hrd-field" style="border-bottom:none;"><span>模板</span><select id="hrd-new-template"><option value="">空白文档（默认）</option></select></div>
+      <div id="hrd-new-template-hint" style="font-size:11px;color:var(--hr-muted);"></div>
       <div style="font-size:11.5px;color:var(--hr-muted);">将创建在工作区：${hrd.escapeHtmlText(hrd.state.ctx.workspace || "")}</div>
     `,
     `
@@ -226,10 +411,12 @@ function openNewDocModal() {
   const submit = () => {
     const title = titleInput.value.trim() || "未命名文档";
     const file = nameInput.value.trim();
+    const templateEl = m.querySelector("#hrd-new-template");
+    const template = templateEl ? templateEl.value : "";
     hrd.closeModal();
-    hrd.bridgeNavigate(
-      "/new?title=" + encodeURIComponent(title) + "&file=" + encodeURIComponent(file),
-    );
+    let url = "/new?title=" + encodeURIComponent(title) + "&file=" + encodeURIComponent(file);
+    if (template) url += "&template=" + encodeURIComponent(template);
+    hrd.bridgeNavigate(url);
   };
   const onEnter = (e) => {
     if (e.key === "Enter") submit();
@@ -238,6 +425,8 @@ function openNewDocModal() {
   m.querySelector("#hrd-new-ok").addEventListener("click", submit);
   nameInput.addEventListener("keydown", onEnter);
   titleInput.addEventListener("keydown", onEnter);
+  renderNewDocTemplateFields();
+  hrd.requestTemplates();
 }
 
 function renderSwitcherList(listEl, files, query, active) {
@@ -359,4 +548,6 @@ Object.assign(hrd, {
   openFileSwitcherModal,
   openComponentModal,
   openHelpModal,
+  openSaveAsTemplateModal,
+  renderTemplateUi,
 });

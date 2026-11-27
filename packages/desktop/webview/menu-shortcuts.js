@@ -8,6 +8,7 @@ const MENU_ACTIONS = {
   "new-file": () => hrd.openNewDocModal(),
   "open-themes-dir": () => hrd.bridgeNavigate("/open-themes-dir"),
   "reload-themes": () => hrd.bridgeNavigate("/reload-themes"),
+  "save-as-template": () => hrd.openSaveAsTemplateModal(),
   "save-doc": () => {
     const active = hrd.closestTopBlock(document.activeElement) || hrd.activeBlockEl();
     hrd.flushBlockSave(active).then(() => hrd.showToast("文档已保存"));

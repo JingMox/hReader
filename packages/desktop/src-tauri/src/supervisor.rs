@@ -523,10 +523,15 @@ pub fn enriched_path_env() -> OsString {
     std::env::join_paths(dirs).unwrap_or_default()
 }
 
-/// 同步执行一条短 CLI 子命令（`style` / `pdf` / `png` / `export`）。
-pub fn run_cli_task(cli: &Path, workspace: &Path, args: &[&str]) -> Result<String, String> {
+/// Run one short CLI subcommand synchronously (`style` / `pdf` / `png` / `export` / `template`).
+/// `&[impl AsRef<str>]` accepts both `&["a","b"]` literals and `Vec<String>` (dynamically built argv).
+pub fn run_cli_task(
+    cli: &Path,
+    workspace: &Path,
+    args: &[impl AsRef<str>],
+) -> Result<String, String> {
     let output = cli_command(cli)
-        .args(args)
+        .args(args.iter().map(|arg| arg.as_ref()))
         .current_dir(workspace)
         .env("PATH", enriched_path_env())
         .stdin(Stdio::null())
