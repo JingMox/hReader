@@ -146,6 +146,12 @@ const expressibleSteps = (steps: readonly SelectorStep[]): boolean => {
  * The block's text in the `bodyTextOf` domain: descendant text nodes in document order,
  * minus `script`/`style`/`template`/`noscript` subtrees — then whitespace-collapsed and
  * trimmed. A block nested inside a skipped subtree still keeps its own text.
+ *
+ * Read on the default scripting-off tree (no `scriptingEnabled`): patching works on source
+ * structure, where `<noscript>` children are real elements — a `<p>` inside `<noscript>`
+ * stays addressable and byte-patchable. The scripting-on tree (D54, annotation body-text
+ * only) reads them as raw text and would hide them from addressing; the skip rules hash a
+ * noscript subtree identically under both modes, so fingerprints stay in one domain.
  */
 const blockTextOf = (node: HtmlElementNode): string => {
   const parts: string[] = [];

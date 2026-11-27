@@ -54,6 +54,20 @@ describe("applyBlockPatch · byte precision", () => {
     expect(block).toBeDefined();
   });
 
+  it("should patch a <p> inside <noscript> byte-precisely (scripting-off tree)", () => {
+    // Scripting off keeps <noscript> children as markup with real source offsets; the
+    // scripting-on annotation tree (D54) would read them as raw text and lose the range.
+    const html = "<article><noscript><p>x</p></noscript>tail</article>";
+    const [block] = listBlocks(html);
+    const outcome = applyBlockPatch(html, {
+      address: block?.address ?? "",
+      action: "replace",
+      html: "<p>y</p>",
+    });
+    expect(outcome.changed).toBe(true);
+    expect(outcome.html).toBe("<article><noscript><p>y</p></noscript>tail</article>");
+  });
+
   it("should mark an equivalent replacement as changed:false with the same address", () => {
     const outcome = applyBlockPatch(DOC, {
       address: addressAt(DOC, 1),

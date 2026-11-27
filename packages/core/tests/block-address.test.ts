@@ -143,6 +143,20 @@ describe("fingerprints", () => {
     expect(d?.address.split("@")[1]).toBe(b?.address.split("@")[1]);
   });
 
+  it("should address a <p> inside <noscript>: the scripting-off parse keeps it a real element", () => {
+    // Block addresses parse with the default (no `scriptingEnabled`): patching works on
+    // source structure, where noscript children are markup. The scripting-on tree used by
+    // the annotation body-text domain (D54) would read <p>x</p> as raw text and no block
+    // would exist here at all.
+    const html = "<article><noscript><p>x</p></noscript></article>";
+    const [block] = listBlocks(html);
+    expect(block?.tag).toBe("p");
+    expect(block?.address.split("@")[1]).toBe(sha1Of("x"));
+    expect(html.slice(block?.start ?? 0, block?.end ?? 0)).toBe("<p>x</p>");
+    const resolved = resolveAddress(html, block?.address ?? "");
+    expect(resolved.ok).toBe(true);
+  });
+
   it("should hash CJK and emoji text identically to ASCII rules", () => {
     const [a] = blocksOf("<p>中文  测试</p>");
     const [b] = blocksOf("<p>中文 测试</p>");
