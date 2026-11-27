@@ -9,7 +9,7 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const RES_ROOT = join(REPO, "packages/desktop/src-tauri/resources");
 const APP_DIST = join(REPO, "packages/app/dist");
 const CLI_DIST = join(REPO, "packages/cli/dist/cli.mjs");
-const STYLES_SRC = join(REPO, "styles");
+const STYLES_SRC = join(REPO, "packages/core/themes");
 const PNPM = "pnpm";
 const SHELL = process.platform === "win32";
 

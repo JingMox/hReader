@@ -1,7 +1,7 @@
 // Metadata of the visual themes (id / body class / display name); holds no CSS and reads no disk.
 
 /**
- * The single source of truth for theme CSS is always the on-disk `styles/<id>/theme.css` (read by core's `loadThemeCss`
+ * The single source of truth for theme CSS is always the on-disk `packages/core/themes/<id>/theme.css` (read by core's `loadThemeCss`
  * and checked by `assertThemeSafe`). Duplicating the CSS here would instantly create a second source of truth — bytes
  * that drift across machines and away from the "themes only grow, never change" rule.
  */

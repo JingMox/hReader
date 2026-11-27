@@ -16,7 +16,7 @@ export interface StyleSourceText {
   readonly origin: "file" | "generated";
 }
 
-/** 内置档在 `presets/*.ts` 里是 TS 数据、`styles/` 下只有 `theme.css`，故只能序列化。 */
+/** 内置档在 `presets/*.ts` 里是 TS 数据、`themes/` 下只有 `theme.css`，故只能序列化。 */
 const yamlDocOf = (spec: StyleSpec): string =>
   stringify({
     id: spec.id,

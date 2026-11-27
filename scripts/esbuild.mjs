@@ -53,12 +53,12 @@ export function makeExecutable(path) {
   }
 }
 
-/** Copies repo-root styles/ to the target; a missing source dir errors loudly (releases ship styles, in-tree builds must have it). */
+/** Copies the builtin theme tree (packages/core/themes) to the target; a missing source dir errors loudly (releases ship styles, in-tree builds must have it). */
 export function copyRepoStyles(...targets) {
-  const source = `${REPO_ROOT}styles`;
+  const source = `${REPO_ROOT}packages/core/themes`;
   if (!existsSync(source)) {
     process.stderr.write(
-      "[build] missing repo-root styles/: this package must build inside the source tree (releases ship their own styles/)\n",
+      "[build] missing packages/core/themes/: this package must build inside the source tree (releases ship their own styles/)\n",
     );
     process.exit(1);
   }

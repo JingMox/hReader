@@ -1,6 +1,6 @@
 node_modules/
 dist/
-# Build output: build copies the repo-root styles/ in; not versioned
+# Build output: build copies the builtin themes/ tree in as styles/; not versioned
 packages/mcp-server/styles/
 packages/cli/styles/
 skills/hreader/scripts/cli.mjs

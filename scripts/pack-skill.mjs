@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI_BUNDLE = join(REPO, "packages/cli/dist/cli.mjs");
-const STYLES_SRC = join(REPO, "styles");
+const STYLES_SRC = join(REPO, "packages/core/themes");
 const SKILL_SRC = join(REPO, "skills/hreader");
 const OUT = join(REPO, "release-artifacts/hreader-skill");
 

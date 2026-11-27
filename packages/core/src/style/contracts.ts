@@ -87,7 +87,7 @@ export interface StyleDiscovery {
 export interface StyleDeps extends PatchDeps {
   readonly home: string;
   readonly projectRoot: string;
-  /** 仓库内置 `styles/` 目录：主题与预设的静态资源根。 */
+  /** 内置 `themes/` 目录（`packages/core/themes/`）：主题与预设的静态资源根。 */
   readonly stylesRoot: string;
 }
 

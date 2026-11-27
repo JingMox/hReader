@@ -13,12 +13,12 @@ import { loadThemeCss } from "../../src/style/theme";
 import { codeOfAsync, systemError } from "../io/harness";
 
 describe("nodeStyleDeps", () => {
-  it("should point stylesRoot at the repo styles directory and use the real HOME", () => {
+  it("should point stylesRoot at the repo themes directory and use the real HOME", () => {
     const deps = nodeStyleDeps("/project");
 
     expect(deps.home).toBe(homedir());
     expect(deps.projectRoot).toBe("/project");
-    expect(deps.stylesRoot.endsWith("/styles/")).toBe(true);
+    expect(deps.stylesRoot.endsWith("/themes/")).toBe(true);
     expect(typeof deps.fs.readFile).toBe("function");
     expect(typeof deps.sleep).toBe("function");
   });
@@ -33,7 +33,7 @@ describe("nodeStyleDeps", () => {
         (target) => target === join(second, "atelier-editorial", "theme.css"),
       ),
     ).toBe(second);
-    expect(resolveStylesRoot([first], () => false).endsWith("/styles/")).toBe(true);
+    expect(resolveStylesRoot([first], () => false).endsWith("/themes/")).toBe(true);
   });
 });
 

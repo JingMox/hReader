@@ -7,7 +7,7 @@ import { PRINT_CSS, THEMES } from "../src/index";
 const entries = Object.entries(THEMES);
 const atelier = THEMES["atelier-editorial"];
 const diskTheme = readFileSync(
-  new URL("../../../styles/atelier-editorial/theme.css", import.meta.url),
+  new URL("../../core/themes/atelier-editorial/theme.css", import.meta.url),
   "utf8",
 );
 
