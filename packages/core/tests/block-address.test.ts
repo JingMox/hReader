@@ -96,6 +96,29 @@ describe("listBlocks · leaf-block detection", () => {
     expect(tagsOf("<section></section><p>x</p>")).toEqual(["section", "p"]);
   });
 
+  it("should not list implicit-close split pieces: their ranges are not tag-anchored", () => {
+    // Quirks <p> split by <table> (implicit-close.ts paragraphPiece): the first piece's
+    // span starts at the content offset (its `<p` is excluded) and the continuation piece
+    // has no start tag in the source at all — neither is byte-addressable.
+    expect(tagsOf("<p>a<table><tr><td>x</td></tr></table>b")).toEqual(["table"]);
+  });
+
+  it("should not list a zero-length synthesized piece", () => {
+    // The hr-id carrier emitted for `<p data-hr-id><table>` is a zero-length span with
+    // no start tag of its own — not a block.
+    expect(tagsOf('<p data-hr-id="p-1"><table><tr><td>x</td></tr></table>')).toEqual(["table"]);
+  });
+
+  it("should give target_moved for an address minted on a split piece", () => {
+    // The piece exists in the tree (elementByPath finds it) but is not a listed block —
+    // resolution falls through to the fingerprint search, which finds no unique hit.
+    const html = "<p>a<table><tr><td>x</td></tr></table>b";
+    expect(resolveAddress(html, `css:body > p:nth-of-type(1)@${sha1Of("a")}`)).toEqual({
+      ok: false,
+      code: "target_moved",
+    });
+  });
+
   it("should give start/end as the outerHTML source range", () => {
     const html = "<p>a</p>\n<p>b</p>";
     const [first, second] = blocksOf(html);
