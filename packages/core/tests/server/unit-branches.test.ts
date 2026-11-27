@@ -61,7 +61,7 @@ import { startServer } from "../../src/server/server";
 import { DEBOUNCE_MS, createWatcher } from "../../src/server/watcher";
 import type { WatchFn } from "../../src/server/watcher";
 import { nodeStyleDeps } from "../../src/style";
-import { disposeWatchers, responseLike, watcherLike } from "./casts";
+import { disposeWatchers, requestLike, responseLike, watcherLike } from "./casts";
 import { cookieOf, DOC, httpCall, openSse, rawExchange, withServer } from "./harness";
 
 const roots: string[] = [];
@@ -482,6 +482,52 @@ describe("runtime · self-write echo winning the noteWrite race", () => {
       );
 
       expect(ring.since(0).events.filter((event) => event.type === "doc.changed")).toHaveLength(1);
+    } finally {
+      runtime.close();
+      hub.close();
+    }
+  });
+
+  it("should emit exactly one doc.annotations and no doc.changed for a sidecar write racing an fs event", async () => {
+    // A sidecar write only touches .hreader/: doc bytes never move, so its Written
+    // is changed:false — the echo dedupe (revisionBefore) cannot reach it, and its
+    // broadcast is the unconditional doc.annotations dispatch publishes afterwards.
+    const workspace = root("hr-echo-ws-");
+    const home = root("hr-echo-home-");
+    const file = join(workspace, "doc.html");
+    writeFileSync(file, DOC, "utf8");
+    const { runtime, hub, ring, fire } = echoHarnessOf(workspace, home);
+    try {
+      await runtime.remember("doc.html");
+      const matched = matchRoute("POST", "/api/doc/doc.html/sidecar");
+      if (matched.kind !== "route") throw new Error("sidecar route did not match");
+      const body = JSON.stringify({
+        anchor: { exact: "正文一", prefix: "", suffix: "", start: 0 },
+        selector: "body > article:nth-of-type(1) > p:nth-of-type(1)",
+        note: "边注",
+      });
+      const req = requestLike({
+        on: (event: string, handler: (chunk?: Buffer) => void) => {
+          if (event === "data") handler(Buffer.from(body));
+          if (event === "end") handler();
+          return req;
+        },
+      });
+      const pending = runtime.dispatch(matched.route, matched.params, req);
+      // An fs event on the doc inside the write window reads unchanged bytes:
+      // the sha gate silences it, so neither path may emit doc.changed.
+      fire("change", "doc.html");
+      const reply = await pending;
+      // The echo's async read lands after the write too — drain one macrotask turn,
+      // then the verdict is structural: doc.changed needs a sha delta that never exists.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+
+      expect(reply.status).toBe(201);
+      const events = ring.since(0).events;
+      expect(events.filter((event) => event.type === "doc.annotations")).toHaveLength(1);
+      expect(events.filter((event) => event.type === "doc.changed")).toHaveLength(0);
     } finally {
       runtime.close();
       hub.close();
