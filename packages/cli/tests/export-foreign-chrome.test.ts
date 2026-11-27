@@ -30,6 +30,7 @@
 // prints SKIPPED + reason and skips (never a silent pass).
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -235,6 +236,7 @@ const NEVER = new Promise<void>(() => undefined);
 interface RenderOutcome {
   readonly audit: readonly ExportRequestRecord[];
   readonly pdf: Uint8Array;
+  readonly pngBytes: Uint8Array;
   readonly pngHeight: number;
   readonly pngClipped: boolean;
 }
@@ -267,7 +269,65 @@ const renderOf = async (doc: string, ws: string, home: string): Promise<RenderOu
     deps: depsOf(),
     audit: record,
   });
-  return { audit, pdf: bytes, pngHeight: image.height, pngClipped: image.clipped };
+  return {
+    audit,
+    pdf: bytes,
+    pngBytes: image.bytes,
+    pngHeight: image.height,
+    pngClipped: image.clipped,
+  };
+};
+
+/** A leaner fixture for the navigation tests: marker css + one img prove "original document". */
+const REFRESH_HTML = `<!DOCTYPE html><html><head>
+<meta http-equiv="refresh" content="{{DELAY}};url={{TARGET}}">
+<link rel="stylesheet" href="style.css">
+</head><body>
+<div id="marker">styled</div><img src="img.png">
+<article><h1>One</h1></article><article><h1>Two</h1></article>
+</body></html>`;
+
+const refreshSandboxOf = (delay: string, target: string): Sandbox => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hr-fx-refresh-")));
+  const ws = join(root, "ws");
+  const home = join(root, "home");
+  mkdirSync(join(ws, "page"), { recursive: true });
+  mkdirSync(home, { recursive: true });
+  const doc = join(ws, "page", "index.html");
+  writeFileSync(
+    doc,
+    REFRESH_HTML.split("{{DELAY}}").join(delay).split("{{TARGET}}").join(target),
+  );
+  writeFileSync(join(ws, "page", "style.css"), STYLE_CSS);
+  writeFileSync(join(ws, "page", "img.png"), IMG.bytes);
+  return { ws, home, doc };
+};
+
+/** PNG-only render — the height band is the artifact oracle in this block. */
+const pngOf = async (doc: string, ws: string, home: string): Promise<RenderOutcome> => {
+  const plan = await foreignPlanOf({ path: doc, workspace: ws, home });
+  expect(plan, "foreignPlanOf must classify the fixture as foreign").not.toBeUndefined();
+  if (plan === undefined) throw new Error("unreachable");
+  const audit: ExportRequestRecord[] = [];
+  const image = await renderPngOf({
+    source: { kind: "foreign", page: plan },
+    width: 800,
+    scale: 1,
+    maxHeight: 12_000,
+    timeoutMs: 30_000,
+    stop: NEVER,
+    deps: depsOf(),
+    audit: (r) => {
+      audit.push(r);
+    },
+  });
+  return {
+    audit,
+    pdf: new Uint8Array(),
+    pngBytes: image.bytes,
+    pngHeight: image.height,
+    pngClipped: image.clipped,
+  };
 };
 
 const isExt = (url: string): boolean => url.startsWith("http://127.0.0.1:");
@@ -412,4 +472,75 @@ describe.skipIf(SKIP_REASON !== null)("foreign export on real Chrome", () => {
       await ext.close();
     }
   }, 90_000);
+});
+
+const ORIGINAL_HEIGHT = 4400 + IMG.h; // marker + natural img — the refresh doc's only signature
+
+/**
+ * D40: export is one navigation and one snapshot — a meta refresh (needs no
+ * JS, rides no CSP) must never move the page. Same-origin targets are the
+ * real hole: /f/ always serves them regardless of permissions, so a refresh
+ * paints a served asset as *the document* (or a 404 error page). External
+ * targets only differ under a granted network; a denied one already fails
+ * the network gate — those cells pin the contract anyway.
+ */
+describe.skipIf(SKIP_REASON !== null)("foreign export · post-load navigation", () => {
+  const COMBOS = [
+    ["scripts off + network off", { scripts: false, network: false }],
+    ["scripts on + network off", { scripts: true, network: false }],
+    ["scripts off + network on", { scripts: false, network: true }],
+    ["scripts on + network on", { scripts: true, network: true }],
+  ] as const;
+
+  for (const [label, grant] of COMBOS) {
+    for (const delay of ["0", "1"]) {
+      it(`${label}: a ${delay}s meta refresh to a same-origin path keeps the original snapshot`, async () => {
+        const { ws, home, doc } = refreshSandboxOf(delay, "style.css");
+        grantOf(ws, grant);
+        const { audit, pngHeight } = await pngOf(doc, ws, home);
+        // style.css is fetched once as the stylesheet — a second serve would
+        // be the refresh navigation receiving it as a *document*.
+        expect(
+          audit.filter((r) => r.url.endsWith("/style.css") && r.action === "serve"),
+        ).toHaveLength(1);
+        expect(pngHeight).toBeGreaterThanOrEqual(ORIGINAL_HEIGHT - 400);
+        expect(pngHeight).toBeLessThan(ORIGINAL_HEIGHT + 800);
+      }, 90_000);
+
+      it(`${label}: a ${delay}s meta refresh to an external URL never reaches the listener`, async () => {
+        const ext = await startExtSite();
+        try {
+          const { ws, home, doc } = refreshSandboxOf(delay, `${ext.url}/stolen.png`);
+          grantOf(ws, grant);
+          const { pngHeight } = await pngOf(doc, ws, home);
+          expect(ext.hits.filter((h) => h.includes("stolen"))).toEqual([]);
+          expect(pngHeight).toBeGreaterThanOrEqual(ORIGINAL_HEIGHT - 400);
+          expect(pngHeight).toBeLessThan(ORIGINAL_HEIGHT + 800);
+        } finally {
+          await ext.close();
+        }
+      }, 90_000);
+    }
+  }
+
+  it("a refresh to an unservable target still snapshots the original document, not the error page", async () => {
+    // The verifier's failure shape: the refresh lands on the uniform 404 and
+    // Chrome paints its error document — the artifact must stay the original.
+    const { ws, home, doc } = refreshSandboxOf("0", "missing.html");
+    grantOf(ws, { scripts: false, network: false });
+    const { audit, pngHeight } = await pngOf(doc, ws, home);
+    expect(audit.filter((r) => r.url.endsWith("/missing.html") && r.status === 200)).toEqual([]);
+    expect(pngHeight).toBeGreaterThanOrEqual(ORIGINAL_HEIGHT - 400);
+  }, 90_000);
+
+  it("repeat runs of the same refresh document produce byte-identical PNGs", async () => {
+    const { ws, home, doc } = refreshSandboxOf("0", "style.css");
+    grantOf(ws, { scripts: true, network: true });
+    const first = await pngOf(doc, ws, home);
+    const second = await pngOf(doc, ws, home);
+    const hash = (bytes: Uint8Array): string =>
+      createHash("sha256").update(bytes).digest("hex");
+    expect(hash(first.pngBytes)).toBe(hash(second.pngBytes));
+    expect(first.pngHeight).toBeGreaterThanOrEqual(ORIGINAL_HEIGHT - 400);
+  }, 120_000);
 });
