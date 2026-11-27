@@ -4,8 +4,8 @@
 // sidecar store must serialize exactly as `buildOutline(parseHtml(text))` did before this feature.
 
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
 import {
   buildOutline,
@@ -28,6 +28,7 @@ import {
 } from "./harness";
 
 let workspace = "";
+const extraDirs: string[] = [];
 
 beforeEach(async () => {
   workspace = await workspaceIn("hreader-mcp-ann-");
@@ -36,6 +37,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await leaveWorkspace(workspace);
+  await Promise.all(extraDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 const call = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
@@ -316,5 +318,77 @@ describe("hr_list_annotations · schema boundary", () => {
 
     const bad = await listOf({ status: "wat" });
     expect(isErrorResultOf(bad)).toBe(true);
+  });
+});
+
+// The path-error contract is frozen on main: `hr_resolve_annotation`'s `filePath` must reach
+// core's lexical gate verbatim (code + text + JSON-RPC mapping — `path_outside_workspace` is
+// -32602, never -32002), and `hr_outline`'s read gate must keep `目标不在工作区内：<input>` with
+// the input echoed, never the resolved absolute path. `hr_list_annotations` is new and follows
+// the read-side contract.
+describe("path errors · frozen verdicts and wording", () => {
+  const seedEscape = async (): Promise<void> => {
+    const outside = join(workspace, "..", `escape-outside-${createHash("sha1").update(workspace).digest("hex").slice(0, 8)}`);
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(outside, "hosts"), FOREIGN_DOC, "utf8");
+    await symlink(outside, join(workspace, "escape"));
+    extraDirs.push(outside);
+  };
+
+  const cases = [
+    {
+      name: "a relative path that escapes",
+      filePath: "../missing.html",
+      resolveText: `\`file\` 逃出了 workspace：${resolve(process.cwd(), "../missing.html")}` +
+        `（workspace 是 ${process.cwd()}；先 cd 到文档所在目录，或用 --workspace <dir>）`,
+      readText: "目标不在工作区内：../missing.html",
+    },
+    {
+      name: "an absolute path that misses",
+      filePath: "/definitely/not/here.html",
+      resolveText: `\`file\` 逃出了 workspace：/definitely/not/here.html` +
+        `（workspace 是 ${process.cwd()}；先 cd 到文档所在目录，或用 --workspace <dir>）`,
+      readText: "目标不在工作区内：/definitely/not/here.html",
+    },
+    {
+      name: "a symlinked dir pointing out of bounds",
+      filePath: "escape/hosts",
+      resolveText: "真实路径落在 workspace 外：escape/hosts",
+      readText: "目标不在工作区内：escape/hosts",
+    },
+    {
+      name: "an absolute system path",
+      filePath: "/etc/passwd",
+      resolveText: `\`file\` 逃出了 workspace：/etc/passwd` +
+        `（workspace 是 ${process.cwd()}；先 cd 到文档所在目录，或用 --workspace <dir>）`,
+      readText: "目标不在工作区内：/etc/passwd",
+    },
+  ] as const;
+
+  it.each(cases)("hr_resolve_annotation · $name", async ({ filePath, resolveText }) => {
+    await seedEscape();
+    const result = await resolveOf({ filePath, annotationId: "ann-01" });
+
+    expect(isErrorResultOf(result)).toBe(true);
+    expect(codeOf(result)).toBe("path_outside_workspace");
+    expect(textOf(result)).toBe(`[path_outside_workspace] ${resolveText}`);
+  });
+
+  it.each(cases)("hr_outline · $name", async ({ filePath, readText }) => {
+    await seedEscape();
+    const result = await outlineOf(filePath);
+
+    expect(isErrorResultOf(result)).toBe(true);
+    expect(codeOf(result)).toBe("path_outside_workspace");
+    expect(textOf(result)).toBe(`[path_outside_workspace] ${readText}`);
+  });
+
+  it.each(cases)("hr_list_annotations · $name", async ({ filePath, readText }) => {
+    await seedEscape();
+    const result = await listOf({ filePath });
+
+    expect(isErrorResultOf(result)).toBe(true);
+    expect(codeOf(result)).toBe("path_outside_workspace");
+    expect(textOf(result)).toBe(`[path_outside_workspace] ${readText}`);
   });
 });
