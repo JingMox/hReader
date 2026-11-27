@@ -97,6 +97,20 @@ describe("errno translation at the call site", () => {
     expect(failure.message).toContain("…");
   });
 
+  it("should not split a surrogate pair when the 64-char cut lands inside an emoji", () => {
+    // 63 'a' + 😀 + 300 'b': the 64-unit cut falls between the emoji's halves — drop the high half.
+    const long = `${"a".repeat(63)}😀${"b".repeat(300)}.html`;
+    const failure = writeFailureOf(
+      errnoOf("ENAMETOOLONG", "mkdir"),
+      documentTargetOf(long, workspace),
+    );
+
+    expect(failure.code).toBe("invalid_input");
+    expect(failure.message).toBe(`路径过长：${"a".repeat(63)}…（共 ${String(long.length)} 字符）`);
+    expect(failure.message).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+    expect(failure.message).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+  });
+
   it("should keep an HrError as it is, and treat a non-errno error as an io failure", () => {
     const target = documentTargetOf("doc.html", workspace);
     const mine = new HrError("invalid_input", "本来就对");

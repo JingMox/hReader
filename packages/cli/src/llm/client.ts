@@ -1,6 +1,6 @@
 // This layer: the HTTP implementation of `LlmPort` (the only place in `src/` that makes network requests); no prompts, no retries, no disk.
 
-import { HrError } from "@hreader/core";
+import { HrError, cutAtCodePoint } from "@hreader/core";
 import type { ExtractStyleLlmInput } from "@hreader/core";
 
 /** The transport interface is not exported on its own: cli only needs the shape of that field on `ExtractStyleLlmInput`, not a copy of core's interface. */
@@ -35,7 +35,8 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Collapse to one line, then truncate: newlines in a response body would scatter one error across several stderr lines. */
-const snippetOf = (text: string): string => text.replace(/\s+/gu, " ").slice(0, SNIPPET_CHARS);
+const snippetOf = (text: string): string =>
+  cutAtCodePoint(text.replace(/\s+/gu, " "), SNIPPET_CHARS);
 
 const jsonOf = (text: string): unknown => {
   try {

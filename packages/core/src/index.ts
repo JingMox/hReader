@@ -164,6 +164,9 @@ export type { NormalizeInput, NormalizeResult } from "./ops/normalize-file";
 export { importForeign } from "./ops/import";
 export type { ImportDiscard, ImportOptions, ImportReport, ImportResult } from "./ops/import";
 
+// ---- text (pure layer): the surrogate-safe cut shared across packages ----
+export { cutAtCodePoint } from "./text";
+
 // ---- 排版约束：组件规约、写入时检查、文档形态骨架 ----
 export {
   checkLayout,

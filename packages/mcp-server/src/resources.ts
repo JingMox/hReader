@@ -1,7 +1,13 @@
 // This layer: `resources/*`. One style-source resource (`hreader://styles/{id}`) + one MCP-UI view resource
 // (`ui://hreader/view/{docId}`); reads do not depend on the daemon running.
 
-import { BUILTIN_STYLES, discoverStyles, HrError, readStyleSource } from "@hreader/core";
+import {
+  BUILTIN_STYLES,
+  cutAtCodePoint,
+  discoverStyles,
+  HrError,
+  readStyleSource,
+} from "@hreader/core";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   ListResourcesRequestSchema,
@@ -52,7 +58,7 @@ const readStyle = async (id: string, workspace: string): Promise<ReadResourceRes
 const readView = async (docId: string): Promise<ReadResourceResult> => {
   const relativePath = relativePathOfDocId(docId);
   if (relativePath === undefined) {
-    throw new HrError("not_found", `视图已失效：文档 id 无法解析（${docId.slice(0, 32)}）`);
+    throw new HrError("not_found", `视图已失效：文档 id 无法解析（${cutAtCodePoint(docId, 32)}）`);
   }
   const target = documentTargetOf(relativePath, process.cwd());
   const text = await viewHtmlOf(target).catch((error: unknown) => {

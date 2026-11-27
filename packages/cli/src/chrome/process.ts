@@ -5,7 +5,7 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 
-import { HrError } from "@hreader/core";
+import { HrError, cutAtCodePoint } from "@hreader/core";
 
 import type { BrowserLike } from "./browser";
 import { firstErrorLineOf, messageOf } from "../errors";
@@ -22,7 +22,7 @@ const DEVTOOLS_LINE = /DevTools listening on (ws:\/\/\S+)/u;
 const STDERR_LIMIT = 64 * 1024;
 
 export const stderrBufferOf = (buffer: string, text: string): string =>
-  buffer.length >= STDERR_LIMIT ? buffer : (buffer + text).slice(0, STDERR_LIMIT);
+  buffer.length >= STDERR_LIMIT ? buffer : cutAtCodePoint(buffer + text, STDERR_LIMIT);
 
 export interface ChromeProcess {
   readonly pid: number | undefined;

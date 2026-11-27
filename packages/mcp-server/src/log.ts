@@ -1,5 +1,7 @@
 // This layer: logging (stderr only). stdout is the JSON-RPC channel — any extra line there poisons the protocol.
 
+import { cutAtCodePoint } from "@hreader/core";
+
 export const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -21,16 +23,10 @@ const CAUSED_BY = "\n    caused by: ";
 /** Marker appended when the cause chain is deeper than CAUSE_MAX_DEPTH. */
 const CAUSES_MARK = "…[truncated further causes]";
 
-/** Back off one code unit when the cut at `max` splits a surrogate pair: `Array.from` counts code
- * points, so one point across the two boundary units means a kept lone half-surrogate — a worse defect
- * than one fewer char (an already-lone surrogate in the input stays untouched). */
-const codePointCutOf = (text: string, max: number): number =>
-  Array.from(text.slice(max - 1, max + 1)).length === 1 ? max - 1 : max;
-
 const truncatedOf = (text: string, max: number): string => {
   if (text.length <= max) return text;
-  const kept = codePointCutOf(text, max);
-  return `${text.slice(0, kept)}…[truncated ${String(text.length - kept)} chars]`;
+  const kept = cutAtCodePoint(text, max);
+  return `${kept}…[truncated ${String(text.length - kept.length)} chars]`;
 };
 
 export const logLine = (line: string): void => {

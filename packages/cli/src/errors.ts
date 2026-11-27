@@ -1,6 +1,6 @@
 // This layer: error-text normalization (first line, unknown -> string) and the "report first, then fail" error shapes; zero I/O.
 
-import { HrError } from "@hreader/core";
+import { HrError, cutAtCodePoint } from "@hreader/core";
 
 /**
  * `--strict` failure: the report is already staged in `report` (stdout goes first as usual), and the error
@@ -40,7 +40,7 @@ export class HintedError extends HrError {
  */
 export const firstErrorLineOf = (text: string): string => {
   const line = text.split(/\r?\n/u).find((item) => item.trim() !== "") ?? "";
-  return line.length > 200 ? line.slice(0, 200) : line;
+  return cutAtCodePoint(line, 200);
 };
 
 export const messageOf = (error: unknown): string =>
