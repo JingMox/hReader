@@ -64,10 +64,14 @@ const firstElement = (root: HtmlNode, tag: string): HtmlElementNode | undefined 
 const isBannedControl = (code: number): boolean =>
   code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d;
 
-const sanitizeTitle = (title: string | undefined): string | undefined =>
-  title === undefined
-    ? undefined
-    : Array.from(title, (char) => (isBannedControl(char.charCodeAt(0)) ? "\uFFFD" : char)).join("");
+/** Provided-but-blank is `invalid_input` (the CLI's `--title ""` gate, widened to whitespace-only); omitted keeps the template's own title. */
+const sanitizeTitle = (title: string | undefined): string | undefined => {
+  if (title === undefined) return undefined;
+  if (title.trim() === "") throw new HrError("invalid_input", "title 不能为空");
+  return Array.from(title, (char) => (isBannedControl(char.charCodeAt(0)) ? "\uFFFD" : char)).join(
+    "",
+  );
+};
 
 /** The `data-hr-id` attribute inside an open tag (quoted or bare value); removed with its separator space. */
 const HR_ID_ATTR = new RegExp(`\\s+${HR_ID_ATTRIBUTE}=(?:"[^"]*"|'[^']*'|[^\\s>]+)`, "u");

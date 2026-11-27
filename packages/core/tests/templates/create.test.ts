@@ -548,10 +548,11 @@ describe("createFromTemplate · control characters in the title", () => {
 
 describe("createFromTemplate · property tests", () => {
   // \0 is normalized to U+FFFD by createFromTemplate and \r is normalized to \n in preprocessing:
-  // neither is in the "roundtrippable text" domain, so filter them out.
+  // neither is in the "roundtrippable text" domain, so filter them out. Blank titles are refused
+  // (invalid_input), so they're out of the domain too.
   const safeTitle = fc
     .string({ unit: "grapheme" })
-    .filter((text) => !text.includes("\0") && !text.includes("\r"));
+    .filter((text) => !text.includes("\0") && !text.includes("\r") && text.trim() !== "");
 
   it("should roundtrip arbitrary titles through title and h1 (fast-check)", async () => {
     const entry =
