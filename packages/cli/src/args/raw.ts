@@ -32,6 +32,7 @@ const OPTION_SPECS = {
   "page-size": { type: "string" },
   scale: { type: "string" },
   port: { type: "string" },
+  status: { type: "string" },
   template: { type: "string" },
   visual: { type: "string" },
   tone: { type: "string" },

@@ -48,8 +48,29 @@ export const documentTargetOf = (filePath: string, cwd: string): DocumentTarget 
 };
 
 /** Same shape as core's `io/errors.ts`: take `code` as-is without narrowing; a non-string simply never matches. */
-const codeOf = (error: unknown): unknown =>
+export const codeOf = (error: unknown): unknown =>
   typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+
+/**
+ * `{workspace, file}` in the realpath domain for core ops (`resolveTarget`, `listDocAnnotations`…).
+ * `target.file` is `relative(cwd, absolute)`: on a symlinked cwd (`/var` → `/private/var`) an absolute
+ * `filePath` under the *lexical* spelling turns it into an escaping `../…` — core's lexical gate then
+ * mis-rejects a path that is really in-bounds. Computing the pair against realpaths matches what core
+ * itself would derive (`resolveTarget.relative`), so in-bounds means in-bounds either way.
+ */
+export const corePathsOf = async (
+  target: DocumentTarget,
+): Promise<{ readonly workspace: string; readonly file: string }> => {
+  const [workspaceReal, absoluteReal] = await Promise.all([
+    realpath(target.workspace),
+    realpath(target.absolute),
+  ]).catch((error: unknown) => {
+    // Same verdict core's own ops raise one layer down on a missing document — raw realpath
+    // errnos must not reach `guarded` untranslated (`文档不存在：<input>` is the frozen wording).
+    throw failureOfFsCall(error, target, "无法解析目标路径");
+  });
+  return { workspace: workspaceReal, file: relative(workspaceReal, absoluteReal) };
+};
 
 /**
  * The boundary check is written once: for a non-existent target we compare the **ancestor** directory, and equality with the workspace is allowed (`isInsideOrSelf`);

@@ -199,6 +199,13 @@ export type {
 } from "./ops/sidecar-ops";
 export { annotationDirOf, annotationFileOf, readSidecarFile, writeSidecarFile } from "./io";
 export type { SidecarFile } from "./io";
+export { listWorkspaceAnnotations, WORKSPACE_SCAN_LIMITS } from "./ops/annotation-scan";
+export type {
+  AnnotationStatusFilter,
+  WorkspaceAnnotationEntry,
+  WorkspaceAnnotationsInput,
+  WorkspaceAnnotationsResult,
+} from "./ops/annotation-scan";
 export { revertLast } from "./ops/revert-op";
 export type { RevertResult } from "./ops/revert-op";
 export { normalizeFile } from "./ops/normalize-file";

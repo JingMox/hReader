@@ -15,6 +15,7 @@ export const COMMAND_NAMES = [
   "png",
   "serve",
   "template",
+  "annotations",
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -52,6 +53,8 @@ const SYNOPSIS = [
   "hr template show <id> [--json]",
   "hr template new <file> --template <id> [--title <标题>] [--json]",
   "hr template save <file> --id <id> [--global] [--name <名字>] [--description <说明>] [--json]",
+  "hr annotations list <file> [--status pending|resolved|all] [--json]",
+  "hr annotations migrate <file> [--json]",
   "hr --help | hr <cmd> --help",
 ];
 
@@ -237,6 +240,23 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "",
     "  --home <dir>   用户层模板的父目录（默认 $HOME / HREADER_HOME）；必须已存在",
     "  找不到模板报 unknown_template，模板本身损坏报 invalid_template（退出码均 1）。",
+  ],
+  annotations: [
+    "用法：hr annotations list <file> [--status pending|resolved|all] [--json]",
+    "      hr annotations migrate <file> [--json]",
+    "",
+    '  批注有两处存放：托管文档写在 <script id="hr-meta"> 里，任意 HTML 都可以写在',
+    "  <workspace>/.hreader/annotations/ 侧车文件里；list 输出两处合并后的视图（同 id 以 hr-meta 为准）。",
+    "",
+    "  list <file>      列出该文档的合并批注：每行 [状态] id (来源) 摘录 → 定位结果；",
+    "                   --status 只留 pending | resolved（默认 all）；",
+    "                   JSON 时为 { path, annotations: [{id, nodeId, selector, note, exact, status,",
+    "                   source, relocation}], diagnostics }（nodeId/selector 缺席为 null）。",
+    "  migrate <file>   把 hr-meta 里的批注搬进侧车文件：JSON 时为 { path, migrated, skipped,",
+    "                   changed, historyPath, diagnostics }；再跑一次 migrated 为 0（幂等）；",
+    "                   外来文档没有 hr-meta，报 0 条迁移。",
+    "",
+    "  读取侧车文件损坏时逐条告警到 stderr，不拖垮整个列表。",
   ],
 };
 

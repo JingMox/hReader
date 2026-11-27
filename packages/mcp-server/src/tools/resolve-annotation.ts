@@ -1,11 +1,15 @@
 // This layer: `hr_resolve_annotation` (marks a pending annotation resolved); the write goes through core's patch pipeline.
+// Meta (hr-meta) is tried first — the only `not_found` it can raise is "the id is not among the
+// meta annotations" — and the sidecar store is the fallback, so one tool resolves both store
+// kinds. `source` rides along additively; every other failure path (missing doc, lock, usage)
+// keeps the frozen codes and wording unchanged.
 
-import { nodePatchDeps, resolveAnnotation } from "@hreader/core";
+import { nodePatchDeps, resolveAnnotation, resolveSidecarAnnotation } from "@hreader/core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { guarded, okResult } from "../errors";
-import { FILE_PATH_HINT, coreFailureOf, documentTargetOf } from "./target";
+import { FILE_PATH_HINT, codeOf, coreFailureOf, corePathsOf, documentTargetOf } from "./target";
 
 export const resolveAnnotationShape = {
   filePath: z.string().min(1).describe(FILE_PATH_HINT),
@@ -24,16 +28,23 @@ type ResolveAnnotationArgs = z.infer<z.ZodObject<typeof resolveAnnotationShape>>
 export const resolveAnnotationCall = (args: ResolveAnnotationArgs): Promise<CallToolResult> =>
   guarded("hr_resolve_annotation", async () => {
     const target = documentTargetOf(args.filePath, process.cwd());
-    const result = await resolveAnnotation(
-      {
-        workspace: target.workspace,
-        file: target.file,
-        id: args.annotationId,
-        ...(args.resolutionNote === undefined ? {} : { resolutionNote: args.resolutionNote }),
-      },
-      nodePatchDeps,
-    ).catch((error: unknown) => {
+    const paths = await corePathsOf(target).catch((error: unknown) => {
       throw coreFailureOf(error, target);
     });
-    return okResult(result);
+    const input = {
+      ...paths,
+      id: args.annotationId,
+      ...(args.resolutionNote === undefined ? {} : { resolutionNote: args.resolutionNote }),
+    };
+    const meta = await resolveAnnotation(input, nodePatchDeps).catch((error: unknown) => {
+      // Meta reports a bare `not_found` only when the id is not a meta annotation — fall through
+      // to the sidecar store. Every other failure (doc missing, lock timeout) ends here.
+      if (codeOf(error) !== "not_found") throw coreFailureOf(error, target);
+      return undefined;
+    });
+    if (meta !== undefined) return okResult({ ...meta, source: "meta" });
+    const sidecar = await resolveSidecarAnnotation(input, nodePatchDeps).catch((error: unknown) => {
+      throw coreFailureOf(error, target);
+    });
+    return okResult({ ...sidecar, source: "sidecar" });
   });

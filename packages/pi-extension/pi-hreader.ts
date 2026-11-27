@@ -45,9 +45,10 @@ export const RECONNECT_MS = 2000;
 const SSE_BUFFER_LIMIT = 1024 * 1024;
 /** The "pending" annotation statuses (`packages/core/src/meta/constants.ts` `PENDING_ANNOTATION_STATUSES`): legacy `pending_ai` and the reader's `pending` coexist. */
 const PENDING_ANNOTATION_STATUSES: ReadonlySet<string> = new Set(["pending_ai", "pending"]);
-/** `doc.changed` payloads carry exactly these four business types (`runtime.ts:88/106/110/118/232`, `server.ts:159`). */
+/** These five business types drive the extension (`runtime.ts:88/106/110/118/232/303`, `server.ts:159`): `doc.annotations` is published by the five sidecar write routes — `doc.changed` deliberately stays silent for them (the bytes never move). */
 export const BUSINESS_EVENT_TYPES: ReadonlySet<string> = new Set([
   "doc.changed",
+  "doc.annotations",
   "doc.error",
   "library.changed",
   "error",
@@ -162,6 +163,12 @@ export const ENDPOINTS = {
   annotations: {
     method: "GET",
     segments: ["api", "doc", ":docId", "annotations"],
+    auth: "cookie",
+  },
+  /** Merged meta+sidecar view (`sidecarListReply`); the pending push merges `source:"sidecar"` entries out of it, deduped by id with meta winning. */
+  sidecar: {
+    method: "GET",
+    segments: ["api", "doc", ":docId", "sidecar"],
     auth: "cookie",
   },
   patch: { method: "POST", segments: ["api", "patch"], auth: "cookie+csrf" },
@@ -805,9 +812,17 @@ const sessionOf = (): HreaderSession => ({
 
 interface PendingAnnotation {
   readonly id: string;
-  readonly nodeId: string;
+  /** data-hr-id slice target when the entry has one; sidecar records on foreign docs may carry none — the injection then skips node slicing. */
+  readonly nodeId: string | undefined;
+  /** What the injection header names as the anchor: the nodeId when present, else the selector/exact a sidecar record carries. */
+  readonly anchor: string;
   readonly note: string;
 }
+
+const statusPendingOf = (value: Readonly<Record<string, unknown>>): boolean => {
+  const status = value["status"];
+  return typeof status === "string" && PENDING_ANNOTATION_STATUSES.has(status);
+};
 
 /** Accepts `pending_ai` and `pending` (same criterion as core); `resolved`/dismissed and every other status are excluded — the user must not be asked twice. */
 const pendingOf = (value: unknown): PendingAnnotation | undefined => {
@@ -815,10 +830,40 @@ const pendingOf = (value: unknown): PendingAnnotation | undefined => {
   const id = value["id"];
   const nodeId = value["nodeId"];
   if (!isNonEmptyString(id) || !isNonEmptyString(nodeId)) return undefined;
-  const status = value["status"];
-  if (typeof status !== "string" || !PENDING_ANNOTATION_STATUSES.has(status)) return undefined;
+  if (!statusPendingOf(value)) return undefined;
   const note = value["note"];
-  return { id, nodeId, note: typeof note === "string" ? note : "" };
+  return { id, nodeId, anchor: nodeId, note: typeof note === "string" ? note : "" };
+};
+
+/**
+ * A pending sidecar entry out of the merged view (`GET /api/doc/:docId/sidecar` flattens the
+ * record plus `source`/`relocation`): `nodeId` is optional there — foreign docs have no
+ * data-hr-id — so the display anchor falls back to the selector, then the anchored text.
+ * Only entries core tagged `source:"sidecar"` join: the same id in meta already won.
+ */
+const sidecarPendingOf = (value: unknown): PendingAnnotation | undefined => {
+  if (!isRecord(value) || value["source"] !== "sidecar") return undefined;
+  const id = value["id"];
+  if (!isNonEmptyString(id)) return undefined;
+  if (!statusPendingOf(value)) return undefined;
+  const nodeId = value["nodeId"];
+  const selector = value["selector"];
+  const anchor = value["anchor"];
+  const exact = isRecord(anchor) ? anchor["exact"] : undefined;
+  const note = value["note"];
+  return {
+    id,
+    nodeId: typeof nodeId === "string" && nodeId !== "" ? nodeId : undefined,
+    anchor:
+      typeof nodeId === "string" && nodeId !== ""
+        ? nodeId
+        : typeof selector === "string" && selector !== ""
+          ? selector
+          : typeof exact === "string" && exact !== ""
+            ? exact
+            : id,
+    note: typeof note === "string" ? note : "",
+  };
 };
 
 const pendingListOf = (
@@ -830,6 +875,26 @@ const pendingListOf = (
     const annotation = pendingOf(item);
     return annotation === undefined || asked.has(annotation.id) ? [] : [annotation];
   });
+};
+
+/** Meta entries keep order and win id collisions (a meta id in `seen` or `asked` drops the sidecar twin); sidecar extras append after. */
+const mergedPendingOf = (
+  meta: readonly PendingAnnotation[],
+  sidecarValue: unknown,
+  asked: ReadonlySet<string>,
+): readonly PendingAnnotation[] => {
+  const seen = new Set(meta.map((annotation) => annotation.id));
+  const extras = Array.isArray(sidecarValue)
+    ? sidecarValue.flatMap((item) => {
+        const annotation = sidecarPendingOf(item);
+        if (annotation === undefined || asked.has(annotation.id) || seen.has(annotation.id)) {
+          return [];
+        }
+        seen.add(annotation.id);
+        return [annotation];
+      })
+    : [];
+  return [...meta, ...extras];
 };
 
 /** In a `doc.changed` payload the document key is `docId` (`runtime.ts:232`); `path` only appears in `doc.error`/`library.changed`. */
@@ -844,9 +909,13 @@ const injectionOf = (
   document: string | undefined,
 ): string => {
   const source =
-    document === undefined ? "（读不到节点源码）" : nodeSliceOf(document, annotation.nodeId);
+    document === undefined
+      ? "（读不到节点源码）"
+      : annotation.nodeId === undefined
+        ? "（批注没有节点锚点，按摘录位置处理）"
+        : nodeSliceOf(document, annotation.nodeId);
   return [
-    `hReader 批注（文档 ${docId}，节点 ${annotation.nodeId}）`,
+    `hReader 批注（文档 ${docId}，锚点 ${annotation.anchor}）`,
     "",
     "节点源码：",
     source ?? "（该节点已不在文档里）",
@@ -869,10 +938,10 @@ const offerOf = async (context: OfferContext, annotation: PendingAnnotation): Pr
   const text = injectionOf(annotation, context.docId, context.document);
   // With no UI (print/json mode) `confirm` is unavailable: notify only, never inject the annotation into the session uninvited.
   if (!context.ctx.hasUI) {
-    // `nodeId`/`note` are untrusted fragments from the daemon: sanitize before echoing.
+    // `anchor`/`note` are untrusted fragments from the daemon: sanitize before echoing.
     notifyOf(
       context.ctx,
-      `有新批注（${safeTextOf(annotation.nodeId)}）：${safeTextOf(annotation.note)}`,
+      `有新批注（${safeTextOf(annotation.anchor)}）：${safeTextOf(annotation.note)}`,
       "info",
     );
     return;
@@ -888,18 +957,25 @@ const offerOf = async (context: OfferContext, annotation: PendingAnnotation): Pr
 const intakeOf =
   (deps: HreaderDeps, session: HreaderSession, pi: HreaderPi) =>
   async (event: HreaderEvent, ctx: HreaderContext): Promise<void> => {
-    if (event.type !== "doc.changed") return;
+    // `doc.annotations` is the sidecar write routes' own event (`doc.changed` stays silent for them); both mean "re-check pending annotations".
+    if (event.type !== "doc.changed" && event.type !== "doc.annotations") return;
     const docId = docIdOfEvent(event.payload);
     if (docId === undefined || docId !== session.docId) return;
     const info = await readDaemonOf(deps);
     if (info === undefined) return;
     const listed = await apiOf(deps, info, ENDPOINTS.annotations, { docId });
     if (!listed.ok) return;
-    const pending = pendingListOf(listed.value["annotations"], session.asked);
+    // The sidecar read degrades silently (a daemon predating the route 404s): meta-only then, never a lost pending push.
+    const sidecar = await apiOf(deps, info, ENDPOINTS.sidecar, { docId });
+    const pending = mergedPendingOf(
+      pendingListOf(listed.value["annotations"], session.asked),
+      sidecar.ok ? sidecar.value["annotations"] : [],
+      session.asked,
+    );
     if (pending.length === 0) return;
     const document = await documentOf(deps, info, docId);
     for (const annotation of pending) {
-      // Register before asking: if another `doc.changed` arrives while `confirm` is pending, the same `anId` must not prompt twice.
+      // Register before asking: if another `doc.changed`/`doc.annotations` arrives while `confirm` is pending, the same `anId` must not prompt twice.
       session.asked.add(annotation.id);
       await offerOf({ pi, ctx, docId, document }, annotation);
     }

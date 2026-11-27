@@ -66,6 +66,7 @@ describe("dist/main.js · tool surface", () => {
       "hr_create_from_template",
       "hr_get_template",
       "hr_import_doc",
+      "hr_list_annotations",
       "hr_list_templates",
       "hr_outline",
       "hr_patch_node",

@@ -1,7 +1,7 @@
 // This layer: shared types and validation helpers for argv parsing; no concrete commands.
 
 import { resolve } from "node:path";
-import type { DocKind, PatchAction } from "@hreader/core";
+import type { AnnotationStatusFilter, DocKind, PatchAction } from "@hreader/core";
 
 import type { CommandName } from "../usage";
 import type { Raw } from "./raw";
@@ -181,7 +181,17 @@ export type Intent =
       readonly name: string | undefined;
       readonly description: string | undefined;
     } & Home &
-      Common);
+      Common)
+  | ({
+      readonly kind: "annotationsList";
+      readonly path: string;
+      /** Absent `--status` normalizes to `all` here — the command layer never sees "not given". */
+      readonly status: AnnotationStatusFilter;
+    } & Common)
+  | ({
+      readonly kind: "annotationsMigrate";
+      readonly path: string;
+    } & Common);
 
 export type ParsedArgs =
   | { readonly ok: true; readonly intent: Intent }

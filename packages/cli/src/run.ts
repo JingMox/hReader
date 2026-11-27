@@ -9,6 +9,7 @@ import { HrError, nodeStyleDeps } from "@hreader/core";
 import { parseArgs, type Intent } from "./args";
 import { attemptRealpath, realpathThroughAncestors } from "./canonical";
 import { chromeDepsOf, renderPdfOf, renderPngOf } from "./chrome/session";
+import { annotationsListCommand, annotationsMigrateCommand } from "./commands/annotations";
 import { checkCommand } from "./commands/check";
 import { exportPrintCommand } from "./commands/export-print";
 import { importDocCommand } from "./commands/import";
@@ -398,6 +399,26 @@ const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
   if (intent.kind === "check") {
     return checkCommand({ ...intent, displayPath: displayedPathOf(intent.path, io.cwd) });
   }
+  if (intent.kind === "annotationsList" || intent.kind === "annotationsMigrate") {
+    const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+    const displayPath = displayedPathOf(intent.path, io.cwd);
+    return intent.kind === "annotationsList"
+      ? annotationsListCommand({
+          path: paths.file,
+          workspace: paths.workspace,
+          status: intent.status,
+          json: intent.json,
+          warn: io.stderr,
+          displayPath,
+        })
+      : annotationsMigrateCommand({
+          path: paths.file,
+          workspace: paths.workspace,
+          json: intent.json,
+          warn: io.stderr,
+          displayPath,
+        });
+  }
   if (intent.kind === "new") return runNew(intent, io.cwd);
   if (
     intent.kind === "templateList" ||
@@ -415,10 +436,11 @@ const usageFailure = (message: string, topic: CommandName | undefined, io: CliIo
   return EXIT_USAGE;
 };
 
-/** `styleExtract` is a `style` subcommand and all `template*` intents report under `template`: help and usage errors land in the matching section. */
+/** `styleExtract` is a `style` subcommand and all `template*`/`annotations*` intents report under their own sections: help and usage errors land in the matching section. */
 const topicOf = (kind: Runnable["kind"]): CommandName => {
   if (kind === "styleExtract") return "style";
-  return kind.startsWith("template") ? "template" : (kind as CommandName);
+  if (kind.startsWith("template")) return "template";
+  return kind.startsWith("annotations") ? "annotations" : (kind as CommandName);
 };
 
 const reportFailure = (error: unknown, json: boolean, io: CliIo): number => {

@@ -5,6 +5,8 @@ import type { PrintHtmlResult } from "@hreader/renderer-html";
 import { EXIT_FAILURE, EXIT_IO, EXIT_OK, EXIT_USAGE, exitCodeOf } from "../src/exit-codes";
 import {
   bounded,
+  dataAnnotationsList,
+  dataAnnotationsMigrate,
   dataExport,
   dataImport,
   dataLint,
@@ -15,6 +17,7 @@ import {
   dataStyleExtract,
   dataTone,
   displayedPathOf,
+  humanAnnotationsList,
   humanCheck,
   humanImport,
   humanLint,
@@ -32,13 +35,16 @@ import type { CommandName } from "../src/usage";
 import { atOf, fieldOf, keysOf, listOf, parseJsonLine } from "./harness";
 import type {
   ApplyStyleResult,
+  DocAnnotationEntry,
   ExtractStyleLlmResult,
   ExtractStyleResult,
   ImportReport,
   LintReport,
+  MigrateResult,
   Outline,
   PatchResult,
   ReadNodeResult,
+  SidecarAnnotation,
 } from "@hreader/core";
 
 const OUTLINE: Outline = {
@@ -212,10 +218,85 @@ describe("output · human-readable text", () => {
   });
 });
 
+describe("annotations output · merged entries and migrate receipts", () => {
+  const annotation = (
+    opts: { id?: string; selector?: string | null; note?: string } = {},
+  ): SidecarAnnotation => ({
+    id: opts.id ?? "an-1",
+    ...(opts.selector === null ? {} : { selector: opts.selector ?? "body > p" }),
+    anchor: { exact: "摘录", prefix: "", suffix: "", start: 0 },
+    note: opts.note ?? "批注内容",
+    status: "pending",
+    createdAt: "t",
+    author: "user",
+    replies: [],
+  });
+
+  const entry = (patch: Partial<DocAnnotationEntry> = {}): DocAnnotationEntry => ({
+    source: "sidecar",
+    annotation: annotation(),
+    anchor: { ok: true, start: 0, end: 2, via: "selector" },
+    ...patch,
+  });
+
+  it("should print one line per entry and mark the unlocated ones 未定位", () => {
+    const located = entry();
+    const lost = entry({
+      annotation: annotation({ id: "an-2" }),
+      anchor: { ok: false, reason: "orphaned", via: "none" },
+    });
+    const bare = entry({ annotation: annotation({ id: "an-3", selector: null }) });
+    const quiet = entry({ annotation: annotation({ id: "an-4", note: "" }) });
+
+    const text = humanAnnotationsList([located, lost, bare, quiet], "doc.html");
+
+    expect(text).toContain("共 4 条");
+    expect(text).toContain("已定位（selector，0-2）");
+    expect(text).toContain("未定位（orphaned）");
+    // No nodeId and no selector: the target column falls back to `-`.
+    expect(text).toContain("→ - ·");
+    // An empty note prints the anchored excerpt instead of a blank.
+    expect(text).toContain("(sidecar) 摘录 →");
+  });
+
+  it("should serialize the entry wire shape including nodeId/selector nulls and a failed relocation", () => {
+    const lost = entry({
+      annotation: annotation({ id: "an-2", selector: null }),
+      anchor: { ok: false, reason: "anchor_lost", via: "body" },
+    });
+
+    const data = JSON.parse(dataAnnotationsList("doc.html", [entry(), lost], ["diag"])) as {
+      annotations: Record<string, unknown>[];
+    };
+    const [first, second] = data.annotations;
+    expect(first?.["nodeId"]).toBeNull();
+    expect(first?.["relocation"]).toMatchObject({ ok: true, via: "selector" });
+    expect(second?.["selector"]).toBeNull();
+    expect(second?.["relocation"]).toMatchObject({ ok: false, reason: "anchor_lost" });
+  });
+
+  it("should serialize historyPath null only for a no-write migrate", () => {
+    const base: MigrateResult = {
+      migrated: 1,
+      skipped: 0,
+      changed: true,
+      historyPath: "/h/snap.json",
+      diagnostics: [],
+    };
+    const written = JSON.parse(dataAnnotationsMigrate(base, "doc.html")) as Record<string, unknown>;
+    expect(written["historyPath"]).toBe("/h/snap.json");
+
+    const untouched = JSON.parse(
+      dataAnnotationsMigrate({ ...base, changed: false, historyPath: null }, "doc.html"),
+    ) as Record<string, unknown>;
+    expect(untouched["historyPath"]).toBeNull();
+  });
+});
+
 describe("usage · single source of truth", () => {
-  it("should name all fourteen commands", () => {
+  it("should name all fifteen commands", () => {
     expect(COMMAND_NAMES.join(" ")).toBe(
-      "new import normalize outline read patch check style undo export pdf png serve template",
+      "new import normalize outline read patch check style undo export pdf png serve template annotations",
     );
     expect(isCommandName("patch")).toBe(true);
     expect(isCommandName("nope")).toBe(false);
