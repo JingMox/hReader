@@ -6,6 +6,7 @@
 
 import { readFile } from "node:fs/promises";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -27,13 +28,28 @@ const coreStringConstOf = (source: string, name: string): string | undefined =>
   (new RegExp(`export const ${name} = '([^']*)';`).exec(source) ??
     new RegExp(`export const ${name} = "([^"]*)";`).exec(source))?.[1]?.replace(/\\n/g, "\n");
 
-const quotedOf = (text: string): readonly string[] =>
-  [...text.matchAll(/"([^"]*)"/g)].map((match) => match[1] ?? "");
-
-/** String-literal members of `export type NAME = ...`, or `undefined` when the alias is absent. */
+/**
+ * String-literal members of `export type NAME = "a" | "b" | ...`, read through the TypeScript
+ * parser: comments are not AST nodes, so they can neither truncate the match nor leak phantom
+ * members the way the old source-text regex did. `undefined` when the alias is missing or a
+ * member is not a string literal — the pin's lower bound then fails loud instead of comparing
+ * a silently truncated set.
+ */
 const unionMembersOf = (source: string, name: string): readonly string[] | undefined => {
-  const union = new RegExp(`export type ${name} =([\\s\\S]*?);`).exec(source)?.[1];
-  return union === undefined ? undefined : quotedOf(union);
+  const file = ts.createSourceFile("union.ts", source, ts.ScriptTarget.Latest, true);
+  const alias = file.statements.find(
+    (statement): statement is ts.TypeAliasDeclaration =>
+      ts.isTypeAliasDeclaration(statement) && statement.name.text === name,
+  );
+  if (alias === undefined) return undefined;
+  const target = ts.isParenthesizedTypeNode(alias.type) ? alias.type.type : alias.type;
+  const members = ts.isUnionTypeNode(target) ? [...target.types] : [target];
+  const literals: string[] = [];
+  for (const member of members) {
+    if (!ts.isLiteralTypeNode(member) || !ts.isStringLiteral(member.literal)) return undefined;
+    literals.push(member.literal.text);
+  }
+  return literals;
 };
 
 /** Segment lists like `["api","doc",DOC_PARAM,"model"]` in `routes.ts`, where placeholders are constant names. */
