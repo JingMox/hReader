@@ -186,7 +186,9 @@ describe("annotate widget · toggle", () => {
     expect(attrsOf(rig, BTN, "aria-pressed").at(-1)).toBe("true");
     expect(attrsOf(rig, BTN, "title").at(-1)).toBe(COPY.annotateExit);
     expect(
-      rig.fake.calls.some((c) => c.op === "text" && c.args[0] === BTN && c.args[1] === COPY.annotate),
+      rig.fake.calls.some(
+        (c) => c.op === "text" && c.args[0] === BTN && c.args[1] === COPY.annotate,
+      ),
     ).toBe(true);
     expect(handle.isActive()).toBe(true);
   });

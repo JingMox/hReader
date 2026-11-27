@@ -1,7 +1,9 @@
-// 这层管：外来文档批注模式——横幅开关（mint token → sandbox 先于 src）、
-// 选区消息 → 浮层、保存 → POST sidecar、`open`/SSE → 高亮重推。
-// 安全不变量：消息只在 source === frame.contentWindow 且 origin === "null" 且
-// 通过 parseFrameMessage 严格校验后才处理；其余一律静默丢弃（无网络、无 UI）。
+// This layer owns foreign-document annotate mode: the banner toggle (mint token →
+// sandbox before src), selection messages → popover, save → POST sidecar,
+// `open`/SSE → highlight repaint.
+// Security invariant: a message is only handled when source === frame.contentWindow
+// AND origin === "null" AND it passes parseFrameMessage's strict validation; every
+// other message is silently dropped (no network, no UI).
 
 import {
   NOTE_LIMIT,
@@ -13,7 +15,7 @@ import {
 import type { Host } from "../dom.ts";
 import { COPY } from "./copy.ts";
 
-/** `POST /annotate`、`GET/POST /sidecar` 的封装（main.ts 用 io.post/io.json 实现）。 */
+/** Wraps `POST /annotate` and `GET/POST /sidecar` (main.ts implements it over io.post/io.json). */
 export interface AnnotateIo {
   readonly mint: () => Promise<string>;
   readonly list: () => Promise<readonly SidecarPaint[]>;
@@ -24,14 +26,14 @@ export interface AnnotateIo {
   }) => Promise<void>;
 }
 
-/** 浏览器 `message` 事件的最小面（source/origin/data 三项之外不读）。 */
+/** The minimal face of a browser `message` event (nothing read beyond source/origin/data). */
 export interface IncomingMessage {
   readonly source?: unknown;
   readonly origin?: string;
   readonly data?: unknown;
 }
 
-/** 真 DOM 由 main.ts 注入：contentWindow/getBoundingClientRect 不经 Host（它们不是写点）。 */
+/** Real DOM injected by main.ts: contentWindow/getBoundingClientRect never pass through Host (they are not write points). */
 export interface AnnotateEnv {
   readonly onMessage: (handler: (message: IncomingMessage) => void) => () => void;
   readonly frameWindow: () => unknown;
@@ -42,7 +44,7 @@ export interface AnnotateEnv {
   readonly viewport: () => { readonly width: number; readonly height: number };
 }
 
-/** foreign.ts 提供：sandbox 属性写点与带记账的 frame 导航。 */
+/** Provided by foreign.ts: the sandbox attribute write point and bookkeeping frame navigation. */
 export interface AnnotateFrame {
   readonly setSandbox: (value: string) => void;
   readonly navigate: (src: string) => void;
@@ -54,21 +56,21 @@ export interface AnnotateDeps {
   readonly io: AnnotateIo;
   readonly env: AnnotateEnv;
   readonly frame: AnnotateFrame;
-  /** 退出批注模式后恢复的 sandbox（权限推导值）。 */
+  /** The sandbox to restore on annotate-mode exit (the permission-derived value). */
   readonly sandboxOff: () => string;
-  /** 退出批注模式后恢复的普通 frame URL。 */
+  /** The normal frame URL to restore on annotate-mode exit. */
   readonly docSrc: () => string;
-  /** mint/list/add 失败 → 横幅错误位（foreign 的 reportError）。 */
+  /** mint/list/add failures land on the banner error slot (foreign's reportError). */
   readonly onError: (cause: unknown) => void;
 }
 
 interface AnnotateHandle {
   readonly isActive: () => boolean;
-  /** foreign 重画横幅时顺带：按钮可见性（仅 foreign）+ active 态。 */
+  /** Piggybacked on foreign's banner repaint: button visibility (foreign only) + active state. */
   readonly repaint: (cls: "foreign" | "normalizable") => void;
-  /** `doc.changed`：批注模式下重铸 token 重载；mint 失败退出模式并报错。 */
+  /** `doc.changed`: in annotate mode re-mint the token and reload; mint failure exits the mode and reports. */
   readonly refresh: () => void;
-  /** `doc.annotations`（SSE，本 doc）：重拉列表重推高亮。 */
+  /** `doc.annotations` (SSE, this doc): re-fetch the list and repaint highlights. */
   readonly annotationsChanged: () => void;
   readonly destroy: () => void;
 }
@@ -77,7 +79,7 @@ type Mode = "edit" | "view" | "hint";
 
 export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
   const { host, parent, env } = deps;
-  // 大写选择器名：静态接线测试只认字面量/全大写常量（与 foreign.ts 同约定）。
+  // Uppercase selector names: the static wiring test only accepts literals/UPPERCASE constants (same convention as foreign.ts).
   const BTN = `${parent} #hr-annotate-btn`;
   const POP = `${parent} #hr-annotate-pop`;
   const DRAFT = `${parent} #hr-annotate-draft`;
@@ -197,7 +199,7 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
       (url) => {
         pending = false;
         if (dead) return;
-        // sandbox 必须先于 src：导航提交时采样的就是这一刻的沙箱标志。
+        // Sandbox must be written before src: the navigation commit samples the sandbox flags at that moment.
         deps.frame.setSandbox("allow-scripts");
         deps.frame.navigate(url);
         active = true;

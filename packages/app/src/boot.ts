@@ -121,7 +121,7 @@ export interface ClassifiedBootDeps extends Omit<
   }>;
   /** `POST /api/style {docId, visualId}`：外来文档的主题写进文件里的 `<style id="hr-theme">`。 */
   readonly postStyle: (visualId: string) => Promise<unknown>;
-  /** 批注模式的 IO + 消息环境；缺省 = 批注钮不出现（测试/老壳）。 */
+  /** Annotate-mode IO + message env; absent = the annotate button never appears (tests/legacy shells). */
   readonly annotate?: { readonly io: AnnotateIo; readonly env: AnnotateEnv } | undefined;
 }
 
@@ -412,7 +412,7 @@ const foreignSseOf = (store: Store, foreign: ForeignHandle, resync: () => void):
       resync();
       return;
     }
-    // 旁注写路径（含本端保存）广播 doc.annotations：非本 doc 的事件直接丢。
+    // Annotation writes (incl. this client's own saves) broadcast doc.annotations: drop other docs' events.
     if (event.type === "doc.annotations") {
       if (event.payload["docId"] === store.get().docId) foreign.annotationsChanged();
       return;

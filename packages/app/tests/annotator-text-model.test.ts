@@ -1,6 +1,8 @@
-// 这层管：`annotator/text-model` 的 DOM 文本域——文本节点串接、skip 子树、
-// (node,offset) ↔ body-text offset 双向映射、selector-path 语法与上限。
-// DOM 用 happy-dom；奇形元素（localName 不合语法）用最小结构假件补齐。
+// This layer covers `annotator/text-model`'s DOM text domain — text-node
+// concatenation, skipped subtrees, the (node,offset) ↔ body-text offset mapping
+// in both directions, and the selector-path grammar with its limits.
+// The DOM comes from happy-dom; odd shapes (a localName outside the grammar)
+// are filled in with minimal structural fakes.
 
 import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";

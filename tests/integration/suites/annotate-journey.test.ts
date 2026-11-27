@@ -1,5 +1,5 @@
 // F3b2 reader-side annotate journey, end-to-end in real Chrome against a real
-// `hr serve`: 批注 toggle → single-use annotate frame (annotator runs, page
+// `hr serve`: annotate toggle → single-use annotate frame (annotator runs, page
 // scripts stay dead under scripts-off) → a REAL mouse drag selects text → the
 // popover opens → the note saves to the on-disk sidecar → the annotation
 // returns through GET /sidecar → the frame paints it via CSS.highlights → a

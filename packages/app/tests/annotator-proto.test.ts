@@ -1,5 +1,6 @@
-// 这层管：`annotator/proto` 的入向校验——parent→frame 命令的形状、键集与上限；
-// 任何不合格负载都必须静默丢弃（`undefined`）。
+// This layer covers `annotator/proto` inbound validation — shape, key sets and
+// limits for parent→frame commands; every malformed payload must be silently
+// dropped (`undefined`).
 
 import { describe, expect, it } from "vitest";
 

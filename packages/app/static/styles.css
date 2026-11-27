@@ -292,8 +292,8 @@ body {
   background: #fff;
 }
 
-/* 批注浮层：fixed 定位于 iframe 上方；`.annotate-pop` 不设 display（同 [hidden] 约定）。
-   宽度与 POPOVER_METRICS.width 一致——摆放算术在 annotate-proto.ts。 */
+/* Annotate popover: fixed-positioned above the iframe; `.annotate-pop` sets no display (same [hidden] convention).
+   Width matches POPOVER_METRICS.width — the placement arithmetic lives in annotate-proto.ts. */
 .annotate-pop {
   position: fixed;
   z-index: 30;

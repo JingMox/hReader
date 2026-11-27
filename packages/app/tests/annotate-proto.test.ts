@@ -1,5 +1,6 @@
-// 这层管：`annotate-proto` 的纯契约——frame→reader 消息的严格校验（形状、键集、上限）、
-// sidecar 列表的宽容读取、浮层摆放算术（下→上翻转与视口钳制）。
+// This layer covers the pure `annotate-proto` contract — strict validation of
+// frame→reader messages (shape, key sets, limits), lenient sidecar-list reads,
+// and the popover placement arithmetic (below→above flip and viewport clamping).
 
 import { describe, expect, it } from "vitest";
 

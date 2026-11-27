@@ -31,7 +31,7 @@ export interface DiffChunk {
 export interface TargetLike {
   readonly closest?: (selector: string) => { getAttribute: (name: string) => string | null } | null;
   readonly value?: string;
-  /** keydown/keyup 的 `event.key`（事件属性，不是 target 的——适配器预解析到这里）。 */
+  /** `event.key` for keydown/keyup (an event property, not a target one — the adapter pre-resolves it here). */
   readonly key?: string;
   /** 由 `Host.on` 预解析的 `[data-toc-id]`：widget 只读这一个字段，不碰选择器/属性名。 */
   readonly tocId?: string | undefined;

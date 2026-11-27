@@ -34,7 +34,7 @@
         <div id="hr-foreign" class="foreign-banner" hidden>
           <span id="hr-foreign-text"></span>
           <button id="hr-foreign-action" type="button" hidden></button>
-          <!-- 批注模式开关：仅外来文档可见（foreign widget 按 cls 摘挂 hidden）。 -->
+          <!-- Annotate-mode toggle: foreign docs only (the foreign widget attaches/detaches hidden by cls). -->
           <button id="hr-annotate-btn" type="button" class="perm-toggle" hidden></button>
           <span id="hr-foreign-error" class="foreign-error" role="alert"></span>
         </div>
@@ -45,7 +45,7 @@
           allow="fullscreen"
           hidden
         ></iframe>
-        <!-- 批注浮层：fixed 定位，位置 = iframe 外接矩形 + 帧内选区矩形（foreign 消息里带）。 -->
+        <!-- Annotate popover: fixed-positioned; position = iframe bounding rect + in-frame selection rect (carried by the frame's message). -->
         <div id="hr-annotate-pop" class="annotate-pop" hidden>
           <textarea
             id="hr-annotate-draft"

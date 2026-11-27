@@ -80,7 +80,7 @@ export interface ForeignDeps {
   readonly theme: ForeignTheme | undefined;
   /** 存在时把导航门栏状态上报给嵌入壳（桌面端）；浏览器里不接。 */
   readonly reportGate?: (gate: DocGate) => void;
-  /** 批注模式：`POST /annotate` + `…/sidecar` 的封装与消息环境；缺省 = 批注钮不出现。 */
+  /** Annotate mode: `POST /annotate` + `…/sidecar` wrappers and the message env; absent = no annotate button. */
   readonly annotate?: { readonly io: AnnotateIo; readonly env: AnnotateEnv } | undefined;
 }
 
@@ -92,7 +92,7 @@ export interface ForeignHandle {
    * 横幅、开关与 sandbox；sandbox/CSP 只在导航提交时采样，生效组合变了必须重载 iframe。
    */
   readonly syncInfo: (next: ForeignInput) => void;
-  /** `doc.annotations`（SSE，本 doc）：批注模式下重推高亮；非批注模式无副作用。 */
+  /** `doc.annotations` (SSE, this doc): repaint highlights in annotate mode; a no-op otherwise. */
   readonly annotationsChanged: () => void;
   readonly destroy: () => void;
 }
@@ -137,7 +137,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   };
 
   const reportError = (cause: unknown): void => {
-    // 失败时横幅必须在：normalize 的重进路径会先收起横幅，出错要把它再请回来。
+    // The banner must be present on failure: normalize's re-entry path hides it first, so errors must bring it back.
     host.attr(BANNER, "hidden", undefined);
     host.text(ERROR, cause instanceof Error ? cause.message : String(cause));
   };
@@ -151,7 +151,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
    */
   const sandboxOf = (): string => (perms?.scripts === true ? "allow-scripts" : "");
 
-  /** 批注子组件：deps.annotate 缺席 = 不装配（按钮保持 hidden，零消息面）。 */
+  /** Annotate sub-widget: absent deps.annotate = not mounted (button stays hidden, zero message surface). */
   const annotate =
     deps.annotate === undefined
       ? undefined
@@ -170,7 +170,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
           docSrc: () => srcOf(undefined),
           onError: reportError,
         });
-  /** 批注模式下 sandbox 恒为 allow-scripts：syncInfo/applyPerms 的重画不得把它写回权限档。 */
+  /** In annotate mode sandbox is always allow-scripts: syncInfo/applyPerms repaints must not write it back to the permission value. */
   const frameSandbox = (): string =>
     annotate?.isActive() === true ? "allow-scripts" : sandboxOf();
 
@@ -230,7 +230,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
 
   const refresh = (revision?: string): void => {
     if (dead) return;
-    // 批注模式下 doc.changed 不是换 src：token 单次有效，必须重铸后按新 frameUrl 重载。
+    // In annotate mode doc.changed is not a src swap: the token is single-use, so re-mint and reload with the new frameUrl.
     if (annotate?.isActive() === true) {
       annotate.refresh();
       return;

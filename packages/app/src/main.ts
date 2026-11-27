@@ -68,7 +68,7 @@ declare const window: {
   } | null;
   readonly innerWidth: number;
   readonly innerHeight: number;
-  /** `never` 形参让各种事件监听函数都能赋进来（message/mouseup/pagehide/keydown 各有自己的事件面）。 */
+  /** `never` params let every event listener signature assign in (message/mouseup/pagehide/keydown each carry their own event face). */
   readonly addEventListener: (type: string, listener: (event: never) => void) => void;
   readonly removeEventListener: (type: string, listener: (event: never) => void) => void;
 };
@@ -204,14 +204,14 @@ const isNormalizeResponse = (
 ): value is { readonly revision: string; readonly cls: DocInfo["cls"] } =>
   isRecord(value) && typeof value["revision"] === "string" && isDocClass(value["cls"]);
 
-/** `POST /api/doc/<id>/annotate` → `{frameUrl}`：只收 `/f/` 入口（服务端唯一出口），长度封住。 */
+/** `POST /api/doc/<id>/annotate` → `{frameUrl}`: accepts only the `/f/` entry (the server's only exit), length-capped. */
 const isAnnotateReply = (value: unknown): value is { readonly frameUrl: string } =>
   isRecord(value) &&
   typeof value["frameUrl"] === "string" &&
   value["frameUrl"].startsWith("/f/") &&
   value["frameUrl"].length <= 4096;
 
-/** 写响应只当成功信号用（随后一律重拉列表）：record 即合格。 */
+/** Write replies are used as a success signal only (the list is always re-fetched): any record qualifies. */
 const isAnyRecord = (value: unknown): value is Readonly<Record<string, unknown>> => isRecord(value);
 
 const isStyleResponse = (
@@ -438,8 +438,9 @@ export const bootDocumentWith = async (input: BootDocumentInput): Promise<Booted
 };
 
 /**
- * 批注模式的消息/几何环境：`contentWindow` 与 `getBoundingClientRect` 不经 Host
- * （它们不是写点），这里做唯一一次结构收窄（`@internal`：测试可注入假 env）。
+ * Annotate mode's message/geometry env: `contentWindow` and `getBoundingClientRect`
+ * never pass through Host (they are not write points) — narrowed structurally exactly once
+ * here (`@internal`: tests inject a fake env).
  */
 interface FrameElementLike {
   readonly contentWindow?: {

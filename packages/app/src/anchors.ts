@@ -27,7 +27,7 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-foreign-action",
   "#hr-foreign-error",
   "#hr-foreign-frame",
-  // 外来批注：横幅开关 + 选区浮层（草稿 / 只读 / 提示 / 两钮）
+  // Foreign annotations: banner toggle + selection popover (draft / read-only / hint / two buttons)
   "#hr-annotate-btn",
   "#hr-annotate-pop",
   "#hr-annotate-draft",
