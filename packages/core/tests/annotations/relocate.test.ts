@@ -273,7 +273,12 @@ describe("docRelocatorOf · nodeId relocation by document class", () => {
 
   it("should fall back to the body text when the nodeId is gone on a normalizable document (D49)", () => {
     const relocate = docRelocatorOf(NORMALIZABLE);
-    const missing = relocate(note({ nodeId: "x-gone" }));
+    const missing = relocate(
+      note({
+        nodeId: "x-gone",
+        anchor: { exact: "可归一的文本", prefix: "", suffix: "", start: 0 },
+      }),
+    );
 
     expect(missing).toEqual({ ok: true, start: 0, end: 6, via: "body" });
   });

@@ -144,8 +144,10 @@ export const docAssetReply = async (
   const grant = ctx.caps.lookup(cap);
   if (grant === undefined) return notFound();
   // The reserved name first: it must win over a real file of the same name in
-  // the doc directory (and it can never equal an .html docName).
-  if (rawPath === ANNOTATOR_NAME) return annotatorReply(ctx);
+  // the doc directory (and it can never equal an .html docName). The match is
+  // case-insensitive — on a case-sensitive filesystem `__HR_ANNOTATOR.JS` is a
+  // different file that would otherwise be served as a plain .js asset.
+  if (rawPath.toLowerCase() === ANNOTATOR_NAME) return annotatorReply(ctx);
   // The one HTML exception: the document this cap was minted for, by exact
   // basename. It keeps the permission-matrix headers (CSP + sandbox), plus
   // this route's CORS. `annotate` is only consulted on this branch — every

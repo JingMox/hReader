@@ -71,6 +71,38 @@ export const matchAnchorInText = (text: string, anchor: TextAnchor): AnchorResul
   return { ok: true, start, end: start + needle.length };
 };
 
+/** A `[start, end)` slice of the matched text: an occurrence must lie fully inside one region. */
+export interface AnchorRegion {
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * `matchAnchorInText` restricted to the listed regions: an `exact` occurrence only counts when it
+ * lies fully inside one of them, but prefix/suffix context and the closest-to-`start` verdict still
+ * read the whole text (an annotator records context from the readable stream, not per element).
+ * Everything else — single hit taken as is, multi-hit disambiguation — mirrors `matchAnchorInText`.
+ */
+export const matchAnchorInRegions = (
+  text: string,
+  anchor: TextAnchor,
+  regions: readonly AnchorRegion[],
+): AnchorResult => {
+  const needle = needleOf(anchor);
+  const inside = (at: number): boolean =>
+    regions.some((region) => at >= region.start && at + needle.length <= region.end);
+  const starts = occurrenceStarts(text, needle).filter(inside);
+  if (starts.length === 0) return { ok: false, reason: "anchor_lost" };
+  if (starts.length === 1) {
+    const only = onlyOf(starts);
+    return { ok: true, start: only, end: only + needle.length };
+  }
+  const fitting = starts.filter((at) => fitsContext(text, at, anchor));
+  if (fitting.length === 0) return { ok: false, reason: "ambiguous" };
+  const start = closestOf(fitting, anchor.start);
+  return { ok: true, start, end: start + needle.length };
+};
+
 /**
  * Resolution order: is the block still there → does `exact` occur → a **single hit is taken as is**
  * (context ignored) → several hits are disambiguated by `prefix`/`suffix` → if several still fit, the
