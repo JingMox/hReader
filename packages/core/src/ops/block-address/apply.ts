@@ -120,7 +120,7 @@ export const applyBlockPatch = (html: string, request: BlockPatchRequest): Block
   if (parent !== undefined) assertFragmentFits(parent, fragment);
   const text = fragmentText(fragment);
   const { from, to } = rangeFor(span, fragmentRequest.action);
-  // 等值 replace 不写盘：字节相同就没有"改动"可言（同 `applyPatch` 的 sameContent 分支）。
+  // An equal replace never touches disk: identical bytes mean no "change" to record (same as `applyPatch`'s sameContent branch).
   if (fragmentRequest.action === "replace" && html.slice(from, to) === text) {
     return {
       html,

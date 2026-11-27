@@ -9,12 +9,12 @@ import { runLocked } from "./lock";
 import { historyDirOf, resolveTarget, type ResolvedTarget } from "./paths";
 import type { PatchDeps } from "./ports";
 
-/** 在锁内、在**这份字节**上求写回结果：定位只对要写回的那棵树成立，不能分两次读。 */
+/** Evaluate the write-back inside the lock on *these* bytes: a locate result only holds for the tree being written, so reading twice is not allowed. */
 type PatchOutcomeOf<O extends PatchOutcome> = (html: string) => O;
 
 /**
- * 读与求值必须共用同一份字节：`original` 与 `outcome` 只能由同一处产出，
- * 不能分两次读、也不能只把 html 传下去。
+ * Reading and evaluating must share one set of bytes: `original` and `outcome` may only
+ * come from the same read — no second read, and passing only the html down is not enough.
  */
 const readAndApply = async <O extends PatchOutcome>(
   target: ResolvedTarget,
@@ -77,9 +77,10 @@ const applyToFile = async <O extends PatchOutcome>(
 };
 
 /**
- * 同一个落盘编排（路径校验 → 锁 → 备份 → 原子写 → 裁剪），但变换由调用方给：
- * `patchFile` 用它跑托管文档的 `applyPatch`，`patchBlock` 用它跑块地址的 `applyBlockPatch`。
- * outcome 一并回给调用方——非托管写入要带额外字段（新块地址），只有它拿得到。
+ * The same on-disk pipeline (path check → lock → snapshot → atomic write → prune), but the
+ * caller supplies the transform: `patchFile` runs managed-document `applyPatch` through it,
+ * `patchBlock` runs block-address `applyBlockPatch`. The outcome also goes back to the
+ * caller — non-managed writes carry extra fields (the new block address) only it can produce.
  */
 export const patchFileOutcome = async <O extends PatchOutcome>(
   input: PatchTargetInput,
@@ -97,7 +98,7 @@ export const patchFile = async (
   options: PatchOptions = {},
 ): Promise<PatchResult> => {
   const requestOf = input.request;
-  // 函数形式的 request 在锁内、在**这份字节**上才求值：它的定位结果必须属于要写的那棵树。
+  // A function request is evaluated inside the lock on *these* bytes: its locate result must belong to the tree being written.
   const { result } = await patchFileOutcome(input, deps, options, (html) =>
     applyPatch(html, typeof requestOf === "function" ? requestOf(html) : requestOf),
   );

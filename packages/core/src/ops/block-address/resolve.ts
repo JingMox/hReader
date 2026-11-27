@@ -45,7 +45,7 @@ const parseAddress = (address: string): ParsedAddress | undefined => {
 const sameStep = (left: SelectorStep, right: SelectorStep): boolean =>
   left.tag === right.tag && left.nth === right.nth;
 
-/** 表读写的唯一入口：`getUint32` 的返回类型是确定的 `number`（与 `annotations/diff.ts` 同一份理由）。 */
+/** Sole entry point for table reads/writes: `getUint32` has a definite `number` return type (same rationale as `annotations/diff.ts`). */
 const cellAt = (view: DataView, index: number): number =>
   // equivalent — every stored value is a distance under 256, so a byte-swap read stays
   // strictly monotonic and the winner ordering is unchanged.

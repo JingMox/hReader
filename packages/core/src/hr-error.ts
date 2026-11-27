@@ -54,8 +54,9 @@ export type HrErrorCode =
   // Templates: `unknown_template` means no tier has this id, while `invalid_template` means it was found but is broken or out of bounds
   | "unknown_template"
   | "invalid_template"
-  // 块地址失效：路径没落在一个指纹相同的块上、指纹全库也找不到唯一解（目标被改/挪走/删了/重复）；
-  // 用户重新 list 取新地址即可恢复，归「业务拒绝」exit 1
+  // Stale block address: the path did not land on a same-fingerprint block and no unique
+  // same-fingerprint match exists in the document (edited, moved, deleted or duplicated).
+  // Re-listing mints a fresh address, so it stays in the business-refusal tier at exit 1
   | "target_moved";
 
 /**

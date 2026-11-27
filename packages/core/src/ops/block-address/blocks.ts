@@ -110,14 +110,14 @@ const stepsOf = (root: HtmlNode, chain: Chain): readonly SelectorStep[] => {
   }
   ancestors.reverse();
   const bodyIndex = ancestors.findIndex((element) => element.tag === "body");
-  /* v8 ignore next — parse5 必然补出 body：非空文档的内容元素不会没有 body 祖先 */
+  /* v8 ignore next — parse5 always materializes body: a content element in a non-empty document cannot lack a body ancestor */
   const first = bodyIndex < 0 ? 0 : bodyIndex;
   const steps: SelectorStep[] = [];
   for (let index = first; index < ancestors.length; index += 1) {
     const node = ancestors[index];
-    /* v8 ignore next — index 界内必有值 */
+    /* v8 ignore next — an in-bounds index always yields a node */
     if (node === undefined) continue;
-    /* v8 ignore start — 同 bodyIndex 的理由：body 必有 html 祖先，index===0 不可达 */
+    /* v8 ignore start — same reason as bodyIndex: body always has an html ancestor, so index===0 is unreachable */
     const parent = index === 0 ? undefined : ancestors[index - 1];
     const siblings = parent === undefined ? childNodesOf(root) : parent.children;
     /* v8 ignore stop */
@@ -189,7 +189,7 @@ export const collectBlocks = (root: HtmlNode): readonly BlockEntry[] => {
     const own: Chain | undefined =
       node.kind === "element" ? { up: frame.chain, node } : frame.chain;
     if (node.kind === "element" && BLOCK_ADDRESS_TAGS.has(node.tag) && inside.get(node) !== true) {
-      /* v8 ignore next — element 分支刚赋过值 */
+      /* v8 ignore next — the element branch just assigned `own` */
       if (own !== undefined) {
         const steps = stepsOf(root, own);
         if (expressibleSteps(steps)) {

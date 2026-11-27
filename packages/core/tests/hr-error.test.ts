@@ -52,7 +52,7 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   duplicate_id: true,
   unknown_template: true,
   invalid_template: true,
-  // 块地址失效（路径/指纹都找不到唯一目标），重新 list 即可恢复——exit 1。
+  // A stale block address (no unique target by path or fingerprint) recovers by re-listing — exit 1.
   target_moved: true,
 };
 
