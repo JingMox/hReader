@@ -13,12 +13,12 @@ import { parseHtml } from "../html/parse";
 import { serializeHtml } from "../html/serialize";
 import { ZERO_SPAN } from "../html/span";
 import { drainStack } from "../html/stack";
-import { mkdirOrFail } from "../io/atomic";
+import { assertParentInside, mkdirOrFail } from "../io/atomic";
 import { encodeUtf8, readBytes } from "../io/bytes";
 import { createNewFile, createNewFiles } from "../io/create";
 import { runLocked } from "../io/lock";
 import { codeOf, failureOf, rmdirQuiet, unlinkQuiet } from "../io/errors";
-import { resolveNewTarget, type ResolvedNewTarget } from "../io/paths";
+import { isInsideOrSelf, resolveNewTarget, type ResolvedNewTarget } from "../io/paths";
 import { classifyDocument } from "../model/classify";
 import { replaceTheme } from "../style/apply";
 import {
@@ -289,6 +289,14 @@ const writeAll = async (
       // only the segment whose mkdir actually ran — the rollback then walks children before parents.
       const missing = await missingDirsOf(dir, deps);
       for (const segment of [...missing].reverse()) {
+        // The probed-missing chain can be swapped mid-walk: re-prove each parent is still inside
+        // before mkdir — same contract as the pre-staging check in createNewFile. Only segments
+        // strictly inside the workspace have an in-workspace parent; the workspace root (or an
+        // overshoot above it from a lying lstat) has none to prove.
+        const parent = dirname(segment);
+        if (isInsideOrSelf(target.workspace, parent)) {
+          await assertParentInside(deps, parent, target.workspace);
+        }
         await mkdirOrFail(deps, segment);
         createdDirs.push(segment);
       }

@@ -34,9 +34,12 @@ const createViaLink = async (
 ): Promise<void> => {
   const tmp = tmpNameOf(target);
   try {
+    // writeAtomic-style: prove the landing dir is inside before staging, then re-prove before link —
+    // a parent swap in between must not redirect either write.
+    await assertParentInside(deps, dirname(target), workspace);
     await deps.fs.writeFileAtomic(tmp, data);
   } catch (error: unknown) {
-    throw ioFailureOf("暂存新文件", tmp, error);
+    throw error instanceof HrError ? error : ioFailureOf("暂存新文件", tmp, error);
   }
   try {
     // The staging write is slow enough for a parent swap to slip in: re-prove the landing dir is inside.
