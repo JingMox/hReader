@@ -626,7 +626,7 @@ const linkAnnotsOf = async (pdf: Uint8Array): Promise<LinkAnnots> => {
   const uris: string[] = [];
   const dests: string[] = [];
   for (const page of document.getPages()) {
-    const annots = page.node.lookup(PDFName.of("Annots"), PDFArray);
+    const annots = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
     if (annots === undefined) continue;
     for (const entry of annots.asArray()) {
       const annot = entry instanceof PDFRef ? document.context.lookup(entry) : entry;

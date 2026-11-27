@@ -15,14 +15,16 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { FileSystem } from "@hreader/core";
+import type { FileSystem, PatchDeps } from "@hreader/core";
 
 import { foreignPlanOf } from "../src/commands/export-foreign";
 
 const recorded = vi.hoisted((): string[] => []);
 
 vi.mock("@hreader/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@hreader/core")>();
+  const actual = await importOriginal<
+    Record<string, unknown> & { readonly nodePatchDeps: PatchDeps }
+  >();
   const base = actual.nodePatchDeps.fs;
   const tap =
     <A extends readonly unknown[], R>(verb: string, fn: (...args: A) => R) =>
