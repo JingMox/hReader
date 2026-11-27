@@ -2,6 +2,7 @@
 // Messaging and page semantics live in `render.ts`/`browser.ts`; render deadline and interruption in `session.ts`.
 
 import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { userInfo } from "node:os";
 import { join } from "node:path";
 
 import { HrError } from "@hreader/core";
@@ -115,13 +116,38 @@ export interface ChromeRun {
   stopped: boolean;
 }
 
+/**
+ * The Chrome child's `HOME` is the passwd home, never the inherited `$HOME`:
+ * the browser resolves machine state (`~/Library`, keychain, its network
+ * stack's bootstrap) under it, and a relocated or empty `HOME` — a legitimate
+ * CLI-level config redirect — leaves the network service stuck before the
+ * first request can even reach interception. `userInfo()` goes through
+ * getpwuid, not the env; where no entry exists (scratch images), the ambient
+ * `HOME` is left alone.
+ */
+const chromeHomeOf = (): string | undefined => {
+  try {
+    return userInfo().homedir;
+    /* v8 ignore start — getpwuid 只在账号无 passwd 条目（scratch 镜像）时才抛；普通机器走不到 */
+  } catch {
+    return undefined;
+  }
+  /* v8 ignore stop */
+};
+
 export const startChromeOf = (deps: ChromeDeps): ChromeRun => {
   const binary = chromeBinaryOf(deps);
   const dir = deps.tempDir();
+  const env = { ...deps.env };
+  const home = chromeHomeOf();
+  // 有 passwd 条的机器上 chromeHomeOf 恒有值；undefined 分支只在 scratch 镜像里出现（走不到）。
+  /* v8 ignore next */
+  if (home !== undefined) env["HOME"] = home;
   try {
     const child = deps.spawn(binary, chromeArgsOf(dir), {
       detached: true,
       stdio: ["ignore", "ignore", "pipe"],
+      env,
     });
     const exited = new Promise<void>((resolve) => {
       child.onExit(() => {

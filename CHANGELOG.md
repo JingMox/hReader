@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`HREADER_HOME` environment variable**: relocates the hReader config root (the directory holding `.hreader/permissions.json` and `daemon.json`) for commands that resolve it from `io.home` — `serve` without `--home`, and the foreign-document permission lookup in `hr pdf` / `hr png`. Unlike `HOME`, it is not inherited by the spawned Chrome.
+
+### Fixed
+
+- `hr pdf` / `hr png` no longer stall for the full render deadline when `HOME` points at an empty or unwritable directory: the spawned Chrome now receives the passwd home — an empty `HOME` left its network stack stuck before the first request could even reach the export gate.
+
+### Security
+
+- **`hr pdf` / `hr png` on foreign HTML no longer bypasses the permission model.** Previously both commands fed every input through the print-sheet sanitizer, which silently rewrote foreign documents (dropping scripts but also sibling resources); a normalized edge case could still render unsanitized markup. Foreign documents now render as-is inside a capability-gated page: Chrome navigates to a minted `/f/<cap>/` URL on a never-resolved fake origin, and request interception answers every request through the same verdicts as the reader's `/f/` route — the document directory and its subdirectories only, the extension whitelist, and the per-effective-permission CSP. Export is a one-shot snapshot, so **document scripts never execute during export — not even for a document holding a scripts grant** (the grant exists for the interactive reader); the kill switch is a browser-level JavaScript disable, independent of the CSP. External requests (images, fonts, stylesheets, fetch) are released to the network only when the document's effective network permission is on, and `data:`/`blob:`/`about:` inline resources always pass. Managed and normalizable documents export byte-for-byte as before.
+
 ## [1.1.0] - 2026-11-27
 
 ### Added

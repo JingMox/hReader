@@ -1,17 +1,17 @@
-// Recon evidence for F1d: what `hr pdf`/`hr png`/`hr export` do to a FOREIGN
-// document today (two <article> elements = `classifyDocument` "foreign").
-// Facts pinned here, before the permission-aware export lands:
-//   1. the command never loads the raw file into Chrome — it hands the render
-//      layer a print sheet built with the `print` sanitize preset;
-//   2. the preset strips every executable surface, so scripts cannot run;
-//   3. every non-`data:image/` resource is dropped — sibling assets AND
-//      external resources alike, so nothing external can be requested;
-//   4. only the first <article> is exported;
-//   5. a 0-article foreign document fails with `no_article`;
-//   6. grants in `.hreader/trust.json` change nothing — the export path
-//      never reads permissions at all.
-// Cases asserting behavior the F1d fix intentionally changes are updated by
-// the fix commit; the print-sheet facts stay true for the managed path.
+// Recon evidence for F1d: what `hr pdf`/`hr png`/`hr export` did to a FOREIGN
+// document before the permission-aware export (two <article> elements =
+// `classifyDocument` "foreign"). Facts pinned by the recon commit; the fix
+// commit updated the cases whose behavior changed:
+//   1. `printProductOf` still builds the `print`-preset sheet — it is the
+//      managed/normalizable path, unchanged;
+//   2. the preset strips every executable surface and every non-`data:image/`
+//      resource — sibling assets AND external ones alike (was true then, is
+//      still true of the sheet path);
+//   3. only the first <article> reaches the sheet; a 0-article foreign
+//      document fails `no_article` at the product layer;
+//   4. CHANGED BY THE FIX: `hr pdf`/`hr png` no longer hand the sheet to
+//      Chrome for foreign docs — they hand a `{kind:"foreign"}` source with a
+//      capability URL and a request gate, so permissions now apply.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 import { printProductOf } from "../src/commands/export-print";
 import { pdfCommand, type PdfCommandInput, type RenderPdf } from "../src/commands/pdf";
 import { pngCommand, type PngCommandInput, type RenderPng } from "../src/commands/png";
+import type { RenderSource } from "../src/chrome/types";
 import { pdfOf, pngOf } from "./chrome-helpers";
 
 const FOREIGN = [
@@ -79,6 +80,7 @@ const pdfInputOf = (doc: string, dir: string, render: RenderPdf): PdfCommandInpu
   out: join(dir, "out.pdf"),
   force: false,
   workspace: dir,
+  home: dir,
   json: false,
   warn: () => undefined,
   render,
@@ -96,6 +98,7 @@ const pngInputOf = (doc: string, dir: string, render: RenderPng): PngCommandInpu
   out: join(dir, "out.png"),
   force: false,
   workspace: dir,
+  home: dir,
   json: false,
   warn: () => undefined,
   render,
@@ -152,35 +155,45 @@ describe("foreign document export · current print-sheet behavior (recon)", () =
     expect((error as HrError).code).toBe("no_article");
   });
 
-  it("should hand pdf the sanitized sheet even when a grant exists", async () => {
+  it("should hand pdf a capability-gated foreign source now — grants are read", async () => {
     const { dir, doc } = sandboxOf(FOREIGN);
-    // trust.json grants scripts+network — the export path does not read it.
+    // trust.json grants scripts+network — the export path resolves it (and the
+    // browser still refuses to execute scripts: the snapshot contract).
     mkdirSync(join(dir, ".hreader"), { recursive: true });
     writeFileSync(
       join(dir, ".hreader", "trust.json"),
       JSON.stringify({ "page/index.html": { scripts: true, network: true } }),
     );
-    const seen: string[] = [];
+    const seen: RenderSource[] = [];
     await pdfCommand(
       pdfInputOf(doc, dir, (input) => {
-        seen.push(input.html);
+        seen.push(input.source);
         return Promise.resolve({ bytes: Buffer.from(pdfOf(1)) });
       }),
     );
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toContain("cover__title");
-    expect(seen[0]).not.toContain("<script");
-    expect(seen[0]).not.toContain("img.png");
-    expect(seen[0]).not.toContain("cdn.example");
-    expect(seen[0]).not.toContain("other.html");
+    const source = seen[0];
+    if (source?.kind !== "foreign") {
+      throw new Error("expected the foreign render source");
+    }
+    expect(source.page.url).toMatch(
+      /^http:\/\/hreader-export\.invalid\/f\/[A-Za-z0-9_-]{22}\/index\.html$/,
+    );
+    // The serving half answers the doc itself from raw bytes, permission CSP included.
+    const answer = await source.page.gate(source.page.url, "GET");
+    expect(answer.kind).toBe("serve");
+    if (answer.kind !== "serve") return;
+    expect(answer.reply.status).toBe(200);
+    expect(String(answer.reply.headers["content-security-policy"])).toContain("sandbox");
+    expect(String(answer.reply.body)).toContain("<script>window.__ran = true;</script>");
   });
 
-  it("should hand png the same sanitized sheet", async () => {
+  it("should hand png the same foreign source", async () => {
     const { dir, doc } = sandboxOf(FOREIGN);
-    const seen: string[] = [];
+    const seen: RenderSource[] = [];
     await pngCommand(
       pngInputOf(doc, dir, (input) => {
-        seen.push(input.html);
+        seen.push(input.source);
         return Promise.resolve({
           bytes: pngOf(800, 600),
           width: 800,
@@ -190,9 +203,6 @@ describe("foreign document export · current print-sheet behavior (recon)", () =
       }),
     );
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toContain("cover__title");
-    expect(seen[0]).not.toContain("<script");
-    expect(seen[0]).not.toContain("img.png");
-    expect(seen[0]).not.toContain("onclick");
+    expect(seen[0]?.kind).toBe("foreign");
   });
 });

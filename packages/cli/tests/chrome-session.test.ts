@@ -39,7 +39,9 @@ const until = async (ready: () => boolean, what: string): Promise<void> => {
 };
 
 const renderWithOf = (setup: SessionSetup, timeoutMs = 1000): Promise<Uint8Array> =>
-  renderPdfOf(inputOf(setup.deps, { html: "<p>hi</p>", timeoutMs })).then((result) => result.bytes);
+  renderPdfOf(
+    inputOf(setup.deps, { source: { kind: "sheet", html: "<p>hi</p>" }, timeoutMs }),
+  ).then((result) => result.bytes);
 
 const connectToPageOf =
   (options = {}) =>
@@ -107,7 +109,9 @@ describe("renderPdfOf · startup failure", () => {
       env: { HREADER_CHROME: "/nope/chrome" },
       exists: (path) => path === "/usr/bin/google-chrome",
     });
-    const error = await failureOf(renderPdfOf(inputOf(deps, { html: "<p>x</p>" })));
+    const error = await failureOf(
+      renderPdfOf(inputOf(deps, { source: { kind: "sheet", html: "<p>x</p>" } })),
+    );
     expect(error.code).toBe("chrome_missing");
     expect(fake.signals).toEqual([]);
   });
@@ -221,7 +225,9 @@ describe("renderPdfOf · interruption", () => {
     const stopping = new Promise<void>((resolve) => {
       stop = resolve;
     });
-    const pending = renderPdfOf(inputOf(setup.deps, { html: "<p>x</p>", stop: stopping }));
+    const pending = renderPdfOf(
+      inputOf(setup.deps, { source: { kind: "sheet", html: "<p>x</p>" }, stop: stopping }),
+    );
     setup.fake.stderr(DEVTOOLS_LINE);
     // Wait until rendering really reaches page.pdf (the hang mode records the call then never returns) before stop —
     // otherwise stop may land before spawn/connect, and what gets aborted is not the "mid-render" path at all.
@@ -240,7 +246,7 @@ describe("renderPngOf · long image path", () => {
   it("should return IHDR dimensions for the long image on success and collect the process group and temp dir", async () => {
     const setup = renderSetupOf({ contentHeight: 900 });
     const pending = renderPngOf({
-      html: "<p>x</p>",
+      source: { kind: "sheet", html: "<p>x</p>" },
       width: 800,
       scale: 2,
       maxHeight: 20_000,
@@ -259,7 +265,7 @@ describe("renderPngOf · long image path", () => {
   it("should pass the error through and collect the temp dir when rendering fails", async () => {
     const setup = renderSetupOf({ png: "not-png" });
     const pending = renderPngOf({
-      html: "<p>x</p>",
+      source: { kind: "sheet", html: "<p>x</p>" },
       width: 800,
       scale: 1,
       maxHeight: 20_000,

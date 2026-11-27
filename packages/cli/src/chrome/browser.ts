@@ -41,6 +41,22 @@ export interface ViewportSpec {
   readonly deviceScaleFactor: number;
 }
 
+/** One intercepted request, mid-flight: the handler must settle it exactly once via respond/continue/abort. */
+export interface RoutedRequest {
+  readonly url: string;
+  readonly method: string;
+  /** Answer from local bytes — no socket is touched (the /f/ serving verdicts run in-process). */
+  respond(reply: {
+    readonly status: number;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly body: string | Uint8Array;
+  }): Promise<void>;
+  /** Release to the network — the export gate only calls this for granted external requests. */
+  continue(): Promise<void>;
+  /** Fail closed: the request dies without an answer. */
+  abort(): Promise<void>;
+}
+
 export interface PageLike {
   goto(url: string): Promise<void>;
   pdf(options: PdfPrintOptions): Promise<Uint8Array>;
@@ -48,6 +64,14 @@ export interface PageLike {
   setViewport(viewport: ViewportSpec): Promise<void>;
   /** Raw `Page.getLayoutMetrics` reply: the shape is validated by the caller, not modeled here. */
   metrics(): Promise<unknown>;
+  /**
+   * Browser-level script kill switch: export is a one-shot snapshot and
+   * document scripts never run — this is harder than any CSP or markup
+   * transform because nothing below it can smuggle execution back in.
+   */
+  setJavaScriptEnabled(enabled: boolean): Promise<void>;
+  /** Arm request interception: every request the page issues runs `handler` exactly once and waits for its verdict. */
+  routeRequests(handler: (request: RoutedRequest) => Promise<void>): Promise<void>;
 }
 
 export interface BrowserLike {
@@ -61,6 +85,19 @@ interface PuppeteerSession {
   send(method: "Page.getLayoutMetrics"): Promise<unknown>;
 }
 
+/** Minimal shape of puppeteer's `HTTPRequest`; only the four members interception needs. */
+interface PuppeteerRequest {
+  url(): string;
+  method(): string;
+  respond(response: {
+    status: number;
+    headers: Record<string, string>;
+    body: string | Uint8Array;
+  }): Promise<void>;
+  continue(): Promise<void>;
+  abort(): Promise<void>;
+}
+
 interface PuppeteerPage {
   goto(
     url: string,
@@ -70,6 +107,9 @@ interface PuppeteerPage {
   screenshot(options: PngShotOptions & { readonly type: "png" }): Promise<Uint8Array>;
   setViewport(viewport: ViewportSpec): Promise<void>;
   createCDPSession(): Promise<PuppeteerSession>;
+  setJavaScriptEnabled(enabled: boolean): Promise<void>;
+  setRequestInterception(value: boolean): Promise<void>;
+  on(event: "request", handler: (request: PuppeteerRequest) => void): void;
 }
 
 interface PuppeteerBrowser {
@@ -111,6 +151,30 @@ export const pageLikeOf = (page: PuppeteerPage): PageLike => {
       callOf("Page.getLayoutMetrics", async () => {
         session ??= page.createCDPSession();
         return await (await session).send("Page.getLayoutMetrics");
+      }),
+    setJavaScriptEnabled: (enabled) =>
+      callOf("Emulation.setScriptExecutionDisabled", () => page.setJavaScriptEnabled(enabled)),
+    routeRequests: (handler) =>
+      callOf("Network.setRequestInterception", async () => {
+        await page.setRequestInterception(true);
+        page.on("request", (request: PuppeteerRequest) => {
+          void handler({
+            url: request.url(),
+            method: request.method(),
+            respond: (reply) =>
+              request.respond({
+                status: reply.status,
+                headers: { ...reply.headers },
+                body: reply.body,
+              }),
+            continue: () => request.continue(),
+            abort: () => request.abort(),
+          }).catch(() => {
+            // A throwing gate must never leak a request into the wild — abort
+            // is the fail-closed backstop; an already-handled race abort()s no-op.
+            request.abort().catch(() => undefined);
+          });
+        });
       }),
   };
 };

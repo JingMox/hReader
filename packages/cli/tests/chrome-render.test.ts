@@ -29,7 +29,7 @@ const withDir = async (run: (dir: string) => Promise<void>): Promise<void> => {
 const renderPdfOf = (options: FakePageOptions, dir: string, outline = true) =>
   renderPdfOnBrowserOf({
     browser: fakeBrowserOf(fakePageOf(options)),
-    html: "<p>hi</p>",
+    source: { kind: "sheet", html: "<p>hi</p>" },
     dir,
     pageSize: "a4",
     outline,
@@ -91,7 +91,7 @@ describe("renderPdfOnBrowserOf · opening and artifact", () => {
       const page = fakePageOf({ pages: 1 });
       const bytes = await renderPdfOnBrowserOf({
         browser: fakeBrowserOf(page),
-        html: "<p>hi</p>",
+        source: { kind: "sheet", html: "<p>hi</p>" },
         dir,
         pageSize: "a4",
         outline: true,
@@ -109,7 +109,7 @@ describe("renderPdfOnBrowserOf · opening and artifact", () => {
       const page = fakePageOf({ pages: 1 });
       await renderPdfOnBrowserOf({
         browser: fakeBrowserOf(page),
-        html: "<p>hi</p>",
+        source: { kind: "sheet", html: "<p>hi</p>" },
         dir,
         pageSize: "a4",
         outline: false,
@@ -136,7 +136,7 @@ describe("cssPageParamsOf · slides page frame belongs to CSS", () => {
       const page = fakePageOf({ pages: 1 });
       await renderPdfOnBrowserOf({
         browser: fakeBrowserOf(page),
-        html: "<p>hi</p>",
+        source: { kind: "sheet", html: "<p>hi</p>" },
         dir,
         // a5 is the legal value farthest from 16:9: if it still lands in the artifact the branch did not take effect.
         pageSize: "a5",
@@ -145,6 +145,111 @@ describe("cssPageParamsOf · slides page frame belongs to CSS", () => {
       });
       expect(page.pdfCalls[0]?.preferCSSPageSize).toBe(true);
       expect(page.pdfCalls[0]?.width).toBe("960pt");
+    });
+  });
+});
+
+describe("openPageOf · foreign source gating", () => {
+  it("should disable JS, route every request through the gate, and abort a deny verdict", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({});
+      const records: { url: string; action: string; status?: number }[] = [];
+      await renderPdfOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        source: {
+          kind: "foreign",
+          page: {
+            url: "http://hreader-export.invalid/f/cap/index.html",
+            gate: () => Promise.resolve({ kind: "deny" }),
+          },
+        },
+        dir,
+        pageSize: "a4",
+        outline: false,
+        preferCSSPageSize: false,
+        audit: (record) => {
+          records.push(record);
+        },
+      });
+      expect(page.jsEnabled).toEqual([false]);
+      expect(page.goneTo).toEqual(["http://hreader-export.invalid/f/cap/index.html"]);
+      if (page.routed === undefined) throw new Error("interception was never armed");
+      const settled: string[] = [];
+      await page.routed({
+        url: "https://cdn.example/x.png",
+        method: "GET",
+        respond: () => {
+          settled.push("respond");
+          return Promise.resolve();
+        },
+        continue: () => {
+          settled.push("continue");
+          return Promise.resolve();
+        },
+        abort: () => {
+          settled.push("abort");
+          return Promise.resolve();
+        },
+      });
+      expect(settled).toEqual(["abort"]);
+      expect(records).toEqual([{ url: "https://cdn.example/x.png", action: "deny" }]);
+    });
+  });
+
+  it("should serve a serve verdict's reply and pass an allow verdict to continue", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({});
+      const plan = {
+        url: "http://hreader-export.invalid/f/cap/index.html",
+        gate: (url: string) =>
+          Promise.resolve(
+            url.endsWith("/local.png")
+              ? {
+                  kind: "serve" as const,
+                  reply: {
+                    status: 200,
+                    headers: { "content-type": "image/png" },
+                    body: "bytes",
+                  },
+                }
+              : { kind: "allow" as const },
+          ),
+      };
+      await renderPdfOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        source: { kind: "foreign", page: plan },
+        dir,
+        pageSize: "a4",
+        outline: false,
+        preferCSSPageSize: false,
+      });
+      if (page.routed === undefined) throw new Error("interception was never armed");
+      const settled: string[] = [];
+      const replies: unknown[] = [];
+      const fire = (url: string) =>
+        page.routed?.({
+          url,
+          method: "GET",
+          respond: (reply) => {
+            settled.push("respond");
+            replies.push(reply);
+            return Promise.resolve();
+          },
+          continue: () => {
+            settled.push("continue");
+            return Promise.resolve();
+          },
+          abort: () => {
+            settled.push("abort");
+            return Promise.resolve();
+          },
+        });
+      await fire("http://hreader-export.invalid/f/cap/local.png");
+      await fire("https://cdn.example/x.png");
+      expect(settled).toEqual(["respond", "continue"]);
+      expect(replies).toEqual([
+        { status: 200, headers: { "content-type": "image/png" }, body: "bytes" },
+      ]);
     });
   });
 });
@@ -168,7 +273,7 @@ describe("renderPdfOnBrowserOf · failure mapping", () => {
 const renderPngOf = (options: FakePageOptions, dir: string, maxHeight = 20_000) =>
   renderPngOnBrowserOf({
     browser: fakeBrowserOf(fakePageOf(options)),
-    html: "<p>x</p>",
+    source: { kind: "sheet", html: "<p>x</p>" },
     dir,
     width: 800,
     scale: 2,
@@ -188,7 +293,7 @@ describe("renderPngOnBrowserOf · height measurement and cropping", () => {
       const page = fakePageOf({ contentHeight: 640 });
       await renderPngOnBrowserOf({
         browser: fakeBrowserOf(page),
-        html: "<p>x</p>",
+        source: { kind: "sheet", html: "<p>x</p>" },
         dir,
         width: 800,
         scale: 1,
@@ -207,7 +312,7 @@ describe("renderPngOnBrowserOf · long image and clipping", () => {
       const page = fakePageOf({ contentHeight: 5000 });
       await renderPngOnBrowserOf({
         browser: fakeBrowserOf(page),
-        html: "<p>x</p>",
+        source: { kind: "sheet", html: "<p>x</p>" },
         dir,
         width: 800,
         scale: 1,

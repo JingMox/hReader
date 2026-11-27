@@ -1,5 +1,7 @@
 // This layer: pure data types and the page-size table shared by the render layer; zero I/O, zero third-party deps.
 
+import type { Reply } from "@hreader/core";
+
 export type PdfPageSize = "a4" | "letter" | "a5";
 
 interface PaperSize {
@@ -31,3 +33,36 @@ export interface LongImage {
   readonly height: number;
   readonly clipped: boolean;
 }
+
+/**
+ * Per-request verdict from the export gate: `serve` answers from the local
+ * /f/ serving layer (no socket touched), `allow` releases the request to the
+ * network (only ever for a granted page), `deny` fails it closed.
+ */
+export type ExportGateAnswer =
+  | { readonly kind: "serve"; readonly reply: Reply }
+  | { readonly kind: "allow" }
+  | { readonly kind: "deny" };
+
+/** One gated request, post-verdict: the audit trail a test asserts the permission model against. */
+export interface ExportRequestRecord {
+  readonly url: string;
+  readonly action: "serve" | "allow" | "deny";
+  /** HTTP status a `serve` verdict carried; absent for allow/deny. */
+  readonly status?: number;
+}
+
+/**
+ * The plan a foreign document exports under: the capability URL Chrome
+ * navigates to plus the per-request verdict it runs. The same shape the
+ * reader's `/f/` route enforces, minus the socket.
+ */
+export interface ForeignPagePlan {
+  readonly url: string;
+  readonly gate: (url: string, method: string) => Promise<ExportGateAnswer>;
+}
+
+/** What the render layer opens: a managed print sheet via `file://`, or a foreign doc behind its capability URL. */
+export type RenderSource =
+  | { readonly kind: "sheet"; readonly html: string }
+  | { readonly kind: "foreign"; readonly page: ForeignPagePlan };

@@ -40,7 +40,7 @@ describe("renderPdfOf · stderr flood", () => {
       connect: () => Promise.resolve(fakeBrowserOf(fakePageOf({ pages: 1 }))),
     };
     const result = await renderPdfOf({
-      html: "<p>x</p>",
+      source: { kind: "sheet", html: "<p>x</p>" },
       pageSize: "a4",
       outline: true,
       preferCSSPageSize: false,

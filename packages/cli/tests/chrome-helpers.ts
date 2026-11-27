@@ -10,13 +10,23 @@ import type {
   PageLike,
   PdfPrintOptions,
   PngShotOptions,
+  RoutedRequest,
   ViewportSpec,
 } from "../src/chrome/browser";
 import type { ChromeDeps, ChromeProcess } from "../src/chrome/process";
+import type { RenderSource } from "../src/chrome/types";
 
 import { pngOf } from "./chrome-png";
 
 export { pngBase64Of, pngOf } from "./chrome-png";
+
+/** Managed-doc render sources always carry the print sheet; read it or fail loudly. */
+export const sheetHtmlOf = (source: RenderSource): string => {
+  if (source.kind !== "sheet") {
+    throw new Error(`expected a sheet render source, got ${source.kind}`);
+  }
+  return source.html;
+};
 
 /** A promise that never resolves: the "hang" mode of goto/metrics/pdf parks rendering on it (so the outer timeout/abort wins). */
 const HANG: Promise<never> = new Promise<never>(() => undefined);
@@ -112,6 +122,10 @@ export interface FakePage extends PageLike {
   readonly pdfCalls: PdfPrintOptions[];
   readonly shotCalls: PngShotOptions[];
   readonly viewports: ViewportSpec[];
+  /** `setJavaScriptEnabled` history — the foreign branch always disables JS, the sheet branch never calls it. */
+  readonly jsEnabled: boolean[];
+  /** The request handler armed via `routeRequests`; `undefined` = interception was never wired. */
+  readonly routed: ((request: RoutedRequest) => Promise<void>) | undefined;
 }
 
 /** Half-resolution fixture: only half of width or height is given, to verify the post-screenshot scale cross-check. */
@@ -193,11 +207,17 @@ export const fakePageOf = (options: FakePageOptions = {}): FakePage => {
   const pdfCalls: PdfPrintOptions[] = [];
   const shotCalls: PngShotOptions[] = [];
   const viewports: ViewportSpec[] = [];
+  const jsEnabled: boolean[] = [];
+  const routedRef: { current: FakePage["routed"] } = { current: undefined };
   return {
     goneTo,
     pdfCalls,
     shotCalls,
     viewports,
+    jsEnabled,
+    get routed() {
+      return routedRef.current;
+    },
     goto: gotoOf(goneTo, options.goto),
     pdf: pdfCallOf(pdfCalls, options),
     screenshot: shotCallOf(shotCalls, viewports, options),
@@ -206,6 +226,14 @@ export const fakePageOf = (options: FakePageOptions = {}): FakePage => {
       return Promise.resolve();
     },
     metrics: metricsOf(options.contentHeight),
+    setJavaScriptEnabled: (enabled) => {
+      jsEnabled.push(enabled);
+      return Promise.resolve();
+    },
+    routeRequests: (handler) => {
+      routedRef.current = handler;
+      return Promise.resolve();
+    },
   };
 };
 

@@ -199,13 +199,24 @@ const runNew = (intent: Extract<Runnable, { kind: "new" }>, cwd: string): Promis
     displayPath: displayedPathOf(intent.path, cwd),
   });
 
+/**
+ * `HREADER_HOME` relocates the config root (`<home>/.hreader/`) without
+ * redirecting `$HOME` — the spawned Chrome inherits `HOME` too, and an
+ * unwritable/empty one leaves its network stack stuck before requests exist.
+ */
+const configHomeOf = (io: CliIo): string => {
+  if (io.home !== undefined) return io.home;
+  const envHome = io.env?.["HREADER_HOME"];
+  return envHome === undefined || envHome === "" ? homedir() : envHome;
+};
+
 /** `env`/`stop`/`home` are optional on `CliIo`; normalizing into `ResolvedIo` spares downstream commands the null checks (`stop` never resolving is deliberate). */
 type ResolvedIo = CliIo & Required<Pick<CliIo, "env" | "stop" | "home">>;
 const resolvedIoOf = (io: CliIo): ResolvedIo => ({
   ...io,
   env: io.env ?? {},
   stop: io.stop ?? new Promise<void>(() => undefined),
-  home: io.home ?? homedir(),
+  home: configHomeOf(io),
 });
 
 /** Only serve uses `--home`; the default location is already normalized by `resolvedIoOf`. */
@@ -222,11 +233,12 @@ const runServe = async (
     displayPath: displayedPathOf(intent.path, io.cwd),
   });
 
-/** The dispatch layer's normalized trio: display convention (`cwd`), stop handle, env snapshot; `warn` is stderr's non-fatal channel. */
+/** The dispatch layer's normalized trio: display convention (`cwd`), stop handle, env snapshot; `warn` is stderr's non-fatal channel. `home` feeds the foreign-doc permission lookup in pdf/png. */
 interface ProductIo {
   readonly cwd: string;
   readonly stop: Promise<void>;
   readonly env: Readonly<Record<string, string | undefined>>;
+  readonly home: string;
   readonly warn: (message: string) => void;
 }
 
@@ -241,6 +253,7 @@ const pdfOf = (
     path: join(paths.workspace, paths.file),
     out: realpathThroughAncestors(intent.out),
     workspace: paths.workspace,
+    home: io.home,
     warn: io.warn,
     displayOut: displayedPathOf(intent.out, io.cwd),
     render: (renderInput) =>
@@ -258,6 +271,7 @@ const pngOf = (
     path: join(paths.workspace, paths.file),
     out: realpathThroughAncestors(intent.out),
     workspace: paths.workspace,
+    home: io.home,
     warn: io.warn,
     displayOut: displayedPathOf(intent.out, io.cwd),
     render: (renderInput) =>
@@ -269,6 +283,7 @@ const productIoOf = (io: ResolvedIo): ProductIo => ({
   cwd: io.cwd,
   stop: io.stop,
   env: io.env,
+  home: io.home,
   warn: io.stderr,
 });
 

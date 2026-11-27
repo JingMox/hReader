@@ -7,10 +7,24 @@ import { pathToFileURL } from "node:url";
 
 import { HrError } from "@hreader/core";
 
-import type { BrowserLike, PageLike, PdfPrintOptions, PngShotOptions } from "./browser";
+import type {
+  BrowserLike,
+  PageLike,
+  PdfPrintOptions,
+  PngShotOptions,
+  RoutedRequest,
+} from "./browser";
 import { assertPixelFrameOf, assertShotHeightOf, assertShotWidthOf } from "./pixels";
 import { pngSizeOf } from "./png";
-import { PAGE_SIZES, type LongImage, type PdfPageSize, type PngViewport } from "./types";
+import {
+  PAGE_SIZES,
+  type ExportRequestRecord,
+  type ForeignPagePlan,
+  type LongImage,
+  type PdfPageSize,
+  type PngViewport,
+  type RenderSource,
+} from "./types";
 
 const MM = "mm";
 
@@ -43,11 +57,45 @@ export const cssPageParamsOf = (outline: boolean): PdfPrintOptions => ({
   outline,
 });
 
-/** Shared opening for both render commands: newPage -> write temp HTML -> navigate and wait for load. */
-const openPageOf = async (browser: BrowserLike, html: string, dir: string): Promise<PageLike> => {
+/** Every gated request, post-verdict — the record tests audit "the model held" against. Optional: managed sheets never gate. */
+export type RequestAudit = (record: ExportRequestRecord) => void;
+
+const gateRequestOf = async (
+  request: RoutedRequest,
+  plan: ForeignPagePlan,
+  audit: RequestAudit | undefined,
+): Promise<void> => {
+  const answer = await plan.gate(request.url, request.method);
+  audit?.({
+    url: request.url,
+    action: answer.kind,
+    ...(answer.kind === "serve" ? { status: answer.reply.status } : {}),
+  });
+  if (answer.kind === "serve") await request.respond(answer.reply);
+  else if (answer.kind === "allow") await request.continue();
+  else await request.abort();
+};
+
+/** Shared opening for both render commands: newPage -> open the source (temp sheet file or gated capability URL) -> wait for load. */
+const openPageOf = async (
+  browser: BrowserLike,
+  source: RenderSource,
+  dir: string,
+  audit: RequestAudit | undefined,
+): Promise<PageLike> => {
   const page = await browser.newPage();
+  if (source.kind === "foreign") {
+    // Export is a one-shot snapshot of the rendered page: document scripts
+    // NEVER run, even for a doc carrying a scripts grant — that grant exists
+    // for the interactive reader, and a grant-free snapshot is the export
+    // contract. The browser switch is the hard floor; CSP is defense-in-depth.
+    await page.setJavaScriptEnabled(false);
+    await page.routeRequests((request) => gateRequestOf(request, source.page, audit));
+    await page.goto(source.page.url);
+    return page;
+  }
   const htmlPath = join(dir, "input.html");
-  writeFileSync(htmlPath, html);
+  writeFileSync(htmlPath, source.html);
   // `pathToFileURL` rather than hand-built `file://`: spaces, non-ASCII names, or `#` in a hand-built path get parsed as host or fragment.
   await page.goto(pathToFileURL(htmlPath).href);
   return page;
@@ -55,16 +103,17 @@ const openPageOf = async (browser: BrowserLike, html: string, dir: string): Prom
 
 interface PdfRenderInput {
   readonly browser: BrowserLike;
-  readonly html: string;
+  readonly source: RenderSource;
   readonly dir: string;
   readonly pageSize: PdfPageSize;
   readonly outline: boolean;
   /** `true` = the product carries its own `@page` size (slides print sheet); Chrome obeys CSS rather than `pageSize`. */
   readonly preferCSSPageSize: boolean;
+  readonly audit?: RequestAudit | undefined;
 }
 
 export const renderPdfOnBrowserOf = async (input: PdfRenderInput): Promise<Uint8Array> => {
-  const page = await openPageOf(input.browser, input.html, input.dir);
+  const page = await openPageOf(input.browser, input.source, input.dir, input.audit);
   const params = input.preferCSSPageSize
     ? cssPageParamsOf(input.outline)
     : printParamsOf(input.pageSize, input.outline);
@@ -146,11 +195,12 @@ const capturePngOf = async (page: PageLike, viewport: PngViewport): Promise<Long
 
 interface PngRenderInput extends PngViewport {
   readonly browser: BrowserLike;
-  readonly html: string;
+  readonly source: RenderSource;
   readonly dir: string;
+  readonly audit?: RequestAudit | undefined;
 }
 
 export const renderPngOnBrowserOf = async (input: PngRenderInput): Promise<LongImage> => {
-  const page = await openPageOf(input.browser, input.html, input.dir);
+  const page = await openPageOf(input.browser, input.source, input.dir, input.audit);
   return capturePngOf(page, input);
 };

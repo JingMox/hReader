@@ -48,7 +48,7 @@ type PdfInput = Parameters<typeof renderPdfOf>[0];
 
 /** Default inputs for `renderPdfOf`: cases that care about a few fields change them via `overrides` (`outline` defaults on). */
 export const inputOf = (deps: PdfInput["deps"], overrides: Partial<PdfInput> = {}): PdfInput => ({
-  html: "x",
+  source: { kind: "sheet", html: "x" },
   pageSize: "a4",
   outline: true,
   preferCSSPageSize: false,

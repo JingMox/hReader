@@ -14,7 +14,7 @@ import { HrError } from "@hreader/core";
 import { describe, expect, it } from "vitest";
 
 import { pdfCommand, type PdfCommandInput, type RenderPdf } from "../src/commands/pdf";
-import { pdfOf } from "./chrome-helpers";
+import { pdfOf, sheetHtmlOf } from "./chrome-helpers";
 import { fieldOf, keysOf, withTempDir } from "./harness";
 
 const DOC = "<html><body><article><h1>标题</h1><p>正文</p></article></body></html>";
@@ -57,6 +57,7 @@ const inputOf = (dir: string, overrides: Overrides = {}): PdfCommandInput => ({
   warn: () => undefined,
   render: () => Promise.resolve({ bytes: Buffer.from(pdfOf(3)) }),
   workspace: dir,
+  home: dir,
   ...overrides,
 });
 
@@ -122,7 +123,11 @@ describe("pdfCommand · human line and render arguments", () => {
           pageSize: "letter",
           timeoutMs: 1500,
           render: (input) => {
-            seen.push({ html: input.html, pageSize: input.pageSize, timeoutMs: input.timeoutMs });
+            seen.push({
+              html: sheetHtmlOf(input.source),
+              pageSize: input.pageSize,
+              timeoutMs: input.timeoutMs,
+            });
             return Promise.resolve({ bytes: Buffer.from(pdfOf(1)) });
           },
         }),
@@ -167,7 +172,7 @@ describe("pdfCommand · slides printout", () => {
       await pdfCommand(
         inputOf(dir, {
           render: (input) => {
-            seen.push({ flag: input.preferCSSPageSize, html: input.html });
+            seen.push({ flag: input.preferCSSPageSize, html: sheetHtmlOf(input.source) });
             return Promise.resolve({ bytes: Buffer.from(pdfOf(2)) });
           },
         }),

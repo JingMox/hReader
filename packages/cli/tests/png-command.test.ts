@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import type { LongImage } from "../src/chrome/types";
 import { pngCommand, type PngCommandInput } from "../src/commands/png";
-import { pngOf } from "./chrome-helpers";
+import { pngOf, sheetHtmlOf } from "./chrome-helpers";
 import { fieldOf, keysOf, withTempDir } from "./harness";
 
 const DOC = "<html><body><article><h1>标题</h1><p>正文</p></article></body></html>";
@@ -49,6 +49,7 @@ const defaultsOf = (dir: string): PngCommandInput => ({
   out: join(dir, "out.png"),
   force: false,
   workspace: dir,
+  home: dir,
   json: false,
   warn: () => undefined,
   render: () => Promise.resolve(imageOf()),
@@ -146,7 +147,7 @@ describe("pngCommand · render arguments", () => {
           timeoutMs: 1500,
           render: (input) => {
             seen.push({
-              html: input.html,
+              html: sheetHtmlOf(input.source),
               width: input.width,
               scale: input.scale,
               maxHeight: input.maxHeight,
