@@ -86,7 +86,9 @@ describe("并发 · 两个子进程写同一文件", () => {
           expect([shas().ab, shas().ba]).toContain(
             sha256Of(await readBytesAt(join(dir, DOC_FILE))),
           );
-          expect(childIds(html, "box")).toHaveLength(2);
+          // box 自带 p0：两单串行落进去后孩子是 p0 + 甲 + 乙共三个——
+          // 断言 2 只在“一胜一负”分支成立，双胜分支里是错的预期。
+          expect(childIds(html, "box")).toHaveLength(3);
         } else {
           const winner = ok[0] === true ? "a" : "b";
           expect(sha256Of(await readBytesAt(join(dir, DOC_FILE)))).toBe(shas()[winner]);
