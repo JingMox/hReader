@@ -94,10 +94,13 @@ const serveOf = (ctx: HandlerContext, method: string, pathname: string): Promise
 
 /**
  * An outside-workspace source is a legitimate export input (`hr pdf` reads
- * anywhere), but it can hold no path-keyed grant — a grant anchors to the
- * exporting workspace's `.hreader/`. The capability still needs a target to
- * bind, so root one at the doc's own directory: the /f/ scope is the same
- * directory either way, and the grant lookup lands on "denied".
+ * anywhere), but it can hold no per-document grant — a grant anchors to the
+ * exporting workspace's `.hreader/` (D39). The capability still needs a
+ * target to bind, so root one at the doc's own directory: the /f/ scope is
+ * the same directory either way. The store anchor is the void path *under
+ * the document file*: nothing can live under a regular file, so the grant
+ * table is empty by construction — a `trust.json` planted beside the doc is
+ * never read, and the lazy migration can never write there either.
  */
 const exportTargetOf = async (path: string, workspace: string): Promise<ResolvedTarget> => {
   const realPath = await nodePatchDeps.fs.realpath(path);
@@ -110,14 +113,14 @@ const exportTargetOf = async (path: string, workspace: string): Promise<Resolved
   }
   const dir = dirname(realPath);
   const name = basename(realPath);
-  const storeDir = join(dir, ".hreader");
+  const voidStoreDir = join(realPath, ".hreader");
   return {
     realPath,
     relative: name,
     workspace: dir,
-    storeDir,
+    storeDir: voidStoreDir,
     // Stryker disable next-line StringLiteral: ResolvedTarget requires the field but the export serve path never locks — reads only.
-    lockPath: join(storeDir, "locks", "export.lock"),
+    lockPath: join(voidStoreDir, "locks", "export.lock"),
   };
 };
 
