@@ -26,11 +26,15 @@ import {
 import { addAnnotation } from "../../src/ops/annotation-ops";
 import {
   codeOfAsync,
+  depsOf,
+  existsAt,
+  fakeFs,
   fixedClock,
   mkdirAt,
   realDirOf,
   readBytesAt,
   readTextAt,
+  recordingSleep,
   sha1Of,
   sha256Of,
   withWorkspace,
@@ -303,6 +307,16 @@ const namesAt = async (dir: string): Promise<string[]> => {
   } catch {
     return [];
   }
+};
+
+// Root ignores permission bits entirely, so chmod-based refusal tests can't run under it.
+const isRoot = (): boolean => typeof process.geteuid === "function" && process.geteuid() === 0;
+
+// Probe the temp dir once per test: on a case-insensitive filesystem the folded spelling
+// of the probe exists right after writing it.
+const isCaseInsensitiveFs = async (dir: string): Promise<boolean> => {
+  await writeFile(join(dir, "hr-case-probe"), "x");
+  return await existsAt(join(dir, "HR-CASE-PROBE"));
 };
 
 describe("resolve · reopen · delete · reply", () => {
@@ -635,7 +649,9 @@ describe("workspace edges", () => {
     });
   });
 
-  it("should fail the write when .hreader is read-only", async () => {
+  // chmod bits don't stop root: EACCES is only raised for real users. The io_failure mapping
+  // itself is covered deterministically by the injected-fs failure tests (fs.fail("mkdir")).
+  it.skipIf(isRoot())("should fail the write when .hreader is read-only", async () => {
     await withWorkspace(async (dir) => {
       await seed(dir);
       const storeRoot = join(await realDirOf(dir), ".hreader");
@@ -695,9 +711,11 @@ describe("workspace edges", () => {
     });
   });
 
-  it("should resolve case-only path spellings to one canonical store", async () => {
+  it("should resolve case-only path spellings however the filesystem folds case", async () => {
     await withWorkspace(async (dir) => {
       await seed(dir, FOREIGN, "Doc.html");
+      // On a case-insensitive filesystem this second write lands on the same file.
+      await seed(dir, FOREIGN, "doc.html");
 
       await addSidecarAnnotation(
         addInput({ workspace: dir, file: "Doc.html", note: "大写" }),
@@ -708,18 +726,108 @@ describe("workspace edges", () => {
         depsAt(),
       );
 
-      // macOS realpath canonicalizes "doc.html" to the on-disk spelling "Doc.html",
-      // so the store key is the canonical relative path: both spellings share one
-      // sidecar file and a read through either spelling sees both annotations.
-      const stored = JSON.parse(await readTextAt(await sidecarPathAt(dir, "Doc.html"))) as {
-        path: string;
-        annotations: { note: string }[];
-      };
-      expect(stored.path).toBe("Doc.html");
-      expect(stored.annotations.map((entry) => entry.note)).toEqual(["大写", "小写"]);
-      expect(await namesAt(dir)).toEqual([`${sha1Of("Doc.html")}.json`]);
-      const listed = await listDocAnnotations({ workspace: dir, file: "doc.html" }, depsAt());
-      expect(listed.annotations).toHaveLength(2);
+      if (await isCaseInsensitiveFs(dir)) {
+        // APFS-style folding: realpath canonicalizes "doc.html" to the on-disk spelling
+        // "Doc.html", so both spellings share one canonical store.
+        const stored = JSON.parse(await readTextAt(await sidecarPathAt(dir, "Doc.html"))) as {
+          path: string;
+          annotations: { note: string }[];
+        };
+        expect(stored.path).toBe("Doc.html");
+        expect(stored.annotations.map((entry) => entry.note)).toEqual(["大写", "小写"]);
+        expect(await namesAt(dir)).toEqual([`${sha1Of("Doc.html")}.json`]);
+        const listed = await listDocAnnotations({ workspace: dir, file: "doc.html" }, depsAt());
+        expect(listed.annotations).toHaveLength(2);
+      } else {
+        // ext4-style: the two spellings are distinct files with distinct stores, and a
+        // read through one spelling never sees the other's annotations.
+        const upper = JSON.parse(await readTextAt(await sidecarPathAt(dir, "Doc.html"))) as {
+          path: string;
+          annotations: { note: string }[];
+        };
+        const lower = JSON.parse(await readTextAt(await sidecarPathAt(dir, "doc.html"))) as {
+          path: string;
+          annotations: { note: string }[];
+        };
+        expect(upper.path).toBe("Doc.html");
+        expect(lower.path).toBe("doc.html");
+        expect(upper.annotations.map((entry) => entry.note)).toEqual(["大写"]);
+        expect(lower.annotations.map((entry) => entry.note)).toEqual(["小写"]);
+        expect((await namesAt(dir)).sort()).toEqual(
+          [`${sha1Of("Doc.html")}.json`, `${sha1Of("doc.html")}.json`].sort(),
+        );
+        const listedLower = await listDocAnnotations(
+          { workspace: dir, file: "doc.html" },
+          depsAt(),
+        );
+        const listedUpper = await listDocAnnotations(
+          { workspace: dir, file: "Doc.html" },
+          depsAt(),
+        );
+        expect(listedLower.annotations.map((entry) => entry.annotation.note)).toEqual(["小写"]);
+        expect(listedUpper.annotations.map((entry) => entry.annotation.note)).toEqual(["大写"]);
+      }
     });
+  });
+
+  it("should keep case-only spellings in separate stores when realpath does not fold", async () => {
+    // Deterministic coverage for the case-sensitive branch on every platform: the fake fs
+    // resolves each spelling to itself, exactly like a case-sensitive real filesystem.
+    const fs = fakeFs({ "/ws/Doc.html": FOREIGN, "/ws/doc.html": FOREIGN });
+    const deps = depsOf(fs.port, fixedClock(AT).clock, recordingSleep().sleep);
+    const pathOf = (file: string): string => `/ws/.hreader/annotations/${sha1Of(file)}.json`;
+
+    await addSidecarAnnotation(
+      addInput({ workspace: "/ws", file: "Doc.html", note: "大写" }),
+      deps,
+    );
+    await addSidecarAnnotation(
+      addInput({ workspace: "/ws", file: "doc.html", note: "小写" }),
+      deps,
+    );
+
+    const upper = JSON.parse(fs.textAt(pathOf("Doc.html"))) as {
+      path: string;
+      annotations: { note: string }[];
+    };
+    const lower = JSON.parse(fs.textAt(pathOf("doc.html"))) as {
+      path: string;
+      annotations: { note: string }[];
+    };
+    expect(upper.path).toBe("Doc.html");
+    expect(lower.path).toBe("doc.html");
+    expect(upper.annotations.map((entry) => entry.note)).toEqual(["大写"]);
+    expect(lower.annotations.map((entry) => entry.note)).toEqual(["小写"]);
+    const listedLower = await listDocAnnotations({ workspace: "/ws", file: "doc.html" }, deps);
+    const listedUpper = await listDocAnnotations({ workspace: "/ws", file: "Doc.html" }, deps);
+    expect(listedLower.annotations.map((entry) => entry.annotation.note)).toEqual(["小写"]);
+    expect(listedUpper.annotations.map((entry) => entry.annotation.note)).toEqual(["大写"]);
+  });
+
+  it("should share one canonical store when the fs folds spellings to the same file", async () => {
+    // The fake fs simulates APFS-style canonicalization with a symlink: realpath("doc.html")
+    // resolves to the on-disk spelling "Doc.html", so both spellings share one store.
+    const fs = fakeFs({ "/ws/Doc.html": FOREIGN });
+    fs.state.links.set("/ws/doc.html", "/ws/Doc.html");
+    const deps = depsOf(fs.port, fixedClock(AT).clock, recordingSleep().sleep);
+    const canonical = `/ws/.hreader/annotations/${sha1Of("Doc.html")}.json`;
+
+    await addSidecarAnnotation(
+      addInput({ workspace: "/ws", file: "Doc.html", note: "大写" }),
+      deps,
+    );
+    await addSidecarAnnotation(
+      addInput({ workspace: "/ws", file: "doc.html", note: "小写" }),
+      deps,
+    );
+
+    const stored = JSON.parse(fs.textAt(canonical)) as {
+      path: string;
+      annotations: { note: string }[];
+    };
+    expect(stored.path).toBe("Doc.html");
+    expect(stored.annotations.map((entry) => entry.note)).toEqual(["大写", "小写"]);
+    const listed = await listDocAnnotations({ workspace: "/ws", file: "doc.html" }, deps);
+    expect(listed.annotations).toHaveLength(2);
   });
 });
