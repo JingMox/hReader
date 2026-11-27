@@ -139,6 +139,9 @@ export const startChromeOf = (deps: ChromeDeps): ChromeRun => {
   const binary = chromeBinaryOf(deps);
   const dir = deps.tempDir();
   const env = { ...deps.env };
+  // HREADER_HOME is our own config-root redirect; the child must never see it
+  // (the documented contract: Chrome children never inherit it).
+  delete env["HREADER_HOME"];
   const home = chromeHomeOf();
   // chromeHomeOf is always set on machines with a passwd entry; the undefined branch only appears on scratch images (unreachable).
   /* v8 ignore next */

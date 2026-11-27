@@ -1,4 +1,6 @@
+import type { SpawnOptions } from "node:child_process";
 import { existsSync } from "node:fs";
+import { userInfo } from "node:os";
 import { join } from "node:path";
 
 import { HrError } from "@hreader/core";
@@ -215,6 +217,40 @@ describe("renderPdfOf · success path", () => {
     expect(existsSync(dir)).toBe(false);
     await until(() => setup.fake.signals.length === 2, "SIGKILL 升级");
     expect(setup.fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
+  });
+});
+
+describe("renderPdfOf · child environment", () => {
+  it("should strip HREADER_HOME from the Chrome child's env while HOME stays pinned to the passwd home", async () => {
+    const fake = fakeChromeOf();
+    const dirs: string[] = [];
+    const envs: SpawnOptions["env"][] = [];
+    const base = depsWithOf({
+      chrome: fake.chrome,
+      dirs,
+      connect: connectToPageOf(),
+      env: {
+        HREADER_CHROME: "/fake/chrome",
+        // A poisoned pair: the config-root redirect must never reach the child
+        // (README contract) and the ambient HOME must not either.
+        HREADER_HOME: "/relocated/hreader-home",
+        HOME: "/poisoned/home",
+      },
+    });
+    const deps = {
+      ...base,
+      spawn: (file: string, args: readonly string[], options: SpawnOptions) => {
+        envs.push(options.env);
+        return base.spawn(file, args, options);
+      },
+    };
+    const pending = renderPdfOf(inputOf(deps));
+    fake.stderr(DEVTOOLS_LINE);
+    await pending;
+    expect(envs).toHaveLength(1);
+    const env = envs[0] ?? {};
+    expect(Object.hasOwn(env, "HREADER_HOME")).toBe(false);
+    expect(env["HOME"]).toBe(userInfo().homedir);
   });
 });
 
