@@ -4,10 +4,9 @@
 // range — every other byte is untouched. No IO, no id injection: foreign files never grow
 // `data-hr-id`s.
 
-import type { HtmlElementNode, HtmlNode, SourceSpan } from "../../html/constants";
+import type { HtmlNode, SourceSpan } from "../../html/constants";
 import { parseHtml } from "../../html/parse";
 import { serializeHtml } from "../../html/serialize";
-import { ZERO_SPAN } from "../../html/span";
 import { HrError } from "../../hr-error";
 import { assertFragmentFits } from "../patch-node/content";
 import { fragmentIdWarnings, parseFragmentWithDiagnostics } from "../patch-node/fragment";
@@ -59,14 +58,11 @@ const locateError = (address: string, code: "target_moved" | "invalid_selector")
         `块地址已失效：${JSON.stringify(address)} —— 路径没有命中同指纹的块，全文也找不到唯一的同指纹候选（目标被编辑、移动、删除或重复）；重新 list 取新地址`,
       );
 
-const spanOf = (node: HtmlElementNode): SourceSpan => ({ ...ZERO_SPAN, ...node.span });
-
 /** The address of the first leaf block fully inside `[from, to)` of `html` — the written range. */
 const firstBlockAddressIn = (html: string, from: number, to: number): string | undefined => {
   const entries = collectBlocks(parseHtml(html, { locations: true }).root);
   for (const entry of entries) {
-    const span = spanOf(entry.node);
-    if (span.start >= from && span.end <= to) return formatAddress(entry);
+    if (entry.range.start >= from && entry.range.end <= to) return formatAddress(entry);
   }
   return undefined;
 };
@@ -98,7 +94,7 @@ export const applyBlockPatch = (html: string, request: BlockPatchRequest): Block
   const parsed = parseHtml(html, { locations: true });
   const located = locateBlock(parsed, request.address);
   if (!located.ok) throw locateError(request.address, located.code);
-  const span = spanOf(located.entry.node);
+  const span = located.entry.range;
   if (fragmentRequest.action === "delete") {
     const next = `${html.slice(0, span.start)}${html.slice(span.end)}`;
     return {
@@ -106,8 +102,8 @@ export const applyBlockPatch = (html: string, request: BlockPatchRequest): Block
       newIds: [],
       replacedIds: [],
       warnings: [],
-      // A located element's outer span is never empty: delete always removes bytes.
-      changed: true,
+      // A degenerate range removes nothing: report unchanged so no snapshot or write happens.
+      changed: next.length !== html.length,
       address: undefined,
     };
   }

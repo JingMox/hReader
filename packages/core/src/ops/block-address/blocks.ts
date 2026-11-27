@@ -25,6 +25,8 @@ export interface BlockEntry {
   /** The body-text-domain text, whitespace-collapsed and trimmed — basis of both fingerprint and preview. */
   readonly text: string;
   readonly fingerprint: string;
+  /** The byte range a patch may touch — the element's own subtree only (see `patchRangeOf`). */
+  readonly range: SourceSpan;
 }
 
 /** `Chain` is a persistent (linked) ancestor list: O(1) per element even on very deep trees. */
@@ -168,6 +170,33 @@ const blockTextOf = (node: HtmlElementNode): string => {
   return normalizeWhitespace(parts.join(""));
 };
 
+/**
+ * The range a patch may write over, `[startTag.start, subtreeEnd)`. parse5 stretches an
+ * element with no end tag past `</body>`/`</html>` and fostered content, so `end` is clamped
+ * to the first construct outside its subtree: the `innerEnd` of every tree ancestor, or of
+ * a tree-sibling whose source span encloses the element's start (a foster container like
+ * `<table>`). An unclosed element absorbs every later byte, so no following sibling exists
+ * to bound it earlier. `innerEnd === end` marks "no end tag in source" (see spanOfLocation).
+ */
+const patchRangeOf = (chain: Chain): SourceSpan => {
+  const span = { ...ZERO_SPAN, ...chain.node.span };
+  if (span.innerEnd !== span.end) return span;
+  let end = span.end;
+  const bound = (candidate: number): void => {
+    if (candidate > span.start && candidate < end) end = candidate;
+  };
+  for (let link: Chain | undefined = chain.up; link !== undefined; link = link.up) {
+    const parent = link.node;
+    bound({ ...ZERO_SPAN, ...parent.span }.innerEnd);
+    for (const sibling of parent.children) {
+      if (sibling.kind !== "element") continue;
+      const s = { ...ZERO_SPAN, ...sibling.span };
+      if (s.start < span.start && span.start < s.end) bound(s.innerEnd);
+    }
+  }
+  return { ...span, end, innerEnd: end };
+};
+
 const entryOf = (chain: Chain, steps: readonly SelectorStep[]): BlockEntry => {
   const text = blockTextOf(chain.node);
   return {
@@ -175,6 +204,7 @@ const entryOf = (chain: Chain, steps: readonly SelectorStep[]): BlockEntry => {
     steps,
     text,
     fingerprint: sha1Hex(text).slice(0, FINGERPRINT_CHARS),
+    range: patchRangeOf(chain),
   };
 };
 
@@ -213,8 +243,6 @@ export const collectBlocks = (root: HtmlNode): readonly BlockEntry[] => {
   return entries;
 };
 
-const spanOf = (node: HtmlElementNode): SourceSpan => ({ ...ZERO_SPAN, ...node.span });
-
 const stepText = (step: SelectorStep): string =>
   step.nth === 1 ? step.tag : `${step.tag}:nth-of-type(${String(step.nth)})`;
 
@@ -225,8 +253,8 @@ export const infoOf = (entry: BlockEntry): BlockInfo => ({
   address: formatAddress(entry),
   tag: entry.node.tag,
   textPreview: truncate(entry.text, PREVIEW_CHARS),
-  start: spanOf(entry.node).start,
-  end: spanOf(entry.node).end,
+  start: entry.range.start,
+  end: entry.range.end,
 });
 
 /** Document-order list of every addressable leaf block with its source byte range. */
