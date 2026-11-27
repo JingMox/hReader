@@ -572,13 +572,16 @@ const relocationJson = (relocation: RelocateResult): string =>
       `"via":${quote(relocation.via)}}`
     : `{"ok":false,"reason":${quote(relocation.reason)}}`;
 
+/** `id`/`nodeId`/`selector`/`exact` are unbounded at the model layer: same 200-code-point cap as the MCP wire, so a fat record cannot flood either output mode. */
+const ANNOTATION_FIELD_LIMIT = 200;
+
 /** `nodeId`/`selector` print `null` when absent (stable shape): a merged entry knows at most one of them. */
 const annotationEntryJson = (entry: DocAnnotationEntry): string =>
-  `{"id":${quote(entry.annotation.id)},` +
-  `"nodeId":${entry.annotation.nodeId === undefined ? "null" : quote(entry.annotation.nodeId)},` +
-  `"selector":${entry.annotation.selector === undefined ? "null" : quote(entry.annotation.selector)},` +
+  `{"id":${quote(cutAtCodePoint(entry.annotation.id, ANNOTATION_FIELD_LIMIT))},` +
+  `"nodeId":${entry.annotation.nodeId === undefined ? "null" : quote(cutAtCodePoint(entry.annotation.nodeId, ANNOTATION_FIELD_LIMIT))},` +
+  `"selector":${entry.annotation.selector === undefined ? "null" : quote(cutAtCodePoint(entry.annotation.selector, ANNOTATION_FIELD_LIMIT))},` +
   `"note":${quote(entry.annotation.note)},` +
-  `"exact":${quote(entry.annotation.anchor.exact)},` +
+  `"exact":${quote(cutAtCodePoint(entry.annotation.anchor.exact, ANNOTATION_FIELD_LIMIT))},` +
   `"status":${quote(entry.annotation.status)},` +
   `"source":${quote(entry.source)},` +
   `"relocation":${relocationJson(entry.anchor)}}`;
@@ -599,7 +602,7 @@ const annotationLine = (entry: DocAnnotationEntry): string => {
   const located = entry.anchor.ok
     ? `已定位（${entry.anchor.via}，${String(entry.anchor.start)}-${String(entry.anchor.end)}）`
     : `未定位（${entry.anchor.reason}）`;
-  return `  [${annotation.status}] ${annotation.id} (${entry.source}) ${excerpt} → ${target} · ${located}`;
+  return `  [${annotation.status}] ${cutAtCodePoint(annotation.id, ANNOTATION_FIELD_LIMIT)} (${entry.source}) ${excerpt} → ${cutAtCodePoint(target, ANNOTATION_FIELD_LIMIT)} · ${located}`;
 };
 
 /** An empty list still prints a line: silent success reads like "the command did not run". */

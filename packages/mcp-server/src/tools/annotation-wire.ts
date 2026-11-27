@@ -7,6 +7,8 @@ import { cutAtCodePoint, type DocAnnotationEntry, type RelocateResult } from "@h
 /** `note`/`exact` caps: pending annotations already cap `comment` at 200 in `pendingAnnotations`; the sidecar entries keep the same width. */
 const NOTE_WIRE_LIMIT = 200;
 const EXACT_WIRE_LIMIT = 200;
+/** `id`/`nodeId`/`selector` are unbounded at the model layer: same 200 cap so a fat record cannot flood the entry. */
+const FIELD_WIRE_LIMIT = 200;
 
 /** Same shape as `server/sidecar-replies.ts`'s `relocationBody`: `via` only rides on success; a lost anchor reports `reason` alone. */
 const relocationBody = (relocation: RelocateResult): Record<string, unknown> =>
@@ -19,9 +21,13 @@ export const annotationEntryBody = (
   file?: string,
 ): Record<string, unknown> => ({
   ...(file === undefined ? {} : { file }),
-  id: entry.annotation.id,
-  ...(entry.annotation.nodeId === undefined ? {} : { nodeId: entry.annotation.nodeId }),
-  ...(entry.annotation.selector === undefined ? {} : { selector: entry.annotation.selector }),
+  id: cutAtCodePoint(entry.annotation.id, FIELD_WIRE_LIMIT),
+  ...(entry.annotation.nodeId === undefined
+    ? {}
+    : { nodeId: cutAtCodePoint(entry.annotation.nodeId, FIELD_WIRE_LIMIT) }),
+  ...(entry.annotation.selector === undefined
+    ? {}
+    : { selector: cutAtCodePoint(entry.annotation.selector, FIELD_WIRE_LIMIT) }),
   note: cutAtCodePoint(entry.annotation.note, NOTE_WIRE_LIMIT),
   exact: cutAtCodePoint(entry.annotation.anchor.exact, EXACT_WIRE_LIMIT),
   status: entry.annotation.status,
