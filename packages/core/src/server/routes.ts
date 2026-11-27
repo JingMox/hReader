@@ -107,8 +107,9 @@ export const ROUTES: readonly Route[] = Object.freeze([
   route("GET", ["api", "permissions"], "cookie", "permissionsGet"),
   route("POST", ["api", "permissions"], "cookie+csrf", "permissionsSet"),
   route("POST", ["api", "doc", DOC_PARAM, "normalize"], "cookie+csrf", "docNormalize"),
-  // 侧车批注：合并 meta/sidecar 的读视图 + 五个写命令；读写分别走 cookie 与 cookie+csrf，
-  // 与既有批注路由同一套 auth 分层。add-only：以下六条是路由表的全部增量。
+  // Sidecar annotations: a merged meta/sidecar read view plus five write commands.
+  // Reads take the cookie, writes cookie+csrf — the same auth layering as the
+  // existing annotation routes. Add-only: these six entries are the whole delta.
   route("GET", ["api", "doc", DOC_PARAM, "sidecar"], "cookie", "sidecar"),
   route("POST", ["api", "doc", DOC_PARAM, "sidecar"], "cookie+csrf", "sidecarAdd"),
   route(

@@ -178,7 +178,7 @@ type StaticKind = Extract<Route["kind"], "home" | "assets" | "theme" | "themes">
 const isStaticKind = (kind: Route["kind"]): kind is StaticKind =>
   kind === "home" || kind === "assets" || kind === "theme" || kind === "themes";
 
-/** 读类路由（document/docInfo/model/outline/annotations/sidecar）共用"先 remember 再取"。 */
+/** Read-kind routes (document/docInfo/model/outline/annotations/sidecar) share "remember first, then fetch". */
 type ReadKind = Extract<
   Route["kind"],
   "document" | "docInfo" | "model" | "outline" | "annotations" | "sidecar"
@@ -192,7 +192,7 @@ const isReadKind = (kind: Route["kind"]): kind is ReadKind =>
   kind === "annotations" ||
   kind === "sidecar";
 
-/** 侧车写五兄弟：成功完成时广播 `doc.annotations`（noteWrite 对它们静默）。 */
+/** The five sidecar writes: broadcast `doc.annotations` on success (noteWrite stays silent for them). */
 const SIDECAR_WRITE_KINDS: ReadonlySet<Route["kind"]> = new Set([
   "sidecarAdd",
   "sidecarResolve",
@@ -278,8 +278,8 @@ const dispatchOf =
     }
     const written = await dispatchWrite(context, route, params, { req, bodyMs });
     runtime.noteWrite(written);
-    // 侧车写不动文档字节（changed:false → doc.changed 静默），批注变化走自己的事件：
-    // 写成功才广播，失败写什么动静都没有。
+    // A sidecar write never touches document bytes (changed:false → doc.changed stays
+    // silent); annotation changes ride their own event — success broadcasts, failure says nothing.
     if (SIDECAR_WRITE_KINDS.has(route.kind)) {
       runtime.hub.publish("doc.annotations", { docId: written.target.relative });
     }

@@ -256,8 +256,8 @@ describe("docRelocatorOf · nodeId relocation by document class", () => {
       note({ nodeId: "hr-c", anchor: { exact: "正文一", prefix: "", suffix: "", start: 0 } }),
     );
 
-    // 正文一 lives in hr-b's block, outside hr-c's slice — the node level misses
-    // and the body level relocates it.
+    // The anchor text lives in hr-b's block, outside hr-c's slice — the node level
+    // misses and the body level relocates it.
     expect(result).toEqual({ ok: true, start: 0, end: 3, via: "body" });
   });
 
@@ -301,7 +301,7 @@ describe("docRelocatorOf · nodeId relocation by document class", () => {
       }),
     );
 
-    // D49: offsets index into bodyTextOf — 正文二 sits at [3,6) of "正文一正文二".
+    // D49: offsets index into bodyTextOf — the second block's text sits at [3,6).
     expect(result).toEqual({ ok: true, start: 3, end: 6, via: "node" });
   });
 
@@ -383,9 +383,7 @@ describe("docRelocatorOf · D49 fallback chain levels", () => {
   it("should descend to body when the selector resolves inside a skipped subtree", () => {
     // <noscript> content stays in the parsed tree but contributes no body-text
     // span: the selector finds the element, the level still yields no region.
-    const relocate = docRelocatorOf(
-      "<body><noscript><p>AB</p></noscript><p>先 AB 后</p></body>",
-    );
+    const relocate = docRelocatorOf("<body><noscript><p>AB</p></noscript><p>先 AB 后</p></body>");
     const result = relocate(
       note({
         selector: "body > noscript:nth-of-type(1) > p:nth-of-type(1)",
@@ -416,7 +414,7 @@ describe("docRelocatorOf · degenerate documents", () => {
       }),
     );
 
-    // D49: body-text offsets — 正文二 sits at [3,6).
+    // D49: body-text offsets — the second block's text sits at [3,6).
     expect(result).toEqual({ ok: true, start: 3, end: 6, via: "selector" });
   });
 });

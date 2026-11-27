@@ -25,7 +25,7 @@ import {
 import { withPost } from "./wire";
 
 // defaultSeed's DOC is managed: <article data-hr-id="hr-a"> with three id'd blocks,
-// body text "标题正文一正文二".
+// body text is a CJK title plus two run-together blocks.
 const NORMALIZABLE =
   "<!doctype html><html><body><article><p>可归一文本</p></article></body></html>";
 const FOREIGN =
@@ -459,8 +459,8 @@ describe("sidecar routes · ops by document class", () => {
 
       expect(listed.annotations).toHaveLength(3);
       const [bySelector, byBody, dead] = listed.annotations;
-      // DOC's body text is "\r\n标题正文一正文二\r\n" (the template's newlines are
-      // real text nodes): 正文二 at [7,10), 正文一 at [4,7).
+      // DOC's body text is the title plus two blocks, wrapped in real \r\n text
+      // nodes from the template: the second block sits at [7,10), the first at [4,7).
       expect(bySelector?.relocation).toEqual({ ok: true, start: 7, end: 10, via: "selector" });
       expect(byBody?.relocation).toEqual({ ok: true, start: 4, end: 7, via: "body" });
       expect(dead?.relocation).toEqual({ ok: false, reason: "anchor_lost" });

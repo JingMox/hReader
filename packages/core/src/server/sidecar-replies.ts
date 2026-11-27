@@ -1,6 +1,8 @@
-// 这层管：侧车批注 HTTP 处理器——meta 与 sidecar 合并视图、五个写操作；
-// 只产出 `Reply`/`Written`，不碰 socket。HTML 文件永远不碰：doc 侧车写只动 `.hreader/`，
-// `changed:false` 不发 doc.changed，广播走独立的 `doc.annotations` 事件（runtime 分发）。
+// This layer owns the sidecar-annotation HTTP handlers — the merged meta+sidecar
+// view and the five write ops. They produce `Reply`/`Written` only, never a socket.
+// The HTML file is never touched: a doc sidecar write only touches `.hreader/`,
+// `changed:false` keeps doc.changed silent, and broadcasting rides the dedicated
+// `doc.annotations` event (dispatched in runtime).
 
 import { z } from "zod";
 
@@ -33,9 +35,10 @@ const bytesOf = (ctx: HandlerContext, target: ResolvedTarget): Promise<Uint8Arra
   ctx.deps.fs.readFile(target.realPath);
 
 /**
- * 线上的 relocation 形状：`ok` 时给 `start`/`end`/`via`（偏移永远落在 `bodyTextOf` 域里，
- * `via` 只说明命中的是哪一级回退）；失败时只给 `reason`——内部 `via` 不上线，
- * 调用方看到的就是"这条批注丢了锚点"这一事实。
+ * The wire relocation shape: `ok` yields `start`/`end`/`via` (offsets always land in
+ * the `bodyTextOf` domain; `via` only says which fallback level hit); failure yields
+ * `reason` alone — the internal `via` never goes on the wire, so the caller sees the
+ * plain fact "this annotation lost its anchor".
  */
 const relocationBody = (
   relocation: RelocateResult,
@@ -46,14 +49,14 @@ const relocationBody = (
     ? { ok: true, start: relocation.start, end: relocation.end, via: relocation.via }
     : { ok: false, reason: relocation.reason };
 
-/** 合并条目拍平成一条：批注字段 + `source`（meta/sidecar）+ 服务端算好的 `relocation`。 */
+/** A merged entry flattens to one record: annotation fields + `source` (meta/sidecar) + the server-computed `relocation`. */
 const entryBody = (entry: DocAnnotationEntry): Record<string, unknown> => ({
   ...entry.annotation,
   source: entry.source,
   relocation: relocationBody(entry.anchor),
 });
 
-/** `GET /api/doc/<docId>/sidecar`：meta + sidecar 合并视图，各条带 relocation。 */
+/** `GET /api/doc/<docId>/sidecar`: the merged meta + sidecar view, each entry carrying its relocation. */
 export const sidecarListReply = async (ctx: HandlerContext, docId: string): Promise<Reply> => {
   await targetOf(ctx, docId);
   const listed = await listDocAnnotations({ workspace: ctx.workspace, file: docId }, ctx.deps);
@@ -63,7 +66,7 @@ export const sidecarListReply = async (ctx: HandlerContext, docId: string): Prom
   });
 };
 
-// ---- bodies：strict zod，未知键即拒；边界与 store 的上限同源 ----
+// ---- bodies: strict zod — unknown keys die; bounds come from the store's own limits ----
 
 const sidecarAnchorBody = z
   .object({
@@ -94,8 +97,9 @@ const sidecarReplyBody = z
 const sidecarEmptyBody = z.object({ docId: z.string().optional() }).strict();
 
 /**
- * 写操作回执与列表条目同形：刚写完的批注重算一遍 relocation，并附 `revision`
- * （`revisionOf` 口径不变——侧车写不改文档字节，它就是"当前文档版本"）。
+ * Write receipts share the list-entry shape: recompute the just-written annotation's
+ * relocation and attach `revision` (`revisionOf` semantics unchanged — a sidecar
+ * write does not change document bytes, so it still reads as "the current version").
  */
 const writtenOf = async (
   ctx: HandlerContext,
@@ -116,7 +120,7 @@ const writtenOf = async (
     }),
     target,
     revision: revisionOf(bytes),
-    // 侧车写不动 HTML：changed:false——noteWrite 静默，广播由 doc.annotations 担。
+    // Sidecar writes never touch the HTML: changed:false keeps noteWrite silent — broadcasting is doc.annotations' job.
     changed: false,
     changedNodes: [],
   };
