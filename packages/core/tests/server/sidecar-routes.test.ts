@@ -3,7 +3,7 @@
 // same as every other doc route; HTML bytes are never touched by a sidecar write;
 // a successful write broadcasts `doc.annotations`, a failed one broadcasts nothing.
 
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -284,6 +284,23 @@ describe("sidecar routes · merged read", () => {
       expect(body.annotations).toHaveLength(2);
       expect(body.annotations.map((entry) => entry.source)).toEqual(["meta", "sidecar"]);
       for (const entry of body.annotations) expect(entry.relocation.ok).toBe(true);
+    }, classSeed);
+  });
+});
+
+describe("sidecar routes · add basis", () => {
+  it("should answer 400 invalid_payload when the add carries no selector at all", async () => {
+    // The wire has no nodeId field, so an add with neither selector nor nodeId
+    // has no position basis — the op's own check rejects it before a file lands.
+    await withServer(async (ctx) => {
+      const response = await postSidecar(ctx, "doc.html", "", {
+        anchor: { exact: "正文一", prefix: "", suffix: "", start: 0 },
+        note: "n",
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toContain("invalid_payload");
+      expect(existsSync(sidecarPathOf(ctx, "doc.html"))).toBe(false);
     }, classSeed);
   });
 });
