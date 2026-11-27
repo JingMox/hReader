@@ -3,7 +3,16 @@
 // with the server, and the network switch read from effective permissions.
 // The real-Chrome behavior lives in `export-foreign-chrome.test.ts`.
 
-import { mkdtempSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -108,10 +117,10 @@ describe("foreignPlanOf · classification", () => {
     expect(ext.kind).toBe("deny");
   });
 
-  it("should honor a grant store sitting next to an outside-workspace doc", async () => {
-    // The anchor for an outside doc is its own directory: <dir>/.hreader/trust.json
-    // keyed by basename is the same lookup the reader would make. This pins the
-    // storeDir wiring — a mutant relocating it silently denies every grant.
+  it("should ignore a trust.json planted next to an outside-workspace doc and never write beside it", async () => {
+    // D39: a grant anchors to the exporting workspace's `.hreader/` — an
+    // outside doc's own directory is not a store, so a trust.json shipped
+    // with the document must be neither read nor written.
     const root = realpathSync(mkdtempSync(join(tmpdir(), "hr-gate-out-grant-")));
     const ws = join(root, "ws");
     const home = join(root, "home");
@@ -121,13 +130,68 @@ describe("foreignPlanOf · classification", () => {
     mkdirSync(join(outside, ".hreader"), { recursive: true });
     const doc = join(outside, "index.html");
     writeFileSync(doc, DOC);
-    writeFileSync(
-      join(outside, ".hreader", "trust.json"),
-      JSON.stringify({ "index.html": { scripts: false, network: true } }),
-    );
+    const storePath = join(outside, ".hreader", "trust.json");
+    // Both grant shapes are planted: the path key (`index.html`) and a legacy
+    // sha256 key — the legacy one would even trigger the lazy migration WRITE.
+    const planted = JSON.stringify({
+      "index.html": { scripts: true, network: true },
+      [createHash("sha256").update(DOC, "utf8").digest("hex")]: "local",
+    });
+    writeFileSync(storePath, planted);
+
     const plan = await foreignPlanOf({ path: doc, workspace: ws, home });
     if (plan === undefined) throw new Error("expected a foreign plan");
-    expect((await serveOf(plan, "https://cdn.example/x.png")).kind).toBe("allow");
+
+    // The self-shipped grant does not release a single external request,
+    // and the document still serves under the strictest CSP (no grant to soften it).
+    expect((await serveOf(plan, "https://cdn.example/x.png")).kind).toBe("deny");
+    const reply = await serveReplyOf(plan, plan.url);
+    expect(reply.status).toBe(200);
+    expect(String(reply.headers["content-security-policy"])).not.toContain("allow-scripts");
+
+    // The planted store is untouched: same bytes, nothing new beside it.
+    expect(readFileSync(storePath, "utf8")).toBe(planted);
+    expect(readdirSync(join(outside, ".hreader")).sort()).toEqual(["trust.json"]);
+  });
+
+  it("should apply global modes to an outside-workspace doc and never create .hreader beside it", async () => {
+    const outsideOf = (root: string): { ws: string; home: string; outside: string; doc: string } => {
+      const ws = join(root, "ws");
+      const home = join(root, "home");
+      const outside = join(root, "outside");
+      mkdirSync(ws, { recursive: true });
+      mkdirSync(home, { recursive: true });
+      mkdirSync(outside, { recursive: true });
+      const doc = join(outside, "index.html");
+      writeFileSync(doc, DOC);
+      return { ws, home, outside, doc };
+    };
+
+    // Global allow-all still governs — the missing per-document grant only
+    // means per-doc resolves to off, not that global modes stop applying.
+    const allowed = outsideOf(realpathSync(mkdtempSync(join(tmpdir(), "hr-gate-out-mode-"))));
+    modesOf(allowed.home, { network: "allow" });
+    const allowPlan = await foreignPlanOf({
+      path: allowed.doc,
+      workspace: allowed.ws,
+      home: allowed.home,
+    });
+    if (allowPlan === undefined) throw new Error("expected a foreign plan");
+    expect((await serveOf(allowPlan, "https://cdn.example/x.png")).kind).toBe("allow");
+    expect(existsSync(join(allowed.outside, ".hreader"))).toBe(false);
+
+    // Under the default per-doc modes an outside doc has no grant at all —
+    // and no .hreader/ materializes beside it even after serving requests.
+    const denied = outsideOf(realpathSync(mkdtempSync(join(tmpdir(), "hr-gate-out-mode-"))));
+    const denyPlan = await foreignPlanOf({
+      path: denied.doc,
+      workspace: denied.ws,
+      home: denied.home,
+    });
+    if (denyPlan === undefined) throw new Error("expected a foreign plan");
+    expect((await serveReplyOf(denyPlan, denyPlan.url)).status).toBe(200);
+    expect((await serveOf(denyPlan, "https://cdn.example/x.png")).kind).toBe("deny");
+    expect(existsSync(join(denied.outside, ".hreader"))).toBe(false);
   });
 });
 
