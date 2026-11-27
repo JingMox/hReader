@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseHtml } from "../../src/html/parse";
+import { bodyTextOf } from "../../src/annotations/body-text";
 import {
   docRelocatorOf,
   elementByPath,
@@ -156,7 +157,7 @@ describe("elementByPath · lookup", () => {
 });
 
 describe("docRelocatorOf · selector relocation", () => {
-  it("should resolve inside the element text and tag the hit as via=selector", () => {
+  it("should resolve inside the element text and report body-text offsets tagged via=selector", () => {
     const relocate = docRelocatorOf(FOREIGN);
     const result = relocate(
       note({
@@ -165,7 +166,9 @@ describe("docRelocatorOf · selector relocation", () => {
       }),
     );
 
-    expect(result).toEqual({ ok: true, start: 0, end: 6, via: "selector" });
+    // D49: start/end index into bodyTextOf — "second" sits at [11,17) of
+    // "hello worldsecond paragraphitem", not at [0,6) of the element's own text.
+    expect(result).toEqual({ ok: true, start: 11, end: 17, via: "selector" });
   });
 
   it("should fall back to the body text when the selector no longer matches", () => {
@@ -192,7 +195,7 @@ describe("docRelocatorOf · selector relocation", () => {
     expect(result).toEqual({ ok: false, reason: "anchor_lost", via: "body" });
   });
 
-  it("should report ambiguous when every multi-hit fails its context inside the element", () => {
+  it("should report ambiguous via=body when every level fails the same disambiguation", () => {
     const relocate = docRelocatorOf("<body><p>AB AB</p></body>");
     const result = relocate(
       note({
@@ -201,7 +204,9 @@ describe("docRelocatorOf · selector relocation", () => {
       }),
     );
 
-    expect(result).toEqual({ ok: false, reason: "ambiguous", via: "selector" });
+    // D49: a selector-level miss falls through to the body level, which reports
+    // the final verdict — same text, same ambiguous outcome, via=body.
+    expect(result).toEqual({ ok: false, reason: "ambiguous", via: "body" });
   });
 
   it("should disambiguate a repeated quote with prefix and suffix inside the element", () => {
@@ -230,15 +235,31 @@ describe("docRelocatorOf · selector relocation", () => {
 });
 
 describe("docRelocatorOf · nodeId relocation by document class", () => {
-  it("should keep the model-based logic on a managed document", () => {
+  it("should keep the nodeId level on a managed document and report body-text offsets", () => {
     const relocate = docRelocatorOf(MANAGED);
     const hit = relocate(
       note({ nodeId: "hr-b", anchor: { exact: "正文一", prefix: "", suffix: "", start: 0 } }),
     );
-    const missing = relocate(note({ nodeId: "hr-gone" }));
 
     expect(hit).toEqual({ ok: true, start: 0, end: 3, via: "node" });
-    expect(missing).toEqual({ ok: false, reason: "orphaned", via: "node" });
+  });
+
+  it("should fall back to the body text when the nodeId is gone (D49)", () => {
+    const relocate = docRelocatorOf(MANAGED);
+    const missing = relocate(note({ nodeId: "hr-gone" }));
+
+    expect(missing).toEqual({ ok: true, start: 0, end: 3, via: "body" });
+  });
+
+  it("should fall back to the body text when the node exists but the anchor does not (D49)", () => {
+    const relocate = docRelocatorOf(MANAGED);
+    const result = relocate(
+      note({ nodeId: "hr-c", anchor: { exact: "正文一", prefix: "", suffix: "", start: 0 } }),
+    );
+
+    // 正文一 lives in hr-b's block, outside hr-c's slice — the node level misses
+    // and the body level relocates it.
+    expect(result).toEqual({ ok: true, start: 0, end: 3, via: "body" });
   });
 
   it("should find a nodeId through a data-hr-id scan on a normalizable document", () => {
@@ -246,10 +267,15 @@ describe("docRelocatorOf · nodeId relocation by document class", () => {
     const hit = relocate(
       note({ nodeId: "x", anchor: { exact: "可归一的文本", prefix: "", suffix: "", start: 0 } }),
     );
-    const missing = relocate(note({ nodeId: "x-gone" }));
 
     expect(hit).toEqual({ ok: true, start: 0, end: 6, via: "node" });
-    expect(missing).toEqual({ ok: false, reason: "orphaned", via: "node" });
+  });
+
+  it("should fall back to the body text when the nodeId is gone on a normalizable document (D49)", () => {
+    const relocate = docRelocatorOf(NORMALIZABLE);
+    const missing = relocate(note({ nodeId: "x-gone" }));
+
+    expect(missing).toEqual({ ok: true, start: 0, end: 6, via: "body" });
   });
 
   it("should resolve a nodeId on a foreign document through the attribute scan", () => {
@@ -271,13 +297,85 @@ describe("docRelocatorOf · nodeId relocation by document class", () => {
       }),
     );
 
-    expect(result).toEqual({ ok: true, start: 0, end: 3, via: "node" });
+    // D49: offsets index into bodyTextOf — 正文二 sits at [3,6) of "正文一正文二".
+    expect(result).toEqual({ ok: true, start: 3, end: 6, via: "node" });
   });
 
   it("should report orphaned via=none when the record carries no locating info", () => {
     const relocate = docRelocatorOf(MANAGED);
 
     expect(relocate(note())).toEqual({ ok: false, reason: "orphaned", via: "none" });
+  });
+});
+
+describe("docRelocatorOf · D49 fallback chain levels", () => {
+  it("should fall back nodeId → selector when the node is gone but the selector still matches", () => {
+    const relocate = docRelocatorOf(MANAGED);
+    const result = relocate(
+      note({
+        nodeId: "hr-gone",
+        selector: "body > article:nth-of-type(1) > p:nth-of-type(2)",
+        anchor: { exact: "正文二", prefix: "", suffix: "", start: 0 },
+      }),
+    );
+
+    expect(result).toEqual({ ok: true, start: 3, end: 6, via: "selector" });
+  });
+
+  it("should fall back nodeId → selector → body when only the quote survives", () => {
+    const relocate = docRelocatorOf(MANAGED);
+    const result = relocate(
+      note({
+        nodeId: "hr-gone",
+        selector: "body > table:nth-of-type(1)",
+        anchor: { exact: "正文二", prefix: "", suffix: "", start: 0 },
+      }),
+    );
+
+    expect(result).toEqual({ ok: true, start: 3, end: 6, via: "body" });
+  });
+
+  it("should fall back selector → body when the element exists but the anchor left it (D49)", () => {
+    const relocate = docRelocatorOf(FOREIGN);
+    const result = relocate(
+      note({
+        selector: "body > ul:nth-of-type(1)",
+        anchor: { exact: "second", prefix: "", suffix: "", start: 0 },
+      }),
+    );
+
+    // The <ul> exists ("item") but "second" is not inside it: the selector level
+    // misses and the body level finds it inside the div.
+    expect(result).toEqual({ ok: true, start: 11, end: 17, via: "body" });
+  });
+
+  it("should report the body verdict when every level misses", () => {
+    const relocate = docRelocatorOf(MANAGED);
+    const result = relocate(
+      note({
+        nodeId: "hr-gone",
+        selector: "body > table:nth-of-type(1)",
+        anchor: { exact: "不存在", prefix: "", suffix: "", start: 0 },
+      }),
+    );
+
+    expect(result).toEqual({ ok: false, reason: "anchor_lost", via: "body" });
+  });
+
+  it("should keep exact+context disambiguation mandatory at every level", () => {
+    const relocate = docRelocatorOf(
+      '<body><div data-hr-id="n1">AB AB</div><p>先 AB 后</p></body>',
+    );
+    const result = relocate(
+      note({
+        nodeId: "n1",
+        anchor: { exact: "AB", prefix: "先 ", suffix: " 后", start: 0 },
+      }),
+    );
+
+    // Inside the node slice the two "AB" hits fit neither context → ambiguous at
+    // the node level; the body level still finds the context-fitting one.
+    expect(result).toEqual({ ok: true, start: 7, end: 9, via: "body" });
   });
 });
 
@@ -300,6 +398,7 @@ describe("docRelocatorOf · degenerate documents", () => {
       }),
     );
 
-    expect(result).toEqual({ ok: true, start: 0, end: 3, via: "selector" });
+    // D49: body-text offsets — 正文二 sits at [3,6).
+    expect(result).toEqual({ ok: true, start: 3, end: 6, via: "selector" });
   });
 });
