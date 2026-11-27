@@ -55,12 +55,17 @@ const linkAnnotOf = (
   });
 
 /** Shape (a): a /Link with /Dest and NO /A key — a bare `A: action` would move it out of shape (a). */
-const destAnnotOf = (doc: PDFDocument, dest: LitValue): PDFDict =>
+const destAnnotOf = (
+  doc: PDFDocument,
+  dest: LitValue,
+  extra: Record<string, LitValue> = {},
+): PDFDict =>
   doc.context.obj({
     Type: PDFName.of("Annot"),
     Subtype: PDFName.of("Link"),
     Rect: [0, 0, 120, 20],
     Dest: dest,
+    ...extra,
   });
 
 const uriAnnotOf = (doc: PDFDocument, uri: string): PDFDict =>
@@ -559,6 +564,51 @@ describe("sanitizePdfLinks · structural strictness", () => {
       ),
     ]);
     const failure = await failureOf(bytes);
+    expect(failure).toBeInstanceOf(HrError);
+    expect((failure as HrError).code).toBe("render_empty");
+  });
+
+  it("should keep a Link whose dangling reference sits deeper than the walk bound", async () => {
+    // RESOLVABLE_DEPTH is armor against unbounded graphs, not logic: a ref at
+    // depth 0 is still resolved, but one inside a container reached AT the
+    // bound is never visited. Five nested containers put the refs just past it.
+    const bytes = await buildPdfOf((doc) => [
+      destAnnotOf(doc, [PDFName.of("Fit")], {
+        X: [[[[[PDFRef.of(9991, 0)]]]]],
+        Y: { a: { a: { a: { a: { a: PDFRef.of(9990, 0) } } } } },
+      }),
+    ]);
+    expect(await sanitizePdfLinks(bytes)).toBe(bytes);
+  });
+
+  it("should terminate the walk on a self-referential annotation value", async () => {
+    // The seen set is the cycle guard: X resolves to a dict that names itself,
+    // and the second arrival must stop instead of re-walking forever.
+    const bytes = await buildPdfOf((doc) => {
+      const cyclic = doc.context.obj({});
+      cyclic.set(PDFName.of("Z"), doc.context.register(cyclic));
+      return [destAnnotOf(doc, [PDFName.of("Fit")], { X: doc.context.register(cyclic) })];
+    });
+    expect(await sanitizePdfLinks(bytes)).toBe(bytes);
+  });
+
+  it("should fail closed when a kept annotation references a malformed object", async () => {
+    // The corrupt object sits BEHIND a reference inside an otherwise-clean
+    // Link: throwOnInvalidObject must make the load itself fail — a lenient
+    // load would wrap the bytes as an "invalid object" leaf the walk cannot
+    // vet, and the Link would survive with it.
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([600, 400]);
+    const bad = doc.context.register(doc.context.obj({ ZZ: PDFString.of("MARKERZZ") }));
+    const annot = destAnnotOf(doc, [PDFName.of("Fit")], { X: bad });
+    page.node.set(ANNOTS, doc.context.obj([doc.context.register(annot)]));
+    const saved = await doc.save({ useObjectStreams: false });
+    const text = Buffer.from(saved).toString("latin1");
+    expect(text).toContain("/ZZ (MARKERZZ)");
+    const corrupted = new Uint8Array(
+      Buffer.from(text.replace("/ZZ (MARKERZZ)", "?ZZ (MARKERZZ)"), "latin1"),
+    );
+    const failure = await failureOf(corrupted);
     expect(failure).toBeInstanceOf(HrError);
     expect((failure as HrError).code).toBe("render_empty");
   });
