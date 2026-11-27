@@ -545,6 +545,20 @@ describe("http-io · 公开文案的两道裁剪", () => {
     const long = errorReply(new HttpFault(400, "x".repeat(250)));
     expect(messageOf(long.body)).toHaveLength(201);
   });
+
+  it("should not split a surrogate pair when the 200-char cut lands inside an emoji", () => {
+    // 199 'x' + 😀 + 50 'y' = 251 units: the 200-unit cut falls between the emoji's two halves —
+    // drop the high half, keep 199 chars + the ellipsis (the format itself is unchanged).
+    const reply = errorReply(new HttpFault(400, `${"x".repeat(199)}😀${"y".repeat(50)}`));
+
+    expect(reply.status).toBe(400);
+    const message = messageOf(reply.body);
+    expect(message).toBe(`${"x".repeat(199)}…`);
+    expect(message).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+    expect(message).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+    // A well-formed pair would be emitted literally by JSON.stringify; any \ud8–\udf escape means a lone surrogate.
+    expect(reply.body).not.toMatch(/\\ud[89a-f][0-9a-f]{2}/iu);
+  });
 });
 
 describe("server · 多个 Host 头（解析器先拒，handler 分支不可达）", () => {
