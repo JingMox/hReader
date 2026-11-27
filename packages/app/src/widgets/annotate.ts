@@ -9,16 +9,19 @@ import {
   NOTE_LIMIT,
   parseFrameMessage,
   placementOf,
-  type SidecarPaint,
+  type SidecarEntry,
   type WireAnchor,
 } from "../annotate-proto.ts";
 import type { Host } from "../dom.ts";
+import { mountAnnPanel, type AnnPanelHandle, type AnnPanelIo } from "./ann-panel.ts";
 import { COPY } from "./copy.ts";
+
+export type { AnnPanelIo } from "./ann-panel.ts";
 
 /** Wraps `POST /annotate` and `GET/POST /sidecar` (main.ts implements it over io.post/io.json). */
 export interface AnnotateIo {
   readonly mint: () => Promise<string>;
-  readonly list: () => Promise<readonly SidecarPaint[]>;
+  readonly list: () => Promise<readonly SidecarEntry[]>;
   readonly add: (body: {
     readonly anchor: WireAnchor;
     readonly selector?: string;
@@ -62,6 +65,11 @@ export interface AnnotateDeps {
   readonly docSrc: () => string;
   /** mint/list/add failures land on the banner error slot (foreign's reportError). */
   readonly onError: (cause: unknown) => void;
+  /**
+   * The D55 side panel's write ops; absent = no panel (legacy shells/tests).
+   * When present, the panel opens/closes with annotate mode and `open` selects there.
+   */
+  readonly panel?: { readonly io: AnnPanelIo } | undefined;
 }
 
 interface AnnotateHandle {
@@ -75,7 +83,7 @@ interface AnnotateHandle {
   readonly destroy: () => void;
 }
 
-type Mode = "edit" | "view" | "hint";
+type Mode = "edit" | "hint";
 
 export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
   const { host, parent, env } = deps;
@@ -85,7 +93,6 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
   const DRAFT = `${parent} #hr-annotate-draft`;
   const SAVE = `${parent} #hr-annotate-save`;
   const CANCEL = `${parent} #hr-annotate-cancel`;
-  const VIEW = `${parent} #hr-annotate-view`;
   const HINT = `${parent} #hr-annotate-hint`;
 
   let active = false;
@@ -96,7 +103,49 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
   let draftFocused = false;
   let lastCls: "foreign" | "normalizable" = "foreign";
   let pendingSelection: { readonly anchor: WireAnchor; readonly selector?: string } | undefined;
-  const annotations = new Map<string, SidecarPaint>();
+
+  const postHighlights = (items: readonly SidecarEntry[]): void => {
+    const out: { id: string; start: number; end: number; status: string }[] = [];
+    for (const item of items) {
+      if (!item.relocation.ok) continue;
+      out.push({
+        id: item.id,
+        start: item.relocation.start,
+        end: item.relocation.end,
+        status: item.status,
+      });
+    }
+    env.postToFrame({ type: "hr-annotator/highlights", version: 1, items: out });
+  };
+
+  const refreshHighlights = (): void => {
+    void deps.io.list().then(
+      (items) => {
+        if (dead || !active) return;
+        postHighlights(items);
+        panel?.render(items);
+      },
+      (cause: unknown) => {
+        if (dead) return;
+        deps.onError(cause);
+      },
+    );
+  };
+
+  // The D55 side panel: the same list feeds highlights (above) and the card render;
+  // its writes re-list through refreshHighlights so both stay in step. `panel` is a
+  // const: refreshHighlights above captures the binding and only runs post-mount.
+  const panel: AnnPanelHandle | undefined =
+    deps.panel === undefined
+      ? undefined
+      : mountAnnPanel({
+          host,
+          parent,
+          io: deps.panel.io,
+          postToFrame: env.postToFrame,
+          onChanged: refreshHighlights,
+          onError: deps.onError,
+        });
 
   const hidePop = (): void => {
     host.attr(POP, "hidden", "");
@@ -105,7 +154,6 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
   const paintMode = (): void => {
     host.attr(DRAFT, "hidden", mode === "edit" ? undefined : "");
     host.attr(SAVE, "hidden", mode === "edit" ? undefined : "");
-    host.attr(VIEW, "hidden", mode === "view" ? undefined : "");
     host.attr(HINT, "hidden", mode === "hint" ? undefined : "");
   };
 
@@ -138,19 +186,6 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
     showAt(spot.x, spot.y);
   };
 
-  const showView = (note: string): void => {
-    const frame = env.frameRect() ?? { x: 0, y: 0, width: 0, height: 0 };
-    const spot = placementOf(
-      { x: frame.x, y: frame.y },
-      { x: 16, y: 16, w: 0, h: 0 },
-      env.viewport(),
-    );
-    mode = "view";
-    host.text(VIEW, note);
-    paintMode();
-    showAt(spot.x, spot.y);
-  };
-
   const showHint = (text: string): void => {
     const frame = env.frameRect() ?? { x: 0, y: 0, width: 0, height: 0 };
     const spot = placementOf(
@@ -164,35 +199,6 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
     showAt(spot.x, spot.y);
   };
 
-  const postHighlights = (items: readonly SidecarPaint[]): void => {
-    const out: { id: string; start: number; end: number; status: string }[] = [];
-    for (const item of items) {
-      if (!item.relocation.ok) continue;
-      out.push({
-        id: item.id,
-        start: item.relocation.start,
-        end: item.relocation.end,
-        status: item.status,
-      });
-    }
-    env.postToFrame({ type: "hr-annotator/highlights", version: 1, items: out });
-  };
-
-  const refreshHighlights = (): void => {
-    void deps.io.list().then(
-      (items) => {
-        if (dead || !active) return;
-        annotations.clear();
-        for (const item of items) annotations.set(item.id, item);
-        postHighlights(items);
-      },
-      (cause: unknown) => {
-        if (dead) return;
-        deps.onError(cause);
-      },
-    );
-  };
-
   const enter = (): void => {
     pending = true;
     void deps.io.mint().then(
@@ -203,6 +209,7 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
         deps.frame.setSandbox("allow-scripts");
         deps.frame.navigate(url);
         active = true;
+        panel?.open();
         paint();
       },
       (cause: unknown) => {
@@ -216,6 +223,7 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
   const exit = (): void => {
     active = false;
     pendingSelection = undefined;
+    panel?.close();
     hidePop();
     deps.frame.setSandbox(deps.sandboxOff());
     deps.frame.navigate(deps.docSrc());
@@ -284,8 +292,8 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
       showHint(COPY.annotateTooLong);
       return;
     }
-    const entry = annotations.get(message.id);
-    if (entry !== undefined) showView(entry.note);
+    // kind === "open": a highlight click selects the card in the panel.
+    panel?.select(message.id);
   };
 
   const offMessage = env.onMessage(onMessage);
@@ -350,6 +358,7 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
       offFocus();
       offBlur();
       offKey();
+      panel?.destroy();
       hidePop();
       host.attr(BTN, "hidden", "");
     },

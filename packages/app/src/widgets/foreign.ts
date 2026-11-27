@@ -3,7 +3,7 @@
 // 块级 diff、批注、演示模式也就天然够不到它。
 
 import type { Host } from "../dom.ts";
-import { mountAnnotate, type AnnotateEnv, type AnnotateIo } from "./annotate.ts";
+import { mountAnnotate, type AnnPanelIo, type AnnotateEnv, type AnnotateIo } from "./annotate.ts";
 import { COPY } from "./copy.ts";
 
 /** 服务端 `trust` 字段的旧式档位（兼容字段）：off = 脚本不生效；local = 脚本生效。 */
@@ -81,7 +81,14 @@ export interface ForeignDeps {
   /** 存在时把导航门栏状态上报给嵌入壳（桌面端）；浏览器里不接。 */
   readonly reportGate?: (gate: DocGate) => void;
   /** Annotate mode: `POST /annotate` + `…/sidecar` wrappers and the message env; absent = no annotate button. */
-  readonly annotate?: { readonly io: AnnotateIo; readonly env: AnnotateEnv } | undefined;
+  readonly annotate?:
+    | {
+        readonly io: AnnotateIo;
+        readonly env: AnnotateEnv;
+        /** D55 side panel's write ops; absent = highlight popover only (no panel). */
+        readonly panel?: { readonly io: AnnPanelIo } | undefined;
+      }
+    | undefined;
 }
 
 export interface ForeignHandle {
@@ -169,6 +176,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
           sandboxOff: sandboxOf,
           docSrc: () => srcOf(undefined),
           onError: reportError,
+          panel: deps.annotate.panel,
         });
   /** In annotate mode sandbox is always allow-scripts: syncInfo/applyPerms repaints must not write it back to the permission value. */
   const frameSandbox = (): string =>

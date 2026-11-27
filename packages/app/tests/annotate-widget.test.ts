@@ -1,14 +1,16 @@
 // This layer covers `widgets/annotate`: the banner toggle state machine
 // (mint → sandbox before src), message intake guards (source/origin/parse),
-// popover modes (edit/view/hint), save → POST sidecar, SSE/doc.changed refresh,
-// and the destroy path. Everything is driven through the fake Host, so the
-// call sequence itself is the assertion.
+// popover modes (edit/hint), save → POST sidecar, the D55 panel wiring
+// (open → select, enter/exit → open/close, render on refresh),
+// SSE/doc.changed refresh, and the destroy path. Everything is driven through
+// the fake Host, so the call sequence itself is the assertion.
 
 import { describe, expect, it } from "vitest";
 
-import { NOTE_LIMIT } from "../src/annotate-proto.ts";
+import { NOTE_LIMIT, type SidecarEntry } from "../src/annotate-proto.ts";
 import {
   mountAnnotate,
+  type AnnPanelIo,
   type AnnotateDeps,
   type AnnotateEnv,
   type AnnotateIo,
@@ -23,8 +25,9 @@ const POP = `${PARENT} #hr-annotate-pop`;
 const DRAFT = `${PARENT} #hr-annotate-draft`;
 const SAVE = `${PARENT} #hr-annotate-save`;
 const CANCEL = `${PARENT} #hr-annotate-cancel`;
-const VIEW = `${PARENT} #hr-annotate-view`;
 const HINT = `${PARENT} #hr-annotate-hint`;
+const ANN_PANEL = `${PARENT} #hr-ann-panel`;
+const ANN_PENDING = `${PARENT} #hr-ann-pending`;
 
 const FRAME_WIN = { frame: true };
 
@@ -36,17 +39,25 @@ const SELECTION = {
   rect: { x: 20, y: 50, w: 40, h: 10 },
 };
 
-const PAINT_OK = {
+const PAINT_OK: SidecarEntry = {
   id: "a1",
-  status: "pending" as const,
+  status: "pending",
   note: "nota uno",
-  relocation: { ok: true as const, start: 5, end: 10 },
+  exact: "mundo",
+  author: "user",
+  createdAt: "2024-05-01T10:00:00Z",
+  replies: [],
+  relocation: { ok: true, start: 5, end: 10 },
 };
-const PAINT_GONE = {
+const PAINT_GONE: SidecarEntry = {
   id: "a2",
-  status: "resolved" as const,
+  status: "resolved",
   note: "nota dos",
-  relocation: { ok: false as const, start: 0, end: 0 },
+  exact: "otro",
+  author: "user",
+  createdAt: "2024-05-01T10:00:00Z",
+  replies: [],
+  relocation: { ok: false, start: 0, end: 0, reason: "anchor_lost" },
 };
 
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -81,9 +92,11 @@ interface Rig {
 const rigOf = (
   over: {
     readonly mint?: () => Promise<string>;
-    readonly list?: () => Promise<readonly (typeof PAINT_OK)[]>;
+    readonly list?: () => Promise<readonly SidecarEntry[]>;
     readonly add?: AnnotateIo["add"];
     readonly frameRect?: AnnotateEnv["frameRect"];
+    /** true = mount the D55 panel with a no-op write io (card ops covered in ann-panel.test.ts). */
+    readonly panel?: boolean;
   } = {},
 ): Rig => {
   const fake = createFakeHost();
@@ -141,6 +154,18 @@ const rigOf = (
     onError: (cause) => {
       errors.push(cause);
     },
+    ...(over.panel === true
+      ? {
+          panel: {
+            io: {
+              resolve: () => Promise.resolve(),
+              reopen: () => Promise.resolve(),
+              reply: () => Promise.resolve(),
+              remove: () => Promise.resolve(),
+            } satisfies AnnPanelIo,
+          },
+        }
+      : {}),
   };
   return {
     deps,
@@ -297,7 +322,7 @@ describe("annotate widget · popover", () => {
     expect(styles.at(-1)).toBe("left:120px;top:116px");
     expect(attrsOf(rig, POP, "hidden").at(-1)).toBe("<removed>");
     expect(attrsOf(rig, DRAFT, "hidden").at(-1)).toBe("<removed>");
-    expect(attrsOf(rig, VIEW, "hidden").at(-1)).toBe("");
+    expect(attrsOf(rig, HINT, "hidden").at(-1)).toBe("");
 
     rig.send({ type: "hr-annotator/selection-cleared" });
     expect(attrsOf(rig, POP, "hidden").at(-1)).toBe("");
@@ -344,14 +369,11 @@ describe("annotate widget · popover", () => {
     expect(attrsOf(rig, DRAFT, "hidden").at(-1)).toBe("");
   });
 
-  it("should place hint and view at the zero rect when the frame has none", async () => {
+  it("should place the hint at the zero rect when the frame has none", async () => {
     const rig = rigOf({ frameRect: () => undefined });
     await enterWithList(rig);
     rig.send({ type: "hr-annotator/selection-too-long" });
     expect(attrsOf(rig, HINT, "hidden").at(-1)).toBe("<removed>");
-    expect(attrsOf(rig, POP, "style").at(-1)).toMatch(/^left:[\d.-]+px;top:[\d.-]+px$/);
-    rig.send({ type: "hr-annotator/open", id: "a1" });
-    expect(attrsOf(rig, VIEW, "hidden").at(-1)).toBe("<removed>");
     expect(attrsOf(rig, POP, "style").at(-1)).toMatch(/^left:[\d.-]+px;top:[\d.-]+px$/);
 
     rig.send(SELECTION);
@@ -424,37 +446,46 @@ describe("annotate widget · popover", () => {
     expect(rig.added).toHaveLength(0);
   });
 
-  it("should open a stored note in read-only view and ignore unknown ids", async () => {
-    const rig = rigOf();
+  it("should select the panel card on open and ignore unknown ids", async () => {
+    const rig = rigOf({ panel: true });
     await enterWithList(rig);
     rig.send({ type: "hr-annotator/open", id: "a1" });
-    const viewTexts = rig.fake.calls.filter((c) => c.op === "text" && c.args[0] === VIEW);
-    expect(viewTexts.at(-1)?.args[1]).toBe("nota uno");
-    expect(attrsOf(rig, POP, "hidden").at(-1)).toBe("<removed>");
-    expect(attrsOf(rig, VIEW, "hidden").at(-1)).toBe("<removed>");
-    expect(attrsOf(rig, DRAFT, "hidden").at(-1)).toBe("");
-    expect(attrsOf(rig, SAVE, "hidden").at(-1)).toBe("");
-    expect(attrsOf(rig, HINT, "hidden").at(-1)).toBe("");
-    expect(attrsOf(rig, POP, "style").at(-1)).toMatch(/^left:[\d.-]+px;top:[\d.-]+px$/);
+    expect(attrsOf(rig, `${ANN_PANEL} [data-hr-annotation="a1"]`, "data-hr-selected").at(-1)).toBe(
+      "true",
+    );
+    const scrolls = rig.fake.calls.filter((c) => c.op === "scrollTo");
+    expect(scrolls.at(-1)?.args[0]).toBe(`${ANN_PANEL} [data-hr-annotation="a1"]`);
+    // `open` no longer opens the popover — selection lives in the panel.
+    expect(attrsOf(rig, POP, "hidden")).not.toContain("<removed>");
 
     const before = rig.fake.calls.length;
     rig.send({ type: "hr-annotator/open", id: "zz" });
     expect(rig.fake.calls.length).toBe(before);
   });
 
-  it("should drop stale entries from the open map when the list refreshes", async () => {
-    let items: readonly (typeof PAINT_OK)[] = [PAINT_OK];
-    const rig = rigOf({ list: () => Promise.resolve(items) });
+  it("should ignore open for entries dropped by a refresh", async () => {
+    let items: readonly SidecarEntry[] = [PAINT_OK];
+    const rig = rigOf({ list: () => Promise.resolve(items), panel: true });
     const handle = mountAnnotate(rig.deps);
     await enterActive(rig);
     rig.send({ type: "hr-annotator/hello", version: 1 });
     await tick();
     rig.send({ type: "hr-annotator/open", id: "a1" });
-    expect(attrsOf(rig, VIEW, "hidden").at(-1)).toBe("<removed>");
+    expect(attrsOf(rig, `${ANN_PANEL} [data-hr-annotation="a1"]`, "data-hr-selected").at(-1)).toBe(
+      "true",
+    );
 
     items = [];
     handle.annotationsChanged();
     await tick();
+    const before = rig.fake.calls.length;
+    rig.send({ type: "hr-annotator/open", id: "a1" });
+    expect(rig.fake.calls.length).toBe(before);
+  });
+
+  it("should do nothing on open when no panel is mounted", async () => {
+    const rig = rigOf();
+    await enterWithList(rig);
     const before = rig.fake.calls.length;
     rig.send({ type: "hr-annotator/open", id: "a1" });
     expect(rig.fake.calls.length).toBe(before);
@@ -489,21 +520,43 @@ describe("annotate widget · popover", () => {
     await tick();
   });
 
-  it("should ignore save clicks outside edit mode or without a selection", async () => {
+  it("should ignore save clicks without a pending selection", async () => {
     const rig = rigOf();
     await enterWithList(rig);
     rig.fake.fire(SAVE, "click", {}); // no selection yet
-    rig.send({ type: "hr-annotator/open", id: "a1" }); // view mode
-    rig.fake.fire(SAVE, "click", {});
     // A typed draft without a selection still cannot save — and must not throw.
     rig.fake.fire(DRAFT, "input", { value: "x" });
     rig.fake.fire(SAVE, "click", {});
-    // A pending selection under view mode cannot save either.
-    rig.send(SELECTION);
-    rig.send({ type: "hr-annotator/open", id: "a1" });
-    rig.fake.fire(SAVE, "click", {});
     await tick();
     expect(rig.added).toHaveLength(0);
+  });
+});
+
+describe("annotate widget · panel lifecycle", () => {
+  it("should open the panel on enter, render lists on hello and close on exit", async () => {
+    const rig = rigOf({ panel: true });
+    mountAnnotate(rig.deps);
+    await enterActive(rig);
+    expect(attrsOf(rig, PARENT, "data-hr-annotate").at(-1)).toBe("");
+    expect(attrsOf(rig, ANN_PANEL, "hidden").at(-1)).toBe("<removed>");
+
+    rig.send({ type: "hr-annotator/hello", version: 1 });
+    await tick();
+    const childCalls = rig.fake.calls.filter((c) => c.op === "children");
+    expect(childCalls.some((c) => c.args[0] === ANN_PENDING)).toBe(true);
+    expect(childCalls.some((c) => c.args[0] === `${PARENT} #hr-ann-resolved`)).toBe(true);
+    expect(childCalls.some((c) => c.args[0] === `${PARENT} #hr-ann-lost`)).toBe(true);
+
+    rig.fake.fire(BTN, "click", {});
+    expect(attrsOf(rig, PARENT, "data-hr-annotate").at(-1)).toBe("<removed>");
+    expect(attrsOf(rig, ANN_PANEL, "hidden").at(-1)).toBe("");
+  });
+
+  it("should not touch the panel when no panel dep is given", async () => {
+    const rig = rigOf();
+    mountAnnotate(rig.deps);
+    await enterActive(rig);
+    expect(rig.fake.calls.some((c) => String(c.args[0]).includes("hr-ann-panel"))).toBe(false);
   });
 });
 

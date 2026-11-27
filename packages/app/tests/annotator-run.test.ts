@@ -437,7 +437,7 @@ describe("annotator run · highlights, focus and open", () => {
     const detached = ND(new Window().document.createTextNode("x"));
     const { env, seen } = highlightEnv({
       setRange: (range) => {
-        (range as { startContainer?: DomNodeLike }).startContainer = detached;
+        (range as { endContainer?: DomNodeLike }).endContainer = detached;
       },
       scrollIntoView: (el) => {
         scrolled.push(el);

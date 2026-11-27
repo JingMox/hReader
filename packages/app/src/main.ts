@@ -433,6 +433,42 @@ export const bootDocumentWith = async (input: BootDocumentInput): Promise<Booted
         },
       },
       env: annotateEnvOf(),
+      panel: {
+        io: {
+          resolve: async (id) => {
+            await postJson(
+              io,
+              `/api/doc/${encoded}/sidecar/${encodeURIComponent(id)}/resolve`,
+              {},
+              isAnyRecord,
+            );
+          },
+          reopen: async (id) => {
+            await postJson(
+              io,
+              `/api/doc/${encoded}/sidecar/${encodeURIComponent(id)}/reopen`,
+              {},
+              isAnyRecord,
+            );
+          },
+          reply: async (id, note) => {
+            await postJson(
+              io,
+              `/api/doc/${encoded}/sidecar/${encodeURIComponent(id)}/reply`,
+              { note },
+              isAnyRecord,
+            );
+          },
+          remove: async (id) => {
+            await postJson(
+              io,
+              `/api/doc/${encoded}/sidecar/${encodeURIComponent(id)}/delete`,
+              {},
+              isAnyRecord,
+            );
+          },
+        },
+      },
     },
   });
 };

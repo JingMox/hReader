@@ -27,15 +27,26 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-foreign-action",
   "#hr-foreign-error",
   "#hr-foreign-frame",
-  // Foreign annotations: banner toggle + selection popover (draft / read-only / hint / two buttons)
+  // Foreign annotations: banner toggle + selection popover (draft / hint / two buttons)
   "#hr-annotate-btn",
   "#hr-annotate-pop",
   "#hr-annotate-draft",
-  "#hr-annotate-view",
   "#hr-annotate-hint",
   "#hr-annotate-actions",
   "#hr-annotate-save",
   "#hr-annotate-cancel",
+  // Foreign annotation panel (D55): title / error / pending / resolved / lost group / empty
+  "#hr-ann-panel",
+  "#hr-ann-title",
+  "#hr-ann-error",
+  "#hr-ann-pending",
+  "#hr-ann-resolved",
+  "#hr-ann-lost",
+  "#hr-ann-group-lost",
+  "#hr-ann-pending-title",
+  "#hr-ann-resolved-title",
+  "#hr-ann-lost-title",
+  "#hr-ann-empty",
   // 演示模式：入口按钮 / 覆盖层容器 / 页码 / 退出
   "#hr-present-btn",
   "#hr-present",

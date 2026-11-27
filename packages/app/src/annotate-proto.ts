@@ -36,12 +36,32 @@ type FrameMessage =
   | { readonly kind: "tooLong" }
   | { readonly kind: "open"; readonly id: string };
 
-/** The slice of a sidecar entry the reader paints: id + status + note + relocation. */
-export interface SidecarPaint {
+/** One reply inside a sidecar annotation thread (panel rendering only — bounded strings). */
+export interface SidecarReplyEntry {
+  readonly id: string;
+  readonly author: string;
+  readonly note: string;
+  readonly createdAt: string;
+}
+
+/**
+ * The sidecar entry the reader paints (highlight offsets) and lists (panel cards):
+ * id + status + note + anchor text + author/createdAt + lifecycle + replies + relocation.
+ * `relocation.ok:false` keeps the server-computed `reason` so the panel can name it.
+ */
+export interface SidecarEntry {
   readonly id: string;
   readonly status: "pending" | "resolved";
   readonly note: string;
-  readonly relocation: { readonly ok: boolean; readonly start: number; readonly end: number };
+  readonly exact: string;
+  readonly author: string;
+  readonly createdAt: string;
+  readonly resolvedAt?: string;
+  readonly resolutionNote?: string;
+  readonly replies: readonly SidecarReplyEntry[];
+  readonly relocation:
+    | { readonly ok: true; readonly start: number; readonly end: number }
+    | { readonly ok: false; readonly start: 0; readonly end: 0; readonly reason: string };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -128,33 +148,83 @@ export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
   return undefined;
 };
 
-const isPaintEntry = (value: unknown): value is SidecarPaint => {
-  if (!isRecord(value)) return false;
-  if (!isId(value["id"])) return false;
-  if (value["status"] !== "pending" && value["status"] !== "resolved") return false;
-  if (typeof value["note"] !== "string" || value["note"].length > NOTE_LIMIT) return false;
-  const relocation = value["relocation"];
-  if (!isRecord(relocation) || typeof relocation["ok"] !== "boolean") return false;
-  if (relocation["ok"]) {
-    return isOffset(relocation["start"]) && isOffset(relocation["end"]);
+const REPLY_LIMIT = 100;
+const AUTHOR_LIMIT = 64;
+const TIME_LIMIT = 64;
+const REASON_LIMIT = 200;
+
+const relocationOf = (value: unknown): SidecarEntry["relocation"] | undefined => {
+  if (!isRecord(value) || typeof value["ok"] !== "boolean") return undefined;
+  if (value["ok"]) {
+    return isOffset(value["start"]) && isOffset(value["end"])
+      ? { ok: true, start: value["start"], end: value["end"] }
+      : undefined;
   }
-  return true;
+  return { ok: false, start: 0, end: 0, reason: stringOf(value["reason"], REASON_LIMIT, "") };
 };
 
+const isReplyEntry = (value: unknown): value is SidecarReplyEntry =>
+  isRecord(value) &&
+  isId(value["id"]) &&
+  bounded(value["author"], AUTHOR_LIMIT) &&
+  bounded(value["note"], NOTE_LIMIT) &&
+  bounded(value["createdAt"], TIME_LIMIT);
+
+const repliesOf = (value: unknown): readonly SidecarReplyEntry[] => {
+  if (!Array.isArray(value)) return [];
+  const out: SidecarReplyEntry[] = [];
+  for (const item of value.slice(0, REPLY_LIMIT)) {
+    if (isReplyEntry(item)) {
+      out.push({
+        id: item.id,
+        author: item.author,
+        note: item.note,
+        createdAt: item.createdAt,
+      });
+    }
+  }
+  return out;
+};
+
+const exactOf = (value: unknown): string => {
+  if (!isRecord(value)) return "";
+  const exact = value["exact"];
+  return typeof exact === "string" && exact.length <= ANCHOR_LIMITS.exact ? exact : "";
+};
+
+const stringOf = (value: unknown, limit: number, fallback: string): string =>
+  typeof value === "string" && value.length <= limit ? value : fallback;
+
+const optionalOf = (value: unknown, limit: number): string | undefined =>
+  typeof value === "string" && value.length <= limit ? value : undefined;
+
 /** Tolerant list read: drops malformed entries instead of failing the whole list. */
-export const sidecarListOf = (data: unknown): readonly SidecarPaint[] => {
+export const sidecarListOf = (data: unknown): readonly SidecarEntry[] => {
   if (!isRecord(data) || !Array.isArray(data["annotations"])) return [];
-  const out: SidecarPaint[] = [];
+  const out: SidecarEntry[] = [];
   for (const item of data["annotations"]) {
-    if (!isPaintEntry(item)) continue;
-    const relocation = item.relocation;
+    if (!isRecord(item)) continue;
+    const id = item["id"];
+    const status = item["status"];
+    const note = item["note"];
+    if (!isId(id)) continue;
+    if (status !== "pending" && status !== "resolved") continue;
+    if (typeof note !== "string" || note.length > NOTE_LIMIT) continue;
+    const relocation = relocationOf(item["relocation"]);
+    if (relocation === undefined) continue;
+    const resolvedAt = optionalOf(item["resolvedAt"], TIME_LIMIT);
+    const resolutionNote = optionalOf(item["resolutionNote"], NOTE_LIMIT);
     out.push({
-      id: item.id,
-      status: item.status,
-      note: item.note,
-      relocation: relocation.ok
-        ? { ok: true, start: relocation.start, end: relocation.end }
-        : { ok: false, start: 0, end: 0 },
+      id,
+      status,
+      note,
+      exact: exactOf(item["anchor"]),
+      author: stringOf(item["author"], AUTHOR_LIMIT, "user"),
+      createdAt: stringOf(item["createdAt"], TIME_LIMIT, ""),
+      ...(resolvedAt === undefined ? {} : { resolvedAt }),
+      ...(resolutionNote === undefined ? {} : { resolutionNote }),
+      replies: repliesOf(item["replies"]),
+      relocation,
     });
   }
   return out;

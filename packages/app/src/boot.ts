@@ -19,7 +19,7 @@ import { missingAnchorsOf, reportMissingAnchors } from "./anchors.ts";
 import type { RawSelection } from "./widgets/selection.ts";
 import { COPY } from "./widgets/copy.ts";
 import { mountPresent, type PresentShell, type PresentWidget } from "./widgets/present.ts";
-import type { AnnotateEnv, AnnotateIo } from "./widgets/annotate.ts";
+import type { AnnPanelIo, AnnotateEnv, AnnotateIo } from "./widgets/annotate.ts";
 import {
   mountForeign,
   type DocGate,
@@ -122,7 +122,14 @@ export interface ClassifiedBootDeps extends Omit<
   /** `POST /api/style {docId, visualId}`：外来文档的主题写进文件里的 `<style id="hr-theme">`。 */
   readonly postStyle: (visualId: string) => Promise<unknown>;
   /** Annotate-mode IO + message env; absent = the annotate button never appears (tests/legacy shells). */
-  readonly annotate?: { readonly io: AnnotateIo; readonly env: AnnotateEnv } | undefined;
+  readonly annotate?:
+    | {
+        readonly io: AnnotateIo;
+        readonly env: AnnotateEnv;
+        /** D55 side panel's write ops (mounted alongside annotate when present). */
+        readonly panel?: { readonly io: AnnPanelIo } | undefined;
+      }
+    | undefined;
 }
 
 const ROOT = "#hr-root";

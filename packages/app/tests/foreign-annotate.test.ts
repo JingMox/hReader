@@ -170,6 +170,28 @@ describe("foreign · annotate integration", () => {
     expect(attrsOf(fake, FRAME, "sandbox").at(-1)).toBe("allow-scripts");
   });
 
+  it("should mount and open the annotation panel through the forwarded panel dep", async () => {
+    const { annotate } = annotateDeps();
+    const panel = {
+      io: {
+        resolve: () => Promise.resolve(),
+        reopen: () => Promise.resolve(),
+        reply: () => Promise.resolve(),
+        remove: () => Promise.resolve(),
+      },
+    };
+    const fake = createFakeHost();
+    mountForeign(depsOf(fake, { annotate: { ...annotate, panel } }));
+    await enter(fake);
+    // mountAnnPanel opened: the aside unhides and the root takes the grid marker.
+    expect(attrsOf(fake, `${ROOT} #hr-ann-panel`, "hidden")).toContain("<removed>");
+    expect(attrsOf(fake, ROOT, "data-hr-annotate")).toContain("");
+
+    fake.fire(BTN, "click", {}); // exit → the panel closes with the mode.
+    expect(attrsOf(fake, `${ROOT} #hr-ann-panel`, "hidden").at(-1)).toBe("");
+    expect(attrsOf(fake, ROOT, "data-hr-annotate").at(-1)).toBe("<removed>");
+  });
+
   it("should forward annotationsChanged only to an active annotate widget", async () => {
     const { annotate, lists } = annotateDeps();
     const fake = createFakeHost();

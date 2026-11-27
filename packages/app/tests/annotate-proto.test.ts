@@ -112,6 +112,10 @@ describe("annotate-proto · sidecarListOf", () => {
     id: "an-1",
     status: "pending",
     note: "nota",
+    anchor: { exact: "texto", prefix: "pre", suffix: "post", start: 4 },
+    author: "user",
+    createdAt: "2024-05-01T10:00:00Z",
+    replies: [{ id: "r1", author: "agent", note: "respuesta", createdAt: "2024-05-01T11:00:00Z" }],
     relocation: { ok: true, start: 3, end: 9, via: "anchor" },
   };
 
@@ -130,14 +134,111 @@ describe("annotate-proto · sidecarListOf", () => {
       ],
     });
     expect(list).toEqual([
-      { id: "an-1", status: "pending", note: "nota", relocation: { ok: true, start: 3, end: 9 } },
+      {
+        id: "an-1",
+        status: "pending",
+        note: "nota",
+        exact: "texto",
+        author: "user",
+        createdAt: "2024-05-01T10:00:00Z",
+        replies: [
+          { id: "r1", author: "agent", note: "respuesta", createdAt: "2024-05-01T11:00:00Z" },
+        ],
+        relocation: { ok: true, start: 3, end: 9 },
+      },
       {
         id: "an-2",
         status: "resolved",
         note: "nota",
-        relocation: { ok: false, start: 0, end: 0 },
+        exact: "texto",
+        author: "user",
+        createdAt: "2024-05-01T10:00:00Z",
+        replies: [
+          { id: "r1", author: "agent", note: "respuesta", createdAt: "2024-05-01T11:00:00Z" },
+        ],
+        relocation: { ok: false, start: 0, end: 0, reason: "x" },
       },
     ]);
+  });
+
+  it("should fill panel fields tolerantly when the sidecar omits them", () => {
+    const list = sidecarListOf({
+      annotations: [{ id: "an-1", status: "pending", note: "n", relocation: { ok: false } }],
+    });
+    expect(list).toEqual([
+      {
+        id: "an-1",
+        status: "pending",
+        note: "n",
+        exact: "",
+        author: "user",
+        createdAt: "",
+        replies: [],
+        relocation: { ok: false, start: 0, end: 0, reason: "" },
+      },
+    ]);
+  });
+
+  it("should bound panel fields and drop malformed replies without dropping the entry", () => {
+    const list = sidecarListOf({
+      annotations: [
+        {
+          ...entry,
+          anchor: { exact: "x".repeat(501) },
+          author: "x".repeat(65),
+          createdAt: "x".repeat(65),
+          resolvedAt: "2024-06-01T00:00:00Z",
+          resolutionNote: "done",
+          replies: [
+            { id: "r1", author: "user", note: "ok", createdAt: "t" },
+            { id: "", author: "user", note: "dropped", createdAt: "t" },
+            { id: "r3", author: "x".repeat(65), note: "n2", createdAt: "x".repeat(65) },
+            "garbage",
+          ],
+          relocation: { ok: false, reason: "y".repeat(201) },
+        },
+      ],
+    });
+    expect(list).toEqual([
+      {
+        id: "an-1",
+        status: "pending",
+        note: "nota",
+        exact: "",
+        author: "user",
+        createdAt: "",
+        resolvedAt: "2024-06-01T00:00:00Z",
+        resolutionNote: "done",
+        replies: [{ id: "r1", author: "user", note: "ok", createdAt: "t" }],
+        relocation: { ok: false, start: 0, end: 0, reason: "" },
+      },
+    ]);
+  });
+
+  it("should omit resolvedAt and resolutionNote when absent or non-string", () => {
+    const list = sidecarListOf({
+      annotations: [
+        entry,
+        { ...entry, id: "an-2", resolvedAt: 42, resolutionNote: ["x"] },
+        { ...entry, id: "an-3", resolvedAt: "x".repeat(65) },
+      ],
+    });
+    expect(list[0]).not.toHaveProperty("resolvedAt");
+    expect(list[0]).not.toHaveProperty("resolutionNote");
+    expect(list[1]).not.toHaveProperty("resolvedAt");
+    expect(list[1]).not.toHaveProperty("resolutionNote");
+    expect(list[2]).not.toHaveProperty("resolvedAt");
+  });
+
+  it("should cap replies at the wire limit", () => {
+    const replies = Array.from({ length: 110 }, (_, i) => ({
+      id: `r${String(i)}`,
+      author: "user",
+      note: "n",
+      createdAt: "t",
+    }));
+    const list = sidecarListOf({ annotations: [{ ...entry, replies }] });
+    expect(list[0]?.replies).toHaveLength(100);
   });
 
   it("should return empty for malformed payloads", () => {
