@@ -5,8 +5,8 @@ import type { HrErrorCode } from "../hr-error";
 /** 服务端**会抛**的码；`anchor_lost` 是客户端的"锚点失效"reason，服务端永不抛。
  *  `llm_failure` / `file_exists` 只由 CLI 侧的风格提取抛出（提取不经 HTTP），同样不进本表；
  *  `empty_document` 同理只由 `hr export print` 在本地渲染层抛出；
- *  四个 Chrome 码同属 CLI 本地渲染（不起/超时/空产物），HTTP 层永不抛；
- *  两个模板码只由 CLI/MCP 侧的模板操作抛出，HTTP 层没有模板路由。
+ *  the four Chrome codes all belong to CLI-side local rendering (launch/timeout/empty output) — the HTTP layer never throws them;
+ *  the two template codes are only thrown by CLI/MCP-side template operations — the HTTP layer has no template route.
  */
 export type ServerCode = Exclude<
   HrErrorCode,

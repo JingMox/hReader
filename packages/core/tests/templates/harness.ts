@@ -1,4 +1,4 @@
-// 这层管：模板测试的公共装置（假 HOME/工作区/模板根、种子模板文件、TemplateDeps 装配）；不含断言。
+// This layer: shared fixtures for template tests (fake HOME/workspace/template roots, seeded template files, TemplateDeps assembly); contains no assertions.
 
 import type { TemplateDeps } from "../../src/templates/contracts";
 import { depsOf, fakeFs, fixedClock, recordingSleep, type FakeFs } from "../io/harness";
@@ -15,7 +15,7 @@ export const depsAt = (fake: FakeFs, home = HOME): TemplateDeps => {
   return { ...depsOf(fake.port, clock.clock, recordingSleep(clock).sleep), home };
 };
 
-/** 合法 manifest 的最小形状；每个字段都能用 overrides 打掉。 */
+/** The minimal legal manifest shape; every field can be knocked out via overrides. */
 export const manifestText = (overrides: Record<string, unknown> = {}): string =>
   JSON.stringify({
     id: "my-tpl",
@@ -30,7 +30,7 @@ export const seedDirs = (fake: FakeFs, ...dirs: readonly string[]): void => {
   for (const dir of dirs) fake.state.dirs.add(dir);
 };
 
-/** 一条干净的 html 模板：manifest（id 自动取目录名）+ entry +（可选）style/guide/assets。 */
+/** A clean html template: manifest (id auto-derived from the dir name) + entry + optional style/guide/assets. */
 export const htmlTemplate = (
   dir: string,
   options: {

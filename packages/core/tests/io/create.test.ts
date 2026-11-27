@@ -1,5 +1,5 @@
-// 这层管："create only if absent"原语（io/create.ts）：link 与 open 两条路径的成功/EEXIST/IO 失败语义、
-// 批次中途失败的回收、tmp 残留形态。用假 fs 精确控错。
+// This layer: the "create only if absent" primitives (io/create.ts): success/EEXIST/IO-failure semantics
+// on both the link and open paths, mid-batch reclaim, and tmp residue shape. The fake fs injects precise errors.
 
 import { describe, expect, it } from "vitest";
 
@@ -23,7 +23,7 @@ const depsAt = (fake: FakeFs): PatchDeps => {
   return depsOf(fake.port, clock.clock, recordingSleep(clock).sleep);
 };
 
-/** 没有 `link` 端口的退路形态：走 `open` 的独占创建。显式包一层——"端口恰好没实现 link"的真实情形。 */
+/** The no-`link`-port fallback shape: exclusive create via `open`. Wrapped explicitly — the real situation of "the port happens not to implement link". */
 const withoutLink = (port: FileSystem): FileSystem => ({
   readFile: (path) => port.readFile(path),
   writeFile: (path, data) => port.writeFile(path, data),
@@ -46,7 +46,7 @@ const depsAtNoLink = (fake: FakeFs): PatchDeps => {
 const residueNames = (fake: FakeFs): string[] =>
   [...fake.state.files.keys()].filter((path) => /\.\d{6,}$/u.test(path));
 
-describe("createNewFile · link 路径", () => {
+describe("createNewFile · link path", () => {
   it("should create the target via tmp + link and leave no residue", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     await createNewFile(TARGET, encodeUtf8("fresh"), depsAt(fake));
@@ -86,7 +86,7 @@ describe("createNewFile · link 路径", () => {
   });
 });
 
-describe("createNewFile · open 退路（无 link 端口）", () => {
+describe("createNewFile · open fallback (no link port)", () => {
   it("should create the target through the exclusive open fallback", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     await createNewFile(TARGET, encodeUtf8("fresh"), depsAtNoLink(fake));
@@ -123,7 +123,7 @@ describe("createNewFile · open 退路（无 link 端口）", () => {
   });
 });
 
-describe("createNewFiles · 批次", () => {
+describe("createNewFiles · batch", () => {
   it("should create every file in order", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     await createNewFiles(

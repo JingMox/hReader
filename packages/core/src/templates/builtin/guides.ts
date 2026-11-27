@@ -1,4 +1,4 @@
-// This layer: builtin 模板的 guide.md 文本（英文，写给生成内容的 AI）；纯字符串，无逻辑。
+// This layer: guide.md texts for the builtin templates (English, written for the content-generating AI); pure strings, no logic.
 
 const SHARED = `Do not hand-write \`data-hr-id\` attributes — the pipeline assigns them. Do not add inline styles; visual choices live in the theme, keyed by \`data-hr-component\` selectors. Fill every parenthesized placeholder with real content, then delete the parentheses.`;
 

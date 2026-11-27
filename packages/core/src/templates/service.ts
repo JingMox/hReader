@@ -1,6 +1,7 @@
-// This layer: 三级来源解析（builtin < user < workspace）+ list/read 公开编排。
-// 不回落原则：同 id 取最高优先级，高优先级损坏照样占坑——宁可报错也不静默换皮，
-// 行为可预测比"勉强能用"重要（低优先级那份在 diagnostics 里也有记录）。
+// This layer: three-tier source resolution (builtin < user < workspace) + the public list/read orchestration.
+// No-fallback principle: same id → highest priority wins, and a broken winner still occupies the slot —
+// better to error than to silently swap skins. Predictable behavior beats "sort of works"
+// (the shadowed lower-priority copy is also recorded in diagnostics).
 
 import { join } from "node:path";
 
@@ -28,19 +29,19 @@ import {
   type ScannedTemplate,
 } from "./inspect";
 
-/** `.hreader` 与 io/paths.ts 的 STORE_DIR 同值：模板根是 `<home|workspace>/.hreader/templates`。 */
+/** `.hreader` matches io/paths.ts's STORE_DIR: template roots are `<home|workspace>/.hreader/templates`. */
 const HREADER_DIR = ".hreader";
 
 const userRootOf = (deps: TemplateDeps): string => join(deps.home, HREADER_DIR, TEMPLATES_DIRNAME);
 const workspaceRootOf = (roots: TemplateRoots): string =>
   join(roots.workspace, HREADER_DIR, TEMPLATES_DIRNAME);
 
-/** 一次解析的结果：扫过的模板，或它失败的错误（损坏照样占坑 = 不回落）。 */
+/** One resolution result: a scanned template, or the error it failed with (a broken one still occupies the slot = no fallback). */
 type Candidate =
   | { readonly kind: "ok"; readonly shape: LoadedShape }
   | { readonly kind: "broken"; readonly error: HrError };
 
-/** list/read/create 共用的已解析模板：builtin 是内存成员，fs 是已验证路径。 */
+/** The resolved template shared by list/read/create: builtin members are in-memory, fs members are verified paths. */
 interface LoadedShape {
   readonly manifest: TemplateManifest;
   readonly entry: () => Promise<string>;
@@ -68,7 +69,7 @@ const summaryOf = (manifest: TemplateManifest, source: TemplateSource): Template
   source,
 });
 
-/** fs 成员的读取统一收口：walk 之后仍读不动的（竞态/编码）都按"模板损坏"报。 */
+/** Single funnel for fs member reads: anything still unreadable after the walk (races/encoding) is reported as "template broken". */
 const memberTextOf =
   (fsApi: TemplateDeps["fs"], dir: string) =>
   async (member: ScannedMember): Promise<string> => {
@@ -100,7 +101,7 @@ const scannedShape = (scan: ScannedTemplate, fsApi: TemplateDeps["fs"]): LoadedS
   };
 };
 
-/** fs 一侧的候选判定与扫描；非候选（缺失/常规文件）返回 `undefined` = 这一级没有这个 id。 */
+/** fs-side candidate check and scan; a non-candidate (missing/regular file) returns `undefined` = this tier does not have the id. */
 const fsCandidate = async (
   dir: string,
   name: string,
@@ -113,7 +114,7 @@ const fsCandidate = async (
       shape: scannedShape(await inspectTemplateDir(dir, name, deps.fs), deps.fs),
     };
   } catch (error: unknown) {
-    // ENOENT = 竞态下目录被撤走，视同没有；其余失败按"损坏候选"报——赢了坑就得看得见坑。
+    // ENOENT = the dir was removed mid-race, treated as absent; other failures are reported as broken candidates — a won slot must be a visible slot.
     if (codeOf(error) === "ENOENT") return undefined;
     return {
       kind: "broken",
@@ -126,8 +127,9 @@ const fsCandidate = async (
 };
 
 /**
- * 同 id 的胜出者：workspace > user > builtin，**只看有没有这个目录，不管它坏没坏**。
- * 高优先级的坑被占了就不许回落——否则用户排查"我改了为什么不生效"时毫无线索。
+ * The winner among same-id candidates: workspace > user > builtin, **judged on whether the dir exists,
+ * not on whether it is healthy**. A slot taken by a higher tier may not be fallen back from —
+ * otherwise the user debugging "why didn't my change take effect" has no clues.
  */
 const winnerOf = async (
   id: string,
@@ -165,7 +167,7 @@ const materialize = async (shape: LoadedShape, source: TemplateSource): Promise<
   };
 };
 
-/** `readTemplate` 与 `createFromTemplate` 共用的"拿全文"：连资源成员的 `source`/`size` 一起带。 */
+/** The "full text fetch" shared by `readTemplate` and `createFromTemplate`: carries each asset member's `source`/`size` along. */
 export const loadTemplate = async (
   id: string,
   roots: TemplateRoots,
@@ -187,8 +189,8 @@ export const readTemplate = async (
 ): Promise<LoadedTemplate> => (await loadTemplate(id, roots, deps)).template;
 
 /**
- * 合并清单：按 builtin → user → workspace 顺序逐个候选判定，后者覆盖前者；
- * 每一步的损坏都进 diagnostics——包括"赢了但坏了的"与"被遮住的"。
+ * The merged list: candidates are checked one by one in builtin → user → workspace order, later tiers
+ * shadow earlier ones; every breakage lands in diagnostics — both "won but broken" and "shadowed" ones.
  */
 export const listTemplates = async (
   roots: TemplateRoots,

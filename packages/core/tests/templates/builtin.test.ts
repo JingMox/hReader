@@ -1,6 +1,6 @@
-// 这层管：内置模板与仓库事实的一致性——内嵌 theme.css 与 styles/<visual>/theme.css 逐字节相等
-// （scripts/embed-theme-css.mjs 的再生成产出），以及"kind 对应内置模板新建 == hr new --kind 产物"
-// 这条 F2a 的兼容承诺。
+// This layer: consistency between the builtin templates and repo facts — the embedded theme.css is
+// byte-identical to styles/<visual>/theme.css (the regen output of scripts/embed-theme-css.mjs),
+// and "create via the kind's builtin template == the hr new --kind product", the F2a compatibility promise.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -22,9 +22,10 @@ const themeFile = (visual: string): string =>
   );
 
 /**
- * 结构指纹：标签序列 + 文本 + 非注入属性。采掉 `data-hr-id`（create 时注入）、`<style>` 块
- * （主题内联产物，参照侧根本没有）与纯空白文本节点（序列化可能改写缩进）——
- * 剩下来的就是骨架本身，两边指纹相等 = 结构等价。
+ * Structural fingerprint: tag sequence + text + non-injected attributes. `data-hr-id` (injected at create
+ * time), `<style>` blocks (the theme-inline product — the reference side has none) and whitespace-only
+ * text nodes (serialization may rewrite indentation) are excluded — what remains is the skeleton itself,
+ * and equal fingerprints = structural equivalence.
  */
 const STRUCTURAL_TEXT = (node: HtmlNode): boolean =>
   !(node.kind === "text" && node.value.trim().length === 0) &&
@@ -46,18 +47,18 @@ const fingerprint = (node: HtmlNode): unknown => {
 
 const KINDS = ["note", "report", "minutes", "brief", "slides"] as const;
 
-describe("内置模板 · theme.css 与仓库源文件逐字节一致", () => {
+describe("builtin templates · theme.css byte-identical to repo source", () => {
   it("should keep embedded atelier-editorial and deck-noir css in lockstep with styles/", () => {
     expect(THEME_CSS["atelier-editorial"]).toBe(themeFile("atelier-editorial"));
     expect(THEME_CSS["deck-noir"]).toBe(themeFile("deck-noir"));
   });
 });
 
-describe("内置模板 · 与 newDocumentHtml 的等价（F2a 兼容承诺）", () => {
+describe("builtin templates · equivalence with newDocumentHtml (F2a compatibility promise)", () => {
   it("should ship each kind template whose entry is exactly newDocumentHtml output", () => {
     for (const kind of KINDS) {
       const builtin = BUILTIN_TEMPLATES.find((template) => template.manifest.id === kind);
-      if (builtin === undefined) throw new Error(`内置清单里缺 ${kind}`);
+      if (builtin === undefined) throw new Error(`builtin list is missing ${kind}`);
       expect(builtin.entry).toBe(newDocumentHtml({ kind, title: "Untitled" }));
       expect(builtin.manifest.format).toBe("managed");
     }
@@ -81,19 +82,20 @@ describe("内置模板 · 与 newDocumentHtml 的等价（F2a 兼容承诺）", 
       expect(classifyDocument(parsed).cls).toBe("managed");
       expect(checkLayout(parsed.root)).toHaveLength(0);
 
-      // 等价基准：`hr new --kind` 的产物就是 newDocumentHtml；注入 id/主题之外的指纹必须一致。
+      // Equivalence baseline: the `hr new --kind` product is newDocumentHtml; fingerprints must match
+      // outside the injected ids and theme.
       const reference = parseHtml(newDocumentHtml({ kind, title: "等价标题" }));
       expect(fingerprint(parsed.root)).toEqual(fingerprint(reference.root));
     },
   );
 });
 
-describe("内置模板 · blank-html", () => {
+describe("builtin templates · blank-html", () => {
   it("should create a free-form html doc verbatim plus title/theme rewrite", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     const template = await readTemplate("blank-html", rootsOf(), depsAt(fake));
     const builtin = BUILTIN_TEMPLATES.find((one) => one.manifest.id === "blank-html");
-    if (builtin === undefined) throw new Error("内置清单里缺 blank-html");
+    if (builtin === undefined) throw new Error("builtin list is missing blank-html");
 
     const result = await createFromTemplate(
       { id: "blank-html", target: "free.html", title: "Free" },
@@ -104,7 +106,7 @@ describe("内置模板 · blank-html", () => {
       fake.state.files.get("/ws/free.html") ?? new Uint8Array(),
     );
 
-    // html 模板且无资源：除 title/h1 与主题块外逐字节保留骨架。
+    // An html template with no assets: the skeleton is preserved byte-for-byte outside title/h1 and the theme block.
     const expected = template.entry
       .replace("<title>Untitled</title>", "<title>Free</title>")
       .replace("<h1>Untitled</h1>", "<h1>Free</h1>")

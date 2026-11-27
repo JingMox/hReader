@@ -1,5 +1,5 @@
-// This layer: createFromTemplate —— 取模板 → 改写（标题/资源引用/主题内联/节点 id）→
-// 原子落成 target + `<stem>_files/`。任何写盘前的检查都先做掉，落盘本身交给 io 原语。
+// This layer: createFromTemplate — fetch template → rewrite (title/asset refs/theme inline/node ids) →
+// atomically land the target + `<stem>_files/`. Every pre-write check runs before any write; the write itself goes to io primitives.
 
 import { basename, dirname, extname, join, relative } from "node:path";
 
@@ -27,7 +27,7 @@ import {
 import type { ScannedMember } from "./inspect";
 import { loadTemplate } from "./service";
 
-/** 文本节点的转义面：`&`/`<`/`>`；`<title>` 是 RCDATA、`<h1>` 是普通流内容，同一套够用。 */
+/** The escaping surface for text nodes: `&`/`<`/`>`; `<title>` is RCDATA, `<h1>` is normal flow content — one set covers both. */
 const escapeText = (text: string): string =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
@@ -41,7 +41,7 @@ interface Splice {
   readonly text: string;
 }
 
-/** 文档序找"首个出现且源码里真的有字节"的指定标签元素；parse5 合成的节点是零宽区间。 */
+/** Find, in document order, the first element with the given tag that really has bytes in the source; parse5-synthesized nodes have zero-width spans. */
 const firstElement = (root: HtmlNode, tag: string): HtmlElementNode | undefined => {
   const stack: HtmlNode[] = [root];
   for (const node of drainStack(stack)) {
@@ -55,7 +55,7 @@ const firstElement = (root: HtmlNode, tag: string): HtmlElementNode | undefined 
   return undefined;
 };
 
-/** 源码区间改写 `<title>` 与首个 `<h1>` 的文本；元素不存在就跳过（自由 HTML 不保证有它们）。 */
+/** Rewrite the `<title>` and first `<h1>` text at their source spans; absent elements are skipped (free-form HTML does not guarantee them). */
 const retitleHtml = (html: string, title: string | undefined): string => {
   if (title === undefined) return html;
   const parsed = parseHtml(html, { locations: true });
@@ -71,11 +71,11 @@ const retitleHtml = (html: string, title: string | undefined): string => {
     .reduce((acc, one) => `${acc.slice(0, one.start)}${one.text}${acc.slice(one.end)}`, html);
 };
 
-/** 会跟着文档搬家的属性：`src`/`href`/`poster` 直取 URL，`srcset` 是逗号分隔的候选串。 */
+/** Attributes that move with the document: `src`/`href`/`poster` take the URL directly; `srcset` is a comma-separated candidate list. */
 const DIRECT_URL_ATTRS = new Set(["src", "href", "poster"]);
 const SRCSET_ATTR = "srcset";
 
-/** 候选串逐个改写：保留各自的前导空白（`, ` 的间隔是作者写的），只换 URL 段。 */
+/** Rewrite candidates one by one: each keeps its own leading whitespace (the `, ` spacing is the author's); only the URL segment is replaced. */
 const rewriteSrcset = (value: string, from: string, to: string): string =>
   value
     .split(",")
@@ -92,7 +92,7 @@ const rewriteSrcset = (value: string, from: string, to: string): string =>
     })
     .join(",");
 
-/** 只认 `assets/` 打头的相对引用：绝对 URL 与其他相对路径不动。 */
+/** Only relative references starting with `assets/` are rewritten: absolute URLs and other relative paths are left alone. */
 const rewriteAttrs = (node: HtmlElementNode, from: string, to: string): HtmlElementNode => ({
   ...node,
   attrs: node.attrs.map(([name, value]) =>
@@ -116,8 +116,9 @@ const mapElements = (node: HtmlNode, from: string, to: string): HtmlNode => {
 };
 
 /**
- * 序列化路径（managed 必走，或要搬资源时）：一次遍历改完所有 `assets/` 引用，
- * managed 再补 `injectNodeIds`（对已有 id 幂等）。html 且无资源时完全不序列化——原字节保留。
+ * The serialize path (mandatory for managed, or when assets must move): one pass rewrites every
+ * `assets/` reference, and managed additionally gets `injectNodeIds` (idempotent on existing ids).
+ * A plain html format with no assets is never serialized — the original bytes survive verbatim.
  */
 const renderHtml = (html: string, assetsTarget: string, managed: boolean): string => {
   const parsed = parseHtml(html);
@@ -133,11 +134,11 @@ const templateFailure = (message: string, cause?: unknown): HrError =>
     ? new HrError("invalid_template", message)
     : new HrError("invalid_template", message, { cause });
 
-/** `<stem>_files` 与 F1c 文件树折叠规则同名：`note.html` 的资源进 `note_files/`。 */
+/** `<stem>_files` is the same name as the F1c file-tree fold rule: `note.html`'s assets land in `note_files/`. */
 const assetsDirNameOf = (targetName: string): string =>
   `${basename(targetName, extname(targetName))}_files`;
 
-/** 主题内联：entry 没有 `<head>` 或 CSS 过不了安全线时，把底层码统一翻成"模板损坏"。 */
+/** Theme inlining: when the entry has no `<head>` or the CSS fails the safety line, underlying codes are uniformly translated into "template broken". */
 const inlineTheme = (html: string, css: string): string => {
   try {
     return replaceTheme(html, css).html;
@@ -149,7 +150,7 @@ const inlineTheme = (html: string, css: string): string => {
   }
 };
 
-/** managed 的产物必须带单 article + 合法 id——injectNodeIds 救不了"没有 article"的骨架。 */
+/** A managed product must carry a single article + legal ids — injectNodeIds cannot rescue a skeleton with no article. */
 const assertManaged = (html: string): void => {
   if (classifyDocument(parseHtml(html)).cls !== "managed") {
     throw templateFailure("managed 模板的 entry 产出不是受管文档（缺单个合法 <article>）");
@@ -159,7 +160,7 @@ const assertManaged = (html: string): void => {
 interface RenderedTemplate {
   readonly html: string;
   readonly assetsDir: string;
-  /** `dest` 是 `<target 目录>/<stem>_files/<assets 前缀后的子路径>`。 */
+  /** `dest` is `<target dir>/<stem>_files/<subpath after the assets prefix>`. */
   readonly files: readonly { rel: string; source: string; dest: string }[];
 }
 
@@ -183,7 +184,7 @@ const renderTemplate = (
     files: members.map((member) => ({
       rel: member.rel,
       source: member.source,
-      // rel 以 `assets/` 开头；剥前缀后的子路径由 readdir 名单拼成，天然不含 `..`/绝对段。
+      // rel starts with `assets/`; the subpath after the prefix is assembled from readdir names, so it cannot contain `..` or absolute segments.
       dest: join(assetsDir, ...member.rel.slice(ASSETS_DIR.length + 1).split("/")),
     })),
   };
@@ -206,7 +207,7 @@ export const createFromTemplate = async (
     assetsDirNameOf(basename(target.absolute)),
     dirname(target.absolute),
   );
-  // 先验货后落盘：资源全部读到内存之前不动笔，entry 写不进也不留半套资源目录。
+  // Inspect before committing: no write happens until every asset has been read into memory — a failed entry leaves no half-copied asset dir.
   const data = encodeUtf8(rendered.html);
   const assetData: { path: string; data: Uint8Array }[] = [];
   for (const file of rendered.files) {

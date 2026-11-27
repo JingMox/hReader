@@ -51,7 +51,7 @@ export type HrErrorCode =
   | "content_model_conflict"
   // 文档里两个元素共用同一个 data-hr-id（`normalize` 会把重复的那个改名，但读/写入口必须先拒绝歧义）
   | "duplicate_id"
-  // 模板：`unknown_template` 指三级来源都没有这个 id；`invalid_template` 指找到了但它损坏/越界
+  // Templates: `unknown_template` means no tier has this id, while `invalid_template` means it was found but is broken or out of bounds
   | "unknown_template"
   | "invalid_template";
 

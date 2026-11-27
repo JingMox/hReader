@@ -219,7 +219,7 @@ export {
 } from "./layout";
 export type { ComponentRule, DocKind, NewDocumentInput } from "./layout";
 
-// ---- 模板体系：三级来源的模板清单/读取/按模板新建 ----
+// ---- Template system: list/read/create over three-tier template sources ----
 export {
   createFromTemplate,
   listTemplates,

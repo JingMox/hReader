@@ -1,11 +1,11 @@
-// This layer: templates 的默认依赖（node fs + 真实 HOME）；与 `style/node.ts` 同口径。
+// This layer: templates' default deps (node fs + real HOME); same contract as `style/node.ts`.
 
 import { homedir } from "node:os";
 
 import { nodePatchDeps } from "../io/node-fs";
 import type { TemplateDeps } from "./contracts";
 
-/** 用户级模板根取 `<homedir()>/.hreader/templates`；测试用临时 home 注入，绝不碰真实 HOME。 */
+/** The user-tier template root is `<homedir()>/.hreader/templates`; tests inject a temp home and never touch the real HOME. */
 export const nodeTemplateDeps = (): TemplateDeps => ({
   ...nodePatchDeps,
   home: homedir(),

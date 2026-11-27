@@ -1,5 +1,6 @@
-// 这层管：template.json 的严格校验（zod strict：未知键/原型污染键/类型错/缺字段/成员路径词法闸）
-// 与目录级核验（id≠目录名、成员缺失或指向目录、容量闸）。一切损坏形态都落成 invalid_template。
+// This layer: strict template.json validation (zod strict: unknown keys/proto-pollution keys/type
+// errors/missing fields/member-path lexical gates) and dir-level verification (id≠dir name, missing
+// or dir-pointing members, capacity gate). Every broken form lands as invalid_template.
 
 import { describe, expect, it } from "vitest";
 
@@ -25,17 +26,17 @@ const errorOf = async (run: () => Promise<unknown>): Promise<HrError> => {
   } catch (error: unknown) {
     return error as HrError;
   }
-  throw new Error("期望抛错但没有抛");
+  throw new Error("expected a throw but none happened");
 };
 
-/** 用用户级根读模板：种子里的目录名都是 `my-tpl`。 */
+/** Reads a template from the user tier: seeded dir names are all `my-tpl`. */
 const readOf = async (files: Record<string, string>) => {
   const fake = fakeFs(files);
   seedDirs(fake, HOME, `${HOME}/.hreader`, USER_TEMPLATES, `${USER_TEMPLATES}/my-tpl`, WS);
   return readTemplate("my-tpl", rootsOf(), depsAt(fake));
 };
 
-describe("manifest · JSON 形状", () => {
+describe("manifest · JSON shape", () => {
   it("should reject non-JSON, arrays and scalars", async () => {
     for (const manifest of ["{oops", "[1,2]", '"x"', "42"]) {
       expect(
@@ -64,7 +65,7 @@ describe("manifest · JSON 形状", () => {
   });
 });
 
-describe("manifest · 字段校验", () => {
+describe("manifest · field validation", () => {
   it("should reject missing required fields with a field path", async () => {
     const manifest = manifestText({ name: undefined });
     const error = await errorOf(() =>
@@ -126,7 +127,7 @@ describe("manifest · 字段校验", () => {
   });
 });
 
-describe("manifest · id 与成员路径的词法闸", () => {
+describe("manifest · lexical gates for id and member paths", () => {
   it("should reject illegal template ids", async () => {
     for (const id of ["UPPER", "a/b", "a\\b", "..", "a b", "x".repeat(80), "-lead"]) {
       const manifest = manifestText({ id });
@@ -155,7 +156,7 @@ describe("manifest · id 与成员路径的词法闸", () => {
   });
 });
 
-describe("目录核验 · id 与成员存在性", () => {
+describe("dir verification · id and member existence", () => {
   it("should reject manifest id that disagrees with the directory name", async () => {
     const manifest = manifestText({ id: "other-tpl" });
     const error = await errorOf(() =>
@@ -210,7 +211,7 @@ describe("目录核验 · id 与成员存在性", () => {
   });
 });
 
-describe("目录核验 · 容量闸", () => {
+describe("dir verification · capacity gate", () => {
   it("should reject a template over the file-count cap", async () => {
     const files: Record<string, string> = {
       ...htmlTemplate(`${USER_TEMPLATES}/my-tpl`),

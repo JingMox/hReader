@@ -71,7 +71,7 @@ export const resolveTarget = async (
   fsApi: FileSystem,
 ): Promise<ResolvedTarget> => {
   // NUL 永远过不了任何 fs 调用（ERR_INVALID_ARG_VALUE 不是 HrError，会兜底成 500）：
-  // 在触碰磁盘前按坏输入拒掉。词法闸与 `resolveNewTarget` 同一份，见 `lexicalTargetOf`。
+  // Reject bad input before touching disk. Shares the lexical gates with `resolveNewTarget` — see `lexicalTargetOf`.
   const { workspaceAbs, lexical } = lexicalTargetOf(input);
   const workspaceReal = await realpathOf(fsApi, workspaceAbs);
   const realPath = await realpathOf(fsApi, lexical);
@@ -96,18 +96,19 @@ export const historyDirOf = (target: ResolvedTarget): string =>
   join(target.storeDir, "history", sha1Hex(target.relative));
 
 export interface ResolvedNewTarget {
-  /** 落点路径：最近存在祖先的 realpath + 尚不存在的尾段。写入与归属判定都用它。 */
+  /** Landing path: realpath of the nearest existing ancestor plus the not-yet-existing tail. Used for both writing and ownership checks. */
   readonly absolute: string;
-  /** 相对 workspace 真实路径的正斜杠路径。 */
+  /** Forward-slash path relative to the real workspace root. */
   readonly relative: string;
-  /** workspace 的真实路径。 */
+  /** The workspace's real path. */
   readonly workspace: string;
 }
 
 /**
- * 目标可能还不存在：realpath 逐级回退到最近的现存祖先；根总能解析，循环只经 return 结束。
- * 必须调裸 `fsApi.realpath`：`realpathOf` 的包装已把 ENOENT 翻成 `not_a_file`，
- * 到这儿就没有"不存在"可判了——原始 code 才是回退信号。
+ * The target may not exist yet: walk realpath up level by level to the nearest existing ancestor;
+ * the root always resolves, so the loop only exits via return.
+ * Must call bare `fsApi.realpath`: `realpathOf`'s wrapper already translates ENOENT into `not_a_file`,
+ * leaving no "missing" signal to walk on — the raw code is the fallback trigger.
  */
 const realpathOfAncestor = async (
   fsApi: FileSystem,
@@ -151,10 +152,10 @@ const lexicalTargetOf = (input: {
 };
 
 /**
- * `resolveTarget` 的新建版：同一套词法闸（相对路径、NUL、`..`、`.hreader/**`），
- * 但不要求目标已存在——边界判定落在**最近的现存祖先**上：
- * 目标存在时按自身 realpath 比（必须严格在 workspace 内）；
- * 不存在时按祖先比（祖先可以就是 workspace 本身），符号链接逃逸照样被拦。
+ * `resolveTarget`'s create variant: same lexical gates (relative path, NUL, `..`, `.hreader/**`),
+ * but the target need not exist — the boundary check lands on the **nearest existing ancestor**:
+ * when the target exists its own realpath is compared (must be strictly inside the workspace);
+ * when it does not, the ancestor is compared (the ancestor may be the workspace itself). Symlink escapes are still caught.
  */
 export const resolveNewTarget = async (
   input: { readonly workspace: string; readonly file: string },

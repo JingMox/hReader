@@ -1,6 +1,7 @@
-// 这层管：createFromTemplate——entry 落盘（原子、仅当缺失）、title/h1 替换、
-// style 内联成 hr-theme、assets 按 _files 约定重命名+改写引用、managed 形态注入。
-// 既有生命周期语义一律复用 resolveNewTarget/createNewFile 的既有护栏。
+// This layer: createFromTemplate — atomic create-only-if-absent entry write, title/h1 rewrite,
+// style inlined as hr-theme, assets moved per the _files convention with references rewritten,
+// node-id injection for the managed format. All lifecycle semantics reuse the existing
+// resolveNewTarget/createNewFile guardrails.
 
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
@@ -33,7 +34,7 @@ const errorOf = async (run: () => Promise<unknown>): Promise<HrError> => {
   } catch (error: unknown) {
     return error as HrError;
   }
-  throw new Error("期望抛错但没有抛");
+  throw new Error("expected a throw but none happened");
 };
 
 const setup = (files: Record<string, string>, dirs: readonly string[] = []): FakeFs => {
@@ -57,7 +58,7 @@ const findIn = (node: HtmlNode, tag: string): HtmlElementNode | undefined => {
 
 const firstElement = (parsed: ParsedHtml, tag: string): HtmlElementNode => {
   const found = findIn(parsed.root, tag);
-  if (found === undefined) throw new Error(`测试文档里缺少 <${tag}>`);
+  if (found === undefined) throw new Error(`test document is missing <${tag}>`);
   return found;
 };
 
@@ -70,7 +71,7 @@ const countElements = (node: HtmlNode, tag: string): number =>
 const textOf = (fake: FakeFs, absPath: string): string =>
   new TextDecoder().decode(fake.state.files.get(absPath) ?? new Uint8Array());
 
-describe("createFromTemplate · managed（含内置）", () => {
+describe("createFromTemplate · managed (incl. builtins)", () => {
   it("should create a managed doc from a builtin template with title, h1 and theme", async () => {
     const fake = setup({});
     const result = await createAt(fake, {
@@ -124,7 +125,7 @@ describe("createFromTemplate · managed（含内置）", () => {
   });
 });
 
-describe("createFromTemplate · html（含逐字节骨架）", () => {
+describe("createFromTemplate · html (incl. byte-for-byte skeleton)", () => {
   it("should write the entry byte-faithfully except title/h1 and theme insertion", async () => {
     const entry =
       '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<title>OLD</title>\n</head>\n' +
@@ -135,7 +136,7 @@ describe("createFromTemplate · html（含逐字节骨架）", () => {
     await createAt(fake, { id: "my-tpl", target: "out.html", title: "A" });
     const text = new TextDecoder().decode(fake.state.files.get(`${WS}/out.html`));
 
-    // 期望产物 = 替换 title/h1 后，在 head 里插入 style 元素——其余逐字节照旧。
+    // Expected product = title/h1 rewritten plus a style element inserted in head — everything else byte-for-byte.
     const expected = entry
       .replace("<title>OLD</title>", "<title>A</title>")
       .replace("<h1>OLD</h1>", "<h1>A</h1>")
@@ -155,7 +156,7 @@ describe("createFromTemplate · html（含逐字节骨架）", () => {
   });
 
   it("should still inline the theme when the entry lacks a literal <head>", async () => {
-    // parse5 合成的 head 没有源码区间：replaceTheme 退化为在 <html> 开标签后新建 head。
+    // A parse5-synthesized head has no source span: replaceTheme degenerates to creating head after the <html> open tag.
     const fake = setup(htmlTemplate(TPL, { entry: "<html><body>x</body></html>", style: "x{}" }));
 
     await createAt(fake, { id: "my-tpl", target: "x.html" });
@@ -238,7 +239,7 @@ describe("createFromTemplate · html（含逐字节骨架）", () => {
   });
 });
 
-describe("createFromTemplate · 既有护栏", () => {
+describe("createFromTemplate · existing guardrails", () => {
   it("should return file_exists when the target already exists", async () => {
     const fake = setup({ ...htmlTemplate(TPL), "/ws/exists.html": "taken" });
     const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "exists.html" }));
@@ -286,8 +287,9 @@ describe("createFromTemplate · 既有护栏", () => {
   });
 });
 
-describe("createFromTemplate · 属性测试", () => {
-  // \0 会被解析器换成 U+FFFD、\r 会被预处理归一成 \n：两者不在"可还原文本"域内，采掉。
+describe("createFromTemplate · property tests", () => {
+  // \0 is replaced by the parser with U+FFFD and \r is normalized to \n in preprocessing:
+  // neither is in the "roundtrippable text" domain, so filter them out.
   const safeTitle = fc
     .string({ unit: "grapheme" })
     .filter((text) => !text.includes("\0") && !text.includes("\r"));
@@ -304,7 +306,7 @@ describe("createFromTemplate · 属性测试", () => {
 
         expect(textContentOf(firstElement(parsed, "title"))).toBe(title);
         expect(textContentOf(firstElement(parsed, "h1"))).toBe(title);
-        // 任意 title 都不能破坏结构：head/body 俱全，h1/p 各只剩原本那一个。
+        // No title may break the structure: head/body both present, h1 and p still exactly one each.
         expect(firstElement(parsed, "body")).toBeDefined();
         expect(countElements(parsed.root, "h1")).toBe(1);
         expect(countElements(parsed.root, "p")).toBe(1);

@@ -21,8 +21,8 @@ export interface FileSystem {
   readonly writeFile: (path: string, data: Uint8Array) => Promise<void>;
   readonly rename: (from: string, to: string) => Promise<void>;
   /**
-   * Hard link（`link(2)`）：目标已存在即 `EEXIST`，绝不覆盖——"create only if absent" 的原子门。
-   * 可选：缺省实现会退回 `open` 的独占创建（崩溃窗口内可能留下半成品文件）。
+   * Hard link (`link(2)`): `EEXIST` when the target exists, never overwrites — the atomic gate for "create only if absent".
+   * Optional: without it, implementations fall back to exclusive `open` create (which can leave a half-written file inside the crash window).
    */
   readonly link?: (from: string, to: string) => Promise<void>;
   readonly unlink: (path: string) => Promise<void>;

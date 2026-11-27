@@ -1,4 +1,4 @@
-// 这层管：三级来源的合并清单——builtin < user < workspace 的覆盖序、损坏诊断、不回落语义。
+// This layer: the merged three-tier list — the builtin < user < workspace shadowing order, breakage diagnostics, and no-fallback semantics.
 
 import { describe, expect, it } from "vitest";
 
@@ -19,7 +19,7 @@ import {
 
 const BUILTIN_IDS = ["blank-html", "brief", "minutes", "note", "report", "slides"];
 
-describe("listTemplates · 内置清单", () => {
+describe("listTemplates · builtin list", () => {
   it("should list the six builtins sorted by id with no diagnostics", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     const list = await listTemplates(rootsOf(), depsAt(fake));
@@ -31,7 +31,7 @@ describe("listTemplates · 内置清单", () => {
   });
 });
 
-describe("listTemplates · 覆盖序", () => {
+describe("listTemplates · shadowing order", () => {
   it("should merge user and workspace templates over builtins", async () => {
     const fake = fakeFs({
       ...htmlTemplate(`${USER_TEMPLATES}/note`, {
@@ -76,7 +76,7 @@ describe("listTemplates · 覆盖序", () => {
   });
 
   it("should scan a template dir reached through a symlinked entry", async () => {
-    // 目录条目本身是符号链接也算候选；id 校验看的是链接名（词法目录名），不是目标目录名。
+    // A symlinked dir entry is a candidate too; the id check reads the link name (the lexical dir name), not the target's dir name.
     const realDir = `${HOME}/shared/real-dir`;
     const fake = fakeFs(
       htmlTemplate(realDir, {
@@ -95,7 +95,7 @@ describe("listTemplates · 覆盖序", () => {
   });
 });
 
-describe("listTemplates · 损坏诊断与不回落", () => {
+describe("listTemplates · breakage diagnostics and no-fallback", () => {
   it("should report a broken template instead of crashing the whole list", async () => {
     const fake = fakeFs({
       ...htmlTemplate(`${USER_TEMPLATES}/my-tpl`, { manifest: "{nope" }),
@@ -128,7 +128,8 @@ describe("listTemplates · 损坏诊断与不回落", () => {
     );
 
     const list = await listTemplates(rootsOf(), depsAt(fake));
-    // 赢了坑但坏掉的 workspace 版照样占坑：list 里没有 user 版的 note，诊断里能看到 workspace 版为什么坏。
+    // The broken workspace copy still occupies the slot it won: no user-tier note in the list,
+    // and the diagnostics show why the workspace copy is broken.
     expect(list.templates.map((tpl) => tpl.id)).not.toContain("note");
     expect(list.diagnostics.some((diag) => diag.id === "note" && diag.source === "workspace")).toBe(
       true,
@@ -185,7 +186,7 @@ describe("listTemplates · 损坏诊断与不回落", () => {
     });
     seedDirs(fake, USER_TEMPLATES, `${USER_TEMPLATES}/mine`, WS);
 
-    // 根目录不可读不是"某个模板坏了"——没法枚举时整单失败，而不是静默当空。
+    // An unreadable root is not "one broken template" — when enumeration is impossible the whole call fails instead of silently reporting empty.
     fake.fail("readdir", systemError("EACCES"), (path: string) => path === USER_TEMPLATES);
     expect(await codeOfAsync(() => listTemplates(rootsOf(), depsAt(fake)))).toBe(
       "invalid_template",

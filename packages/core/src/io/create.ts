@@ -1,5 +1,5 @@
-// This layer: "create only if absent"（已存在即 file_exists，绝不覆盖，绝不留下半成品文件）。
-// 归属/逃逸判定归调用方；这里只保证创建语义本身。
+// This layer: "create only if absent" (file_exists when present, never overwrites, never leaves a half file).
+// Ownership/escape checks belong to the caller; here we only guarantee the create semantics itself.
 
 import { randomInt } from "node:crypto";
 
@@ -7,7 +7,7 @@ import { HrError } from "../hr-error";
 import { isExists, unlinkQuiet } from "./errors";
 import type { OpenFile, PatchDeps } from "./ports";
 
-/** `<目标>.<数字>` 与 atomic.ts 的 `RESIDUE_SUFFIX` 同形：崩殁残留会被下次 writeAtomic 顺手回收。 */
+/** `<target>.<digits>` shares the shape of atomic.ts's `RESIDUE_SUFFIX`: crash residue is reclaimed by the next writeAtomic. */
 const tmpNameOf = (target: string): string =>
   `${target}.${String(randomInt(100_000, 1_000_000_000))}`;
 
@@ -18,9 +18,9 @@ const ioFailureOf = (action: string, path: string, error: unknown): HrError =>
   new HrError("io_failure", `${action}失败：${path}`, { cause: error });
 
 /**
- * tmp + `link(2)`：tmp 先经 writeFileAtomic 落满（fsync + umask 权限），link 把
- * "仅当不存在才创建"交给内核——EEXIST 不覆盖、进程中途死也不留半个文件。
- * tmp 与目标同目录，link 不可能跨设备。
+ * tmp + `link(2)`: tmp is fully landed first via writeFileAtomic (fsync + umask permissions),
+ * then link hands "create only if absent" to the kernel — EEXIST never overwrites,
+ * and a mid-flight crash leaves no half file. tmp sits in the target's own directory, so link cannot cross devices.
  */
 const createViaLink = async (
   target: string,
@@ -51,7 +51,7 @@ const openExclusive = async (target: string, deps: PatchDeps): Promise<OpenFile>
   }
 };
 
-/** 无 `link` 端口的退路：`open` 的 O_EXCL 独占创建；写一半崩殁会留下半成品（弱于 link 路径）。 */
+/** Fallback when the port has no `link`: exclusive O_EXCL create via `open`; a mid-write crash leaves a half file (weaker than the link path). */
 const createViaOpen = async (target: string, data: Uint8Array, deps: PatchDeps): Promise<void> => {
   const file = await openExclusive(target, deps);
   try {
@@ -65,7 +65,7 @@ const createViaOpen = async (target: string, data: Uint8Array, deps: PatchDeps):
   }
 };
 
-/** 目标父目录必须先存在：mkdir 是调用方的事（它知道该不该补中间目录）。 */
+/** The target's parent directory must already exist: mkdir is the caller's job (it knows whether to create intermediate dirs). */
 export const createNewFile = async (
   target: string,
   data: Uint8Array,
@@ -78,7 +78,7 @@ export const createNewFile = async (
   await createViaOpen(target, data, deps);
 };
 
-/** 独占创建一批文件；中途失败时回收已创建的部分（目录不回收——端口没有 rmdir）。 */
+/** Exclusively create a batch of files; on mid-way failure the already-created ones are reclaimed (dirs are not — the port has no rmdir). */
 export const createNewFiles = async (
   files: readonly { readonly path: string; readonly data: Uint8Array }[],
   deps: PatchDeps,

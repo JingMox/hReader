@@ -1,4 +1,4 @@
-// 这层管：templates 子模块门面（公开 API + 类型 + 默认依赖）；不承载实现。
+// This layer: the templates submodule facade (public API + types + default deps); carries no implementation.
 
 export { TEMPLATE_ID, TEMPLATE_MAX_BYTES, TEMPLATE_MAX_FILES } from "./contracts";
 export type {

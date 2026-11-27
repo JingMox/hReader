@@ -136,7 +136,7 @@ describe("node-fs · 其余端口", () => {
 describe("node-fs · link", () => {
   it("should hard-link and refuse to overwrite an existing target", async () => {
     const link = fsApi.link;
-    if (link === undefined) throw new Error("node fs 必须提供 link");
+    if (link === undefined) throw new Error("node fs must provide link");
     await withWorkspace(async (dir) => {
       const from = join(dir, "a.html");
       const to = join(dir, "b.html");

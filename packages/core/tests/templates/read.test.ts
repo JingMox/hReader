@@ -1,5 +1,5 @@
-// 这层管：readTemplate——builtin 与 fs 模板的成员读取、unknown/invalid 两类错误、
-// 符号链接逃逸拒绝（文件与目录）、链接环截断、竞态读取失败。
+// This layer: readTemplate — member reads for builtin and fs templates, the unknown/invalid error pair,
+// symlink-escape refusal (files and dirs), link-loop truncation, and raced read failures.
 
 import { describe, expect, it } from "vitest";
 
@@ -32,10 +32,10 @@ const errorOf = async (run: () => Promise<unknown>): Promise<HrError> => {
   } catch (error: unknown) {
     return error as HrError;
   }
-  throw new Error("期望抛错但没有抛");
+  throw new Error("expected a throw but none happened");
 };
 
-describe("readTemplate · 内置模板", () => {
+describe("readTemplate · builtin templates", () => {
   it("should load every builtin with manifest, entry, style and guide", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     for (const id of ["note", "report", "minutes", "brief", "slides", "blank-html"]) {
@@ -50,7 +50,7 @@ describe("readTemplate · 内置模板", () => {
   });
 });
 
-describe("readTemplate · fs 模板", () => {
+describe("readTemplate · fs templates", () => {
   it("should load entry/style/guide text and the assets rel list", async () => {
     const fake = setup(
       htmlTemplate(TPL, {
@@ -98,7 +98,7 @@ describe("readTemplate · fs 模板", () => {
   });
 });
 
-describe("readTemplate · 错误", () => {
+describe("readTemplate · errors", () => {
   it("should report unknown_template for absent and illegal ids", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     for (const id of ["nope", "Bad Id", "a/b", "..", "a\\b"]) {
@@ -128,7 +128,7 @@ describe("readTemplate · 错误", () => {
   });
 });
 
-describe("readTemplate · 符号链接", () => {
+describe("readTemplate · symlinks", () => {
   it("should refuse a member symlink that escapes the template dir", async () => {
     const fake = setup({
       ...htmlTemplate(TPL),
@@ -228,7 +228,7 @@ describe("readTemplate · 符号链接", () => {
   });
 
   it("should refuse a plain dir whose realpath escapes after an ancestor swap", async () => {
-    // TOCTOU：`/t/sub` 本身不是链接，但 lstat 与 realpath 之间模板根被换成了逃逸链接。
+    // TOCTOU: `/t/sub` itself is not a link, but between lstat and realpath the template root is swapped for an escaping link.
     const fake = setup({
       ...htmlTemplate(TPL),
       [`${TPL}/sub/note.txt`]: "x",

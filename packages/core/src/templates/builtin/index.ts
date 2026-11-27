@@ -1,13 +1,13 @@
-// This layer: builtin 模板清单（D11：由 TS 数据模块提供，运行时不读文件系统）。
-// 5 个 managed 形态模板（骨架来自 `newDocumentHtml`，CSS 内嵌自 styles/<visual>/theme.css）
-// + 1 个 `blank-html`（自由 HTML）。纯数据装配，无 IO。
+// This layer: the builtin template list (D11: provided by a TS data module, no filesystem reads at runtime).
+// 5 managed kind templates (skeletons from `newDocumentHtml`, CSS embedded from styles/<visual>/theme.css)
+// + 1 `blank-html` (free-form HTML). Pure data assembly, no IO.
 
 import { newDocumentHtml } from "../../layout/kinds";
 import type { TemplateManifest } from "../contracts";
 import { GUIDES, BLANK_HTML_GUIDE } from "./guides";
 import { THEME_CSS } from "./theme-css";
 
-/** 内置模板的内存形态：manifest + 成员文本（assets 一律为空；三个成员都随模板发布）。 */
+/** In-memory shape of a builtin template: manifest + member texts (assets are always empty; all three members ship with the template). */
 export interface BuiltinTemplate {
   readonly manifest: TemplateManifest;
   readonly entry: string;
@@ -15,7 +15,7 @@ export interface BuiltinTemplate {
   readonly guide: string;
 }
 
-/** 模板自带的占位标题：`createFromTemplate` 统一替换 `<title>` 与首个 `<h1>`。 */
+/** The template's own placeholder title: `createFromTemplate` uniformly replaces `<title>` and the first `<h1>`. */
 const PLACEHOLDER_TITLE = "Untitled";
 
 const manifest = (input: {
@@ -81,7 +81,7 @@ main {
 }
 `;
 
-/** 顺序即 list 输出序（同 id 下用户级/工作区级覆盖，见 service.ts）。 */
+/** Order = list output order (same-id entries are overridden by user/workspace tiers — see service.ts). */
 export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
   kindTemplate(
     "note",

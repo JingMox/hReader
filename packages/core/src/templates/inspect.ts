@@ -1,5 +1,5 @@
-// This layer: scan one template *directory* into a verified shape（manifest + 成员路径 + 资源清单 + 容量）。
-// 所有损坏形态都落成 `invalid_template`；list 把它翻译成诊断，read/create 直接抛。
+// This layer: scan one template *directory* into a verified shape (manifest + member paths + asset list + capacity).
+// Every broken form lands as `invalid_template`; list translates it into a diagnostic, read/create throw it.
 
 import { join } from "node:path";
 
@@ -21,7 +21,7 @@ import {
 } from "./contracts";
 import { parseManifestText } from "./manifest";
 
-/** 一个已核实成员：`rel` 相对模板根的正斜杠路径；`source` 供 `fs.readFile`（链接成员是已解析的真实路径）。 */
+/** One verified member: `rel` is the forward-slash path relative to the template root; `source` feeds `fs.readFile` (for linked members it is the resolved real path). */
 export interface ScannedMember {
   readonly rel: string;
   readonly source: string;
@@ -32,11 +32,11 @@ export interface ScannedTemplate {
   readonly dir: string;
   readonly realDir: string;
   readonly manifest: TemplateManifest;
-  /** 生效成员：显式写了的用作者路径，没写的用缺省路径；`style`/`guide` 缺省缺文件时是 `undefined`。 */
+  /** Effective members: explicit values use the author's path, absent ones use the default; `style`/`guide` are `undefined` when their default file is missing. */
   readonly entry: ScannedMember;
   readonly style?: ScannedMember;
   readonly guide?: ScannedMember;
-  /** `assets/` 下的全部常规文件，`rel` 含 `assets/` 前缀。 */
+  /** All regular files under `assets/`, with `rel` including the `assets/` prefix. */
   readonly assets: readonly ScannedMember[];
 }
 
@@ -45,7 +45,7 @@ const invalid = (message: string, cause?: unknown): HrError =>
     ? new HrError("invalid_template", message)
     : new HrError("invalid_template", message, { cause });
 
-/** `lstat`/`readdir`/`realpath` 失败统一翻译成"模板损坏"：读不动的成员与坏掉的形状同义。 */
+/** `lstat`/`readdir`/`realpath` failures are uniformly translated into "template broken": an unreadable member means the same thing as a malformed shape. */
 const memberFailure = (action: string, path: string, error: unknown): HrError =>
   invalid(`${action}失败：${path}`, error);
 
@@ -53,21 +53,22 @@ interface MemberEntry {
   readonly rel: string;
   readonly isDirectory: boolean;
   readonly size: number;
-  /** 读内容用的路径：链接成员用已解析的真实路径，普通成员用词法路径。 */
+  /** Path used for reading contents: the resolved real path for linked members, the lexical path for plain ones. */
   readonly source: string;
 }
 
-/** 端口没有 `isDirectory`：非文件非链接即按目录下钻（存疑节点在 readdir 时自然报错）。 */
+/** The port has no `isDirectory`: anything neither file nor link is descended into as a dir (suspect nodes fail naturally at readdir). */
 const isDirStat = (stat: FileStat): boolean => !stat.isFile() && !stat.isSymbolicLink();
 
 /**
- * 全量走一遍模板目录：常规文件计入容量闸；目录记为 dir 成员并下钻；
- * 符号链接必须解析回模板内——解析到模板外（或解析不了）判 `invalid_template`，
- * 逃逸链接不是"资源"，是攻击面。
+ * Walk the whole template dir: regular files count against the capacity gate; dirs are recorded as dir
+ * members and descended into; symlinks must resolve back inside the template — resolving outside (or
+ * unresolvable) is `invalid_template`. An escaping link is not an asset, it is attack surface.
  *
- * 环路防护按**当前下钻链**截断（某个 realdir 已是自己祖先时不再进），
- * 不是全局去重：指向同一 realdir 的两个词法路径是两批不同的成员
- * （`a/x` 与 `alias/x` 都要各算一份容量），否则别名会被静默吞掉。
+ * Cycle protection truncates on the **current descent chain** (a realdir already on its own ancestor
+ * chain is not entered again), not global dedup: two lexical paths into the same realdir are two
+ * different member sets (`a/x` and `alias/x` each count once against capacity) — otherwise aliases
+ * would be silently swallowed.
  */
 const walkMembers = async (
   fsApi: FileSystem,
@@ -126,7 +127,7 @@ const walkMembers = async (
         }
         stat = await lstatOf(realPath);
       } else if (isDirStat(stat)) {
-        // 普通目录也复核真实路径：祖先若被换链接，词法路径会骗人。
+        // Plain dirs are also re-checked against their real path: if an ancestor was swapped for a link, the lexical path lies.
         const childReal = await realpathOf(lexPath, rel);
         if (!isInside(realDir, childReal)) {
           throw invalid(`子目录真实路径跑出模板：${rel}`);
@@ -167,13 +168,13 @@ const memberOf = (
   return { rel, source: hit.source, size: hit.size };
 };
 
-/** `entry` 必选：显式写了用它，没写用缺省 `index.html`；不存在或指向目录即 `invalid_template`。 */
+/** `entry` is required: an explicit value is used as-is, an absent one falls back to the default `index.html`; missing or pointing at a dir is `invalid_template`. */
 const requiredMember = (
   authored: string | undefined,
   index: ReadonlyMap<string, MemberEntry>,
 ): ScannedMember => memberOf("entry", authored ?? DEFAULT_ENTRY, index);
 
-/** `style`/`guide` 可选：显式写了必须存在；没写时缺省路径在则用、不在则"没有该成员"。 */
+/** `style`/`guide` are optional: an explicit value must exist; when absent, the default path is used if present and "no such member" if not. */
 const optionalMember = (
   field: "style" | "guide",
   authored: string | undefined,
@@ -185,8 +186,8 @@ const optionalMember = (
 };
 
 /**
- * 校验一个候选模板目录。`dirName` 是它在来源根下的目录名（= 它声称的 id）。
- * 任何一步失败都抛 `invalid_template`，报文只描述"这个目录为什么不能当模板"。
+ * Validate one candidate template dir. `dirName` is its directory name under the source root (= the id it claims).
+ * Any failure throws `invalid_template`; the message only describes why this dir cannot serve as a template.
  */
 export const inspectTemplateDir = async (
   dir: string,
@@ -237,7 +238,7 @@ export const inspectTemplateDir = async (
   };
 };
 
-/** `readdir` 缺根 = 空来源（这一级没有模板）；其余异常上抛成"损坏"。 */
+/** `readdir` on a missing root = empty tier (this level has no templates); other failures propagate as "broken". */
 export const listTemplateDirs = async (
   root: string,
   fsApi: FileSystem,
@@ -251,8 +252,9 @@ export const listTemplateDirs = async (
 };
 
 /**
- * 目录候选判定：普通目录与符号链接（指向目录与否由 inspect 判定）都算候选；常规文件不是。
- * `lstat` 失败原样上抛——ENOENT 与"坏了"不是一回事，谁捕怎么翻由调用方决定。
+ * Dir candidate check: plain dirs and symlinks (whether the link target is a dir is for inspect to judge)
+ * both count as candidates; regular files do not.
+ * `lstat` failures rethrow as-is — ENOENT and "broken" are not the same thing; who catches and how it is translated is the caller's decision.
  */
 export const isTemplateCandidate = async (path: string, fsApi: FileSystem): Promise<boolean> => {
   const stat = await fsApi.lstat(path);

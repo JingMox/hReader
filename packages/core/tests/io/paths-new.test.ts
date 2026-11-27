@@ -1,5 +1,5 @@
-// 这层管：resolveNewTarget——"目标可能还不存在"的路径解析（io/paths.ts）。
-// 词法闸与 resolveTarget 同一份，差异只在"边界落在最近的现存祖先"上。
+// This layer: resolveNewTarget — path resolution for "the target may not exist yet" (io/paths.ts).
+// Same lexical gates as resolveTarget; the only difference is the boundary lands on the nearest existing ancestor.
 
 import { join } from "node:path";
 
@@ -26,7 +26,7 @@ const fsOf = (fake: FakeFs) => {
 const attempt = (fake: FakeFs, file: string, workspace = WS): Promise<string> =>
   codeOfAsync(() => resolveNewTarget({ workspace, file }, fsOf(fake)));
 
-describe("resolveNewTarget · 正常解析", () => {
+describe("resolveNewTarget · normal resolution", () => {
   it("should resolve a missing file to ancestor realpath + tail", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     const target = await resolveNewTarget({ workspace: WS, file: "new.html" }, fsOf(fake));
@@ -70,7 +70,7 @@ describe("resolveNewTarget · 正常解析", () => {
   });
 });
 
-describe("resolveNewTarget · 词法闸（与 resolveTarget 同口径）", () => {
+describe("resolveNewTarget · lexical gates (same as resolveTarget)", () => {
   it("should reject the same bad shapes as resolveTarget", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     expect(await attempt(fake, "../out.html")).toBe("path_outside_workspace");
@@ -87,7 +87,7 @@ describe("resolveNewTarget · 词法闸（与 resolveTarget 同口径）", () =>
   });
 });
 
-describe("resolveNewTarget · 祖先边界", () => {
+describe("resolveNewTarget · ancestor boundary", () => {
   it("should reject when the nearest existing ancestor resolves outside", async () => {
     const fake = fakeFs({ "/outside/keep.html": "x" });
     fake.state.dirs.add("/outside");

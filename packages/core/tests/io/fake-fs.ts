@@ -88,7 +88,7 @@ const runHooks = (state: FakeState, method: FsMethod, path: string): void => {
   }
 };
 
-/** 沿链接链解析：每跳取"自身或最深祖先"中的链接项（与内核一致：中间目录的链接照常穿透）。 */
+/** Resolve along the link chain: each hop takes the link entry of "self or the deepest linked ancestor" (kernel-consistent: links on intermediate dirs are followed as usual). */
 const resolveLinks = (state: FakeState, path: string): string => {
   let current = path;
   for (let step = 0; step < 10; step += 1) {
@@ -116,7 +116,7 @@ const dirEntriesOf = (state: FakeState, dir: string): readonly string[] => {
   const resolved = resolveLinks(state, dir);
   if (!state.dirs.has(resolved)) throw systemError("ENOENT");
   const prefix = `${resolved}/`;
-  // 链接项也是目录的孩子：逃逸链接只有被列出来，调用方才有机会拒掉它。
+  // Link entries are children of the dir too: an escaping link can only be refused by the caller if it gets listed.
   const names = [...state.files.keys(), ...state.dirs, ...state.links.keys()].flatMap((path) => {
     if (!path.startsWith(prefix)) return [];
     const tail = path.slice(prefix.length);
@@ -155,7 +155,7 @@ const readMethodsOf = (
         size: 0,
       });
     }
-    // lstat 不解析最后一环，但中间目录的链接照常穿透（与内核一致）。
+    // lstat does not resolve the final segment, but links on intermediate dirs are still followed (kernel-consistent).
     const resolved = resolveLinks(state, path);
     if (state.dirs.has(resolved))
       return Promise.resolve({

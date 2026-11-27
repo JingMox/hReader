@@ -1,11 +1,11 @@
-// 这层管：nodeTemplateDeps 的装配形状（真实 fs 端口 + 真 clock/sleep + 注入的 home 根）。
-// 只验组合，不验行为——端口的真实行为由 io/node-fs 测试负责。
+// This layer: the shape of nodeTemplateDeps assembly (real fs port + real clock/sleep + injectable home root).
+// Only composition is verified, not behavior — the port's real behavior is owned by io/node-fs tests.
 
 import { describe, expect, it } from "vitest";
 
 import { nodeTemplateDeps } from "../../src/templates";
 
-describe("nodeTemplateDeps · 默认依赖", () => {
+describe("nodeTemplateDeps · default deps", () => {
   it("should compose the node fs port, a real clock/sleep and the home root", () => {
     const deps = nodeTemplateDeps();
 

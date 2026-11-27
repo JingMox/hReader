@@ -1,23 +1,23 @@
-// This layer: template model vocabulary（manifest、来源、结果与诊断类型、容量上限）；
-// 纯数据类型与常量，不含逻辑、不碰 IO。
+// This layer: template model vocabulary (manifest, sources, result and diagnostic types, capacity limits);
+// pure data types and constants, no logic, no IO.
 
 import type { PatchDeps } from "../io/ports";
 
-/** 模板 id 的合法形：kebab-case。它会拼进磁盘路径，任何含 `..`/`/`/`\`/NUL/大写/超长的串都过不了。 */
+/** The legal template id shape: kebab-case. It is joined into disk paths, so anything containing `..`/`/`/`\`/NUL/uppercase/overlength fails. */
 export const TEMPLATE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 
-/** 单个模板目录的容量闸（防压缩包级滥用）；内置模板天然满足。 */
+/** Capacity gate for a single template dir (against zip-bomb-level abuse); builtins satisfy it by construction. */
 export const TEMPLATE_MAX_BYTES = 20 * 1024 * 1024;
 export const TEMPLATE_MAX_FILES = 1000;
 
-/** 清单文件名与三个成员缺省路径（manifest 省略字段时的生效值）。 */
+/** The manifest filename and the three member defaults (effective when the manifest omits the field). */
 export const MANIFEST_FILE = "template.json";
 export const DEFAULT_ENTRY = "index.html";
 export const DEFAULT_STYLE = "style.css";
 export const DEFAULT_GUIDE = "guide.md";
 export const ASSETS_DIR = "assets";
 
-/** 模板目录在三级根下的相对位置：`<home>/.hreader/templates` 与 `<workspace>/.hreader/templates`。 */
+/** Where template dirs sit under the three-tier roots: `<home>/.hreader/templates` and `<workspace>/.hreader/templates`. */
 export const TEMPLATES_DIRNAME = "templates";
 
 export type TemplateSource = "builtin" | "user" | "workspace";
@@ -25,9 +25,9 @@ export type TemplateSource = "builtin" | "user" | "workspace";
 export type TemplateFormat = "html" | "managed";
 
 /**
- * `template.json` 解析后的形状：键名与文件里一致（snake_case 不适用——manifest 本就是 JSON）。
- * `entry`/`style`/`guide` 保留**作者写的值**（未写时是 `undefined`），生效路径见各字段上的缺省常量；
- * 这样"显式写了但文件不在"与"没写走缺省"两种情形才分得出。
+ * The parsed shape of `template.json`: keys identical to the file (no snake_case — the manifest is JSON anyway).
+ * `entry`/`style`/`guide` keep the **author-written value** (`undefined` when absent); effective paths come from
+ * the default constants on each field, so "explicitly written but missing on disk" stays distinguishable from "not written, use the default".
  */
 export interface TemplateManifest {
   readonly id: string;
@@ -42,16 +42,16 @@ export interface TemplateManifest {
 }
 
 export interface TemplateRoots {
-  /** 工作区根：工作区级模板在 `<workspace>/.hreader/templates`。 */
+  /** Workspace root: workspace-tier templates live under `<workspace>/.hreader/templates`. */
   readonly workspace: string;
 }
 
-/** 与 `StyleDeps.home` 同口径：用户级模板在 `<home>/.hreader/templates`；测试注入临时目录。 */
+/** Same contract as `StyleDeps.home`: user-tier templates live under `<home>/.hreader/templates`; tests inject a temp dir. */
 export interface TemplateDeps extends PatchDeps {
   readonly home: string;
 }
 
-/** `listTemplates` 的一个条目：manifest 摘要 + 来源。 */
+/** One `listTemplates` entry: manifest summary + source. */
 export interface TemplateSummary {
   readonly id: string;
   readonly name: string;
@@ -61,7 +61,7 @@ export interface TemplateSummary {
   readonly source: TemplateSource;
 }
 
-/** 被跳过的损坏模板：`id` 拿不到时记目录名。 */
+/** A skipped broken template: when `id` cannot be recovered, the dir name is recorded instead. */
 export interface TemplateDiagnostic {
   readonly id: string;
   readonly source: TemplateSource;
@@ -70,11 +70,11 @@ export interface TemplateDiagnostic {
 
 export interface TemplateList {
   readonly templates: readonly TemplateSummary[];
-  /** 每个损坏模板一条（含被高优先级同名模板遮住的）：坏一个不该拖垮整份清单。 */
+  /** One entry per broken template (including ones shadowed by a same-id higher-priority template): one bad apple must not sink the whole list. */
   readonly diagnostics: readonly TemplateDiagnostic[];
 }
 
-/** `readTemplate` 的完整载荷：manifest + 三个成员文本 + 资源清单（相对模板根、含 `assets/` 前缀）。 */
+/** `readTemplate`'s full payload: manifest + the three member texts + the asset list (relative to the template root, `assets/`-prefixed). */
 export interface LoadedTemplate {
   readonly manifest: TemplateManifest;
   readonly source: TemplateSource;
@@ -86,16 +86,16 @@ export interface LoadedTemplate {
 
 export interface CreateFromTemplateInput {
   readonly id: string;
-  /** 相对 workspace 的目标路径（与 `resolveTarget` 的 `file` 同契约）；已存在即 `file_exists`。 */
+  /** Workspace-relative target path (same contract as `resolveTarget`'s `file`); `file_exists` when it already exists. */
   readonly target: string;
-  /** 纯文本标题：写进 `<title>` 与首个 `<h1>`；省略时保留模板自带的标题。 */
+  /** Plain-text title: written into `<title>` and the first `<h1>`; when omitted the template's own title is kept. */
   readonly title?: string;
 }
 
 export interface CreateFromTemplateResult {
-  /** 落点相对 workspace 真实路径的正斜杠路径。 */
+  /** Forward-slash landing path relative to the real workspace root. */
   readonly path: string;
   readonly bytes: number;
-  /** 实际写出的资源文件（相对 workspace 的正斜杠路径）。 */
+  /** Asset files actually written (forward-slash paths relative to the workspace). */
   readonly assets: readonly string[];
 }
