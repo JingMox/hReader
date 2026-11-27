@@ -288,10 +288,10 @@ const writeAll = async (
       await mkdirOrFail(deps, dir);
     }
     if (assetData.length > 0) {
-      await createNewFiles(assetData, deps);
+      await createNewFiles(assetData, deps, target.workspace);
       createdFiles.push(...assetData.map((file) => file.path));
     }
-    await createNewFile(target.absolute, data, deps);
+    await createNewFile(target.absolute, data, deps, target.workspace);
   } catch (error: unknown) {
     for (const file of createdFiles) await unlinkQuiet(deps.fs, file);
     for (const dir of [...createdDirs].reverse()) await rmdirQuiet(deps.fs, dir);

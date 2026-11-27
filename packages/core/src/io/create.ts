@@ -1,9 +1,12 @@
 // This layer: "create only if absent" (file_exists when present, never overwrites, never leaves a half file).
-// Ownership/escape checks belong to the caller; here we only guarantee the create semantics itself.
+// The caller resolves the boundary once (resolveNewTarget); we re-check the parent's real path against it
+// right before the landing call, writeAtomic-style — a mid-flight parent swap must not redirect the create.
 
 import { randomInt } from "node:crypto";
+import { dirname } from "node:path";
 
 import { HrError } from "../hr-error";
+import { assertParentInside } from "./atomic";
 import { isExists, unlinkQuiet } from "./errors";
 import type { OpenFile, PatchDeps } from "./ports";
 
@@ -27,6 +30,7 @@ const createViaLink = async (
   data: Uint8Array,
   link: NonNullable<PatchDeps["fs"]["link"]>,
   deps: PatchDeps,
+  workspace: string,
 ): Promise<void> => {
   const tmp = tmpNameOf(target);
   try {
@@ -35,9 +39,15 @@ const createViaLink = async (
     throw ioFailureOf("暂存新文件", tmp, error);
   }
   try {
+    // The staging write is slow enough for a parent swap to slip in: re-prove the landing dir is inside.
+    await assertParentInside(deps, dirname(target), workspace);
     await link(tmp, target);
   } catch (error: unknown) {
-    throw isExists(error) ? existsFailure(target, error) : ioFailureOf("创建新文件", target, error);
+    throw error instanceof HrError
+      ? error
+      : isExists(error)
+        ? existsFailure(target, error)
+        : ioFailureOf("创建新文件", target, error);
   } finally {
     await unlinkQuiet(deps.fs, tmp);
   }
@@ -52,7 +62,13 @@ const openExclusive = async (target: string, deps: PatchDeps): Promise<OpenFile>
 };
 
 /** Fallback when the port has no `link`: exclusive O_EXCL create via `open`; a mid-write crash leaves a half file (weaker than the link path). */
-const createViaOpen = async (target: string, data: Uint8Array, deps: PatchDeps): Promise<void> => {
+const createViaOpen = async (
+  target: string,
+  data: Uint8Array,
+  deps: PatchDeps,
+  workspace: string,
+): Promise<void> => {
+  await assertParentInside(deps, dirname(target), workspace);
   const file = await openExclusive(target, deps);
   try {
     await file.write(data);
@@ -65,28 +81,34 @@ const createViaOpen = async (target: string, data: Uint8Array, deps: PatchDeps):
   }
 };
 
-/** The target's parent directory must already exist: mkdir is the caller's job (it knows whether to create intermediate dirs). */
+/**
+ * The target's parent directory must already exist: mkdir is the caller's job (it knows whether to
+ * create intermediate dirs). `workspace` is the boundary the caller resolved once; the parent's real
+ * path is re-proved against it right before the landing call.
+ */
 export const createNewFile = async (
   target: string,
   data: Uint8Array,
   deps: PatchDeps,
+  workspace: string,
 ): Promise<void> => {
   if (deps.fs.link !== undefined) {
-    await createViaLink(target, data, deps.fs.link, deps);
+    await createViaLink(target, data, deps.fs.link, deps, workspace);
     return;
   }
-  await createViaOpen(target, data, deps);
+  await createViaOpen(target, data, deps, workspace);
 };
 
-/** Exclusively create a batch of files; on mid-way failure the already-created ones are reclaimed (dirs are not — the port has no rmdir). */
+/** Exclusively create a batch of files; on mid-way failure the already-created ones are reclaimed (dirs are not — rmdir is the caller's tracking problem). */
 export const createNewFiles = async (
   files: readonly { readonly path: string; readonly data: Uint8Array }[],
   deps: PatchDeps,
+  workspace: string,
 ): Promise<void> => {
   const created: string[] = [];
   try {
     for (const file of files) {
-      await createNewFile(file.path, file.data, deps);
+      await createNewFile(file.path, file.data, deps, workspace);
       created.push(file.path);
     }
   } catch (error: unknown) {

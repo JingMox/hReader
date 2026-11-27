@@ -51,7 +51,7 @@ const residueNames = (fake: FakeFs): string[] =>
 describe("createNewFile · link path", () => {
   it("should create the target via tmp + link and leave no residue", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
-    await createNewFile(TARGET, encodeUtf8("fresh"), depsAt(fake));
+    await createNewFile(TARGET, encodeUtf8("fresh"), depsAt(fake), "/ws");
 
     expect(fake.textAt(TARGET)).toBe("fresh");
     expect(residueNames(fake)).toHaveLength(0);
@@ -60,9 +60,9 @@ describe("createNewFile · link path", () => {
 
   it("should report file_exists and not touch the existing target", async () => {
     const fake = fakeFs({ [TARGET]: "mine" });
-    expect(await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAt(fake)))).toBe(
-      "file_exists",
-    );
+    expect(
+      await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAt(fake), "/ws")),
+    ).toBe("file_exists");
     expect(fake.textAt(TARGET)).toBe("mine");
     expect(residueNames(fake)).toHaveLength(0);
   });
@@ -71,9 +71,9 @@ describe("createNewFile · link path", () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     fake.fail("link", systemError("EPERM"));
 
-    expect(await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAt(fake)))).toBe(
-      "io_failure",
-    );
+    expect(
+      await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAt(fake), "/ws")),
+    ).toBe("io_failure");
     expect(residueNames(fake)).toHaveLength(0);
   });
 
@@ -81,9 +81,9 @@ describe("createNewFile · link path", () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
     fake.fail("writeFileAtomic", systemError("ENOSPC"));
 
-    expect(await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAt(fake)))).toBe(
-      "io_failure",
-    );
+    expect(
+      await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAt(fake), "/ws")),
+    ).toBe("io_failure");
     expect(fake.state.files.has(TARGET)).toBe(false);
   });
 });
@@ -123,7 +123,7 @@ describe("createNewFile · parent-swap recheck", () => {
 describe("createNewFile · open fallback (no link port)", () => {
   it("should create the target through the exclusive open fallback", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x" });
-    await createNewFile(TARGET, encodeUtf8("fresh"), depsAtNoLink(fake));
+    await createNewFile(TARGET, encodeUtf8("fresh"), depsAtNoLink(fake), "/ws");
 
     expect(fake.textAt(TARGET)).toBe("fresh");
     expect(fake.state.log.some((line) => line.startsWith("link:"))).toBe(false);
@@ -132,7 +132,7 @@ describe("createNewFile · open fallback (no link port)", () => {
   it("should report file_exists when open hits an existing target", async () => {
     const fake = fakeFs({ [TARGET]: "mine" });
     expect(
-      await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAtNoLink(fake))),
+      await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAtNoLink(fake), "/ws")),
     ).toBe("file_exists");
     expect(fake.textAt(TARGET)).toBe("mine");
   });
@@ -142,7 +142,7 @@ describe("createNewFile · open fallback (no link port)", () => {
     fake.fail("handleWrite", systemError("EIO"));
 
     expect(
-      await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAtNoLink(fake))),
+      await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAtNoLink(fake), "/ws")),
     ).toBe("io_failure");
     expect(fake.state.files.has(TARGET)).toBe(false);
   });
@@ -152,7 +152,7 @@ describe("createNewFile · open fallback (no link port)", () => {
     fake.fail("open", systemError("EPERM"));
 
     expect(
-      await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAtNoLink(fake))),
+      await codeOfAsync(() => createNewFile(TARGET, encodeUtf8("x"), depsAtNoLink(fake), "/ws")),
     ).toBe("io_failure");
   });
 });
@@ -166,6 +166,7 @@ describe("createNewFiles · batch", () => {
         { path: "/ws/b.html", data: encodeUtf8("b") },
       ],
       depsAt(fake),
+      "/ws",
     );
 
     expect(fake.textAt("/ws/a.html")).toBe("a");
@@ -182,6 +183,7 @@ describe("createNewFiles · batch", () => {
             { path: "/ws/b.html", data: encodeUtf8("b") },
           ],
           depsAt(fake),
+          "/ws",
         ),
       ),
     ).toBe("file_exists");
