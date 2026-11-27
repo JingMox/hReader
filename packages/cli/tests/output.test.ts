@@ -13,6 +13,7 @@ import {
   dataOutline,
   dataPatch,
   dataRead,
+  dataSearch,
   dataStyle,
   dataStyleExtract,
   dataTone,
@@ -24,6 +25,7 @@ import {
   humanOutline,
   humanPatch,
   humanRead,
+  humanSearch,
   humanStyle,
   humanTone,
   jsonError,
@@ -39,6 +41,7 @@ import type {
   ExtractStyleLlmResult,
   ExtractStyleResult,
   ImportReport,
+  LibrarySearchResult,
   LintReport,
   MigrateResult,
   Outline,
@@ -294,9 +297,9 @@ describe("annotations output · merged entries and migrate receipts", () => {
 });
 
 describe("usage · single source of truth", () => {
-  it("should name all fifteen commands", () => {
+  it("should name all sixteen commands", () => {
     expect(COMMAND_NAMES.join(" ")).toBe(
-      "new import normalize outline read patch check style undo export pdf png serve template annotations",
+      "new import normalize outline read patch check style undo export pdf png serve template annotations search",
     );
     expect(isCommandName("patch")).toBe(true);
     expect(isCommandName("nope")).toBe(false);
@@ -841,5 +844,67 @@ describe("humanImport · the three trunk branches and dropped details", () => {
     expect(text).toContain("<script> ×2（脚本）");
     expect(text).toContain("<form> ×1（控件）");
     expect(humanImport(base, "o.html", 5)).not.toContain("丢弃明细");
+  });
+});
+
+describe("hr search output", () => {
+  const base: LibrarySearchResult = {
+    results: [
+      {
+        path: "a.html",
+        title: "维修手册",
+        kind: "doc",
+        score: 2.5,
+        snippet: "摩托车 发动机",
+        highlights: [[0, 3]],
+      },
+      {
+        path: "a.html",
+        title: "维修手册",
+        kind: "annotation",
+        annotationId: "an-123",
+        score: 1.1,
+        snippet: "换\n全合成机油",
+        highlights: [[1, 5]],
+      },
+    ],
+    total: 2,
+    truncated: false,
+    diagnostics: [],
+  };
+
+  it("should print one line per hit with the kind tag and a folded snippet", () => {
+    const text = humanSearch(base);
+    expect(text).toContain("search（共 2 条命中）");
+    expect(text).toContain("a.html [文档] 摩托车 发动机");
+    expect(text).toContain("a.html [批注 an-123] 换 全合成机油");
+    expect(text).not.toContain("上限");
+  });
+
+  it("should mark a truncated library and survive a missing annotationId", () => {
+    const truncated: LibrarySearchResult = {
+      results: [
+        {
+          path: "b.html",
+          title: "",
+          kind: "annotation",
+          score: 0.5,
+          snippet: "note",
+          highlights: [],
+        },
+      ],
+      total: 1,
+      truncated: true,
+      diagnostics: [],
+    };
+    const text = humanSearch(truncated);
+    expect(text).toContain("b.html [批注 -] note");
+    expect(text).toContain("结果是前缀");
+  });
+
+  it("should serialize the full envelope under --json", () => {
+    const data = JSON.parse(dataSearch(base)) as LibrarySearchResult;
+    expect(data.total).toBe(2);
+    expect(data.results[0]?.kind).toBe("doc");
   });
 });

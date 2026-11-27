@@ -16,6 +16,7 @@ export const COMMAND_NAMES = [
   "serve",
   "template",
   "annotations",
+  "search",
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -55,6 +56,7 @@ const SYNOPSIS = [
   "hr template save <file> --id <id> [--global] [--name <名字>] [--description <说明>] [--json]",
   "hr annotations list <file> [--status pending|resolved|all] [--json]",
   "hr annotations migrate <file> [--json]",
+  "hr search <query> [--limit <n>] [--json]",
   "hr --help | hr <cmd> --help",
 ];
 
@@ -257,6 +259,20 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "                   外来文档没有 hr-meta，报 0 条迁移。",
     "",
     "  读取侧车文件损坏时逐条告警到 stderr，不拖垮整个列表。",
+  ],
+  search: [
+    "用法：hr search <query> [--limit <n>] [--json]",
+    "",
+    "  在整个工作区里全文检索：覆盖每个 HTML 文档的标题、标题层级、正文，",
+    "  以及它的每一条批注（note + 摘录）。索引落在 <workspace>/.hreader/index/，",
+    "  查询时增量更新：只重扫变过的文件，未变的库连索引文件都不重写。",
+    "",
+    "  --limit <n>   返回条数上限 1..100（默认 20）",
+    "",
+    "  查询词 1..200 码点；拉丁词给 0.2 的模糊容错与前缀匹配，CJK 词精确匹配。",
+    "  人读输出每条一行：<path> [文档|批注 <id>] 摘录；",
+    "  JSON 时为 { results: [{path, title, kind, annotationId, score, snippet, highlights}],",
+    "  total, truncated, diagnostics }（annotationId 只在批注命中时给出）。",
   ],
 };
 

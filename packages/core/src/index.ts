@@ -206,6 +206,10 @@ export type {
   WorkspaceAnnotationsInput,
   WorkspaceAnnotationsResult,
 } from "./ops/annotation-scan";
+
+// ---- Library-wide full-text search (docs + annotations, MiniSearch under `.hreader/index/`) ----
+export { searchLibrary, SEARCH_LIMITS } from "./search";
+export type { LibrarySearchResult, SearchHit, SearchInput } from "./search";
 export { revertLast } from "./ops/revert-op";
 export type { RevertResult } from "./ops/revert-op";
 export { normalizeFile } from "./ops/normalize-file";

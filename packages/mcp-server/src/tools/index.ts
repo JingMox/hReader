@@ -15,6 +15,7 @@ import { patchNodeCall, patchNodeShape } from "./patch-node";
 import { readNodeCall, readNodeShape } from "./read-node";
 import { resolveAnnotationCall, resolveAnnotationShape } from "./resolve-annotation";
 import { saveTemplateCall, saveTemplateShape } from "./save-template";
+import { searchCall, searchShape } from "./search";
 import { undoCall, undoShape } from "./undo";
 
 export const registerTools = (server: McpServer): void => {
@@ -64,6 +65,16 @@ const registerReadingTools = (server: McpServer): void => {
       inputSchema: importDocShape,
     },
     importDocCall,
+  );
+  server.registerTool(
+    "hr_search",
+    {
+      title: "全文检索整个库",
+      description:
+        "在整个工作区里全文检索：覆盖每篇文档的标题/层级/正文及其批注（note + 摘录），返回 {results: [{path, title, kind, annotationId, score, snippet, highlights}], total, truncated, diagnostics}。想不起来文档叫什么、或要按内容找文档与批注时用它",
+      inputSchema: searchShape,
+    },
+    searchCall,
   );
 };
 

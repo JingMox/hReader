@@ -16,6 +16,7 @@ import type {
   HrErrorData,
   ImportDiscard,
   ImportReport,
+  LibrarySearchResult,
   LintHit,
   LintReport,
   LoadedTemplate,
@@ -28,6 +29,7 @@ import type {
   ReadNodeResult,
   RelocateResult,
   SavedTemplate,
+  SearchHit,
   TemplateDiagnostic,
   TemplateList,
   TemplateSummary,
@@ -628,3 +630,27 @@ export const humanAnnotationsMigrate = (result: MigrateResult, path: string): st
         `migrated ${path}（迁移 ${String(result.migrated)} 条、跳过 ${String(result.skipped)} 条）\n`,
       )
     : term(`unchanged ${path}（没有可迁移的 hr-meta 批注）\n`);
+
+// ---- `hr search` ----
+
+export const dataSearch = (result: LibrarySearchResult): string => JSON.stringify(result);
+
+/** One line's snippet cell: the annotation field joins note + exact with a newline — fold it flat. */
+const snippetCell = (snippet: string): string =>
+  cutAtCodePoint(term(snippet.replace(/\s+/gu, " ")).trim(), ANNOTATION_FIELD_LIMIT);
+
+const searchLine = (hit: SearchHit): string => {
+  const kind =
+    hit.kind === "annotation"
+      ? `批注 ${cutAtCodePoint(hit.annotationId ?? "-", TABLE_CELL_LIMIT)}`
+      : "文档";
+  return `  ${hit.path} [${kind}] ${snippetCell(hit.snippet)}`;
+};
+
+/** An empty result still prints a line: silent success reads like "the command did not run". */
+export const humanSearch = (result: LibrarySearchResult): string =>
+  term(
+    `search（共 ${String(result.total)} 条命中）\n` +
+      result.results.map((hit) => `${searchLine(hit)}\n`).join("") +
+      (result.truncated ? "  （库内文档超过索引上限，结果是前缀）\n" : ""),
+  );

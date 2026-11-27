@@ -8,7 +8,7 @@ export const CWD = "/repo";
 
 /** The command-list string for a missing top-level command: it grows long enough to be folded by prettier, so it lives here to keep cases under the line limit. */
 export const COMMAND_LIST_HINT =
-  "缺少命令：new | import | normalize | outline | read | patch | check | style | undo | export | pdf | png | serve | template | annotations";
+  "缺少命令：new | import | normalize | outline | read | patch | check | style | undo | export | pdf | png | serve | template | annotations | search";
 
 export const parse = (argv: readonly string[], cwd: string = CWD) => parseArgs(argv, cwd);
 

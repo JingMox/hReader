@@ -58,6 +58,20 @@ describe("runtime · 静态路由缺 req.url → 400 invalid_request", () => {
     },
   );
 
+  it("should reject a /api/search route without a URL", async () => {
+    const { runtime, dispose } = runtimeOf();
+    const reply = await runtime.dispatch(
+      { method: "GET", segments: ["api", "search"], auth: "cookie", kind: "search" },
+      {},
+      requestLike({ url: undefined }),
+    );
+    dispose();
+
+    expect(reply.status).toBe(400);
+    expect(String(reply.body)).toContain("invalid_request");
+    expect(String(reply.body)).toContain("请求行缺少 URL");
+  });
+
   it("should reject a /f/ asset route without a URL", async () => {
     const { runtime, dispose } = runtimeOf();
     const reply = await runtime.dispatch(

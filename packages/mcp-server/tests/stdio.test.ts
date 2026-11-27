@@ -73,6 +73,7 @@ describe("dist/main.js · tool surface", () => {
       "hr_read_node",
       "hr_resolve_annotation",
       "hr_save_template",
+      "hr_search",
       "hr_undo",
     ]);
   }, 30_000);

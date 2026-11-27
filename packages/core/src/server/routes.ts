@@ -37,7 +37,8 @@ export type RouteKind =
   | "sidecarReopen"
   | "sidecarReply"
   | "sidecarDelete"
-  | "events";
+  | "events"
+  | "search";
 
 const DOC_PARAM = ":docId";
 
@@ -137,6 +138,8 @@ export const ROUTES: readonly Route[] = Object.freeze([
     "sidecarDelete",
   ),
   route("GET", ["api", "events"], "cookie", "events"),
+  // Library-wide full-text search: one read route, same cookie layering as the other reads.
+  route("GET", ["api", "search"], "cookie", "search"),
 ]);
 
 /** 空段（`//`、尾斜杠）直接判不匹配：路由表里没有"宽松"写法，避免 `%2f` 与 `/` 两套口径。 */

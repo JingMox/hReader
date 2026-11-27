@@ -24,6 +24,7 @@ const OPTION_SPECS = {
   id: { type: "string" },
   "inherits-visual": { type: "string" },
   kind: { type: "string" },
+  limit: { type: "string" },
   "max-bytes": { type: "string" },
   "max-height": { type: "string" },
   model: { type: "string" },
