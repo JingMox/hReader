@@ -3,6 +3,7 @@
 // 块级 diff、批注、演示模式也就天然够不到它。
 
 import type { Host } from "../dom.ts";
+import { mountAnnotate, type AnnotateEnv, type AnnotateIo } from "./annotate.ts";
 import { COPY } from "./copy.ts";
 
 /** 服务端 `trust` 字段的旧式档位（兼容字段）：off = 脚本不生效；local = 脚本生效。 */
@@ -79,6 +80,8 @@ export interface ForeignDeps {
   readonly theme: ForeignTheme | undefined;
   /** 存在时把导航门栏状态上报给嵌入壳（桌面端）；浏览器里不接。 */
   readonly reportGate?: (gate: DocGate) => void;
+  /** 批注模式：`POST /annotate` + `…/sidecar` 的封装与消息环境；缺省 = 批注钮不出现。 */
+  readonly annotate?: { readonly io: AnnotateIo; readonly env: AnnotateEnv } | undefined;
 }
 
 export interface ForeignHandle {
@@ -89,6 +92,8 @@ export interface ForeignHandle {
    * 横幅、开关与 sandbox；sandbox/CSP 只在导航提交时采样，生效组合变了必须重载 iframe。
    */
   readonly syncInfo: (next: ForeignInput) => void;
+  /** `doc.annotations`（SSE，本 doc）：批注模式下重推高亮；非批注模式无副作用。 */
+  readonly annotationsChanged: () => void;
   readonly destroy: () => void;
 }
 
@@ -131,6 +136,12 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     host.attr(FRAME, "src", src);
   };
 
+  const reportError = (cause: unknown): void => {
+    // 失败时横幅必须在：normalize 的重进路径会先收起横幅，出错要把它再请回来。
+    host.attr(BANNER, "hidden", undefined);
+    host.text(ERROR, cause instanceof Error ? cause.message : String(cause));
+  };
+
   /**
    * 安全不变量（勿放宽）：
    * - `allow-scripts` 与 `allow-same-origin` 永远互斥——两者同给，外来文档就能读同源
@@ -139,6 +150,29 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
    * 联网维度不进 sandbox：网络收口是服务端 CSP 的事，沙箱只管脚本能不能跑。
    */
   const sandboxOf = (): string => (perms?.scripts === true ? "allow-scripts" : "");
+
+  /** 批注子组件：deps.annotate 缺席 = 不装配（按钮保持 hidden，零消息面）。 */
+  const annotate =
+    deps.annotate === undefined
+      ? undefined
+      : mountAnnotate({
+          host,
+          parent,
+          io: deps.annotate.io,
+          env: deps.annotate.env,
+          frame: {
+            setSandbox: (value) => {
+              host.attr(FRAME, "sandbox", value);
+            },
+            navigate: frameNavigate,
+          },
+          sandboxOff: sandboxOf,
+          docSrc: () => srcOf(undefined),
+          onError: reportError,
+        });
+  /** 批注模式下 sandbox 恒为 allow-scripts：syncInfo/applyPerms 的重画不得把它写回权限档。 */
+  const frameSandbox = (): string =>
+    annotate?.isActive() === true ? "allow-scripts" : sandboxOf();
 
   const bannerTextOf = (): string => {
     if (info.cls === "normalizable") return COPY.normalizableBanner;
@@ -183,7 +217,7 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     const label = actionLabelOf();
     host.attr(ACTION, "hidden", label === undefined ? "" : undefined);
     if (label !== undefined) host.text(ACTION, label);
-    host.attr(FRAME, "sandbox", sandboxOf());
+    host.attr(FRAME, "sandbox", frameSandbox());
     // 底栏开关只对外来文档存在：normalizable/managed 没有可授权的维度。
     const granted = info.cls === "foreign" && perms !== undefined;
     host.attr(PERMS, "hidden", granted ? undefined : "");
@@ -191,16 +225,16 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
       paintToggle(PERM_SCRIPTS, "scripts", COPY.permScripts, perms);
       paintToggle(PERM_NETWORK, "network", COPY.permNetwork, perms);
     }
-  };
-
-  const reportError = (cause: unknown): void => {
-    // 失败时横幅必须在：normalize 的重进路径会先收起横幅，出错要把它再请回来。
-    host.attr(BANNER, "hidden", undefined);
-    host.text(ERROR, cause instanceof Error ? cause.message : String(cause));
+    annotate?.repaint(info.cls);
   };
 
   const refresh = (revision?: string): void => {
     if (dead) return;
+    // 批注模式下 doc.changed 不是换 src：token 单次有效，必须重铸后按新 frameUrl 重载。
+    if (annotate?.isActive() === true) {
+      annotate.refresh();
+      return;
+    }
     // 事件带 revision 就用它做 cache-bust；没带才动用本地计数（计数只为兜底，不掺进正常路径）。
     const tag = revision ?? `n${String((loads += 1))}`;
     frameNavigate(srcOf(tag));
@@ -219,6 +253,10 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     if (perms?.network === true) return;
     host.attr(BANNER, "hidden", undefined);
     host.text(ERROR, COPY.foreignNavBlocked);
+    if (annotate?.isActive() === true) {
+      annotate.refresh();
+      return;
+    }
     frameNavigate(srcOf(undefined));
   };
 
@@ -369,8 +407,12 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
       reportGate();
       if (changed) refresh();
     },
+    annotationsChanged: () => {
+      annotate?.annotationsChanged();
+    },
     destroy: () => {
       dead = true;
+      annotate?.destroy();
       offLoad();
       offAction();
       offScripts();

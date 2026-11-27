@@ -38,7 +38,9 @@ const sandboxOf = (distFiles: Readonly<Record<string, string>>): Sandbox => {
   writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "9.9.9" }));
   writeFileSync(join(dir, "static", "index.html"), "<html></html>");
   writeFileSync(join(dir, "static", "styles.css"), "body{}");
-  writeFileSync(join(dir, "static", "annotator.js"), "void 0;");
+  // The annotator bundle is built by build-annotator.mjs before build-static runs.
+  mkdirSync(join(dir, "dist"), { recursive: true });
+  writeFileSync(join(dir, "dist", "annotator.js"), "void 0;");
   for (const [name, body] of Object.entries(distFiles)) {
     const target = join(dir, "dist", "assets", name);
     mkdirSync(dirname(target), { recursive: true });

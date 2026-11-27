@@ -52,6 +52,7 @@
     "esbuild": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-import": "^2.32.0",
+    "fast-check": "catalog:",
     "globals": "^16.5.0",
     "knip": "^5.81.0",
     "prettier": "^3.10.1",

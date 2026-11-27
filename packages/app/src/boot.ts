@@ -19,6 +19,7 @@ import { missingAnchorsOf, reportMissingAnchors } from "./anchors.ts";
 import type { RawSelection } from "./widgets/selection.ts";
 import { COPY } from "./widgets/copy.ts";
 import { mountPresent, type PresentShell, type PresentWidget } from "./widgets/present.ts";
+import type { AnnotateEnv, AnnotateIo } from "./widgets/annotate.ts";
 import {
   mountForeign,
   type DocGate,
@@ -120,6 +121,8 @@ export interface ClassifiedBootDeps extends Omit<
   }>;
   /** `POST /api/style {docId, visualId}`：外来文档的主题写进文件里的 `<style id="hr-theme">`。 */
   readonly postStyle: (visualId: string) => Promise<unknown>;
+  /** 批注模式的 IO + 消息环境；缺省 = 批注钮不出现（测试/老壳）。 */
+  readonly annotate?: { readonly io: AnnotateIo; readonly env: AnnotateEnv } | undefined;
 }
 
 const ROOT = "#hr-root";
@@ -409,6 +412,11 @@ const foreignSseOf = (store: Store, foreign: ForeignHandle, resync: () => void):
       resync();
       return;
     }
+    // 旁注写路径（含本端保存）广播 doc.annotations：非本 doc 的事件直接丢。
+    if (event.type === "doc.annotations") {
+      if (event.payload["docId"] === store.get().docId) foreign.annotationsChanged();
+      return;
+    }
     if (event.type !== "doc.changed" && event.type !== "doc.reloaded") return;
     const revision = event.payload["revision"];
     foreign.refresh(typeof revision === "string" ? revision : undefined);
@@ -478,6 +486,7 @@ const bootForeign = (
             },
           },
     reportGate: reportDocGate,
+    annotate: deps.annotate,
   });
   // 外来壳也接键盘与沉浸开关：j/k 等块导航意图对空 blocks 自然空转，只有沉浸与连接态有出口。
   const dispatchIntent = (intent: ReaderIntent): void => {

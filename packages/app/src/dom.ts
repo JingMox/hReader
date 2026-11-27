@@ -31,6 +31,8 @@ export interface DiffChunk {
 export interface TargetLike {
   readonly closest?: (selector: string) => { getAttribute: (name: string) => string | null } | null;
   readonly value?: string;
+  /** keydown/keyup 的 `event.key`（事件属性，不是 target 的——适配器预解析到这里）。 */
+  readonly key?: string;
   /** 由 `Host.on` 预解析的 `[data-toc-id]`：widget 只读这一个字段，不碰选择器/属性名。 */
   readonly tocId?: string | undefined;
   /** 由 `Host.on` 预解析的 `[data-hr-id]:not(article)`：正文块点击只读这一个字段。 */
@@ -111,6 +113,7 @@ export interface ElementLike {
   ) => void;
   readonly remove?: () => void;
   readonly scrollIntoView?: (options: { block: "start" }) => void;
+  readonly focus?: () => void;
 }
 
 const found = (root: DocumentLike, selector: string): ElementLike | undefined =>
@@ -269,13 +272,14 @@ export const createDomHost = (root: DocumentLike): Host => {
     const element = found(root, selector);
     if (element === undefined) return () => undefined;
     // 真实 DOM 的 `value` 与 `closest` 在原型链上，直接对象展开会丢掉：必须显式转接并保留 `this`。
-    const listener = (event: { target: TargetLike }): void => {
+    const listener = (event: { target: TargetLike; key?: unknown }): void => {
       const target = event.target;
       const findClosest = target.closest;
       const closest =
         findClosest === undefined ? undefined : (sel: string) => findClosest.call(target, sel);
       handler({
         ...(target.value === undefined ? {} : { value: target.value }),
+        ...(typeof event.key === "string" ? { key: event.key } : {}),
         ...(closest === undefined ? {} : { closest }),
         tocId: closest?.("[data-toc-id]")?.getAttribute("data-toc-id") ?? undefined,
         blockId: closest?.("[data-hr-id]:not(article)")?.getAttribute("data-hr-id") ?? undefined,

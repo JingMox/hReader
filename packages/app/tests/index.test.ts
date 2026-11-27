@@ -24,6 +24,14 @@ const PUBLIC_SURFACE: readonly string[] = [
  *  锚点少一个，`boot` 会在状态栏可见地失败——所以这份清单就是"UI 必须存在的元素"契约。
  *  改模板/加交互 = 改这里；删锚点同理。 */
 const REQUIRED_ANCHOR_IDS: readonly string[] = [
+  "#hr-annotate-actions",
+  "#hr-annotate-btn",
+  "#hr-annotate-cancel",
+  "#hr-annotate-draft",
+  "#hr-annotate-hint",
+  "#hr-annotate-pop",
+  "#hr-annotate-save",
+  "#hr-annotate-view",
   "#hr-canvas",
   "#hr-conn",
   "#hr-controls",

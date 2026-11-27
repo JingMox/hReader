@@ -35,6 +35,34 @@ export interface Page {
   readonly reload: () => Promise<void>;
   /** Page errors, console.error entries and failed requests collected since page open. */
   readonly consoleErrors: () => readonly string[];
+  /**
+   * Evaluate inside an iframe whose URL contains `urlIncludes` (CDP reaches
+   * opaque-origin frames the parent's same-origin rules cannot). Promise
+   * returns are awaited; a missing frame resolves to undefined.
+   */
+  readonly frameEval: (urlIncludes: string, expression: string) => Promise<unknown>;
+  /** Poll a predicate inside a matching frame until truthy / timeout. */
+  readonly frameWait: (
+    urlIncludes: string,
+    expression: string,
+    timeoutMs?: number,
+  ) => Promise<unknown>;
+  /**
+   * Real mouse path: press → move (in steps) → release at viewport
+   * coordinates. Input.dispatchMouseEvent coordinates are page-viewport
+   * coordinates — a frame's content sits at iframe-rect + in-frame offsets.
+   */
+  readonly drag: (
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    steps?: number,
+  ) => Promise<void>;
+  /** Real single click at viewport coordinates (press + release). */
+  readonly mouseClick: (x: number, y: number) => Promise<void>;
+  /** Focus a selector and insert text through the real input pipeline (fires input events). */
+  readonly type: (selector: string, text: string) => Promise<void>;
 }
 
 // The same flags as the old hand-rolled driver (headless itself goes through
@@ -75,6 +103,35 @@ const wrapPage = (inner: PuppeteerPage, session: CDPSession): Omit<Page, "consol
     const value = result["result"];
     if (typeof value === "object" && value !== null) return Reflect.get(value, "value");
     return undefined;
+  };
+
+  const frameOf = (urlIncludes: string) =>
+    inner.frames().find((frame) => frame.url().includes(urlIncludes));
+
+  const frameEval = async (urlIncludes: string, expression: string): Promise<unknown> => {
+    const frame = frameOf(urlIncludes);
+    if (frame === undefined) return undefined;
+    return await frame.evaluate(expression);
+  };
+
+  // Chrome only extends a selection on moves that report the held button —
+  // `button:"none"` moves are plain hover and the "drag" collapses to a caret.
+  // `buttons` is the depressed-button bitmask (1 = left), same contract
+  // puppeteer's own mouse keeps.
+  const mouse = async (
+    type: "mousePressed" | "mouseReleased" | "mouseMoved",
+    x: number,
+    y: number,
+    held: boolean,
+  ): Promise<void> => {
+    await session.send("Input.dispatchMouseEvent", {
+      type,
+      x,
+      y,
+      button: type === "mouseMoved" ? (held ? "left" : "none") : "left",
+      buttons: held ? 1 : 0,
+      clickCount: type === "mouseMoved" ? 0 : 1,
+    });
   };
 
   return {
@@ -132,6 +189,49 @@ const wrapPage = (inner: PuppeteerPage, session: CDPSession): Omit<Page, "consol
     },
     reload: async () => {
       await inner.reload({ ignoreCache: true, waitUntil: "domcontentloaded", timeout: 30_000 });
+    },
+    frameEval,
+    frameWait: async (urlIncludes, expression, timeoutMs = 20_000) => {
+      const deadline = Date.now() + timeoutMs;
+      const wrapped = `(() => { try { return (${expression}); } catch (error) { return false; } })()`;
+      for (;;) {
+        const frame = frameOf(urlIncludes);
+        if (frame === undefined) return false;
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return false;
+        try {
+          const handle = await frame.waitForFunction(wrapped, {
+            polling: 60,
+            timeout: remaining,
+          });
+          const value: unknown = await handle.jsonValue();
+          await handle.dispose();
+          return value;
+        } catch (error: unknown) {
+          if (error instanceof TimeoutError) return false;
+          // Frame navigated (context destroyed): retry until the deadline.
+          await new Promise((resolve) => setTimeout(resolve, 120));
+        }
+      }
+    },
+    drag: async (fromX, fromY, toX, toY, steps = 10) => {
+      await mouse("mouseMoved", fromX, fromY, false);
+      await mouse("mousePressed", fromX, fromY, true);
+      for (let step = 1; step <= steps; step += 1) {
+        const x = fromX + ((toX - fromX) * step) / steps;
+        const y = fromY + ((toY - fromY) * step) / steps;
+        await mouse("mouseMoved", x, y, true);
+      }
+      await mouse("mouseReleased", toX, toY, false);
+    },
+    mouseClick: async (x, y) => {
+      await mouse("mouseMoved", x, y, false);
+      await mouse("mousePressed", x, y, true);
+      await mouse("mouseReleased", x, y, false);
+    },
+    type: async (selector, text) => {
+      await inner.focus(selector);
+      await session.send("Input.insertText", { text });
     },
   };
 };

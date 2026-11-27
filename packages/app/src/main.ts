@@ -19,7 +19,7 @@ import { createSse, type SseHandlers, type SourceLike } from "./sse.ts";
 import { measureSelection } from "./measure.ts";
 import { errorLogger } from "./log.ts";
 import { initialState } from "./state.ts";
-import { keySourceOf, type KeyboardLike } from "./wiring.ts";
+import { keySourceOf } from "./wiring.ts";
 export {
   annotationIntentOf,
   renderAnnotations,
@@ -30,6 +30,8 @@ export {
 import { createStore, type Store } from "./store.ts";
 import { createStyleSwitch } from "./style-switch.ts";
 import type { PresentShell } from "./widgets/present.ts";
+import type { AnnotateEnv } from "./widgets/annotate.ts";
+import { sidecarListOf, type WireAnchor } from "./annotate-proto.ts";
 import type { DocPermissions, PermissionMode, PermissionSource } from "./widgets/foreign.ts";
 
 /** 浏览器全局的最小声明（本仓库 tsconfig 不带 DOM lib）：只写我们真正用到的成员。 */
@@ -64,8 +66,11 @@ declare const window: {
       readonly endOffset: number;
     };
   } | null;
-  readonly addEventListener: (type: string, listener: (event: KeyboardLike) => void) => void;
-  readonly removeEventListener: (type: string, listener: (event: KeyboardLike) => void) => void;
+  readonly innerWidth: number;
+  readonly innerHeight: number;
+  /** `never` 形参让各种事件监听函数都能赋进来（message/mouseup/pagehide/keydown 各有自己的事件面）。 */
+  readonly addEventListener: (type: string, listener: (event: never) => void) => void;
+  readonly removeEventListener: (type: string, listener: (event: never) => void) => void;
 };
 declare const EventSource: new (
   url: string,
@@ -198,6 +203,16 @@ const isNormalizeResponse = (
   value: unknown,
 ): value is { readonly revision: string; readonly cls: DocInfo["cls"] } =>
   isRecord(value) && typeof value["revision"] === "string" && isDocClass(value["cls"]);
+
+/** `POST /api/doc/<id>/annotate` → `{frameUrl}`：只收 `/f/` 入口（服务端唯一出口），长度封住。 */
+const isAnnotateReply = (value: unknown): value is { readonly frameUrl: string } =>
+  isRecord(value) &&
+  typeof value["frameUrl"] === "string" &&
+  value["frameUrl"].startsWith("/f/") &&
+  value["frameUrl"].length <= 4096;
+
+/** 写响应只当成功信号用（随后一律重拉列表）：record 即合格。 */
+const isAnyRecord = (value: unknown): value is Readonly<Record<string, unknown>> => isRecord(value);
 
 const isStyleResponse = (
   value: unknown,
@@ -403,7 +418,74 @@ export const bootDocumentWith = async (input: BootDocumentInput): Promise<Booted
     postStyle: async (visualId) => {
       await postJson(io, `/api/style`, { docId, visualId }, isStyleResponse);
     },
+    annotate: {
+      io: {
+        mint: async () =>
+          (await postJson(io, `/api/doc/${encoded}/annotate`, {}, isAnnotateReply)).frameUrl,
+        list: async () => sidecarListOf(await io.json(`/api/doc/${encoded}/sidecar`, isAnyRecord)),
+        add: async (body: { anchor: WireAnchor; selector?: string; note: string }) => {
+          await postJson(
+            io,
+            `/api/doc/${encoded}/sidecar`,
+            body as Readonly<Record<string, unknown>>,
+            isAnyRecord,
+          );
+        },
+      },
+      env: annotateEnvOf(),
+    },
   });
+};
+
+/**
+ * 批注模式的消息/几何环境：`contentWindow` 与 `getBoundingClientRect` 不经 Host
+ * （它们不是写点），这里做唯一一次结构收窄（`@internal`：测试可注入假 env）。
+ */
+interface FrameElementLike {
+  readonly contentWindow?: {
+    readonly postMessage: (message: unknown, targetOrigin: string) => void;
+  } | null;
+  readonly getBoundingClientRect?: () => {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
+const annotateEnvOf = (): AnnotateEnv => {
+  const frameEl = (): FrameElementLike | undefined =>
+    (document.querySelector("#hr-foreign-frame") as FrameElementLike | null) ?? undefined;
+  return {
+    onMessage: (handler) => {
+      const listener = (event: {
+        readonly source?: unknown;
+        readonly origin?: string;
+        readonly data?: unknown;
+      }): void => {
+        handler({
+          source: event.source,
+          origin: typeof event.origin === "string" ? event.origin : "",
+          data: event.data,
+        });
+      };
+      window.addEventListener("message", listener);
+      return () => {
+        window.removeEventListener("message", listener);
+      };
+    },
+    frameWindow: () => frameEl()?.contentWindow ?? null,
+    postToFrame: (message) => {
+      frameEl()?.contentWindow?.postMessage(message, "*");
+    },
+    frameRect: () => {
+      const rect = frameEl()?.getBoundingClientRect?.();
+      return rect === undefined
+        ? undefined
+        : { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    },
+    viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
+  };
 };
 
 /** 顶层兜底：任何失败都在中栏写一条可读文案，不白屏（`@internal` 便于单测）。 */

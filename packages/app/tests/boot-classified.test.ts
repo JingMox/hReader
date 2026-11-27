@@ -300,6 +300,39 @@ describe("bootDocument · SSE 与状态", () => {
     ]);
   });
 
+  it("should route doc.annotations for this doc into the annotate widget only", async () => {
+    let lists = 0;
+    const annotate = {
+      io: {
+        mint: () => Promise.resolve("/f/cap/frame?at=t1"),
+        list: () => {
+          lists += 1;
+          return Promise.resolve([]);
+        },
+        add: () => Promise.resolve(),
+      },
+      env: {
+        onMessage: () => () => undefined,
+        frameWindow: () => ({}),
+        postToFrame: () => undefined,
+        frameRect: () => undefined,
+        viewport: () => ({ width: 1024, height: 768 }),
+      },
+    };
+    const h = harnessOf(true);
+    const { deps, handlers } = classifiedOf(h, () => foreignInfo, { annotate });
+    await bootDocument(deps);
+
+    // Annotate mode must be active for the widget to re-list.
+    h.fake.fire(`${ROOT} #hr-annotate-btn`, "click", {});
+    await flush();
+
+    handlers.current?.onEvent({ id: 1, type: "doc.annotations", payload: { docId: "other.html" } });
+    handlers.current?.onEvent({ id: 2, type: "doc.annotations", payload: { docId: "doc.html" } });
+    await flush();
+    expect(lists).toBe(1);
+  });
+
   it("should paint the SSE connection state through the statusbar", async () => {
     const h = harnessOf(true);
     const { deps, handlers } = classifiedOf(h, () => foreignInfo);

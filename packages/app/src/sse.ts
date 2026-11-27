@@ -26,7 +26,13 @@ export interface SseEvent {
 
 /** 服务端会用的具名事件；`message` 作为兜底（无 `event:` 行的实现）。
  *  `permissions.changed` 在此登记才算"听到"：EventSource 只派发已监听的具名事件。 */
-const NAMED = ["doc.changed", "doc.reloaded", "library.changed", "permissions.changed"] as const;
+const NAMED = [
+  "doc.changed",
+  "doc.reloaded",
+  "library.changed",
+  "permissions.changed",
+  "doc.annotations",
+] as const;
 
 interface SseDeps {
   readonly open: (url: string) => SourceLike;

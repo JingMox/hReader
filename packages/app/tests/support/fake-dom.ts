@@ -29,7 +29,7 @@ export interface FakeElement {
   replaceWith: (node: ElementLike) => void;
   addEventListener: (type: string, handler: (event: { target: TargetLike }) => void) => void;
   removeEventListener: (type: string, handler: (event: { target: TargetLike }) => void) => void;
-  fire: (type: string, target: TargetLike) => void;
+  fire: (type: string, target: TargetLike, event?: Record<string, unknown>) => void;
   scrollIntoView?: (options: { block: "start" }) => void;
 }
 
@@ -114,8 +114,8 @@ const wireOf = (element: FakeElement): void => {
     element.listeners.splice(element.listeners.indexOf(type), 1);
     handlers.delete(type);
   };
-  element.fire = (type, target) => {
-    handlers.get(type)?.({ target });
+  element.fire = (type, target, event) => {
+    handlers.get(type)?.({ ...event, target });
   };
 };
 

@@ -61,6 +61,15 @@ const config = {
     "packages/app/src/widgets/present.ts",
     "packages/app/src/widgets/foreign.ts",
     "packages/app/src/escape-attr.ts",
+    // annotator bundle (untrusted-frame script): capture, engine, protocol, text model
+    "packages/app/src/annotator/caps.ts",
+    "packages/app/src/annotator/index.ts",
+    "packages/app/src/annotator/proto.ts",
+    "packages/app/src/annotator/run.ts",
+    "packages/app/src/annotator/text-model.ts",
+    // reader side: strict inbound validation + the annotate controller's message intake
+    "packages/app/src/annotate-proto.ts",
+    "packages/app/src/widgets/annotate.ts",
   ],
   testRunner: "vitest",
   // pnpm's .pnpm realpath layout hides the runner from the default "@stryker-mutator/*" glob, so declare it explicitly.

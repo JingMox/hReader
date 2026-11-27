@@ -27,6 +27,15 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-foreign-action",
   "#hr-foreign-error",
   "#hr-foreign-frame",
+  // 外来批注：横幅开关 + 选区浮层（草稿 / 只读 / 提示 / 两钮）
+  "#hr-annotate-btn",
+  "#hr-annotate-pop",
+  "#hr-annotate-draft",
+  "#hr-annotate-view",
+  "#hr-annotate-hint",
+  "#hr-annotate-actions",
+  "#hr-annotate-save",
+  "#hr-annotate-cancel",
   // 演示模式：入口按钮 / 覆盖层容器 / 页码 / 退出
   "#hr-present-btn",
   "#hr-present",
@@ -76,6 +85,7 @@ export const CONTAINER_ANCHORS: readonly string[] = [
   "#hr-controls",
   "#hr-notes-actions",
   "#hr-present",
+  "#hr-annotate-actions",
 ];
 
 /** 缺失的锚点（空数组 = 模板完整）；`host.has` 缺失时（假 host）不做检查，返回空清单。 */
