@@ -59,6 +59,8 @@ export interface ExportRequestRecord {
  */
 export interface ForeignPagePlan {
   readonly url: string;
+  /** The document's file name — the /Title fallback when it carries no `<title>` (the URL would leak the minted origin instead). */
+  readonly docName: string;
   readonly gate: (url: string, method: string) => Promise<ExportGateAnswer>;
 }
 

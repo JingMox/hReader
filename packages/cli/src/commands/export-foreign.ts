@@ -26,7 +26,9 @@ import {
   readDocGrant,
   readGlobalModes,
   resolveTarget,
+  type FileSystem,
   type HandlerContext,
+  type PatchDeps,
   type Reply,
   type ResolvedTarget,
 } from "@hreader/core";
@@ -54,6 +56,32 @@ const INLINE_SCHEMES: ReadonlySet<string> = new Set(["data:", "blob:", "about:"]
 
 const DENY: ExportGateAnswer = { kind: "deny" };
 const ALLOW: ExportGateAnswer = { kind: "allow" };
+
+/**
+ * D41: export is read-only — every store access the plan performs runs on
+ * this fs facade, whose write verbs always reject. The one write a read can
+ * reach is `readDocGrant`'s lazy legacy migration (locks/trust.lock plus a
+ * rewritten trust.json); that write already fails soft inside `readDocGrant`,
+ * so the grant still resolves — it just never lands on disk.
+ */
+// Stryker disable next-line ArrowFunction,StringLiteral: a no-op or message-less rejection crashes the same write verbs a hop later — the "nothing lands on disk" oracle cannot tell the two apart.
+const writeDenied = (): Promise<never> => Promise.reject(new Error("export is read-only"));
+
+const readOnlyFs: FileSystem = {
+  readFile: nodePatchDeps.fs.readFile,
+  lstat: nodePatchDeps.fs.lstat,
+  readdir: nodePatchDeps.fs.readdir,
+  realpath: nodePatchDeps.fs.realpath,
+  writeFile: writeDenied,
+  writeFileAtomic: writeDenied,
+  rename: writeDenied,
+  unlink: writeDenied,
+  mkdir: writeDenied,
+  open: writeDenied,
+  close: writeDenied,
+};
+
+const readOnlyDeps: PatchDeps = { ...nodePatchDeps, fs: readOnlyFs };
 
 /**
  * Uniform 404 for anything on the export origin that is not the /f/ route —
@@ -103,16 +131,17 @@ const serveOf = (ctx: HandlerContext, method: string, pathname: string): Promise
  * never read, and the lazy migration can never write there either.
  */
 const exportTargetOf = async (path: string, workspace: string): Promise<ResolvedTarget> => {
-  const realPath = await nodePatchDeps.fs.realpath(path);
-  const workspaceReal = await nodePatchDeps.fs.realpath(workspace);
+  const realPath = await readOnlyFs.realpath(path);
+  const workspaceReal = await readOnlyFs.realpath(workspace);
   if (isInside(workspaceReal, realPath)) {
     return resolveTarget(
       { workspace: workspaceReal, file: relative(workspaceReal, realPath) },
-      nodePatchDeps.fs,
+      readOnlyFs,
     );
   }
   const dir = dirname(realPath);
   const name = basename(realPath);
+  // Stryker disable next-line StringLiteral: any child of the document file is equally un-plantable — "" resolves to realPath itself, which is just as dead.
   const voidStoreDir = join(realPath, ".hreader");
   return {
     realPath,
@@ -152,21 +181,22 @@ export const foreignPlanOf = async (
     // Stryker disable next-line StringLiteral: appDir is unused on the /f/ serving path — nothing reads it.
     appDir: "",
     home: input.home,
-    deps: nodePatchDeps,
+    deps: readOnlyDeps,
     styleDeps: nodeStyleDeps(input.workspace),
     caps: createCapabilityBook(),
   };
   // Same stores the server's documentServeOf resolves — one read per export;
   // documentServeOf re-reads them when it stamps the doc's CSP, keeping the
   // answer identical to the reader's.
-  const bytes = await nodePatchDeps.fs.readFile(target.realPath);
+  const bytes = await readOnlyFs.readFile(target.realPath);
   const [modes, grant] = await Promise.all([
-    readGlobalModes(input.home, nodePatchDeps),
-    readDocGrant({ target, bytes }, nodePatchDeps),
+    readGlobalModes(input.home, readOnlyDeps),
+    readDocGrant({ target, bytes }, readOnlyDeps),
   ]);
   const network = effectiveOf(modes, grant).network;
   return {
     url: `${EXPORT_ORIGIN}${ctx.caps.frameUrlOf(target)}`,
+    docName: basename(target.realPath),
     gate: async (rawUrl, method) => {
       let parsed: URL;
       try {

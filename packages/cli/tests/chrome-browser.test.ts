@@ -24,12 +24,15 @@ interface Calls {
   readonly setViewport: unknown[];
   readonly jsEnabled: boolean[];
   readonly interception: boolean[];
+  readonly evaluate: string[];
   /** The "request" handler registered via page.on — tests fire synthetic requests through it. */
   requestHandler: ((request: unknown) => void) | undefined;
   sessions: number;
 }
 
-type Failures = Partial<Record<"goto" | "pdf" | "screenshot" | "setViewport" | "metrics", Error>>;
+type Failures = Partial<
+  Record<"goto" | "pdf" | "screenshot" | "setViewport" | "metrics" | "evaluate", Error>
+>;
 
 const stubOf = <T, R>(calls: T[], failure: Error | undefined, ok: R): ((arg: T) => Promise<R>) => {
   return (arg) => {
@@ -63,6 +66,7 @@ const puppeteerPageOf = (calls: Calls, failures: Failures = {}) => ({
     calls.jsEnabled.push(enabled);
     return Promise.resolve();
   },
+  evaluate: stubOf(calls.evaluate, failures.evaluate, null),
   setRequestInterception: (value: boolean) => {
     calls.interception.push(value);
     return Promise.resolve();
@@ -80,6 +84,7 @@ const callsOf = (): Calls => ({
   setViewport: [],
   jsEnabled: [],
   interception: [],
+  evaluate: [],
   requestHandler: undefined,
   sessions: 0,
 });
@@ -253,6 +258,22 @@ describe("pageLikeOf · error folding", () => {
     const page = pageLikeOf(puppeteerPageOf(calls, { pdf: protocolErrorOf("Print job failed") }));
     const error = await failureOf(page.pdf(printOf(false)));
     expect(error.message).toBe("Page.printToPDF 失败：Print job failed");
+  });
+
+  it("should embed the fallback name in the title evaluate and fold a failure as Runtime.evaluate", async () => {
+    const calls = callsOf();
+    const page = pageLikeOf(puppeteerPageOf(calls));
+    await page.setTitleFallback('say "hi".html');
+    expect(calls.evaluate).toHaveLength(1);
+    const expression = calls.evaluate[0] ?? "";
+    // The name travels as a JSON literal — quotes stay inside the expression.
+    expect(expression).toContain('document.title === ""');
+    expect(expression).toContain('("say \\"hi\\".html")');
+
+    const failing = pageLikeOf(puppeteerPageOf(callsOf(), { evaluate: new Error("eval gone") }));
+    const error = await failureOf(failing.setTitleFallback("x.html"));
+    expect(error.code).toBe("chrome_failed");
+    expect(error.message).toBe("Runtime.evaluate 失败：eval gone");
   });
 });
 

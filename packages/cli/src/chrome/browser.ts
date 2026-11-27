@@ -74,6 +74,13 @@ export interface PageLike {
    * transform because nothing below it can smuggle execution back in.
    */
   setJavaScriptEnabled(enabled: boolean): Promise<void>;
+  /**
+   * The PDF /Title metadata falls back to the document URL when the page has
+   * no `<title>` — for export that URL leaks the minted capability origin, so
+   * the render layer fills in the file name instead. Inspector-side evaluate
+   * still runs under `setJavaScriptEnabled(false)`: only page scripts die.
+   */
+  setTitleFallback(name: string): Promise<void>;
   /** Arm request interception: every request the page issues runs `handler` exactly once and waits for its verdict. */
   routeRequests(handler: (request: RoutedRequest) => Promise<void>): Promise<void>;
 }
@@ -115,6 +122,7 @@ interface PuppeteerPage {
   setViewport(viewport: ViewportSpec): Promise<void>;
   createCDPSession(): Promise<PuppeteerSession>;
   setJavaScriptEnabled(enabled: boolean): Promise<void>;
+  evaluate(pageFunction: string): Promise<unknown>;
   setRequestInterception(value: boolean): Promise<void>;
   /** The page's top-level frame — `request.frame()` identity-compares against it. */
   mainFrame(): object;
@@ -163,6 +171,12 @@ export const pageLikeOf = (page: PuppeteerPage): PageLike => {
       }),
     setJavaScriptEnabled: (enabled) =>
       callOf("Emulation.setScriptExecutionDisabled", () => page.setJavaScriptEnabled(enabled)),
+    setTitleFallback: (name) =>
+      callOf("Runtime.evaluate", async () => {
+        await page.evaluate(
+          `(name => { if (document.title === "") document.title = name; })(${JSON.stringify(name)})`,
+        );
+      }),
     routeRequests: (handler) =>
       callOf("Network.setRequestInterception", async () => {
         await page.setRequestInterception(true);

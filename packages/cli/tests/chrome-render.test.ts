@@ -160,6 +160,7 @@ describe("openPageOf · foreign source gating", () => {
           kind: "foreign",
           page: {
             url: "http://hreader-export.invalid/f/cap/index.html",
+            docName: "index.html",
             gate: () => Promise.resolve({ kind: "deny" }),
           },
         },
@@ -173,6 +174,8 @@ describe("openPageOf · foreign source gating", () => {
       });
       expect(page.jsEnabled).toEqual([false]);
       expect(page.goneTo).toEqual(["http://hreader-export.invalid/f/cap/index.html"]);
+      // The doc's file name is the /Title fallback — never the minted URL.
+      expect(page.titleFallbacks).toEqual(["index.html"]);
       if (page.routed === undefined) throw new Error("interception was never armed");
       const settled: string[] = [];
       await page.routed({
@@ -203,6 +206,7 @@ describe("openPageOf · foreign source gating", () => {
       const page = fakePageOf({});
       const plan = {
         url: "http://hreader-export.invalid/f/cap/index.html",
+        docName: "index.html",
         gate: (url: string) =>
           Promise.resolve(
             url.endsWith("/local.png")
@@ -263,6 +267,7 @@ describe("openPageOf · foreign source gating", () => {
       const records: { url: string; action: string }[] = [];
       const plan = {
         url: "http://hreader-export.invalid/f/cap/index.html",
+        docName: "index.html",
         // The gate would happily serve the refresh target — the veto must not
         // come from the gate but from the interception layer in front of it.
         gate: () =>
@@ -326,13 +331,31 @@ describe("openPageOf · foreign source gating", () => {
         "respond200",
         "respond200",
       ]);
-      expect(records.map((r) => r.action)).toEqual([
-        "serve",
-        "deny",
-        "deny",
-        "serve",
-        "serve",
-      ]);
+      expect(records.map((r) => r.action)).toEqual(["serve", "deny", "deny", "serve", "serve"]);
+    });
+  });
+
+  it("should still render when the title-fallback evaluate fails — cosmetic only", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({ pages: 1, titleFallback: "error" });
+      const bytes = await renderPdfOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        source: {
+          kind: "foreign",
+          page: {
+            url: "http://hreader-export.invalid/f/cap/index.html",
+            docName: "index.html",
+            gate: () => Promise.resolve({ kind: "deny" }),
+          },
+        },
+        dir,
+        pageSize: "a4",
+        outline: false,
+        preferCSSPageSize: false,
+      });
+      // A failed evaluate only loses the /Title fix — the artifact still lands.
+      expect(page.titleFallbacks).toEqual(["index.html"]);
+      expect(bytes.length).toBeGreaterThan(0);
     });
   });
 });

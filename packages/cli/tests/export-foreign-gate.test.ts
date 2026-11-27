@@ -154,8 +154,35 @@ describe("foreignPlanOf · classification", () => {
     expect(readdirSync(join(outside, ".hreader")).sort()).toEqual(["trust.json"]);
   });
 
+  it("should never write the grant store — a legacy grant still resolves but the lazy migration does not land", async () => {
+    // D41: export is read-only. The only write a grant read can reach is
+    // readDocGrant's lazy sha-key → path-key migration (locks/trust.lock + a
+    // rewritten trust.json) — under export's read-only fs it fails soft, so
+    // the grant still resolves while the store stays byte-identical.
+    const box = sandboxOf(DOC);
+    const storeDir = join(box.ws, ".hreader");
+    mkdirSync(storeDir, { recursive: true });
+    const storePath = join(storeDir, "trust.json");
+    const stored = JSON.stringify({
+      [createHash("sha256").update(DOC, "utf8").digest("hex")]: "local",
+    });
+    writeFileSync(storePath, stored);
+
+    const plan = await planOf(box);
+    // The legacy grant still reads: a scripts grant softens the served CSP.
+    const reply = await serveReplyOf(plan, plan.url);
+    expect(reply.status).toBe(200);
+    expect(String(reply.headers["content-security-policy"])).toContain("allow-scripts");
+
+    // …but nothing wrote: same trust.json bytes, and no locks/ materialized.
+    expect(readFileSync(storePath, "utf8")).toBe(stored);
+    expect(readdirSync(storeDir).sort()).toEqual(["trust.json"]);
+  });
+
   it("should apply global modes to an outside-workspace doc and never create .hreader beside it", async () => {
-    const outsideOf = (root: string): { ws: string; home: string; outside: string; doc: string } => {
+    const outsideOf = (
+      root: string,
+    ): { ws: string; home: string; outside: string; doc: string } => {
       const ws = join(root, "ws");
       const home = join(root, "home");
       const outside = join(root, "outside");

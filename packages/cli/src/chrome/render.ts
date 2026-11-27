@@ -121,6 +121,10 @@ const openPageOf = async (
     await page.setJavaScriptEnabled(false);
     await page.routeRequests(exportHandlerOf(source.page, audit));
     await page.goto(source.page.url);
+    // Best-effort /Title metadata: an untitled document's PDF title falls back
+    // to the URL — the minted capability origin would leak into the artifact.
+    // A failed evaluate only loses the cosmetic fix; it must not kill the render.
+    await page.setTitleFallback(source.page.docName).catch(() => undefined);
     return page;
   }
   const htmlPath = join(dir, "input.html");

@@ -294,10 +294,7 @@ const refreshSandboxOf = (delay: string, target: string): Sandbox => {
   mkdirSync(join(ws, "page"), { recursive: true });
   mkdirSync(home, { recursive: true });
   const doc = join(ws, "page", "index.html");
-  writeFileSync(
-    doc,
-    REFRESH_HTML.split("{{DELAY}}").join(delay).split("{{TARGET}}").join(target),
-  );
+  writeFileSync(doc, REFRESH_HTML.split("{{DELAY}}").join(delay).split("{{TARGET}}").join(target));
   writeFileSync(join(ws, "page", "style.css"), STYLE_CSS);
   writeFileSync(join(ws, "page", "img.png"), IMG.bytes);
   return { ws, home, doc };
@@ -538,9 +535,49 @@ describe.skipIf(SKIP_REASON !== null)("foreign export · post-load navigation", 
     grantOf(ws, { scripts: true, network: true });
     const first = await pngOf(doc, ws, home);
     const second = await pngOf(doc, ws, home);
-    const hash = (bytes: Uint8Array): string =>
-      createHash("sha256").update(bytes).digest("hex");
+    const hash = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
     expect(hash(first.pngBytes)).toBe(hash(second.pngBytes));
     expect(first.pngHeight).toBeGreaterThanOrEqual(ORIGINAL_HEIGHT - 400);
   }, 120_000);
+});
+
+const NAMED_HTML =
+  "<!DOCTYPE html><html><head></head><body><article><h1>One</h1></article><article><h1>Two</h1></article></body></html>";
+const TITLED_HTML =
+  "<!DOCTYPE html><html><head><title>Sheet's Own</title></head><body><article><h1>One</h1></article><article><h1>Two</h1></article></body></html>";
+
+const namedSandboxOf = (name: string, html: string): Sandbox => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hr-fx-title-")));
+  const ws = join(root, "ws");
+  const home = join(root, "home");
+  mkdirSync(join(ws, "page"), { recursive: true });
+  mkdirSync(home, { recursive: true });
+  const doc = join(ws, "page", name);
+  writeFileSync(doc, html);
+  return { ws, home, doc };
+};
+
+const titleOf = (pdf: Uint8Array): string | undefined =>
+  /\/Title\s*\(([^)]*)\)/.exec(Buffer.from(pdf).toString("latin1"))?.[1];
+
+/**
+ * The PDF /Title metadata falls back to the document URL for an untitled
+ * page — verbatim, that is `hreader-export.invalid/f/<cap>/index.html`, the
+ * minted capability leaking into the artifact. The export sets the document
+ * title to the file name instead; a real <title> always wins.
+ */
+describe.skipIf(SKIP_REASON !== null)("foreign export · PDF /Title", () => {
+  it("uses the raw file name — not the minted URL — when the document has no <title>", async () => {
+    // A space in the name separates the channels: a URL-derived fallback
+    // would read "my%20report.html"; the leak reads "hreader-export.invalid/f/<cap>/…".
+    const { ws, home, doc } = namedSandboxOf("my report.html", NAMED_HTML);
+    const { pdf } = await renderOf(doc, ws, home);
+    expect(titleOf(pdf)).toBe("my report.html");
+  }, 90_000);
+
+  it("keeps the document's own <title> over the file-name fallback", async () => {
+    const { ws, home, doc } = namedSandboxOf("titled.html", TITLED_HTML);
+    const { pdf } = await renderOf(doc, ws, home);
+    expect(titleOf(pdf)).toBe("Sheet's Own");
+  }, 90_000);
 });
