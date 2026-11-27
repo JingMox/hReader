@@ -55,7 +55,7 @@ const locateError = (address: string, code: "target_moved" | "invalid_selector")
     : new HrError(
         "target_moved",
         // Stryker disable next-line StringLiteral: same — the contract pins the code, not the wording.
-        `块地址已失效：${JSON.stringify(address)} —— 路径没有命中同指纹的块，全文也找不到唯一的同指纹候选（目标被编辑、移动、删除或重复）；重新 list 取新地址`,
+        `块地址已失效：${JSON.stringify(address)} —— 路径命中的块指纹已变（原块被原地编辑），或路径未命中块且全文找不到唯一的同指纹候选（被移动、删除或重复）；重新 list 取新地址`,
       );
 
 /** The address of the first leaf block fully inside `[from, to)` of `html` — the written range. */

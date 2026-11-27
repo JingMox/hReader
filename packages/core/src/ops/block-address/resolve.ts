@@ -94,23 +94,22 @@ type LocateResult =
 const moved = { ok: false, code: "target_moved" } as const;
 
 /**
- * The resolution order (D53): the address path verbatim — but only when the element it lands
- * on is still a leaf block whose fingerprint matches. Otherwise every leaf block is searched
- * for the fingerprint: one hit wins outright, several go to the closest path (step edit
- * distance), a tie means the target is gone for good.
+ * The resolution order (D56): the address path verbatim — but only when it lands on a leaf
+ * block whose fingerprint still matches. A fingerprint mismatch on the path block means it
+ * was edited in place (`target_moved`), with no search: a same-fingerprint twin elsewhere
+ * is a different block, and patching it would write the wrong element. Only when the path
+ * does not resolve to a leaf block at all (structure changed) does the fingerprint search
+ * run: one hit wins outright, several go to the closest path (step edit distance), a tie
+ * means the target is gone for good.
  */
 export const locateBlock = (parsed: ParsedHtml, address: string): LocateResult => {
   const target = parseAddress(address);
   if (target === undefined) return { ok: false, code: "invalid_selector" };
   const entries = collectBlocks(parsed.root);
   const element = elementByPath(parsed.root, target.steps);
-  const direct =
-    // Stryker disable next-line ConditionalExpression,EqualityOperator,ArrowFunction: equivalent — a direct-hit block sits at distance 0 of the address path, so the fallback picks it anyway; this lookup only skips the walk.
-    element === undefined ? undefined : entries.find((entry) => entry.node === element);
-  // Stryker disable next-line BlockStatement: equivalent — the fallback below returns this
-  // same entry whenever the fingerprint matches.
-  if (direct?.fingerprint === target.fingerprint) {
-    return { ok: true, entry: direct };
+  const direct = entries.find((entry) => entry.node === element);
+  if (direct !== undefined) {
+    return direct.fingerprint === target.fingerprint ? { ok: true, entry: direct } : moved;
   }
   const candidates = entries.filter((entry) => entry.fingerprint === target.fingerprint);
   const first = candidates[0];
