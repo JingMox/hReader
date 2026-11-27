@@ -376,6 +376,53 @@ describe("createFromTemplate · atomic rollback", () => {
     );
     expectUnchanged(fake, before);
   });
+
+  it("should surface an lstat failure on the assets dir as io_failure before any write", async () => {
+    const fake = setup(assetTemplate(), assetDirs);
+    fake.fail("lstat", systemError("EACCES"), (path: string) => path === `${WS}/mid_files`);
+    const before = snapshotOf(fake);
+
+    const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "mid.html" }));
+    expect(error.code).toBe("io_failure");
+    expect(error.message).toContain(`${WS}/mid_files`);
+    expectUnchanged(fake, before);
+  });
+
+  it("should surface an lstat failure on a parent dir as io_failure before any write", async () => {
+    const fake = setup(htmlTemplate(TPL));
+    fake.fail("lstat", systemError("EACCES"), (path: string) => path === WS);
+    const before = snapshotOf(fake);
+
+    const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "x.html" }));
+    expect(error.code).toBe("io_failure");
+    expect(error.message).toContain(WS);
+    expectUnchanged(fake, before);
+  });
+
+  it("should still create the page when every ancestor lstat reports ENOENT down to the fs root", async () => {
+    const fake = setup(htmlTemplate(TPL));
+    // `fail` is one-shot, so each ancestor needs its own entry for the walk to reach the root.
+    fake.fail("lstat", systemError("ENOENT"), (path: string) => path === WS);
+    fake.fail("lstat", systemError("ENOENT"), (path: string) => path === "/");
+
+    await createAt(fake, { id: "my-tpl", target: "x.html" });
+    expect(fake.state.files.has(`${WS}/x.html`)).toBe(true);
+  });
+
+  it("should keep the original failure when a rollback rmdir cannot empty a created dir", async () => {
+    const fake = setup(assetTemplate(), assetDirs);
+    fake.fail("rmdir", systemError("ENOTEMPTY"), () => true);
+    fake.fail("link", systemError("ENOSPC"), (path: string) =>
+      path.startsWith(`${WS}/roll2.html.`),
+    );
+
+    const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "roll2.html" }));
+    expect(error.code).toBe("io_failure");
+    // Copied files are still reclaimed; only the un-removable dirs survive.
+    expect(fake.state.files.has(`${WS}/roll2_files/deep/x.bin`)).toBe(false);
+    expect(fake.state.dirs.has(`${WS}/roll2_files`)).toBe(true);
+    expect(fake.state.files.has(`${WS}/roll2.html`)).toBe(false);
+  });
 });
 
 describe("createFromTemplate · control characters in the title", () => {
