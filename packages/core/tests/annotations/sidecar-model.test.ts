@@ -204,6 +204,22 @@ describe("parseSidecarFile · per-record dirt", () => {
     ]);
   });
 
+  it("should accept a note of exactly the note limit without any diagnostic", () => {
+    const parsed = parseSidecarFile(fileOf(validRecord({ note: "n".repeat(NOTE_LIMIT) })), PATH);
+
+    expect(parsed.annotations[0]?.note).toBe("n".repeat(NOTE_LIMIT));
+    expect(parsed.diagnostics).toEqual([]);
+  });
+
+  it("should leave a record without a replies key silent and reply-less", () => {
+    const record = validRecord();
+    Reflect.deleteProperty(record, "replies");
+    const parsed = parseSidecarFile(fileOf(record), PATH);
+
+    expect(parsed.annotations[0]?.replies).toEqual([]);
+    expect(parsed.diagnostics).toEqual([]);
+  });
+
   it("should cut an emoji-straddling note at the code-point boundary", () => {
     const parsed = parseSidecarFile(
       fileOf(validRecord({ note: `${"n".repeat(NOTE_LIMIT - 1)}😀` })),
