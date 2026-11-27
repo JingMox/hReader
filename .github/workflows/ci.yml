@@ -6,11 +6,12 @@ on:
     branches: [main]
   pull_request:
 
-# A new push to the same ref cancels the stale run: old results are worthless, and a
-# wedged run would otherwise burn runner minutes until its timeout.
+# A new push to the same PR cancels the stale run: old results are worthless, and a
+# wedged run would otherwise burn runner minutes until its timeout. Pushes to main
+# are never cancelled, so every commit on main keeps its own result.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
