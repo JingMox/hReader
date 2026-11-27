@@ -37,6 +37,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRef, PDFString } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 
 import { foreignPlanOf } from "../src/commands/export-foreign";
@@ -579,5 +580,129 @@ describe.skipIf(SKIP_REASON !== null)("foreign export · PDF /Title", () => {
     const { ws, home, doc } = namedSandboxOf("titled.html", TITLED_HTML);
     const { pdf } = await renderOf(doc, ws, home);
     expect(titleOf(pdf)).toBe("Sheet's Own");
+  }, 90_000);
+});
+
+// ---- link annotations: the minted capability URL must never reach the artifact ----
+
+const LINKS_HTML = `<!DOCTYPE html><html><head>
+<script>
+  fetch("{{EXT}}/beacon-inline.png");
+  document.documentElement.setAttribute("data-pwned", "1");
+</script>
+</head><body>
+<article><h1 id="sec">One</h1></article><article><h1>Two</h1></article>
+<a href="img.png">sibling</a>
+<a href="sub/pic.png">subdir</a>
+<a href="#sec">fragment</a>
+<a href="{{EXT}}/x.png">external</a>
+<a href="../secret.png">outside</a>
+</body></html>`;
+
+const linksSandboxOf = (ext: string): Sandbox => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hr-fx-links-")));
+  const ws = join(root, "ws");
+  const home = join(root, "home");
+  mkdirSync(join(ws, "page", "sub"), { recursive: true });
+  mkdirSync(home, { recursive: true });
+  const doc = join(ws, "page", "index.html");
+  writeFileSync(doc, LINKS_HTML.split("{{EXT}}").join(ext));
+  writeFileSync(join(ws, "page", "img.png"), IMG.bytes);
+  writeFileSync(join(ws, "page", "sub", "pic.png"), PIC.bytes);
+  writeFileSync(join(ws, "secret.png"), SECRET.bytes);
+  return { ws, home, doc };
+};
+
+interface LinkAnnots {
+  /** Text of every `/URI` action across all `/Link` annotations. */
+  readonly uris: string[];
+  /** Name of every `/Dest` reference (internal links). */
+  readonly dests: string[];
+}
+
+/** pdf-lib walk: every page's /Annots -> /Subtype /Link -> /A /URI and /Dest. */
+const linkAnnotsOf = async (pdf: Uint8Array): Promise<LinkAnnots> => {
+  const document = await PDFDocument.load(pdf);
+  const uris: string[] = [];
+  const dests: string[] = [];
+  for (const page of document.getPages()) {
+    const annots = page.node.lookup(PDFName.of("Annots"), PDFArray);
+    if (annots === undefined) continue;
+    for (const entry of annots.asArray()) {
+      const annot = entry instanceof PDFRef ? document.context.lookup(entry) : entry;
+      if (!(annot instanceof PDFDict)) continue;
+      if (annot.get(PDFName.of("Subtype"))?.toString() !== "/Link") continue;
+      const dest = annot.get(PDFName.of("Dest"));
+      if (dest !== undefined) dests.push(dest.toString());
+      const action = annot.get(PDFName.of("A"));
+      const act = action instanceof PDFRef ? document.context.lookup(action) : action;
+      if (!(act instanceof PDFDict)) continue;
+      const uri = act.get(PDFName.of("URI"));
+      if (uri instanceof PDFString || uri instanceof PDFHexString) {
+        uris.push(uri.decodeText());
+      }
+    }
+  }
+  return { uris, dests };
+};
+
+/**
+ * A same-origin anchor resolves onto the minted capability URL, and
+ * printToPDF stamps that URL verbatim into the PDF's /URI annotations —
+ * a dead `hreader-export.invalid` link leaking the capability. The export
+ * rewrites those anchors before printing: fragment links stay internal
+ * (/Dest targets), links under the cap scope become the file: URL of the
+ * real asset, and same-origin links outside the scope lose their href
+ * (no annotation). External links pass through untouched.
+ */
+describe.skipIf(SKIP_REASON !== null)("foreign export · PDF link annotations", () => {
+  it("leaks no capability URL into /URI annotations while keeping external and internal links", async () => {
+    const ext = await startExtSite();
+    try {
+      const { ws, home, doc } = linksSandboxOf(ext.url);
+      const plan = await foreignPlanOf({ path: doc, workspace: ws, home });
+      expect(plan).not.toBeUndefined();
+      if (plan === undefined) return;
+      const cap = /\/f\/([^/]+)\//.exec(plan.url)?.[1] ?? "";
+      const audit: ExportRequestRecord[] = [];
+      const { bytes: pdf } = await renderPdfOf({
+        source: { kind: "foreign", page: plan },
+        pageSize: "a4",
+        outline: true,
+        preferCSSPageSize: false,
+        timeoutMs: 30_000,
+        stop: NEVER,
+        deps: depsOf(),
+        audit: (r) => {
+          audit.push(r);
+        },
+      });
+      const { uris, dests } = await linkAnnotsOf(pdf);
+
+      // The leak oracle: no annotation may carry the minted origin or the cap.
+      expect(cap.length).toBeGreaterThan(0);
+      for (const uri of uris) {
+        expect(uri).not.toContain("hreader-export.invalid");
+        expect(uri).not.toContain(cap);
+      }
+      // Sibling links survive as file: URLs of the real assets in the doc's directory.
+      expect(uris.some((u) => u.startsWith("file:") && u.endsWith("/img.png"))).toBe(true);
+      expect(uris.some((u) => u.startsWith("file:") && u.endsWith("/sub/pic.png"))).toBe(true);
+      // The external link passes through untouched.
+      expect(uris).toContain(`${ext.url}/x.png`);
+      // The fragment link stays an internal /Dest — never a URI annotation.
+      expect(dests.some((d) => d.endsWith("sec"))).toBe(true);
+      // The same-origin link escaping the doc's directory cannot be expressed
+      // as a local path: its annotation is gone, not rewritten.
+      expect(uris.every((u) => !u.includes("secret"))).toBe(true);
+      expect(dests.every((d) => !d.includes("secret"))).toBe(true);
+
+      // The rewrite runs under the same snapshot contract: the inline script's
+      // beacon never fired and its DOM flag never landed.
+      expect(ext.hits).toEqual([]);
+      expect(audit.filter((r) => r.url.includes("beacon"))).toEqual([]);
+    } finally {
+      await ext.close();
+    }
   }, 90_000);
 });
