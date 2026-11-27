@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { serializeSidecarFile, SIDECAR_LIMITS } from "../../src/annotations/sidecar-model";
 import {
   annotationDirOf,
   annotationFileOf,
@@ -48,6 +49,23 @@ const storePathOf = (file = "doc.html") => `/ws/.hreader/annotations/${sha1Of(fi
 const storeJson = (file: string, annotations: readonly unknown[]): string =>
   JSON.stringify({ version: 1, path: file, annotations });
 
+/** Pad a valid store document with trailing JSON whitespace to an exact byte count. */
+const storeJsonAtBytes = (annotations: readonly unknown[], bytes: number): string => {
+  const base = storeJson("doc.html", annotations);
+  return `${base}${" ".repeat(bytes - new TextEncoder().encode(base).length)}`;
+};
+
+/** One annotation whose note makes the serialized file exactly `bytes` bytes long. */
+const annotationsSizedTo = (bytes: number) => {
+  const skeleton = serializeSidecarFile("doc.html", [{ ...annotation, note: "" }]);
+  const noteLength = bytes - new TextEncoder().encode(skeleton).length;
+  return [{ ...annotation, note: "n".repeat(noteLength) }];
+};
+
+/** Names of every `.corrupt-*` backup in the fake fs, and the bytes behind one of them. */
+const corruptBackups = (fs: ReturnType<typeof fakeFs>): readonly [string, Uint8Array][] =>
+  [...fs.state.files.entries()].filter(([name]) => name.includes(".corrupt-"));
+
 describe("annotationFileOf · naming", () => {
   it("should name the file <sha1 of the POSIX relative path>.json under .hreader/annotations", async () => {
     const fs = fakeFs(seed);
@@ -82,6 +100,30 @@ describe("readSidecarFile · read outcomes", () => {
     expect(read.corrupt).toBe(false);
     expect(read.annotations).toEqual([annotation]);
     expect(read.diagnostics).toEqual([]);
+  });
+
+  it("should read a file exactly at the file-size cap as a valid store", async () => {
+    const text = storeJsonAtBytes([annotation], SIDECAR_LIMITS.fileBytes);
+    const fs = fakeFs({ ...seed, [storePathOf()]: text });
+    const read = await readSidecarFile(await targetOf(fs.port), deps(fs.port));
+
+    expect(read).toEqual({
+      exists: true,
+      corrupt: false,
+      annotations: [annotation],
+      diagnostics: [],
+    });
+  });
+
+  it("should read a file one byte over the cap as empty and corrupt", async () => {
+    const text = storeJsonAtBytes([annotation], SIDECAR_LIMITS.fileBytes + 1);
+    const fs = fakeFs({ ...seed, [storePathOf()]: text });
+    const read = await readSidecarFile(await targetOf(fs.port), deps(fs.port));
+
+    expect(read.exists).toBe(true);
+    expect(read.corrupt).toBe(true);
+    expect(read.annotations).toEqual([]);
+    expect(read.diagnostics[0]).toContain("字节上限");
   });
 
   it("should read an oversized file as empty and corrupt", async () => {
@@ -140,6 +182,86 @@ describe("writeSidecarFile · landing", () => {
 
     expect(code).toBe("invalid_payload");
     expect(await readSidecarFile(target, deps(fs.port))).toMatchObject({ exists: false });
+  });
+
+  it("should accept a payload exactly at the file-size cap", async () => {
+    const fs = fakeFs(seed);
+    const target = await targetOf(fs.port);
+    const prior = await readSidecarFile(target, deps(fs.port));
+
+    await writeSidecarFile(
+      target,
+      deps(fs.port),
+      prior,
+      annotationsSizedTo(SIDECAR_LIMITS.fileBytes),
+    );
+
+    expect(fs.state.files.get(storePathOf())?.length).toBe(SIDECAR_LIMITS.fileBytes);
+  });
+
+  it("should refuse a payload one byte over the file-size cap and keep the old file", async () => {
+    const path = storePathOf();
+    const previous = storeJson("doc.html", []);
+    const fs = fakeFs({ ...seed, [path]: previous });
+    const target = await targetOf(fs.port);
+    const prior = await readSidecarFile(target, deps(fs.port));
+
+    const code = await codeOfAsync(() =>
+      writeSidecarFile(
+        target,
+        deps(fs.port),
+        prior,
+        annotationsSizedTo(SIDECAR_LIMITS.fileBytes + 1),
+      ),
+    );
+
+    expect(code).toBe("invalid_payload");
+    expect(fs.textAt(path)).toBe(previous);
+    expect(corruptBackups(fs)).toEqual([]);
+  });
+
+  it("should preserve an undecodable file's bytes aside on the next write", async () => {
+    const path = storePathOf();
+    const original = new Uint8Array([0xff, 0xfe, 0xfd]);
+    const fs = fakeFs(seed);
+    fs.state.files.set(path, original);
+    const target = await targetOf(fs.port);
+    const prior = await readSidecarFile(target, deps(fs.port));
+    expect(prior).toMatchObject({ exists: true, corrupt: true });
+
+    await writeSidecarFile(target, deps(fs.port), prior, [annotation]);
+
+    const backups = corruptBackups(fs);
+    expect(backups.map(([name]) => name)).toHaveLength(1);
+    expect(backups[0]?.[1]).toEqual(original);
+    expect(fs.textAt(path)).toContain('"annotations"');
+  });
+
+  it("should preserve an oversized file's bytes aside on the next write", async () => {
+    const path = storePathOf();
+    const original = storeJsonAtBytes([], SIDECAR_LIMITS.fileBytes + 1);
+    const fs = fakeFs({ ...seed, [path]: original });
+    const target = await targetOf(fs.port);
+    const prior = await readSidecarFile(target, deps(fs.port));
+    expect(prior).toMatchObject({ exists: true, corrupt: true });
+
+    await writeSidecarFile(target, deps(fs.port), prior, [annotation]);
+
+    const backups = corruptBackups(fs);
+    expect(backups.map(([name]) => name)).toHaveLength(1);
+    expect(fs.textAt(backups[0]?.[0] ?? "")).toBe(original);
+  });
+
+  it("should not rename a healthy store aside when overwriting it", async () => {
+    const path = storePathOf();
+    const fs = fakeFs({ ...seed, [path]: storeJson("doc.html", [annotation]) });
+    const target = await targetOf(fs.port);
+    const prior = await readSidecarFile(target, deps(fs.port));
+
+    await writeSidecarFile(target, deps(fs.port), prior, [{ ...annotation, note: "新" }]);
+
+    expect(corruptBackups(fs)).toEqual([]);
+    expect(fs.textAt(path)).toContain('"note":"新"');
   });
 
   it("should rename a corrupt file aside before writing the fresh one", async () => {
