@@ -476,4 +476,19 @@ describe("hr_outline · .hreader/** docs", () => {
       spy.mockRestore();
     }
   });
+
+  it("should fold a realpath failure inside hr_list_annotations' sidecar lookup too", async () => {
+    await writeRaw("doc.html", ANNOTATED_DOC);
+    const spy = vi
+      .spyOn(nodePatchDeps.fs, "realpath")
+      .mockRejectedValueOnce(Object.assign(new Error("EACCES"), { code: "EACCES" }));
+    try {
+      const result = await listOf({ filePath: "doc.html" });
+
+      expect(isErrorResultOf(result)).toBe(true);
+      expect(codeOf(result)).toBe("io_failure");
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
