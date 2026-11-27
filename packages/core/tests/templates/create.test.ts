@@ -381,10 +381,7 @@ describe("createFromTemplate · atomic rollback", () => {
 describe("createFromTemplate · control characters in the title", () => {
   it("should normalize NUL and C0 controls to U+FFFD for both formats", async () => {
     for (const [format, entry] of [
-      [
-        "html",
-        "<html><head><title>OLD</title></head><body><h1>OLD</h1></body></html>",
-      ],
+      ["html", "<html><head><title>OLD</title></head><body><h1>OLD</h1></body></html>"],
       [
         "managed",
         "<html><head><title>OLD</title></head><body><article><h1>OLD</h1><p>x</p></article></body></html>",
@@ -407,7 +404,7 @@ describe("createFromTemplate · control characters in the title", () => {
 });
 
 describe("createFromTemplate · property tests", () => {
-  // \0 is replaced by the parser with U+FFFD and \r is normalized to \n in preprocessing:
+  // \0 is normalized to U+FFFD by createFromTemplate and \r is normalized to \n in preprocessing:
   // neither is in the "roundtrippable text" domain, so filter them out.
   const safeTitle = fc
     .string({ unit: "grapheme" })

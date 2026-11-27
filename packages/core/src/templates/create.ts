@@ -59,6 +59,15 @@ const firstElement = (root: HtmlNode, tag: string): HtmlElementNode | undefined 
   return undefined;
 };
 
+/** C0 controls except tab/LF/CR: raw NUL never survives a clean text write anyway — normalize once for both formats instead of letting the managed parser alone map it to U+FFFD. */
+const isBannedControl = (code: number): boolean =>
+  code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d;
+
+const sanitizeTitle = (title: string | undefined): string | undefined =>
+  title === undefined
+    ? undefined
+    : Array.from(title, (char) => (isBannedControl(char.charCodeAt(0)) ? "\uFFFD" : char)).join("");
+
 /** The `data-hr-id` attribute inside an open tag (quoted or bare value); removed with its separator space. */
 const HR_ID_ATTR = new RegExp(`\\s+${HR_ID_ATTRIBUTE}=(?:"[^"]*"|'[^']*'|[^\\s>]+)`, "u");
 
@@ -303,7 +312,7 @@ export const createFromTemplate = async (
   const rendered = renderTemplate(
     template,
     members,
-    input.title,
+    sanitizeTitle(input.title),
     assetsDirNameOf(basename(target.absolute)),
     dirname(target.absolute),
   );
