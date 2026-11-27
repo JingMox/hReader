@@ -17,12 +17,17 @@ import type {
   ImportReport,
   LintHit,
   LintReport,
+  LoadedTemplate,
   Outline,
   OutlineNode,
   NormalizeResult,
   PatchResult,
   PendingAnnotation,
   ReadNodeResult,
+  SavedTemplate,
+  TemplateDiagnostic,
+  TemplateList,
+  TemplateSummary,
   UndoResult,
 } from "@hreader/core";
 
@@ -419,3 +424,138 @@ export const humanImport = (report: ImportReport, out: string, bytes: number): s
       `${dropped === "" ? "" : `\n  丢弃明细：${dropped}`}\n`,
   );
 };
+
+// ---- template commands (`hr template <list|show|new|save>`) ----
+
+const templateSummaryJson = (summary: TemplateSummary): string =>
+  JSON.stringify({
+    id: summary.id,
+    name: summary.name,
+    description: summary.description,
+    format: summary.format,
+    tags: summary.tags,
+    source: summary.source,
+  });
+
+const templateDiagnosticJson = (diagnostic: TemplateDiagnostic): string =>
+  JSON.stringify({
+    id: diagnostic.id,
+    source: diagnostic.source,
+    message: diagnostic.message,
+  });
+
+export const dataTemplateList = (list: TemplateList): string =>
+  `{"templates":[${list.templates.map(templateSummaryJson).join(",")}],` +
+  `"diagnostics":[${list.diagnostics.map(templateDiagnosticJson).join(",")}]}`;
+
+/** Long free-text cells (name/tags) are capped so one row stays one line in the human table. */
+const TABLE_CELL_LIMIT = 40;
+
+const tableCell = (text: string): string => {
+  const clean = term(text);
+  return Array.from(clean).length > TABLE_CELL_LIMIT
+    ? `${cutAtCodePoint(clean, TABLE_CELL_LIMIT)}…`
+    : clean;
+};
+
+export const humanTemplateList = (templates: readonly TemplateSummary[]): string => {
+  type Row = [id: string, name: string, format: string, source: string, tags: string];
+  const rows: Row[] = [
+    ["id", "name", "format", "source", "tags"],
+    ...templates.map((summary): Row => [
+      tableCell(summary.id),
+      tableCell(summary.name),
+      tableCell(summary.format),
+      tableCell(summary.source),
+      tableCell(summary.tags.join(",")),
+    ]),
+  ];
+  const width = (index: 0 | 1 | 2 | 3): number => Math.max(...rows.map((row) => row[index].length));
+  const widths: [number, number, number, number] = [width(0), width(1), width(2), width(3)];
+  return `${rows
+    .map(
+      ([id, name, format, source, tags]) =>
+        `${id.padEnd(widths[0])}  ${name.padEnd(widths[1])}  ` +
+        `${format.padEnd(widths[2])}  ${source.padEnd(widths[3])}  ${tags}`,
+    )
+    .join("\n")}\n`;
+};
+
+/** Byte sizes of the text members, computed at the command layer (UTF-8 counts, matching what `read` reports). */
+export interface TemplateSizes {
+  readonly entry: number;
+  readonly style?: number;
+  readonly guide?: number;
+}
+
+const memberSizeLine = (label: string, bytes: number | undefined): string =>
+  `${label}: ${bytes === undefined ? "（无）" : `${String(bytes)} bytes`}`;
+
+/** `assets` lists at most the first few lines verbatim; a long tail collapses into a count (the --json form has them all). */
+const ASSET_LIST_LIMIT = 50;
+
+/** The guide body is content (like `hr read`'s html): it prints verbatim, not through `term` — fields above are sanitized. */
+export const humanTemplateShow = (loaded: LoadedTemplate, sizes: TemplateSizes): string => {
+  const manifest = loaded.manifest;
+  const assetLines =
+    loaded.assets.length <= ASSET_LIST_LIMIT
+      ? loaded.assets
+      : [...loaded.assets.slice(0, ASSET_LIST_LIMIT), `…（共 ${String(loaded.assets.length)} 个）`];
+  const head = [
+    `id: ${term(manifest.id)}`,
+    `name: ${term(manifest.name)}`,
+    `description: ${term(manifest.description)}`,
+    `version: ${String(manifest.version)}`,
+    `format: ${manifest.format}`,
+    `source: ${loaded.source}`,
+    `tags: ${term(manifest.tags.join(", ") || "-")}`,
+    memberSizeLine("entry", sizes.entry),
+    memberSizeLine("style", sizes.style),
+    memberSizeLine("guide", sizes.guide),
+    `assets: ${String(loaded.assets.length)} 个`,
+    ...assetLines.map((asset) => `  ${term(asset)}`),
+  ].join("\n");
+  const body =
+    loaded.guide === undefined
+      ? ""
+      : `\n--- guide.md ---\n${loaded.guide}${loaded.guide.endsWith("\n") ? "" : "\n"}`;
+  return `${head}\n${body}`;
+};
+
+/** `style`/`guide` print `null` when absent (stable shape); `manifest` keeps authored keys (absent optionals stay absent). */
+export const dataTemplateShow = (loaded: LoadedTemplate): string =>
+  `{"manifest":${JSON.stringify(loaded.manifest)},"source":${quote(loaded.source)},` +
+  `"entry":${quote(loaded.entry)},` +
+  `"style":${loaded.style === undefined ? "null" : quote(loaded.style)},` +
+  `"guide":${loaded.guide === undefined ? "null" : quote(loaded.guide)},` +
+  `"assets":${JSON.stringify(loaded.assets)}}`;
+
+export interface TemplateNewReport {
+  readonly path: string;
+  readonly template: string;
+  /** `null` = the template's own title was kept (nothing was overridden). */
+  readonly title: string | null;
+  readonly bytes: number;
+  readonly assets: readonly string[];
+}
+
+export const dataTemplateNew = (report: TemplateNewReport): string =>
+  `{"path":${quote(report.path)},"template":${quote(report.template)},` +
+  `"title":${report.title === null ? "null" : quote(report.title)},"bytes":${String(report.bytes)},` +
+  `"assets":${JSON.stringify(report.assets)}}`;
+
+export const humanTemplateNew = (report: TemplateNewReport, path: string): string =>
+  term(
+    `created ${path} (${report.template}, ${String(report.bytes)} bytes` +
+      `${report.assets.length === 0 ? "" : `, +${String(report.assets.length)} assets`})\n`,
+  );
+
+export const dataTemplateSave = (saved: SavedTemplate): string =>
+  `{"id":${quote(saved.id)},"dir":${quote(saved.dir)},"format":${quote(saved.format)},` +
+  `"scope":${quote(saved.scope)},"assets":${JSON.stringify(saved.assets)}}`;
+
+export const humanTemplateSave = (saved: SavedTemplate, dir: string): string =>
+  term(
+    `saved ${dir} (${saved.id}, ${saved.format}` +
+      `${saved.assets.length === 0 ? "" : `, +${String(saved.assets.length)} assets`})\n`,
+  );

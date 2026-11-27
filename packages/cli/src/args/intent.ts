@@ -24,6 +24,11 @@ interface Common {
   readonly workspace: string;
 }
 
+/** `--home` overrides the user tier's parent dir (`<home>/.hreader/`); `undefined` = `HREADER_HOME` / `homedir()`. */
+interface Home {
+  readonly home: string | undefined;
+}
+
 export type Intent =
   | { readonly kind: "help"; readonly topic: CommandName | undefined }
   | ({ readonly kind: "outline"; readonly path: string } & Common)
@@ -153,7 +158,30 @@ export type Intent =
       readonly home: string | undefined;
       /** `--exit-with-parent`: exit when the parent (shell) disappears; default false so a user-started daemon is unaffected. */
       readonly exitWithParent: boolean;
-    } & Common);
+    } & Common)
+  | ({ readonly kind: "templateList" } & Home & Common)
+  | ({
+      readonly kind: "templateShow";
+      readonly id: string;
+    } & Home &
+      Common)
+  | ({
+      readonly kind: "templateNew";
+      readonly path: string;
+      readonly template: string;
+      /** `undefined` keeps the template's own title (`hr template new` invents no filename default). */
+      readonly title: string | undefined;
+    } & Home &
+      Common)
+  | ({
+      readonly kind: "templateSave";
+      readonly path: string;
+      readonly id: string;
+      readonly global: boolean;
+      readonly name: string | undefined;
+      readonly description: string | undefined;
+    } & Home &
+      Common);
 
 export type ParsedArgs =
   | { readonly ok: true; readonly intent: Intent }
@@ -183,6 +211,12 @@ export const commonOf = (raw: Raw, cwd: string): Common => ({
   json: raw.switches.has("--json"),
   workspace: resolve(cwd, raw.values.get("--workspace") ?? cwd),
 });
+
+/** Same resolution rule as `--workspace`: a relative `--home` resolves against cwd; existence is checked later (run.ts → UsageError exit 2). */
+export const homeOf = (raw: Raw, cwd: string): Home => {
+  const given = raw.values.get("--home");
+  return { home: given === undefined ? undefined : resolve(cwd, given) };
+};
 
 /** Paths are always resolved to absolute against cwd first; converting write targets to workspace-relative happens in `run.ts` (which can realpath). */
 export const absoluteOf = (file: string, cwd: string): string => resolve(cwd, file);

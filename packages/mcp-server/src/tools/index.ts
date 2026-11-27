@@ -5,16 +5,21 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { applyStyleCall, applyStyleShape } from "./apply-style";
 import { createDocCall, createDocShape } from "./create-doc";
+import { createFromTemplateCall, createFromTemplateShape } from "./create-from-template";
+import { getTemplateCall, getTemplateShape } from "./get-template";
 import { importDocCall, importDocShape } from "./import-doc";
+import { listTemplatesCall, listTemplatesShape } from "./list-templates";
 import { outlineCall, outlineShape } from "./outline";
 import { patchNodeCall, patchNodeShape } from "./patch-node";
 import { readNodeCall, readNodeShape } from "./read-node";
 import { resolveAnnotationCall, resolveAnnotationShape } from "./resolve-annotation";
+import { saveTemplateCall, saveTemplateShape } from "./save-template";
 import { undoCall, undoShape } from "./undo";
 
 export const registerTools = (server: McpServer): void => {
   registerReadingTools(server);
   registerEditingTools(server);
+  registerTemplateTools(server);
   registerUndoTool(server);
 };
 
@@ -91,6 +96,50 @@ const registerEditingTools = (server: McpServer): void => {
       inputSchema: resolveAnnotationShape,
     },
     resolveAnnotationCall,
+  );
+};
+
+/** Templates are their own group: list/inspect/create/save over the three-tier template roots. */
+const registerTemplateTools = (server: McpServer): void => {
+  server.registerTool(
+    "hr_list_templates",
+    {
+      title: "列可用模板",
+      description:
+        "列出三层（内置 < 用户 < 工作区）合并后的可用模板：id、显示名、format、来源层与标签；损坏的模板在 diagnostics 里逐条说明，不拖垮整个列表",
+      inputSchema: listTemplatesShape,
+    },
+    listTemplatesCall,
+  );
+  server.registerTool(
+    "hr_get_template",
+    {
+      title: "读一个模板",
+      description:
+        "按 id 取模板的 manifest、entry/style/guide 全文（各字段超长截断并带标记）与资源清单。要复刻某个模板结构或改派生样式时先读它",
+      inputSchema: getTemplateShape,
+    },
+    getTemplateCall,
+  );
+  server.registerTool(
+    "hr_create_from_template",
+    {
+      title: "按模板起稿",
+      description:
+        '在给定路径按模板新建文档（缺省 blank-html）：主题内联进 `<style id="hr-theme">`，资源落到同名 <stem>_files/ 下；目标已存在时报 file_exists',
+      inputSchema: createFromTemplateShape,
+    },
+    createFromTemplateCall,
+  );
+  server.registerTool(
+    "hr_save_template",
+    {
+      title: "存页面为模板",
+      description:
+        '把工作区里的页面连同 <stem>_files/ 资源存成模板：`<style id="hr-theme">` 的内容进 style.css，entry 留空占位；`--global` 存用户层否则存工作区层；`style`/`guide` 可覆盖自动提取值；目标已存在时报 file_exists',
+      inputSchema: saveTemplateShape,
+    },
+    saveTemplateCall,
   );
 };
 

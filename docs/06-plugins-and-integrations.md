@@ -33,9 +33,13 @@ pnpm -C packages/mcp-server build
 | `hr_patch_node`         | Atomic `replace`, `insert_before`, `insert_after`, `append`, or `delete`; layout problems in the fragment come back as `warnings` |
 | `hr_apply_style`        | Apply visual theme CSS or check tone / forbidden words      |
 | `hr_resolve_annotation` | Mark reader annotations resolved / replied                  |
+| `hr_list_templates`     | List templates merged across the three tiers (builtin < `~/.hreader/templates` < `<workspace>/.hreader/templates`); broken entries land in `diagnostics` |
+| `hr_get_template`       | Read one template's manifest plus bounded `entry` / `style` / `guide` texts and the asset list |
+| `hr_create_from_template` | Draft a document from a template id (default `blank-html`); assets land under `<stem>_files/` |
+| `hr_save_template`      | Save a workspace page plus its `<stem>_files/` as a template (user tier with `global: true`); `style` / `guide` args override the auto-extracted values |
 | `hr_undo`               | Roll back the previous write snapshot                       |
 
-Prompt exported: `use-hreader-style`.
+Prompts exported: `use-hreader-style`, `extract-template` (reads 1–5 sample pages, derives shared `style.css`/`guide.md` rules, then calls `hr_save_template`).
 
 ### Document Permissions (read-only for agents)
 

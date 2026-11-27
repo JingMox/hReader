@@ -20,6 +20,10 @@ const REQUIRED_BY_TOOL: Record<string, readonly string[]> = {
   hr_create_doc: ["filePath", "title"],
   hr_import_doc: ["filePath"],
   hr_undo: ["filePath"],
+  hr_list_templates: [],
+  hr_get_template: ["id"],
+  hr_create_from_template: ["target"],
+  hr_save_template: ["file", "id"],
 };
 
 interface ListedTool {
@@ -60,7 +64,8 @@ describe("tool self-description", () => {
     expect(tools.map((tool) => tool.name).sort()).toEqual(Object.keys(REQUIRED_BY_TOOL).sort());
     for (const tool of tools) {
       // The classic symptom of a handwritten schema: no `type: object` (asserted above) or empty properties.
-      expect(tool.properties.length).toBeGreaterThan(0);
+      // `hr_list_templates` legitimately takes zero parameters — only argumented tools must show a non-empty properties map.
+      if (tool.required.length > 0) expect(tool.properties.length).toBeGreaterThan(0);
       const expected = REQUIRED_BY_TOOL[tool.name];
       if (expected === undefined)
         throw new Error(`tool not registered in the contract table: ${tool.name}`);

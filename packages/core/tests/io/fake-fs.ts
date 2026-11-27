@@ -213,8 +213,36 @@ const writeMethodsOf = (
   },
   rename: (from, to) => {
     guard(state, "rename", from);
-    state.files.set(to, new Uint8Array(readFileOf(state, from)));
-    state.files.delete(from);
+    const resolvedFrom = resolveLinks(state, from);
+    // Directory rename: re-home every file/link/dir under the old prefix (real fs moves the inode).
+    if (state.dirs.has(resolvedFrom)) {
+      const prefix = `${resolvedFrom}/`;
+      const rehome = (key: string): string | undefined =>
+        key === resolvedFrom || key.startsWith(prefix)
+          ? to + key.slice(resolvedFrom.length)
+          : undefined;
+      for (const key of [...state.files.keys()]) {
+        const moved = rehome(key);
+        if (moved === undefined) continue;
+        state.files.set(moved, state.files.get(key) ?? new Uint8Array());
+        state.files.delete(key);
+      }
+      for (const key of [...state.links.keys()]) {
+        const moved = rehome(key);
+        if (moved === undefined) continue;
+        state.links.set(moved, state.links.get(key) ?? "");
+        state.links.delete(key);
+      }
+      for (const key of [...state.dirs]) {
+        const moved = rehome(key);
+        if (moved === undefined) continue;
+        state.dirs.delete(key);
+        state.dirs.add(moved);
+      }
+      return Promise.resolve();
+    }
+    state.files.set(to, new Uint8Array(readFileOf(state, resolvedFrom)));
+    state.files.delete(resolvedFrom);
     return Promise.resolve();
   },
   link: (from, to) => {

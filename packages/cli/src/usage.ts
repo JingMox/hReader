@@ -14,6 +14,7 @@ export const COMMAND_NAMES = [
   "pdf",
   "png",
   "serve",
+  "template",
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -31,6 +32,7 @@ const COMMON = [
 
 const SYNOPSIS = [
   "hr new <file> [--kind note|report|minutes|brief|slides] [--title <标题>] [--visual <id>] [--force] [--json]",
+  "hr new <file> --template <id> [--title <标题>] [--json]",
   "hr import <file> [--kind <形态>] [--title <标题>] [--out <path>] [--force] [--json]",
   "hr normalize <file> [--write] [--json]",
   "hr outline <file> [--json]",
@@ -46,21 +48,27 @@ const SYNOPSIS = [
   "hr png <file> --out <path> [--width 256..4096] [--scale 1..3] [--max-height 1000..50000] [--visual <id>] [--json]",
   "hr serve <file> [--port <n>] [--allow-host <h>] [--app-dir <dir>] [--home <dir>]",
   "         [--exit-with-parent] [--json]",
+  "hr template list [--json]",
+  "hr template show <id> [--json]",
+  "hr template new <file> --template <id> [--title <标题>] [--json]",
+  "hr template save <file> --id <id> [--global] [--name <名字>] [--description <说明>] [--json]",
   "hr --help | hr <cmd> --help",
 ];
 
 const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
   new: [
     "用法：hr new <file> [--kind <形态>] [--title <标题>] [--visual <id>] [--force] [--json]",
+    "      hr new <file> --template <id> [--title <标题>] [--json]",
     "",
     "  --kind <形态>   note 笔记（默认）| report 报告 | minutes 会议纪要 | brief 决策简报 | slides 幻灯片",
     "  --title <标题>  写进 <title> 与 <h1>（默认取文件名）",
     "  --visual <id>   视觉主题（默认内置主题）",
     "  --force         <file> 已存在时覆盖（缺省报 file_exists）",
+    "  --template <id> 从模板起稿（hr template new 的别名）；不能与 --kind / --visual / --force 同用",
     "",
     "  按形态写一份带齐 data-hr-id、已套主题的起稿骨架：占位文字写在全角括号里，逐块 patch 掉即可。",
     "  slides 形态每个顶层 <section> 是一页：浏览器里滚动即翻页，打印是横版一页一张。",
-    "  JSON 时为 { path, kind, title, bytes }。",
+    "  JSON 时为 { path, kind, title, bytes }；--template 时为 { path, template, title, bytes, assets }。",
   ],
   import: [
     "用法：hr import <file> [--kind <形态>] [--title <标题>] [--out <path>] [--force] [--json]",
@@ -205,6 +213,30 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "  --port <n>           监听端口（0 = 系统分配，默认 0）",
     "  起本地 daemon 并在 stdout 打印一行（JSON 时为 { port, token, pid, workspace }）；",
     "  SIGTERM/SIGINT 关闭并删除 ~/.hreader/daemon.json。",
+  ],
+  template: [
+    "用法：hr template list [--json]",
+    "      hr template show <id> [--json]",
+    "      hr template new <file> --template <id> [--title <标题>] [--json]",
+    "      hr template save <file> --id <id> [--global] [--name <名字>] [--description <说明>] [--json]",
+    "",
+    "  模板三层：内置 < ~/.hreader/templates < <workspace>/.hreader/templates，同 id 高层覆盖低层。",
+    "  内置模板：note | report | minutes | brief | slides | blank-html。",
+    "",
+    "  list           列出全部可用模板（损坏的逐条警告到 stderr，不拖垮整个列表）；",
+    "                 JSON 时为 { templates: [{id, name, description, format, tags, source}],",
+    "                 diagnostics: [{id, source, message}] }。",
+    "  show <id>      打印 manifest 字段、guide 全文与 entry/style 字节数；",
+    "                 JSON 时为 { manifest, source, entry, style, guide, assets }（style/guide 缺席为 null）。",
+    "  new <file>     按模板起稿：资源落到 <stem>_files/，已存在报 file_exists；--title 缺省沿用模板自带标题；",
+    "                 JSON 时为 { path, template, title, bytes, assets }。",
+    '  save <file>    把页面连同 <stem>_files/ 存成模板：<style id="hr-theme"> 的内容进 style.css，',
+    "                 entry 保留空占位；默认存 <workspace>/.hreader/templates/<id>/，",
+    "                 --global 存 ~/.hreader/templates/<id>/（HREADER_HOME / --home 可换根）；",
+    "                 已存在报 file_exists（没有 --force）；JSON 时为 { id, dir, format, scope, assets }。",
+    "",
+    "  --home <dir>   用户层模板的父目录（默认 $HOME / HREADER_HOME）；必须已存在",
+    "  找不到模板报 unknown_template，模板本身损坏报 invalid_template（退出码均 1）。",
   ],
 };
 

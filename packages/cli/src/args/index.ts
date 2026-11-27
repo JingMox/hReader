@@ -17,6 +17,7 @@ import { exportIntent, pdfIntent, pngIntent } from "./export";
 import { commonOf, failure, intInRange, unusedFlag, absoluteOf, type ParsedArgs } from "./intent";
 import { allowHostsOf, tokenize, type Raw } from "./raw";
 import { styleIntent } from "./style";
+import { templateIntent } from "./template";
 
 export type { HtmlSource, Intent, ParsedArgs, StrictLevel, StyleMode } from "./intent";
 
@@ -79,6 +80,7 @@ const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
   pdf: pdfIntent,
   png: pngIntent,
   serve: serveIntent,
+  template: templateIntent,
 };
 
 const build = (raw: Raw, cwd: string): ParsedArgs => {

@@ -141,7 +141,8 @@ const rewriteAttrs = (node: HtmlElementNode, from: string, to: string): HtmlElem
   ),
 });
 
-const mapElements = (node: HtmlNode, from: string, to: string): HtmlNode => {
+/** Shared with `saveTemplate` (the inverse rewrite `<stem>_files/` → `assets/`): maps every URL attribute that starts with `from` onto `to`, srcset-aware. */
+export const mapElements = (node: HtmlNode, from: string, to: string): HtmlNode => {
   if (node.kind === "element") {
     const mapped = rewriteAttrs(node, from, to);
     return { ...mapped, children: mapped.children.map((child) => mapElements(child, from, to)) };
