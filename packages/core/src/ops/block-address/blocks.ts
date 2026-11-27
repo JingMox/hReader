@@ -177,9 +177,15 @@ const blockTextOf = (node: HtmlElementNode): string => {
  * a tree-sibling whose source span encloses the element's start (a foster container like
  * `<table>`). An unclosed element absorbs every later byte, so no following sibling exists
  * to bound it earlier. `innerEnd === end` marks "no end tag in source" (see spanOfLocation).
+ *
+ * Returns `undefined` when the element has no start tag of its own in the source: a real
+ * tag costs bytes (`start < innerStart`), while synthesized nodes and implicit-close split
+ * pieces carry a content range (`start >= innerStart`) or no location at all — patching
+ * them would write over bytes that belong to another element.
  */
-const patchRangeOf = (chain: Chain): SourceSpan => {
+const patchRangeOf = (chain: Chain): SourceSpan | undefined => {
   const span = { ...ZERO_SPAN, ...chain.node.span };
+  if (span.start >= span.innerStart) return undefined;
   if (span.innerEnd !== span.end) return span;
   let end = span.end;
   const bound = (candidate: number): void => {
@@ -197,14 +203,14 @@ const patchRangeOf = (chain: Chain): SourceSpan => {
   return { ...span, end, innerEnd: end };
 };
 
-const entryOf = (chain: Chain, steps: readonly SelectorStep[]): BlockEntry => {
+const entryOf = (chain: Chain, steps: readonly SelectorStep[], range: SourceSpan): BlockEntry => {
   const text = blockTextOf(chain.node);
   return {
     node: chain.node,
     steps,
     text,
     fingerprint: sha1Hex(text).slice(0, FINGERPRINT_CHARS),
-    range: patchRangeOf(chain),
+    range,
   };
 };
 
@@ -227,9 +233,10 @@ export const collectBlocks = (root: HtmlNode): readonly BlockEntry[] => {
     if (node.kind === "element" && BLOCK_ADDRESS_TAGS.has(node.tag) && inside.get(node) !== true) {
       /* v8 ignore next — the element branch just assigned `own` */
       if (own !== undefined) {
+        const range = patchRangeOf(own);
         const steps = stepsOf(root, own);
-        if (expressibleSteps(steps)) {
-          entries.push(entryOf(own, steps));
+        if (range !== undefined && expressibleSteps(steps)) {
+          entries.push(entryOf(own, steps, range));
         }
       }
     }
