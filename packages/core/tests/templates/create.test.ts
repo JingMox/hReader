@@ -287,6 +287,99 @@ describe("createFromTemplate · existing guardrails", () => {
   });
 });
 
+describe("createFromTemplate · atomic rollback", () => {
+  interface FakeSnapshot {
+    readonly files: ReadonlyMap<string, string>;
+    readonly dirs: ReadonlySet<string>;
+    readonly links: ReadonlyMap<string, string>;
+  }
+
+  const snapshotOf = (fake: FakeFs): FakeSnapshot => ({
+    files: new Map(
+      [...fake.state.files].map(([path, bytes]) => [path, new TextDecoder().decode(bytes)]),
+    ),
+    dirs: new Set(fake.state.dirs),
+    links: new Map(fake.state.links),
+  });
+
+  const expectUnchanged = (fake: FakeFs, before: FakeSnapshot): void => {
+    expect(snapshotOf(fake)).toEqual(before);
+  };
+
+  const assetTemplate = (): Record<string, string> =>
+    htmlTemplate(TPL, {
+      entry: '<html><head><title>T</title></head><body><img src="assets/a.png"></body></html>',
+      assets: { "a.png": "PNG-A", "deep/x.bin": "BIN" },
+    });
+
+  const assetDirs = [`${TPL}/assets`, `${TPL}/assets/deep`];
+
+  it("should refuse a pre-existing <stem>_files asset and write nothing", async () => {
+    const fake = setup(
+      { ...assetTemplate(), "/ws/collide_files/a.png": "FOREIGN" },
+      [...assetDirs, `${WS}/collide_files`],
+    );
+    const before = snapshotOf(fake);
+
+    const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "collide.html" }));
+    expect(error.code).toBe("file_exists");
+    expect(error.message).toContain("collide_files");
+    expectUnchanged(fake, before);
+
+    // Retrying after the cause is removed must succeed: <stem>_files exists in any form → file_exists.
+    fake.state.files.delete("/ws/collide_files/a.png");
+    fake.state.dirs.delete("/ws/collide_files");
+    await createAt(fake, { id: "my-tpl", target: "collide.html" });
+    expect(textOf(fake, `${WS}/collide.html`)).toContain('src="collide_files/a.png"');
+  });
+
+  it("should refuse a regular file sitting at the <stem>_files path", async () => {
+    const fake = setup({ ...assetTemplate(), "/ws/odd_files": "NOT-A-DIR" }, assetDirs);
+    const before = snapshotOf(fake);
+
+    const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "odd.html" }));
+    expect(error.code).toBe("file_exists");
+    expect(error.message).toContain("odd_files");
+    expectUnchanged(fake, before);
+  });
+
+  it("should reclaim created dirs and files when an asset write fails mid-copy", async () => {
+    const fake = setup(assetTemplate(), assetDirs);
+    fake.fail("link", systemError("EACCES"), (path: string) =>
+      path.startsWith(`${WS}/mid_files/deep/x.bin.`),
+    );
+    const before = snapshotOf(fake);
+
+    expect(await codeOfAsync(() => createAt(fake, { id: "my-tpl", target: "mid.html" }))).toBe(
+      "io_failure",
+    );
+    expectUnchanged(fake, before);
+  });
+
+  it("should write every asset before the exclusive page create that publishes the result", async () => {
+    const fake = setup(assetTemplate(), assetDirs);
+    await createAt(fake, { id: "my-tpl", target: "order.html" });
+
+    // `link:` log entries carry the tmp source `<target>.<digits>` — the page's link must be the last one.
+    const links = fake.state.log.filter((line) => line.startsWith("link:"));
+    expect(links.filter((line) => line.startsWith(`link:${WS}/order_files/`))).toHaveLength(2);
+    expect(links[links.length - 1]?.startsWith(`link:${WS}/order.html.`)).toBe(true);
+  });
+
+  it("should roll back the copied assets when the final page write fails", async () => {
+    const fake = setup(assetTemplate(), assetDirs);
+    fake.fail("link", systemError("ENOSPC"), (path: string) =>
+      path.startsWith(`${WS}/roll.html.`),
+    );
+    const before = snapshotOf(fake);
+
+    expect(await codeOfAsync(() => createAt(fake, { id: "my-tpl", target: "roll.html" }))).toBe(
+      "io_failure",
+    );
+    expectUnchanged(fake, before);
+  });
+});
+
 describe("createFromTemplate · property tests", () => {
   // \0 is replaced by the parser with U+FFFD and \r is normalized to \n in preprocessing:
   // neither is in the "roundtrippable text" domain, so filter them out.
