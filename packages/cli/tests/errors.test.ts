@@ -19,6 +19,16 @@ describe("firstErrorLineOf", () => {
     const long = "x".repeat(250);
     expect(firstErrorLineOf(long)).toHaveLength(200);
   });
+
+  it("should not split a surrogate pair when the 200-char cut lands inside an emoji", () => {
+    // 199 'x' + 😀 + 50 'y': the 200-unit cut falls between the emoji's halves — drop the high half.
+    const line = `${"x".repeat(199)}😀${"y".repeat(50)}`;
+    const written = firstErrorLineOf(line);
+
+    expect(written).toBe("x".repeat(199));
+    expect(written).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+    expect(written).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+  });
 });
 
 describe("messageOf", () => {

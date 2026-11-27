@@ -147,6 +147,15 @@ describe("llm/client · empty body and timeout", () => {
 });
 
 describe("llm/client · no leakage", () => {
+  it("should not split a surrogate pair when the 200-char snippet cut lands inside an emoji", async () => {
+    // 199 'a' + 😀 + 50 'b': the snippet cut falls between the emoji's halves — drop the high half.
+    const error = await failureOf(responseOf(`${"a".repeat(199)}😀${"b".repeat(50)}`, 502));
+
+    expect(error.message).toContain("a".repeat(199));
+    expect(error.message).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+    expect(error.message).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+  });
+
   it("should truncate the snippet and never print the key", async () => {
     const error = await failureOf(responseOf(`{"x":"${"长".repeat(500)}"}`, 502));
 

@@ -24,6 +24,15 @@ describe("stderr buffering", () => {
     const full = "x".repeat(65_536);
     expect(stderrBufferOf(full, "tail")).toBe(full);
   });
+
+  it("should not split a surrogate pair when the 64 KiB cut lands inside an emoji", () => {
+    // 65535 'x' + 😀 + 10 'y': the 65536-unit cut falls between the emoji's halves — drop the high half.
+    const written = stderrBufferOf("", `${"x".repeat(65_535)}😀${"y".repeat(10)}`);
+
+    expect(written).toBe("x".repeat(65_535));
+    expect(written).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+    expect(written).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+  });
 });
 
 describe("renderPdfOf · stderr flood", () => {
