@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-// 这层管：把 `hr` 转发给同级单文件 CLI 产物或仓库源码入口（子进程/同进程 + 退出码透传）；
-// 零依赖：只用 node 内置模块；优先认打包产物 `./cli.mjs`，其次认仓库 `packages/cli/src/main.ts`。
+// This layer: forward `hr` to the sibling single-file CLI build or the repo source entry
+// (child process / in-process + exit-code passthrough); zero dependencies — node builtins only.
+// Prefers the bundled artifact `./cli.mjs`, then the repo's `packages/cli/src/main.ts`.
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+// USAGE and the `fail()` messages below are product output asserted by tests
+// (packages/cli/tests/skill-shell.test.ts) — they stay in Chinese verbatim.
 const USAGE = `用法：node skills/hreader/scripts/hr.mjs <命令> [参数…]
 
   outline <file> [--json] [--workspace <dir>]
@@ -20,7 +23,7 @@ const USAGE = `用法：node skills/hreader/scripts/hr.mjs <命令> [参数…]
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const bundledCli = join(scriptDir, "cli.mjs");
-/** skills/hreader/scripts → 仓库根（三段上跳）。 */
+/** skills/hreader/scripts → repo root (three levels up). */
 const repoRoot = dirname(dirname(dirname(scriptDir)));
 const repoEntry = join(repoRoot, "packages", "cli", "src", "main.ts");
 
@@ -62,7 +65,8 @@ const runRepoSource = async (argv) => {
     process.exitCode = 2;
     return;
   }
-  // Node >= 22.18 / 24 默认开启 TS 类型剥离时同进程 import 入口，避免包一层子进程把 PID 换掉（桌面壳靠子进程 PID 对 `/healthz`）。
+  // Node >= 22.18 / 24 enables TS type stripping by default, so the entry is imported in-process —
+  // a wrapper child process would swap the PID (the desktop shell maps `/healthz` by child PID).
   if (process.features.typescript) {
     await import(pathToFileURL(repoEntry).href);
     return;
