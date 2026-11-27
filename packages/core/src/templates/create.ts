@@ -16,6 +16,7 @@ import { drainStack } from "../html/stack";
 import { mkdirOrFail } from "../io/atomic";
 import { encodeUtf8, readBytes } from "../io/bytes";
 import { createNewFile, createNewFiles } from "../io/create";
+import { runLocked } from "../io/lock";
 import { codeOf, failureOf, rmdirQuiet, unlinkQuiet } from "../io/errors";
 import { resolveNewTarget, type ResolvedNewTarget } from "../io/paths";
 import { classifyDocument } from "../model/classify";
@@ -331,7 +332,12 @@ export const createFromTemplate = async (
       throw templateFailure(`无法读取模板资源：${file.rel}`, error);
     }
   }
-  await writeAll(rendered, target, data, assetData, deps);
+  // The same per-file lock a patch on this path takes, held across pre-check + mkdirs + asset copy +
+  // the exclusive page create: a racer that waits then sees the name taken and gets file_exists,
+  // instead of deleting a shared dir out from under the winner mid-copy.
+  await runLocked({ lockPath: target.lockPath }, deps, {}, () =>
+    writeAll(rendered, target, data, assetData, deps),
+  );
   return {
     path: target.relative,
     bytes: data.byteLength,

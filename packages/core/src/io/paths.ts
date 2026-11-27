@@ -102,6 +102,8 @@ export interface ResolvedNewTarget {
   readonly relative: string;
   /** The workspace's real path. */
   readonly workspace: string;
+  /** Same lock key `resolveTarget` mints for an existing file — a create serializes against patches on the path it claims. */
+  readonly lockPath: string;
 }
 
 /**
@@ -171,5 +173,6 @@ export const resolveNewTarget = async (
   const relativePath = relative(workspaceReal, absolute).split(sep).join("/");
   const storeError = storeErrorOf(relativePath, input.file);
   if (storeError !== undefined) throw storeError;
-  return { absolute, relative: relativePath, workspace: workspaceReal };
+  const lockPath = join(workspaceReal, STORE_DIR, "locks", `${sha1Hex(relativePath)}.lock`);
+  return { absolute, relative: relativePath, workspace: workspaceReal, lockPath };
 };
