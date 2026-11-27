@@ -172,8 +172,18 @@ describe("matchRoute · 批注与撤销", () => {
     });
   });
 
-  it("should freeze the table at 25 entries (24 + the /f/ capability route)", () => {
-    expect(ROUTES).toHaveLength(25);
+  it("should freeze the table at 31 entries (25 + the six sidecar routes)", () => {
+    expect(ROUTES).toHaveLength(31);
+    expect(matchRoute("GET", "/api/doc/a.html/sidecar")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html" },
+      route: { kind: "sidecar", auth: "cookie" },
+    });
+    expect(matchRoute("POST", "/api/doc/a.html/sidecar/an-1a2b/reply")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html", anId: "an-1a2b" },
+      route: { kind: "sidecarReply", auth: "cookie+csrf" },
+    });
     expect(matchRoute("GET", "/api/doc/a.html/info")).toMatchObject({
       kind: "route",
       params: { docId: "a.html" },

@@ -28,6 +28,7 @@ import {
   type Written,
 } from "./handlers";
 import { dispatchWrite } from "./write-replies";
+import { sidecarListReply } from "./sidecar-replies";
 import { bodyRecordOf, jsonOf } from "./http-io";
 import type { Hub } from "./hub";
 import { revisionOf } from "./revision";
@@ -177,10 +178,10 @@ type StaticKind = Extract<Route["kind"], "home" | "assets" | "theme" | "themes">
 const isStaticKind = (kind: Route["kind"]): kind is StaticKind =>
   kind === "home" || kind === "assets" || kind === "theme" || kind === "themes";
 
-/** 读类路由（document/docInfo/model/outline/annotations）共用"先 remember 再取"。 */
+/** 读类路由（document/docInfo/model/outline/annotations/sidecar）共用"先 remember 再取"。 */
 type ReadKind = Extract<
   Route["kind"],
-  "document" | "docInfo" | "model" | "outline" | "annotations"
+  "document" | "docInfo" | "model" | "outline" | "annotations" | "sidecar"
 >;
 
 const isReadKind = (kind: Route["kind"]): kind is ReadKind =>
@@ -188,7 +189,17 @@ const isReadKind = (kind: Route["kind"]): kind is ReadKind =>
   kind === "docInfo" ||
   kind === "model" ||
   kind === "outline" ||
-  kind === "annotations";
+  kind === "annotations" ||
+  kind === "sidecar";
+
+/** 侧车写五兄弟：成功完成时广播 `doc.annotations`（noteWrite 对它们静默）。 */
+const SIDECAR_WRITE_KINDS: ReadonlySet<Route["kind"]> = new Set([
+  "sidecarAdd",
+  "sidecarResolve",
+  "sidecarReopen",
+  "sidecarReply",
+  "sidecarDelete",
+]);
 
 const readReplyOf = async (
   context: HandlerContext,
@@ -201,6 +212,7 @@ const readReplyOf = async (
   if (kind === "document") return documentRedirectOf(context, target);
   if (kind === "docInfo") return docInfoReply(context, docId);
   if (kind === "annotations") return annotationsReply(context, docId);
+  if (kind === "sidecar") return sidecarListReply(context, docId);
   return kind === "model" ? modelReply(context, docId) : outlineReply(context, docId);
 };
 
@@ -266,6 +278,11 @@ const dispatchOf =
     }
     const written = await dispatchWrite(context, route, params, { req, bodyMs });
     runtime.noteWrite(written);
+    // 侧车写不动文档字节（changed:false → doc.changed 静默），批注变化走自己的事件：
+    // 写成功才广播，失败写什么动静都没有。
+    if (SIDECAR_WRITE_KINDS.has(route.kind)) {
+      runtime.hub.publish("doc.annotations", { docId: written.target.relative });
+    }
     return written.reply;
   };
 

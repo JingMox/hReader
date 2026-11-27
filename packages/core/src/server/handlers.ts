@@ -40,12 +40,7 @@ import { normalizeFile } from "../ops/normalize-file";
 import type { PatchAction, PatchRequest } from "../ops/patch-node";
 import { applyStyle } from "../style/apply-file";
 import type { StyleDeps } from "../style";
-import {
-  ANNOTATOR_NAME,
-  annotateNonce,
-  injectAnnotator,
-  type AnnotateTokenBook,
-} from "./annotate";
+import { ANNOTATOR_NAME, annotateNonce, injectAnnotator, type AnnotateTokenBook } from "./annotate";
 import { appendAnnotation, type AnnotationInput, type AnnotationOutcome } from "./annotation";
 import type { CapabilityBook } from "./capability";
 import type { Reply } from "./contracts";
@@ -641,10 +636,7 @@ export const annotateReply = async (ctx: HandlerContext, docId: string): Promise
   // A document whose basename collides with the annotator resource can never be
   // framed: its `/f/<cap>/<docName>` URL serves the annotator script instead.
   if (basename(doc.target.realPath).toLowerCase() === ANNOTATOR_NAME) {
-    throw new HrError(
-      "invalid_document",
-      "文档名与批注脚本保留名冲突：无法进入批注模式",
-    );
+    throw new HrError("invalid_document", "文档名与批注脚本保留名冲突：无法进入批注模式");
   }
   const grant = ctx.caps.register(doc.target);
   const token = ctx.annotateTokens.mint(grant.cap, grant.docName);

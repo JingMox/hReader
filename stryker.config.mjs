@@ -45,6 +45,12 @@ const config = {
     "packages/core/src/server/http-io.ts",
     "packages/core/src/server/body.ts",
     "packages/core/src/server/static.ts",
+    // sidecar HTTP surface: strict-body gates + relocation wiring are security-relevant
+    "packages/core/src/server/sidecar-replies.ts",
+    "packages/core/src/server/write-replies.ts",
+    "packages/core/src/server/runtime.ts",
+    "packages/core/src/annotations/anchor.ts",
+    "packages/core/src/annotations/body-text.ts",
     // cli: term(), argument parsing, and the export-side permission gate
     "packages/cli/src/output.ts",
     "packages/cli/src/args/**/*.ts",

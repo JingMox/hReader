@@ -31,6 +31,12 @@ export type RouteKind =
   | "permissionsGet"
   | "permissionsSet"
   | "docNormalize"
+  | "sidecar"
+  | "sidecarAdd"
+  | "sidecarResolve"
+  | "sidecarReopen"
+  | "sidecarReply"
+  | "sidecarDelete"
   | "events";
 
 const DOC_PARAM = ":docId";
@@ -101,6 +107,34 @@ export const ROUTES: readonly Route[] = Object.freeze([
   route("GET", ["api", "permissions"], "cookie", "permissionsGet"),
   route("POST", ["api", "permissions"], "cookie+csrf", "permissionsSet"),
   route("POST", ["api", "doc", DOC_PARAM, "normalize"], "cookie+csrf", "docNormalize"),
+  // 侧车批注：合并 meta/sidecar 的读视图 + 五个写命令；读写分别走 cookie 与 cookie+csrf，
+  // 与既有批注路由同一套 auth 分层。add-only：以下六条是路由表的全部增量。
+  route("GET", ["api", "doc", DOC_PARAM, "sidecar"], "cookie", "sidecar"),
+  route("POST", ["api", "doc", DOC_PARAM, "sidecar"], "cookie+csrf", "sidecarAdd"),
+  route(
+    "POST",
+    ["api", "doc", DOC_PARAM, "sidecar", AN_PARAM, "resolve"],
+    "cookie+csrf",
+    "sidecarResolve",
+  ),
+  route(
+    "POST",
+    ["api", "doc", DOC_PARAM, "sidecar", AN_PARAM, "reopen"],
+    "cookie+csrf",
+    "sidecarReopen",
+  ),
+  route(
+    "POST",
+    ["api", "doc", DOC_PARAM, "sidecar", AN_PARAM, "reply"],
+    "cookie+csrf",
+    "sidecarReply",
+  ),
+  route(
+    "POST",
+    ["api", "doc", DOC_PARAM, "sidecar", AN_PARAM, "delete"],
+    "cookie+csrf",
+    "sidecarDelete",
+  ),
   route("GET", ["api", "events"], "cookie", "events"),
 ]);
 

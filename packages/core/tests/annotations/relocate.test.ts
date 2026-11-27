@@ -5,7 +5,6 @@
 import { describe, expect, it } from "vitest";
 
 import { parseHtml } from "../../src/html/parse";
-import { bodyTextOf } from "../../src/annotations/body-text";
 import {
   docRelocatorOf,
   elementByPath,

@@ -18,7 +18,6 @@ import {
   type AnchorResult,
 } from "./anchor";
 import { bodyMapOf, type BodyTextMap } from "./body-text";
-import type { TextAnchor } from "./model";
 import { elementsOf } from "./meta-insert";
 import type { SidecarAnnotation } from "./sidecar-model";
 
