@@ -241,6 +241,19 @@ window.__hrDesktopSync = (nextCtx) => {
   applySyncedContext(nextCtx);
 };
 
+// Rust pushes `hr template list --json` results and default-template changes
+// through eval; both land on state and only re-render widgets that exist.
+window.__hrTemplateResult = (payload) => {
+  hrd.applyTemplateResult(payload);
+};
+
+window.__hrDefaultTemplate = (id) => {
+  const next = { ...(hrd.state.ctx || {}), defaultTemplate: id || null };
+  hrd.state.ctx = next;
+  window.__HR_DESKTOP_CTX__ = next;
+  if (hrd.renderTemplateUi) hrd.renderTemplateUi();
+};
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", setupWorkbench);
 } else {

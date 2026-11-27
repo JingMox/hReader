@@ -51,6 +51,8 @@ export interface DesktopContext {
   customThemes: CustomTheme[];
   isMacos: boolean;
   docError?: DocError | null;
+  /** Default document-template id from shell settings; `null` = blank. */
+  defaultTemplate?: string | null;
   bridgeToken: string;
 }
 
@@ -92,6 +94,12 @@ export interface HrdState {
   openMenuKind: string | null;
   expandedDirs: Set<string>;
   lastAutoExpandedDoc: string;
+  templates: {
+    status: "idle" | "loading" | "ready" | "error";
+    list: { id: string; name?: string; source: string; format?: string; description?: string }[];
+    diagnostics: { id: string; source: string; message: string }[];
+    error: string;
+  };
   [key: string]: unknown;
 }
 
@@ -114,6 +122,9 @@ export interface Hrd {
   setSaveState: (text: string) => void;
   apiPost: (url: string, payload?: unknown) => Promise<unknown>;
   bridgeNavigate: (path: string) => void;
+  requestTemplates: () => void;
+  applyTemplateResult: (payload: unknown) => void;
+  renderTemplateUi: () => void;
   injectStyles: () => void;
   applyPrefs: () => void;
   ensureDefaultThemeLoaded: () => void;
@@ -169,6 +180,7 @@ export interface Hrd {
   closeFloatMenu: () => void;
   openFileSwitcherModal: () => void;
   openNewDocModal: () => void;
+  openSaveAsTemplateModal: () => void;
   openSettingsModal: () => void;
   openHelpModal: () => void;
   wireImmersiveSync: () => void;
@@ -191,6 +203,8 @@ export type HrdWindow = Window & {
   __hrMenuAction?: (action: string) => void;
   __hrDesktopSync?: (ctx: DesktopContext) => void;
   __hrDesktopToast?: (msg: string, isErr: boolean) => void;
+  __hrTemplateResult?: (payload: unknown) => void;
+  __hrDefaultTemplate?: (id: string | null) => void;
 };
 
 export interface Sandbox {

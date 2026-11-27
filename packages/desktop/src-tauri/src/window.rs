@@ -17,7 +17,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 use crate::shortcut::{self, Accel, Modifier};
 use crate::signals;
 use crate::supervisor::{self, Daemon};
-use crate::{daemon_file, url_build, workbench, Reaper};
+use crate::{daemon_file, doc_templates, settings, url_build, workbench, Reaper};
 
 pub enum LaunchTarget {
     Session(crate::Session),
@@ -48,6 +48,8 @@ struct DesktopState {
     doc_error: Option<workbench::DocError>,
     /// 外来 iframe 的外部导航门栏：webview 经 `/doc-state` 桥同步；`None` = 非外来壳。
     doc_gate: Option<DocGate>,
+    /// 壳级设置（默认模板等）：`<home>/settings.json`，启动时读一次。
+    settings: settings::ShellSettings,
 }
 
 impl DesktopState {
@@ -63,6 +65,7 @@ impl DesktopState {
             ),
             is_macos: cfg!(target_os = "macos"),
             doc_error: self.doc_error.clone(),
+            default_template: self.settings.default_template.clone(),
             bridge_token: self.bridge_token.clone(),
         }
     }
@@ -82,6 +85,13 @@ impl DesktopState {
 }
 
 type SharedState = Arc<Mutex<DesktopState>>;
+
+/// `settings.json` 放壳的私有 home；home 都定位不到时偏好只是"没有"。
+fn load_shell_settings() -> settings::ShellSettings {
+    crate::default_home()
+        .map(|home| settings::read_settings(&home))
+        .unwrap_or_default()
+}
 
 fn reap_shared(shared: &SharedState) {
     if let Ok(mut guard) = shared.lock() {
@@ -126,6 +136,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 bridge_token: mint_bridge_token(),
                 doc_error: None,
                 doc_gate: None,
+                settings: load_shell_settings(),
             };
             (tauri::WebviewUrl::External(parsed), title, state)
         }
@@ -141,6 +152,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 bridge_token: mint_bridge_token(),
                 doc_error: None,
                 doc_gate: None,
+                settings: load_shell_settings(),
             };
             (
                 tauri::WebviewUrl::App("index.html".into()),
@@ -165,6 +177,7 @@ pub fn run(target: LaunchTarget) -> i32 {
                 bridge_token: mint_bridge_token(),
                 doc_error: Some(workbench::DocError { doc_id, message }),
                 doc_gate: None,
+                settings: load_shell_settings(),
             };
             (
                 tauri::WebviewUrl::App("index.html".into()),
@@ -353,6 +366,14 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         )?)
         .separator()
         .item(&item(app, "save-doc", "立即保存", Some("CmdOrCtrl+S"))?)
+        // "存为模板…" 只在有文档打开时可用：`refresh_template_menu` 跟着 doc_id 走。
+        .item(&MenuItem::with_id(
+            app,
+            "save-as-template",
+            "存为模板…",
+            false,
+            None::<&str>,
+        )?)
         .separator()
         .item(&item(app, "export-pdf", "导出带书签 PDF", None)?)
         .item(&item(app, "export-png", "导出高清 PNG 长图", None)?)
@@ -753,7 +774,19 @@ fn handle_bridge_navigation(app: &tauri::AppHandle, shared: &SharedState, url: &
         "/new" => {
             let title = query_param(url, "title").unwrap_or_else(|| "未命名文档".to_string());
             let raw_file = query_param(url, "file").unwrap_or_default();
-            create_new_doc(app.clone(), Arc::clone(shared), title, raw_file);
+            match query_param(url, "template") {
+                // `template=` 走 `hr template new`；没有它就是原有空白路径——一字节都不能变。
+                Some(template) if !template.is_empty() => {
+                    create_doc_from_template(
+                        app.clone(),
+                        Arc::clone(shared),
+                        title,
+                        raw_file,
+                        template,
+                    );
+                }
+                _ => create_new_doc(app.clone(), Arc::clone(shared), title, raw_file),
+            }
         }
         "/welcome" => open_welcome(app.clone(), Arc::clone(shared)),
         "/pick-file" => pick_file_async(app.clone(), Arc::clone(shared)),
@@ -762,6 +795,16 @@ fn handle_bridge_navigation(app: &tauri::AppHandle, shared: &SharedState, url: &
         "/open-asset" => open_asset_in_workspace(app, shared, query_param(url, "doc").as_deref()),
         "/open-themes-dir" => open_themes_dir(app, shared),
         "/reload-themes" => reload_themes(app, shared),
+        "/template-list" => refresh_templates(app.clone(), Arc::clone(shared)),
+        "/template-open-dir" => {
+            open_template_dir(app, shared, query_param(url, "scope").as_deref())
+        }
+        "/template-set-default" => set_default_template(app, shared, query_param(url, "id")),
+        "/template-clear-default" => set_default_template(app, shared, None),
+        "/template-delete" => {
+            delete_template_async(app.clone(), Arc::clone(shared), query_param(url, "id"))
+        }
+        "/template-save" => save_template_async(app.clone(), Arc::clone(shared), url),
         "/export-pdf" => {
             export_async(
                 app.clone(),
@@ -816,6 +859,7 @@ fn show_doc_error(
         }
         Err(_) => return,
     };
+    refresh_template_menu(app, shared);
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.navigate(empty_page_url());
         let _ = win.eval(workbench::sync_payload_js(&ctx));
@@ -857,6 +901,7 @@ fn ensure_daemon_and_open(
     };
 
     if let Some(port) = fast_path {
+        refresh_template_menu(app, shared);
         match url_build::doc_reader_url(port, &doc_id) {
             Ok(target) => {
                 if let (Some(win), Ok(parsed)) = (app.get_webview_window("main"), target.parse()) {
@@ -933,6 +978,7 @@ fn ensure_daemon_and_open(
         guard.workspace = target_ws;
         guard.doc_id = doc_id;
     }
+    refresh_template_menu(app, shared);
 
     if let (Some(win), Ok(parsed)) = (app.get_webview_window("main"), next_url.parse()) {
         let _ = win.navigate(parsed);
@@ -1033,7 +1079,7 @@ fn create_new_doc(app: tauri::AppHandle, shared: SharedState, title: String, raw
         let _ = supervisor::run_cli_task(
             &cli,
             &workspace,
-            &["style", &doc_name, "--visual", "atelier-editorial"],
+            &doc_templates::blank_style_args(&doc_name),
         );
         ensure_daemon_and_open(&app, &shared, workspace, doc_name);
     });
@@ -1059,6 +1105,242 @@ fn open_welcome(app: tauri::AppHandle, shared: SharedState) {
         }
         ensure_daemon_and_open(&app, &shared, workspace, "welcome.html".to_string());
     });
+}
+
+/// 一轮 `hr template list --json` 变成 `__hrTemplateResult` 的载荷：
+/// 解析失败与 CLI 失败都落成 `{ok:false,message}`——列表只是填弹窗的数据，绝不挡创建。
+fn template_list_payload(cli: &Path, workspace: &Path) -> serde_json::Value {
+    match supervisor::run_cli_task(cli, workspace, &doc_templates::template_list_args()) {
+        Ok(stdout) => match doc_templates::parse_template_list(&stdout) {
+            Ok(list) => serde_json::json!({
+                "ok": true,
+                "templates": list.templates,
+                "diagnostics": list.diagnostics,
+            }),
+            Err(message) => serde_json::json!({ "ok": false, "message": message }),
+        },
+        Err(raw) => serde_json::json!({
+            "ok": false,
+            "message": doc_templates::cli_error_message(&raw),
+        }),
+    }
+}
+
+fn push_template_result(app: &tauri::AppHandle, payload: &serde_json::Value) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.eval(format!(
+            "window.__hrTemplateResult && window.__hrTemplateResult({payload});"
+        ));
+    }
+}
+
+fn refresh_templates(app: tauri::AppHandle, shared: SharedState) {
+    thread::spawn(move || {
+        let (workspace, cli) = match shared.lock() {
+            Ok(guard) => (guard.workspace.clone(), guard.cli.clone()),
+            Err(_) => return,
+        };
+        let payload = template_list_payload(&cli, &workspace);
+        push_template_result(&app, &payload);
+    });
+}
+
+/// `/new?template=<id>`：`hr template new` 起稿，之后照旧 `ensure_daemon_and_open`。
+/// 文件名仍走 `safe_new_filename`——去重与清洗语义与空白路径一致。
+fn create_doc_from_template(
+    app: tauri::AppHandle,
+    shared: SharedState,
+    title: String,
+    raw_file: String,
+    template_id: String,
+) {
+    thread::spawn(move || {
+        let (workspace, cli) = match shared.lock() {
+            Ok(guard) => (guard.workspace.clone(), guard.cli.clone()),
+            Err(_) => return,
+        };
+        if !doc_templates::is_valid_template_id(&template_id) {
+            toast(&app, "模板 ID 不合法", true);
+            return;
+        }
+        let doc_name = safe_new_filename(&raw_file, &workspace);
+        let args = doc_templates::template_new_args(&doc_name, &template_id, &title);
+        match supervisor::run_cli_task(&cli, &workspace, &args) {
+            Ok(_) => ensure_daemon_and_open(&app, &shared, workspace, doc_name),
+            Err(raw) => toast(
+                &app,
+                &format!("创建失败：{}", doc_templates::cli_error_message(&raw)),
+                true,
+            ),
+        }
+    });
+}
+
+/// `/template-save?doc=&id=&name=&desc=&global=1` → `hr template save <doc> --id … --json`。
+/// 成功后推一份新列表给页面——设置面板若开着就原地刷新。
+fn save_template_async(app: tauri::AppHandle, shared: SharedState, url: &tauri::Url) {
+    let id = query_param(url, "id").unwrap_or_default();
+    let name = query_param(url, "name").unwrap_or_default();
+    let description = query_param(url, "desc").unwrap_or_default();
+    let global = query_param(url, "global").as_deref() == Some("1");
+    let doc = query_param(url, "doc");
+    thread::spawn(move || {
+        let (workspace, cli, doc_id) = match shared.lock() {
+            Ok(guard) => (
+                guard.workspace.clone(),
+                guard.cli.clone(),
+                guard.doc_id.clone(),
+            ),
+            Err(_) => return,
+        };
+        let file = doc.unwrap_or(doc_id);
+        if file.is_empty() {
+            toast(&app, "请先新建或打开一个 HTML 文档", true);
+            return;
+        }
+        if !doc_templates::is_valid_template_id(&id) {
+            toast(&app, "模板 ID 只能由小写字母、数字与连字符组成", true);
+            return;
+        }
+        let args = doc_templates::template_save_args(&file, &id, global, &name, &description);
+        match supervisor::run_cli_task(&cli, &workspace, &args) {
+            Ok(_) => {
+                toast(&app, &format!("已保存模板 {id}"), false);
+                push_template_result(&app, &template_list_payload(&cli, &workspace));
+            }
+            Err(raw) => toast(
+                &app,
+                &format!("保存模板失败：{}", doc_templates::cli_error_message(&raw)),
+                true,
+            ),
+        }
+    });
+}
+
+/// 两个"打开模板目录"按钮：目录不存在就先建，再用现成的 reveal 机制。
+fn open_template_dir(app: &tauri::AppHandle, shared: &SharedState, scope: Option<&str>) {
+    let dir = match scope {
+        Some("user") => doc_templates::user_templates_dir(),
+        Some("workspace") => shared
+            .lock()
+            .ok()
+            .map(|guard| doc_templates::workspace_templates_dir(&guard.workspace)),
+        _ => None,
+    };
+    let Some(dir) = dir else {
+        toast(app, "无法定位模板目录", true);
+        return;
+    };
+    if let Err(err) = fs::create_dir_all(&dir) {
+        toast(app, &format!("创建模板目录失败：{err}"), true);
+        return;
+    }
+    reveal_path(&dir);
+}
+
+/// 默认模板 = 壳级设置（`settings.json`）。`id=None` 就是"清除默认"。
+/// 落盘成功才算数：写不进文件就不改内存里的设置。
+fn set_default_template(app: &tauri::AppHandle, shared: &SharedState, id: Option<String>) {
+    let value = match id {
+        Some(raw) if doc_templates::is_valid_template_id(&raw) => Some(raw),
+        Some(_) => {
+            toast(app, "模板 ID 不合法", true);
+            return;
+        }
+        None => None,
+    };
+    let mut next = match shared.lock() {
+        Ok(guard) => guard.settings.clone(),
+        Err(_) => return,
+    };
+    next.default_template = value.clone();
+    let Ok(home) = crate::default_home() else {
+        toast(app, "无法定位桌面数据目录", true);
+        return;
+    };
+    if let Err(err) = settings::write_settings(&home, &next) {
+        toast(app, &format!("默认模板保存失败：{err}"), true);
+        return;
+    }
+    if let Ok(mut guard) = shared.lock() {
+        guard.settings = next;
+    }
+    if let Some(win) = app.get_webview_window("main") {
+        let payload = serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string());
+        let _ = win.eval(format!(
+            "window.__hrDefaultTemplate && window.__hrDefaultTemplate({payload});"
+        ));
+    }
+}
+
+/// `/template-delete?id=<id>`：先重新拉一次列表当事实源（目录名必须从 CLI 的
+/// 输出里来，裸桥参数不可信），再过 `deletable_template_dir` 的路径闸，
+/// 最后 `trash::delete` 进废纸篓而不是 unlink。
+fn delete_template_async(app: tauri::AppHandle, shared: SharedState, id: Option<String>) {
+    let Some(id) = id.filter(|raw| !raw.is_empty()) else {
+        return;
+    };
+    thread::spawn(move || {
+        let (workspace, cli) = match shared.lock() {
+            Ok(guard) => (guard.workspace.clone(), guard.cli.clone()),
+            Err(_) => return,
+        };
+        let stdout = match supervisor::run_cli_task(
+            &cli,
+            &workspace,
+            &doc_templates::template_list_args(),
+        ) {
+            Ok(out) => out,
+            Err(raw) => {
+                toast(
+                    &app,
+                    &format!("删除模板失败：{}", doc_templates::cli_error_message(&raw)),
+                    true,
+                );
+                return;
+            }
+        };
+        let list = match doc_templates::parse_template_list(&stdout) {
+            Ok(list) => list,
+            Err(message) => {
+                toast(&app, &format!("删除模板失败：{message}"), true);
+                return;
+            }
+        };
+        let user_root = doc_templates::user_templates_dir().unwrap_or_default();
+        let ws_root = doc_templates::workspace_templates_dir(&workspace);
+        let dir =
+            match doc_templates::deletable_template_dir(&id, &list.templates, &user_root, &ws_root)
+            {
+                Ok(dir) => dir,
+                Err(refusal) => {
+                    toast(&app, &format!("无法删除模板：{}", refusal.message()), true);
+                    return;
+                }
+            };
+        match trash::delete(&dir) {
+            Ok(()) => {
+                toast(&app, &format!("已删除模板 {id}"), false);
+                push_template_result(&app, &template_list_payload(&cli, &workspace));
+            }
+            Err(err) => toast(&app, &format!("删除模板失败：{err}"), true),
+        }
+    });
+}
+
+/// "存为模板…"跟着 `doc_id` 走：每个改 `doc_id` 的点都把它同步到原生菜单。
+fn refresh_template_menu(app: &tauri::AppHandle, shared: &SharedState) {
+    let enabled = shared
+        .lock()
+        .map(|guard| !guard.doc_id.is_empty())
+        .unwrap_or(false);
+    let Some(menu) = app.menu() else {
+        return;
+    };
+    let Some(tauri::menu::MenuItemKind::MenuItem(item)) = menu.get("save-as-template") else {
+        return;
+    };
+    let _ = item.set_enabled(enabled);
 }
 
 fn reveal_path(target: &Path) {
@@ -1299,6 +1581,7 @@ fn switch_workspace(
         }
         Err(_) => return,
     };
+    refresh_template_menu(app, shared);
 
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.navigate(empty_page_url());
@@ -1664,6 +1947,12 @@ mod tests {
             "/open-asset",
             "/open-themes-dir",
             "/reload-themes",
+            "/template-list",
+            "/template-open-dir",
+            "/template-set-default",
+            "/template-clear-default",
+            "/template-delete",
+            "/template-save",
             "/export-pdf",
             "/export-png",
             "/export-html",
@@ -1904,6 +2193,7 @@ mod tests {
             bridge_token: "test-token".to_string(),
             doc_error: None,
             doc_gate: None,
+            settings: settings::ShellSettings::default(),
         };
         state.mark_doc_error(
             root.clone(),

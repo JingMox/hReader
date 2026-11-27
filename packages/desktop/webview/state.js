@@ -103,6 +103,8 @@ hrd.state = {
   expandedDirs: new Set(),
   lastAutoExpandedDoc: "",
   themeHydrated: false,
+  // hr template list 最近一次下发的结果：idle|loading|ready|error。
+  templates: { status: "idle", list: [], diagnostics: [], error: "" },
 };
 
 function currentDocId() {
@@ -194,6 +196,27 @@ function bridgeNavigate(path) {
   window.location.href = "http://hr-desktop.local" + path + sep + "t=" + token;
 }
 
+function requestTemplates() {
+  hrd.state.templates.status = "loading";
+  hrd.bridgeNavigate("/template-list");
+}
+
+function applyTemplateResult(payload) {
+  const tpl = hrd.state.templates;
+  if (payload && payload.ok === true && Array.isArray(payload.templates)) {
+    tpl.status = "ready";
+    tpl.list = payload.templates.filter((t) => t && typeof t.id === "string" && t.id);
+    tpl.diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
+    tpl.error = "";
+  } else {
+    tpl.status = "error";
+    tpl.list = [];
+    tpl.diagnostics = [];
+    tpl.error = (payload && payload.message) || "hr template list 失败";
+  }
+  if (hrd.renderTemplateUi) hrd.renderTemplateUi();
+}
+
 window.__hrDesktopToast = showToast;
 
 Object.assign(hrd, {
@@ -210,4 +233,6 @@ Object.assign(hrd, {
   setSaveState,
   apiPost,
   bridgeNavigate,
+  requestTemplates,
+  applyTemplateResult,
 });

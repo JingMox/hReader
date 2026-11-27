@@ -6,9 +6,11 @@
 pub mod child_registry;
 pub mod cli_locate;
 pub mod daemon_file;
+pub mod doc_templates;
 pub mod open_arg;
 pub mod options;
 pub mod redact;
+pub mod settings;
 pub mod shortcut;
 pub mod signals;
 pub mod spawn_decision;

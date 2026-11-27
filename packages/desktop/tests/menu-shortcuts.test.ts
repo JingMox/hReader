@@ -11,6 +11,7 @@ function make(): Sandbox {
   for (const name of [
     "openFileSwitcherModal",
     "openNewDocModal",
+    "openSaveAsTemplateModal",
     "openSettingsModal",
     "openHelpModal",
     "openBlockHtmlModal",
@@ -181,6 +182,7 @@ describe("原生菜单动作分发", () => {
       ["pick-file", () => s.hrd.bridgeNavigate],
       ["pick-folder", () => s.hrd.bridgeNavigate],
       ["new-file", () => s.hrd.openNewDocModal],
+      ["save-as-template", () => s.hrd.openSaveAsTemplateModal],
       ["settings", () => s.hrd.openSettingsModal],
       ["help", () => s.hrd.openHelpModal],
       ["edit-block", () => s.hrd.openBlockHtmlModal],
