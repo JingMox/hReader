@@ -416,6 +416,9 @@ describe("runtime · self-write echo winning the noteWrite race", () => {
     const { runtime, hub, ring, fire } = echoHarnessOf(workspace, home);
     try {
       const target = await runtime.remember("doc.html");
+      // dispatch captures state.revision when a write begins — replayed here by
+      // reading the bytes' sha before the simulated write lands on disk.
+      const revisionBefore = revisionOf(readFileSync(file));
       // Between patchFile's disk write and noteWrite sits a real async window
       // (history snapshot, unlock, reply framing). Under load a queued fs event
       // or the reconcile heartbeat lands in it, reads the *new* bytes, and
@@ -436,17 +439,49 @@ describe("runtime · self-write echo winning the noteWrite race", () => {
       expect(ring.since(0).events.some((event) => event.type === "doc.changed")).toBe(true);
       // The write path completes — currently this republishes the same revision,
       // producing two adjacent identical doc.changed frames.
-      runtime.noteWrite({
-        reply: { status: 200, headers: {}, body: "" },
-        target,
-        revision,
-        changed: true,
-        changedNodes: [],
-      });
-
-      expect(ring.since(0).events.filter((event) => event.type === "doc.changed")).toHaveLength(
-        1,
+      runtime.noteWrite(
+        {
+          reply: { status: 200, headers: {}, body: "" },
+          target,
+          revision,
+          changed: true,
+          changedNodes: [],
+        },
+        revisionBefore,
       );
+
+      expect(ring.since(0).events.filter((event) => event.type === "doc.changed")).toHaveLength(1);
+    } finally {
+      runtime.close();
+      hub.close();
+    }
+  });
+
+  it("should still publish when a changed write leaves the doc bytes untouched", async () => {
+    // Grant/trust writes report changed:true with the *unchanged* doc revision:
+    // the served document changed (CSP/grant), not the bytes. That republish is
+    // the only signal a client gets, so dedupe must not suppress it — without a
+    // watcher-side announce inside the window, same-revision still means "publish".
+    const workspace = root("hr-echo-ws-");
+    const home = root("hr-echo-home-");
+    const file = join(workspace, "doc.html");
+    writeFileSync(file, DOC, "utf8");
+    const { runtime, hub, ring } = echoHarnessOf(workspace, home);
+    try {
+      const target = await runtime.remember("doc.html");
+      const revision = revisionOf(readFileSync(file));
+      runtime.noteWrite(
+        {
+          reply: { status: 200, headers: {}, body: "" },
+          target,
+          revision,
+          changed: true,
+          changedNodes: [],
+        },
+        revision,
+      );
+
+      expect(ring.since(0).events.filter((event) => event.type === "doc.changed")).toHaveLength(1);
     } finally {
       runtime.close();
       hub.close();

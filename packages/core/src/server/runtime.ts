@@ -44,7 +44,12 @@ interface RuntimeDeps {
 
 export interface Runtime {
   readonly remember: (docId: string) => Promise<ResolvedTarget>;
-  readonly noteWrite: (written: Written) => void;
+  /**
+   * `revisionBefore` 是这次写进入 dispatch 时 state.revision 的快照：回声去重要靠它
+   * 判断“窗口内监听侧是否已经替我们广播过同一 revision”。缺省（ undefined ）表示没记，
+   * 不做去重——undefined 也说明写开始时没有活跃文档，监听侧那时不可能发过这份文档。
+   */
+  readonly noteWrite: (written: Written, revisionBefore?: string) => void;
   readonly dispatch: (
     route: Route,
     params: Readonly<Record<string, string>>,
@@ -224,6 +229,8 @@ const dispatchOf =
       readonly remember: Runtime["remember"];
       readonly noteWrite: Runtime["noteWrite"];
       readonly hub: Hub;
+      /** 写开始那一刻的 state.revision：回声去重的窗口起点。 */
+      readonly revisionNow: () => string | undefined;
     },
     bodyMs: number,
   ) =>
@@ -276,8 +283,9 @@ const dispatchOf =
       const docId = paramOf(params, "docId", options.docId);
       return readReplyOf(context, route.kind, docId, runtime.remember);
     }
+    const revisionBefore = runtime.revisionNow();
     const written = await dispatchWrite(context, route, params, { req, bodyMs });
-    runtime.noteWrite(written);
+    runtime.noteWrite(written, revisionBefore);
     // A sidecar write never touches document bytes (changed:false → doc.changed stays
     // silent); annotation changes ride their own event — success broadcasts, failure says nothing.
     if (SIDECAR_WRITE_KINDS.has(route.kind)) {
@@ -296,13 +304,24 @@ interface NoteContext {
 
 const noteWriterOf =
   (context: NoteContext): Runtime["noteWrite"] =>
-  (written) => {
+  (written, revisionBefore) => {
     const { deps, hub, state, watcher } = context;
     if (!written.changed) return;
     // 写路由可能是这份文档的第一次接触：remember 没跑过就没有它的文件级挂载——
     // 盲窗 reconcile 心跳只跑在文件级挂载上，不补挂会在挂载盲窗里丢一次外部编辑。
     watcher.add(dirname(written.target.realPath), basename(written.target.realPath));
+    // patchFile 落盘到这里的窗口里，排队 fs 事件或对账心跳可能已读到新字节、经 sha 闸
+    // 由 publishChanged 先把同一 revision 广播出去（那时它还认不出"这是我们的写"）。
+    // 此时重发就是同 revision 的相邻重复帧，去重条件只能是"窗口内 state.revision 被
+    // 推进到本次输出"——revision 相同的权限/信任写（字节没变但 changed）照发不误，
+    // 因为那种窗口里 sha 闸根本不发，state.revision 不会动。
+    const announced =
+      revisionBefore !== undefined &&
+      state.revision !== revisionBefore &&
+      state.revision === written.revision &&
+      state.active?.realPath === written.target.realPath;
     state.active = written.target;
+    if (announced) return;
     state.revision = written.revision;
     hub.publish("doc.changed", {
       docId: written.target.relative,
@@ -387,7 +406,12 @@ export const createRuntime = (
   return {
     remember,
     noteWrite,
-    dispatch: dispatchOf(context, options, { remember, noteWrite, hub }, options.bodyMs),
+    dispatch: dispatchOf(
+      context,
+      options,
+      { remember, noteWrite, hub, revisionNow: () => state.revision },
+      options.bodyMs,
+    ),
     close: () => {
       watcher.close();
     },
