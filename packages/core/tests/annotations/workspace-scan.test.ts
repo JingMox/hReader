@@ -292,13 +292,11 @@ describe("listWorkspaceAnnotations · store-record discovery", () => {
     // A `file 逃出了 workspace：…` style message would carry the resolved absolute, which no
     // elision can fold back: the diagnostic carries the code and the claimed name, that's all.
     expect(
-      result.diagnostics.some((line) =>
-        line.includes("指向不可达文档 gone.html（not_a_file）"),
-      ),
+      result.diagnostics.some((line) => line.includes("指向不可达文档 gone.html（not_a_file）")),
     ).toBe(true);
-    expect(
-      result.diagnostics.some((line) => line.startsWith("文档 bad.html：io_failure")),
-    ).toBe(true);
+    expect(result.diagnostics.some((line) => line.startsWith("文档 bad.html：io_failure"))).toBe(
+      true,
+    );
     for (const line of result.diagnostics) {
       expect(line).not.toContain(`${WS}/`);
       expect(line).not.toContain("：/ws/");
@@ -319,11 +317,8 @@ describe("listWorkspaceAnnotations · store-record discovery", () => {
       [`${WS}/.hreader/annotations/misnamed.json`]: storeJson("doc.html", [
         record({ id: "ghost" }),
       ]),
-      [`${WS}/.hreader/annotations/fat.json`]:
-        `{"version":1,"path":"gone2.html","annotations":[],"pad":"${fat}"}`,
-      [`${WS}/.hreader/annotations/${storeNameOf("doc.html")}`]: storeJson("doc.html", [
-        record(),
-      ]),
+      [`${WS}/.hreader/annotations/fat.json`]: `{"version":1,"path":"gone2.html","annotations":[],"pad":"${fat}"}`,
+      [`${WS}/.hreader/annotations/${storeNameOf("doc.html")}`]: storeJson("doc.html", [record()]),
       "/outside/hosts": "root:x:0:0",
     });
     dirsOf(fs, [WS, `${WS}/.hreader`, "/outside"]);
