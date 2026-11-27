@@ -29,12 +29,7 @@ import { sanitizePdfLinks } from "../src/pdf/links";
 
 /** The value shapes `context.obj` accepts: scalars, arrays, nested dicts, and real PDFObjects (names, strings, refs). */
 type LitValue =
-  | string
-  | number
-  | boolean
-  | PDFObject
-  | readonly LitValue[]
-  | { [key: string]: LitValue };
+  string | number | boolean | PDFObject | readonly LitValue[] | { [key: string]: LitValue };
 
 const ANNOTS = PDFName.of("Annots");
 const SUBTYPE = PDFName.of("Subtype");
@@ -269,7 +264,10 @@ describe("sanitizePdfLinks · the strict keep shapes", () => {
       linkAnnotOf(doc, { S: PDFName.of("GoTo"), D: [0, 0, 0] }),
       linkAnnotOf(doc, { S: PDFName.of("GoTo") }),
       destAnnotOf(doc, PDFName.of("sec")),
-      destAnnotOf(doc, doc.context.register(doc.context.obj([PDFName.of("page0"), PDFName.of("Fit")]))),
+      destAnnotOf(
+        doc,
+        doc.context.register(doc.context.obj([PDFName.of("page0"), PDFName.of("Fit")])),
+      ),
     ]);
     const { annots } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
     expect(annots).toBe(5);
@@ -514,11 +512,7 @@ describe("sanitizePdfLinks · structural strictness", () => {
 
   it("should fail closed on a dangling reference inside an annotation dict", async () => {
     const bytes = await buildPdfOf((doc) => [
-      linkAnnotOf(
-        doc,
-        { S: PDFName.of("GoTo"), D: [0, 0, 0] },
-        { Border: PDFRef.of(9997, 0) },
-      ),
+      linkAnnotOf(doc, { S: PDFName.of("GoTo"), D: [0, 0, 0] }, { Border: PDFRef.of(9997, 0) }),
     ]);
     const failure = await failureOf(bytes);
     expect(failure).toBeInstanceOf(HrError);
@@ -694,7 +688,10 @@ describe("sanitizePdfLinks · generated Link shapes", () => {
     {
       S: fc.option(kindArb, { nil: undefined }),
       URI: fc.option(uriArb, { nil: undefined }),
-      Next: fc.option(fc.oneof(nestedActionArb, fc.array(nestedActionArb, { minLength: 1, maxLength: 3 })), { nil: undefined }),
+      Next: fc.option(
+        fc.oneof(nestedActionArb, fc.array(nestedActionArb, { minLength: 1, maxLength: 3 })),
+        { nil: undefined },
+      ),
       D: fc.option(fc.constant([0, 0, 0]), { nil: undefined }),
       F: fc.option(fc.constant("run.exe"), { nil: undefined }),
       JS: fc.option(fc.constant("x()"), { nil: undefined }),
@@ -716,7 +713,11 @@ describe("sanitizePdfLinks · generated Link shapes", () => {
     {
       Subtype: fc.constantFrom("Link", "Link", "Link", "Link", "Link", "Text", "link"),
       A: fc.option(
-        fc.oneof(actionArb, fc.array(actionArb, { minLength: 1, maxLength: 2 }), fc.constant("not-a-dict")),
+        fc.oneof(
+          actionArb,
+          fc.array(actionArb, { minLength: 1, maxLength: 2 }),
+          fc.constant("not-a-dict"),
+        ),
         { nil: undefined },
       ),
       Dest: fc.option(fc.constantFrom("sec", "top"), { nil: undefined }),
