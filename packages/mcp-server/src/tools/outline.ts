@@ -3,6 +3,8 @@
 // against the same bytes the outline was built from (one read, one relocation domain), and a doc
 // without a sidecar store returns output identical to before — no new keys appear.
 
+import { relative } from "node:path";
+
 import {
   buildOutline,
   docRelocatorOf,
@@ -20,7 +22,6 @@ import { annotationEntryBody } from "./annotation-wire";
 import {
   FILE_PATH_HINT,
   coreFailureOf,
-  corePathsOf,
   documentTargetOf,
   readInsideWorkspace,
   type DocumentTarget,
@@ -42,12 +43,23 @@ const sidecarPartOf = async (
   target: DocumentTarget,
   text: string,
 ): Promise<Record<string, unknown>> => {
-  const resolved = await corePathsOf(target)
-    .then((paths) => resolveTarget(paths, nodePatchDeps.fs))
-    .catch((error: unknown) => {
-      /* v8 ignore next — the doc was already read inside the workspace: realpath and the boundary re-check can only fail on a delete-in-flight race */
-      throw coreFailureOf(error, target);
-    });
+  // The realpath-domain pair is computed inside the sidecar lookup only — after the doc was
+  // already read inside the workspace. On a symlinked cwd an absolute `filePath` spelled
+  // lexically makes `target.file` an escaping `../…`, which core's lexical gate would
+  // mis-reject; deriving the relative against realpaths restores the in-bounds verdict the
+  // read path already gave. The shared target path and its frozen errors stay untouched.
+  const [workspaceReal, absoluteReal] = await Promise.all([
+    nodePatchDeps.fs.realpath(target.workspace),
+    nodePatchDeps.fs.realpath(target.absolute),
+  ]).catch((error: unknown) => {
+    throw coreFailureOf(error, target);
+  });
+  const resolved = await resolveTarget(
+    { workspace: workspaceReal, file: relative(workspaceReal, absoluteReal) },
+    nodePatchDeps.fs,
+  ).catch((error: unknown) => {
+    throw coreFailureOf(error, target);
+  });
   const file = await readSidecarFile(resolved, nodePatchDeps).catch((error: unknown) => {
     throw coreFailureOf(error, target);
   });

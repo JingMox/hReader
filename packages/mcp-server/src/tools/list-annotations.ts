@@ -4,7 +4,7 @@
 // store records — bounded by `WORKSPACE_SCAN_LIMITS`, with `truncated` telling apart "prefix of
 // reality" from "the whole of it".
 
-import { sep } from "node:path";
+import { relative, sep } from "node:path";
 
 import {
   WORKSPACE_SCAN_LIMITS,
@@ -18,7 +18,7 @@ import { z } from "zod";
 
 import { foldedOf, guarded, okResult } from "../errors";
 import { annotationEntryBody } from "./annotation-wire";
-import { FILE_PATH_HINT, coreFailureOf, corePathsOf, documentTargetOf } from "./target";
+import { FILE_PATH_HINT, coreFailureOf, documentTargetOf, readInsideWorkspace } from "./target";
 
 export const listAnnotationsShape = {
   filePath: z
@@ -43,13 +43,24 @@ const listOneDoc = async (
   status: AnnotationStatusFilter,
 ): Promise<CallToolResult> => {
   const target = documentTargetOf(args.filePath, process.cwd());
-  const paths = await corePathsOf(target).catch((error: unknown) => {
+  // This is a read tool, so the read gate answers first (`目标不在工作区内：<input>`, echoing
+  // the input — never a resolved absolute). The realpath-domain pair is then computed inside
+  // the sidecar lookup only: on a symlinked cwd a lexically-spelled absolute `filePath` makes
+  // `target.file` an escaping `../…` that core's lexical gate would mis-reject.
+  await readInsideWorkspace(target);
+  const [workspaceReal, absoluteReal] = await Promise.all([
+    nodePatchDeps.fs.realpath(target.workspace),
+    nodePatchDeps.fs.realpath(target.absolute),
+  ]).catch((error: unknown) => {
     throw coreFailureOf(error, target);
   });
-  const listed = await listDocAnnotations(paths, nodePatchDeps).catch((error: unknown) => {
+  const listed = await listDocAnnotations(
+    { workspace: workspaceReal, file: relative(workspaceReal, absoluteReal) },
+    nodePatchDeps,
+  ).catch((error: unknown) => {
     throw coreFailureOf(error, target);
   });
-  const file = paths.file.split(sep).join("/");
+  const file = relative(workspaceReal, absoluteReal).split(sep).join("/");
   const entries = listed.annotations
     .filter((entry) => hitsStatus(status, entry.annotation.status))
     .map((entry) => annotationEntryBody(entry, file));

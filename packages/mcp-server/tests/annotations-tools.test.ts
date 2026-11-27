@@ -335,32 +335,35 @@ describe("path errors · frozen verdicts and wording", () => {
     extraDirs.push(outside);
   };
 
+  // Expected texts are thunks: they must be computed after `beforeEach` chdir'd into the
+  // workspace — `process.cwd()` is the realpath'd workspace, which is what core echoes.
+  const escaped = (filePath: string): string =>
+    `\`file\` 逃出了 workspace：${resolve(process.cwd(), filePath)}` +
+    `（workspace 是 ${process.cwd()}；先 cd 到文档所在目录，或用 --workspace <dir>）`;
+
   const cases = [
     {
       name: "a relative path that escapes",
       filePath: "../missing.html",
-      resolveText: `\`file\` 逃出了 workspace：${resolve(process.cwd(), "../missing.html")}` +
-        `（workspace 是 ${process.cwd()}；先 cd 到文档所在目录，或用 --workspace <dir>）`,
+      resolveText: () => escaped("../missing.html"),
       readText: "目标不在工作区内：../missing.html",
     },
     {
       name: "an absolute path that misses",
       filePath: "/definitely/not/here.html",
-      resolveText: `\`file\` 逃出了 workspace：/definitely/not/here.html` +
-        `（workspace 是 ${process.cwd()}；先 cd 到文档所在目录，或用 --workspace <dir>）`,
+      resolveText: () => escaped("/definitely/not/here.html"),
       readText: "目标不在工作区内：/definitely/not/here.html",
     },
     {
       name: "a symlinked dir pointing out of bounds",
       filePath: "escape/hosts",
-      resolveText: "真实路径落在 workspace 外：escape/hosts",
+      resolveText: () => "真实路径落在 workspace 外：escape/hosts",
       readText: "目标不在工作区内：escape/hosts",
     },
     {
       name: "an absolute system path",
       filePath: "/etc/passwd",
-      resolveText: `\`file\` 逃出了 workspace：/etc/passwd` +
-        `（workspace 是 ${process.cwd()}；先 cd 到文档所在目录，或用 --workspace <dir>）`,
+      resolveText: () => escaped("/etc/passwd"),
       readText: "目标不在工作区内：/etc/passwd",
     },
   ] as const;
@@ -371,7 +374,7 @@ describe("path errors · frozen verdicts and wording", () => {
 
     expect(isErrorResultOf(result)).toBe(true);
     expect(codeOf(result)).toBe("path_outside_workspace");
-    expect(textOf(result)).toBe(`[path_outside_workspace] ${resolveText}`);
+    expect(textOf(result)).toBe(`[path_outside_workspace] ${resolveText()}`);
   });
 
   it.each(cases)("hr_outline · $name", async ({ filePath, readText }) => {

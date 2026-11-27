@@ -9,7 +9,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { guarded, okResult } from "../errors";
-import { FILE_PATH_HINT, codeOf, coreFailureOf, corePathsOf, documentTargetOf } from "./target";
+import { FILE_PATH_HINT, codeOf, coreFailureOf, documentTargetOf } from "./target";
 
 export const resolveAnnotationShape = {
   filePath: z.string().min(1).describe(FILE_PATH_HINT),
@@ -28,11 +28,9 @@ type ResolveAnnotationArgs = z.infer<z.ZodObject<typeof resolveAnnotationShape>>
 export const resolveAnnotationCall = (args: ResolveAnnotationArgs): Promise<CallToolResult> =>
   guarded("hr_resolve_annotation", async () => {
     const target = documentTargetOf(args.filePath, process.cwd());
-    const paths = await corePathsOf(target).catch((error: unknown) => {
-      throw coreFailureOf(error, target);
-    });
     const input = {
-      ...paths,
+      workspace: target.workspace,
+      file: target.file,
       id: args.annotationId,
       ...(args.resolutionNote === undefined ? {} : { resolutionNote: args.resolutionNote }),
     };
