@@ -6,8 +6,9 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
+import { SELECTOR_LIMITS } from "../src/annotations/relocate";
 import { applyBlockPatch, listBlocks, resolveAddress } from "../src/ops/block-address";
-import { ADDRESS_LIMIT } from "../src/ops/block-address/constants";
+import { ADDRESS_LIMIT, BLOCK_ADDRESS_TAGS } from "../src/ops/block-address/constants";
 import { codeOf } from "./io/harness";
 
 const sha1Of = (text: string): string =>
@@ -24,6 +25,30 @@ const DOC = [
 
 const blocksOf = (html: string) => listBlocks(html);
 const tagsOf = (html: string): readonly string[] => blocksOf(html).map((block) => block.tag);
+
+/**
+ * A document whose leaf `<p>deep</p>` mints a path of exactly `pathLen` chars:
+ * `body > div:nth-of-type(k) > … > p`. Each ancestor step costs
+ * `3 + "div:nth-of-type(k)".length` = 20 + digits(k) ∈ [21, 24], realized by
+ * k−1 empty `<div>` siblings before the chain element. Taking the most
+ * ancestors (n = ⌊target/21⌋) keeps every needed digit bump at k = 10, so the
+ * doc stays small enough for the instrumented mutation dry run.
+ */
+const deepDoc = (pathLen: number): string => {
+  const target = pathLen - 8; // "body" + " > p"
+  const n = Math.floor(target / 21);
+  let extra = target - 21 * n;
+  let html = "<body>";
+  let closing = "";
+  for (let index = 0; index < n; index += 1) {
+    const bonus = Math.ceil(extra / (n - index)); // spread the extras as k=10 levels
+    extra -= bonus;
+    const k = bonus === 0 ? 2 : 10 ** bonus;
+    html += `${"<div></div>".repeat(k - 1)}<div>`;
+    closing += "</div>";
+  }
+  return `${html}<p>deep</p>${closing}</body>`;
+};
 
 describe("listBlocks · leaf-block detection", () => {
   it("should list only leaf blocks in document order", () => {
@@ -247,10 +272,65 @@ describe("address format", () => {
     const blocks = blocksOf(doc);
     expect(blocks.map((b) => b.textPreview)).toEqual(["ok"]);
   });
+
+  it("should still list a block at exactly SELECTOR_LIMITS.steps deep", () => {
+    const depth = SELECTOR_LIMITS.steps - 2; // body + the leaf complete the 64-step path
+    const doc = `${"<div>".repeat(depth)}<p>deep</p>${"</div>".repeat(depth)}`;
+    expect(blocksOf(doc).some((b) => b.textPreview === "deep")).toBe(true);
+  });
+
+  it("should list a block whose path is exactly SELECTOR_LIMITS.chars but not one char over", () => {
+    // expressibleSteps budgets " > step" joins: the path string itself must fit the
+    // selector chars bound — undercounting would mint addresses that can never re-parse.
+    const atLimit = blocksOf(deepDoc(SELECTOR_LIMITS.chars)).find(
+      (b) => b.tag === "p" && b.textPreview === "deep",
+    );
+    expect(atLimit?.address).toHaveLength(ADDRESS_LIMIT);
+    expect(
+      blocksOf(deepDoc(SELECTOR_LIMITS.chars + 1)).every(
+        (b) => b.tag !== "p" || b.textPreview !== "deep",
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("malformed addresses", () => {
   const doc = "<p>x</p>";
+
+  it("should pin the block tag set and ADDRESS_LIMIT as literals", () => {
+    expect([...BLOCK_ADDRESS_TAGS].sort()).toEqual([
+      "article",
+      "aside",
+      "blockquote",
+      "dd",
+      "details",
+      "div",
+      "dl",
+      "dt",
+      "figcaption",
+      "figure",
+      "footer",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "header",
+      "li",
+      "main",
+      "nav",
+      "ol",
+      "p",
+      "pre",
+      "section",
+      "summary",
+      "table",
+      "ul",
+    ]);
+    // `css:` + path (≤1024) + `@` + 8 fingerprint chars.
+    expect(ADDRESS_LIMIT).toBe(4 + 1024 + 1 + 8);
+  });
 
   it("should reject an address missing the @ separator", () => {
     expect(resolveAddress(doc, "css:body > p")).toEqual({ ok: false, code: "invalid_selector" });
@@ -418,6 +498,19 @@ describe("resolveAddress · relocation", () => {
     if (resolved.ok) {
       expect(after.slice(resolved.block.start, resolved.block.end)).toBe("<p>x</p>");
       expect(resolved.block.address).toContain("css:body > div > p");
+    }
+  });
+
+  it("should weigh a two-step gap above a one-step substitution", () => {
+    // Fingerprint twins at [body,dd] (one substitution) and [body,div,section,p]
+    // (two insertions). A zeroed first row of the distance table would make the
+    // gap cost free and tie them — the bordered DP must pick the nearer twin.
+    const doc = "<body><div><section><p>txt</p></section></div><dd>txt</dd></body>";
+    const resolved = resolveAddress(doc, `css:body > p@${sha1Of("txt")}`);
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) {
+      expect(resolved.block.tag).toBe("dd");
+      expect(doc.slice(resolved.block.start, resolved.block.end)).toBe("<dd>txt</dd>");
     }
   });
 
