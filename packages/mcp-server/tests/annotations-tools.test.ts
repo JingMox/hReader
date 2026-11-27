@@ -9,11 +9,12 @@ import { join, resolve } from "node:path";
 
 import {
   buildOutline,
+  nodePatchDeps,
   parseHtml,
   serializeSidecarFile,
   type SidecarAnnotation,
 } from "@hreader/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ANNOTATED_DOC,
@@ -393,5 +394,60 @@ describe("path errors · frozen verdicts and wording", () => {
     expect(isErrorResultOf(result)).toBe(true);
     expect(codeOf(result)).toBe("path_outside_workspace");
     expect(textOf(result)).toBe(`[path_outside_workspace] ${readText}`);
+  });
+});
+
+// `.hreader/**` docs are hreader's own store files — no sidecar can exist for them, so
+// `hr_outline` must skip the sidecar lookup rather than trip `resolveTarget`'s store gate.
+describe("hr_outline · .hreader/** docs", () => {
+  it("should outline a history snapshot like any readable doc", async () => {
+    await mkdir(join(workspace, ".hreader", "history", "deadbeef"), { recursive: true });
+    await writeFile(join(workspace, ".hreader", "history", "deadbeef", "snap.html"), FOREIGN_DOC, "utf8");
+
+    const result = await outlineOf(".hreader/history/deadbeef/snap.html");
+
+    expect(isErrorResultOf(result)).toBe(false);
+    expect(textOf(result)).toBe(JSON.stringify(buildOutline(parseHtml(FOREIGN_DOC)), null, 2));
+    expect(payloadOf(result)["sidecarAnnotations"]).toBeUndefined();
+  });
+
+  it("should outline a template doc under .hreader/templates", async () => {
+    await mkdir(join(workspace, ".hreader", "templates", "base"), { recursive: true });
+    await writeFile(join(workspace, ".hreader", "templates", "base", "index.html"), FOREIGN_DOC, "utf8");
+
+    const result = await outlineOf(".hreader/templates/base/index.html");
+
+    expect(isErrorResultOf(result)).toBe(false);
+    expect(textOf(result)).toBe(JSON.stringify(buildOutline(parseHtml(FOREIGN_DOC)), null, 2));
+  });
+
+  it("should fold a realpath failure inside the sidecar lookup into the error path", async () => {
+    await writeRaw("doc.html", ANNOTATED_DOC);
+    const spy = vi
+      .spyOn(nodePatchDeps.fs, "realpath")
+      .mockRejectedValueOnce(Object.assign(new Error("EACCES"), { code: "EACCES" }));
+    try {
+      const result = await outlineOf("doc.html");
+
+      expect(isErrorResultOf(result)).toBe(true);
+      expect(codeOf(result)).toBe("io_failure");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("should fold a resolveTarget failure inside the sidecar lookup into the error path", async () => {
+    await writeRaw("doc.html", ANNOTATED_DOC);
+    const spy = vi
+      .spyOn(nodePatchDeps.fs, "lstat")
+      .mockRejectedValueOnce(Object.assign(new Error("EACCES"), { code: "EACCES" }));
+    try {
+      const result = await outlineOf("doc.html");
+
+      expect(isErrorResultOf(result)).toBe(true);
+      expect(codeOf(result)).toBe("io_failure");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
