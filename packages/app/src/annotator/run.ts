@@ -200,7 +200,10 @@ const focusItem = (env: AnnotatorEnv, applied: AppliedTable, id: string): void =
   try {
     const item = applied.byId.get(id);
     if (item === undefined) return;
-    const element = elementOfPoint(item.range.startContainer);
+    // The end point always lands inside the anchor's own text: a boundary START
+    // resolves to the tail of the preceding (whitespace) text — its parent can
+    // be a taller wrapper, scrolling the anchor out of view instead of into it.
+    const element = elementOfPoint(item.range.endContainer);
     if (element === undefined) return;
     env.scrollIntoView(element);
   } catch {

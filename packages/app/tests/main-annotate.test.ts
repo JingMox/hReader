@@ -17,7 +17,8 @@ const BTN = `${ROOT} #hr-annotate-btn`;
 const POP = `${ROOT} #hr-annotate-pop`;
 const DRAFT = `${ROOT} #hr-annotate-draft`;
 const SAVE = `${ROOT} #hr-annotate-save`;
-const VIEW = `${ROOT} #hr-annotate-view`;
+const ANN_PANEL = `${ROOT} #hr-ann-panel`;
+const ANN_PENDING = `${ROOT} #hr-ann-pending`;
 
 const permsOff = {
   scripts: false,
@@ -67,6 +68,12 @@ const SIDECAR = {
       id: "a1",
       status: "pending",
       note: "una nota",
+      anchor: { exact: "mundo", prefix: "hola ", suffix: " tail", start: 5 },
+      author: "user",
+      createdAt: "2024-05-01T10:00:00Z",
+      replies: [
+        { id: "r1", author: "agent", note: "respuesta", createdAt: "2024-05-01T11:00:00Z" },
+      ],
       relocation: { ok: true, start: 5, end: 10 },
     },
   ],
@@ -80,6 +87,8 @@ const annotateRespond =
     if (url.endsWith("/annotate"))
       return jsonOf(over.annotateReply ?? { frameUrl: "/f/cap/frame?at=t1" });
     if (url.endsWith("/sidecar")) return jsonOf(SIDECAR);
+    // Entry ops (resolve/reopen/reply/delete) answer with a flat annotation record.
+    if (url.includes("/sidecar/")) return jsonOf({});
     return happy(url);
   };
 
@@ -103,15 +112,18 @@ afterEach(() => {
 describe("main · annotate mode e2e", () => {
   it("should mint, sandbox, take messages and write the sidecar", async () => {
     install("doc.html", "http://x/", annotateRespond());
-    installForeignDom();
+    const root = installForeignDom();
     await load();
 
     const fw = await enter();
     expect(el(FRAME)?.attrs.get("sandbox")).toBe("allow-scripts");
     expect(el(FRAME)?.attrs.get("src")).toBe("/f/cap/frame?at=t1");
     expect(el(BTN)?.attrs.get("data-on")).toBe("true");
+    // Entering annotate mode opens the panel (data-hr-annotate on the root, hidden lifted).
+    expect(root.attrs.get("data-hr-annotate")).toBe("");
+    expect(el(ANN_PANEL)?.attrs.has("hidden")).toBe(false);
 
-    // hello → GET sidecar → highlights posted back into the frame.
+    // hello → GET sidecar → highlights posted back into the frame + card rendered.
     send({ source: fw.win, origin: "null", data: { type: "hr-annotator/hello", version: 1 } });
     await flush();
     expect(stubs.fetched).toContain("/api/doc/doc.html/sidecar");
@@ -125,6 +137,11 @@ describe("main · annotate mode e2e", () => {
         origin: "*",
       },
     ]);
+    const cards = el(ANN_PENDING)?.children ?? [];
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.getAttribute("data-hr-annotation")).toBe("a1");
+    const cardA = cards[0] as FakeElement | undefined;
+    expect(cardA?.children[1]?.textContent).toBe("una nota");
 
     // selection → popover placed from frame rect + selection rect.
     (
@@ -161,10 +178,11 @@ describe("main · annotate mode e2e", () => {
       },
     ]);
 
-    // open → read-only view of the stored note.
+    // open → selects the card in the panel (no popover, no extra fetch).
+    const fetchedBefore = stubs.fetched.length;
     send({ source: fw.win, origin: "null", data: { type: "hr-annotator/open", id: "a1" } });
-    expect(el(VIEW)?.textContent).toBe("una nota");
-    expect(el(VIEW)?.attrs.has("hidden")).toBe(false);
+    expect(stubs.fetched).toHaveLength(fetchedBefore);
+    expect(el(POP)?.attrs.has("hidden")).toBe(true);
 
     // doc.annotations for this doc → re-list; for another doc → dropped.
     const sidecarsBefore = stubs.fetched.filter((u) => u.endsWith("/sidecar")).length;
@@ -286,5 +304,65 @@ describe("main · annotate mode e2e", () => {
       .filter((c) => c.op === "text" && c.args[0] === ERROR)
       .map((c) => c.args[1] ?? "");
     expect(errorTexts.at(-1)).toBe("当前 IO 未实现写请求（POST）");
+  });
+
+  it("should route panel write actions through the sidecar routes", async () => {
+    install("doc.html", "http://x/", annotateRespond());
+    installForeignDom();
+    await load();
+
+    const fw = await enter();
+    send({ source: fw.win, origin: "null", data: { type: "hr-annotator/hello", version: 1 } });
+    await flush();
+    expect(el(ANN_PENDING)?.children).toHaveLength(1);
+
+    const clickAction = (id: string, action: string): void => {
+      stubs.doc.fire(ANN_PANEL, "click", {
+        closest: (selector: string) => {
+          if (selector === "[data-hr-annotation]") return { getAttribute: () => id };
+          if (selector === "[data-hr-action]") return { getAttribute: () => action };
+          return null;
+        },
+      });
+    };
+    const posts = () => stubs.requests.filter((r) => r.method === "POST");
+    const sidecars = () => stubs.fetched.filter((u) => u.endsWith("/sidecar")).length;
+
+    // resolve → POST /resolve → re-list of the sidecar.
+    clickAction("a1", "resolve");
+    await flush();
+    expect(posts().at(-1)?.url).toBe("/api/doc/doc.html/sidecar/a1/resolve");
+    expect(posts().at(-1)?.headers["x-hr-csrf"]).toBe("1");
+    expect(sidecars()).toBe(2);
+
+    // reopen → POST /reopen.
+    clickAction("a1", "reopen");
+    await flush();
+    expect(posts().at(-1)?.url).toBe("/api/doc/doc.html/sidecar/a1/reopen");
+
+    // reply → input drafts into the box; reply-send → POST /reply {note}.
+    clickAction("a1", "reply");
+    stubs.doc.fire(ANN_PANEL, "input", {
+      value: "hola",
+      closest: (selector: string) => {
+        if (selector === "[data-hr-reply-input]") return { getAttribute: () => null };
+        if (selector === "[data-hr-annotation]") return { getAttribute: () => "a1" };
+        return null;
+      },
+    });
+    clickAction("a1", "reply-send");
+    await flush();
+    const replyPost = posts().at(-1);
+    expect(replyPost?.url).toBe("/api/doc/doc.html/sidecar/a1/reply");
+    expect(JSON.parse(String(replyPost?.body))).toEqual({ note: "hola" });
+    expect(replyPost?.headers["x-hr-csrf"]).toBe("1");
+    expect(sidecars()).toBe(4);
+
+    // delete → confirm gate → delete-yes → POST /delete.
+    clickAction("a1", "delete");
+    clickAction("a1", "delete-yes");
+    await flush();
+    expect(posts().at(-1)?.url).toBe("/api/doc/doc.html/sidecar/a1/delete");
+    expect(sidecars()).toBe(5);
   });
 });

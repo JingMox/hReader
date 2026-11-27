@@ -54,7 +54,6 @@
             maxlength="2000"
             hidden
           ></textarea>
-          <p id="hr-annotate-view" class="annotate-view" hidden></p>
           <p id="hr-annotate-hint" class="annotate-hint" hidden></p>
           <div id="hr-annotate-actions" class="annotate-actions">
             <button id="hr-annotate-cancel" type="button"></button>
@@ -96,6 +95,30 @@
           <p id="hr-diff-status"></p>
           <div id="hr-diff-chunks"></div>
         </section>
+      </aside>
+      <!-- 外来文档批注面板（D55）：只在批注模式可见（`#hr-root[data-hr-annotate]`）；
+           卡片文字全部由 ann-panel widget 走 textContent 写入，绝不进 innerHTML。 -->
+      <aside id="hr-ann-panel" class="ann-panel" hidden>
+        <h3 id="hr-ann-title"></h3>
+        <p id="hr-ann-error" class="ann-error" role="alert"></p>
+        <section class="ann-group" aria-labelledby="hr-ann-pending-title">
+          <h4 id="hr-ann-pending-title"></h4>
+          <ul id="hr-ann-pending" class="ann-list"></ul>
+        </section>
+        <section class="ann-group" aria-labelledby="hr-ann-resolved-title">
+          <h4 id="hr-ann-resolved-title"></h4>
+          <ul id="hr-ann-resolved" class="ann-list"></ul>
+        </section>
+        <section
+          id="hr-ann-group-lost"
+          class="ann-group"
+          aria-labelledby="hr-ann-lost-title"
+          hidden
+        >
+          <h4 id="hr-ann-lost-title"></h4>
+          <ul id="hr-ann-lost" class="ann-list"></ul>
+        </section>
+        <p id="hr-ann-empty" class="ann-empty"></p>
       </aside>
       <footer id="hr-statusbar" class="statusbar">
         <span id="hr-conn"></span>

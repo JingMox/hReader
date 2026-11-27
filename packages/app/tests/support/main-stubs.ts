@@ -25,8 +25,13 @@ export interface BrowserStubs {
   /** `window.addEventListener("message")` registrations (the annotate env). */
   messages: ((event: { source?: unknown; origin?: string; data?: unknown }) => void)[];
   fetched: string[];
-  /** 每次 `fetch` 的原始入参（用来断言 POST 的 JSON 正文）。 */
-  requests: { url: string; method: string; body: unknown }[];
+  /** Raw arguments of every `fetch` call (to assert on the POST JSON body and CSRF header). */
+  requests: {
+    url: string;
+    method: string;
+    body: unknown;
+    headers: Readonly<Record<string, unknown>>;
+  }[];
   /** `window.getSelection()` 的返回值（默认 null；用例可换成真选区）。 */
   selection: unknown;
   closed: number;
@@ -171,6 +176,9 @@ const methodOf = (init: unknown): string => {
 
 const bodyOf = (init: unknown): unknown => (isRecord(init) ? init["body"] : undefined);
 
+const headersOf = (init: unknown): Readonly<Record<string, unknown>> =>
+  isRecord(init) && isRecord(init["headers"]) ? init["headers"] : {};
+
 export const install = (
   bodyDocId: string | null,
   href: string,
@@ -180,7 +188,12 @@ export const install = (
   installGlobals(bodyDocId, href, options);
   vi.stubGlobal("fetch", (url: string, init?: unknown) => {
     stubs.fetched.push(url);
-    stubs.requests.push({ url, method: methodOf(init), body: bodyOf(init) });
+    stubs.requests.push({
+      url,
+      method: methodOf(init),
+      body: bodyOf(init),
+      headers: headersOf(init),
+    });
     return Promise.resolve(respond(url));
   });
 };

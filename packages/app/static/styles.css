@@ -184,6 +184,7 @@ body {
 
 #hr-root[data-hr-present] #hr-library,
 #hr-root[data-hr-present] #hr-notes,
+#hr-root[data-hr-present] #hr-ann-panel,
 #hr-root[data-hr-present] #hr-statusbar,
 #hr-root[data-hr-present] #hr-controls {
   display: none;
@@ -344,6 +345,139 @@ body {
   border: 1px solid var(--hr-rule);
 }
 
+/* Foreign annotation panel (D55; the `ann-panel` widget is its only writer). It takes a
+   slot only under `#hr-root[data-hr-doc][data-hr-annotate]`: the content area yields a
+   third column to the annotation list, laid out like `#hr-notes`. `.ann-panel` sets no
+   display (same `[hidden]` convention). */
+#hr-root[data-hr-doc][data-hr-annotate] #hr-canvas {
+  grid-column: 1 / 3;
+}
+
+#hr-root[data-hr-doc][data-hr-annotate] #hr-ann-panel {
+  grid-row: 1;
+  grid-column: 3;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--hr-rule);
+  padding-left: var(--hr-gap);
+}
+
+.ann-panel {
+  font-size: 13px;
+}
+
+.ann-panel h3,
+.ann-panel h4 {
+  margin: 8px 0 4px;
+}
+
+.ann-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 12px;
+}
+
+.ann-item {
+  border-top: 1px solid var(--hr-rule);
+  padding: 6px 2px;
+  cursor: pointer;
+}
+
+.ann-item[data-hr-selected] {
+  background: #efe7d6;
+}
+
+.ann-item p {
+  margin: 0 0 4px;
+}
+
+.ann-quote {
+  border-left: 2px solid var(--hr-rule);
+  padding-left: 6px;
+  opacity: 0.75;
+}
+
+.ann-replies {
+  list-style: none;
+  padding: 0 0 0 10px;
+  margin: 0 0 4px;
+  border-left: 2px solid var(--hr-rule);
+}
+
+.ann-reply {
+  margin: 0 0 4px;
+}
+
+.ann-meta {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.ann-lost {
+  color: #8a1f11;
+  font-size: 12px;
+}
+
+.ann-error {
+  color: #8a1f11;
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.ann-error:empty {
+  display: none;
+}
+
+.ann-empty {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.ann-empty:empty {
+  display: none;
+}
+
+.ann-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ann-btn {
+  font-size: 12px;
+  padding: 0 8px;
+  cursor: pointer;
+  color: var(--hr-ink);
+  background: transparent;
+  border: 1px solid var(--hr-rule);
+}
+
+.ann-confirm {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8a1f11;
+}
+
+.ann-confirm .ann-btn {
+  margin-left: 6px;
+}
+
+.ann-replybox {
+  margin-top: 4px;
+}
+
+.ann-reply-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  color: var(--hr-ink);
+  background: #fff;
+  border: 1px solid var(--hr-rule);
+  padding: 4px 6px;
+  margin-top: 4px;
+}
+
 /* 单文档权限开关（`#hr-perms` 不设 display：作者层 display 会压掉 UA 的 `[hidden]`）。
    `data-on` 是生效态的唯一事实源——全局模式接管时 `disabled` + "由设置统一控制"提示。 */
 .perm-toggle {
@@ -387,6 +521,7 @@ body {
 
 #hr-root[data-hr-immersive] #hr-library,
 #hr-root[data-hr-immersive] #hr-notes,
+#hr-root[data-hr-immersive] #hr-ann-panel,
 #hr-root[data-hr-immersive] #hr-statusbar,
 #hr-root[data-hr-immersive] #hr-controls,
 #hr-root[data-hr-immersive] #hr-foreign,
@@ -453,6 +588,14 @@ body {
   }
 
   #hr-notes {
+    grid-column: 2;
+  }
+
+  #hr-root[data-hr-doc][data-hr-annotate] #hr-canvas {
+    grid-column: 1;
+  }
+
+  #hr-root[data-hr-doc][data-hr-annotate] #hr-ann-panel {
     grid-column: 2;
   }
 }

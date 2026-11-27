@@ -70,6 +70,8 @@ const config = {
     // reader side: strict inbound validation + the annotate controller's message intake
     "packages/app/src/annotate-proto.ts",
     "packages/app/src/widgets/annotate.ts",
+    // D55 foreign-annotation panel: textContent-only rendering + write-action dispatch
+    "packages/app/src/widgets/ann-panel.ts",
   ],
   testRunner: "vitest",
   // pnpm's .pnpm realpath layout hides the runner from the default "@stryker-mutator/*" glob, so declare it explicitly.

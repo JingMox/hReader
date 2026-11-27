@@ -445,13 +445,23 @@ describe.skipIf(skip !== undefined)("annotate-journey", () => {
     );
     const r = rect as { x: number; y: number; w: number; h: number };
     await page.mouseClick(box.x + r.x + Math.min(4, r.w / 2), box.y + r.y + r.h / 2);
-    const shown = await page.wait(
-      `(() => { const v = document.querySelector("#hr-annotate-view"); return v && !v.hidden; })()`,
+    // `open` no longer opens a popover — it selects the card in the side panel.
+    const selected = await page.wait(
+      `(() => {
+        const card = document.querySelector("#hr-ann-panel [data-hr-annotation]");
+        return card && card.getAttribute("data-hr-selected") === "true";
+      })()`,
       20_000,
     );
-    assert(shown === true, "click on the highlight did not open the view popover");
-    const note = await page.eval(`document.querySelector("#hr-annotate-view").textContent`);
-    assertEq(note, savedNote, "the view popover shows the saved note");
+    assert(selected === true, "click on the highlight did not select the panel card");
+    const note = await page.eval(
+      `document.querySelector("#hr-ann-panel [data-hr-annotation] .ann-note")?.textContent`,
+    );
+    assertEq(note, savedNote, "the selected panel card shows the saved note");
+    const popHidden = await page.eval(
+      `(() => { const p = document.querySelector("#hr-annotate-pop"); return !p || p.hidden; })()`,
+    );
+    assert(popHidden === true, "the highlight click still opened the popover");
   });
 
   test("should drop forged reader-side messages: wrong source, wrong origin, malformed, oversized, unknown", async () => {
