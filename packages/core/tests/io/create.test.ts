@@ -106,6 +106,20 @@ describe("createNewFile · parent-swap recheck", () => {
     expect(residueNames(fake)).toHaveLength(0);
   });
 
+  it("should not even stage the tmp write when the parent dir has escaped", async () => {
+    const fake = fakeFs({ "/ws/keep.html": "x", "/outside/escape.html": "e" });
+    const resolved = await resolveNewTarget({ workspace: "/ws", file: "new.html" }, fake.port);
+    fake.state.links.set("/ws", "/outside");
+
+    expect(
+      await codeOfAsync(() =>
+        createNewFile(resolved.absolute, encodeUtf8("x"), depsAt(fake), resolved.workspace),
+      ),
+    ).toBe("path_outside_workspace");
+    // The boundary check runs before staging: no write op is attempted at all.
+    expect(fake.state.log.some((line) => line.startsWith("writeFileAtomic:"))).toBe(false);
+  });
+
   it("should apply the same recheck on the open fallback path", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x", "/outside/escape.html": "e" });
     const resolved = await resolveNewTarget({ workspace: "/ws", file: "new.html" }, fake.port);

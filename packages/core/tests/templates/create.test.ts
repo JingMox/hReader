@@ -464,6 +464,34 @@ describe("createFromTemplate · atomic rollback", () => {
     expectUnchanged(fake, before);
   });
 
+  it("should refuse to mkdir under a parent swapped to an outside link after the probe", async () => {
+    const fake = setup({ ...deepAssetTemplate(), "/outside/escape.html": "e" }, deepAssetDirs);
+    // Mid-resolution TOCTOU: after the missing-dirs probe reports a/b absent, the parent chain is
+    // swapped for an outside link. Hooks only fire on reads, so the swap lands on the a-probe itself.
+    fake.once(
+      "lstat",
+      (path: string) => path === `${WS}/doc_files/a`,
+      () => {
+        fake.state.links.set(`${WS}/doc_files`, "/outside");
+      },
+    );
+    const before = snapshotOf(fake);
+
+    const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "doc.html" }));
+    expect(error.code).toBe("path_outside_workspace");
+    // The escape is caught before any mkdir or tmp staging write touches the fs (the lock's own
+    // `.hreader/locks` mkdir is infra — excluded like the snapshot helpers do).
+    const payloadOps = fake.state.log.filter(
+      (line) =>
+        (line.startsWith("mkdir:") || line.startsWith("writeFileAtomic:")) &&
+        !isLockInfra(line.slice(line.indexOf(":") + 1)),
+    );
+    expect(payloadOps).toHaveLength(0);
+    // The link itself was planted mid-run; payload files and dirs are untouched.
+    expect(snapshotOf(fake).files).toEqual(before.files);
+    expect(snapshotOf(fake).dirs).toEqual(before.dirs);
+  });
+
   it("should keep the original failure when a rollback rmdir cannot empty a created dir", async () => {
     const fake = setup(assetTemplate(), assetDirs);
     fake.fail("rmdir", systemError("ENOTEMPTY"), () => true);
