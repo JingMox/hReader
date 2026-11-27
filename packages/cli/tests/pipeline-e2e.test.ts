@@ -13,7 +13,7 @@ import { expectNoAnsi, fieldOf, parseJsonLine, runCli, textOf, withTempDir } fro
 const repo = (path: string): string => fileURLToPath(new URL(`../../../${path}`, import.meta.url));
 
 const SPEC = repo("skills/hreader/references/components-spec.md");
-const THEME = repo("styles/atelier-editorial/theme.css");
+const THEME = repo("packages/core/themes/atelier-editorial/theme.css");
 
 const snippet = (component: string): string => {
   const markdown = readFileSync(SPEC, "utf8");

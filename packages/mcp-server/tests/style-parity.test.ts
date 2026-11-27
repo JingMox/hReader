@@ -95,7 +95,7 @@ describe("three style exits · the same source", () => {
 
       // ① Tool: the whole injected CSS block must equal the repo's `theme.css` byte for byte (one missing newline goes red).
       const themeCss = await readFile(
-        join(REPO_ROOT, "styles", preset.inheritsVisual, "theme.css"),
+        join(REPO_ROOT, "packages", "core", "themes", preset.inheritsVisual, "theme.css"),
         "utf8",
       );
       expect(isRecord(applied) && applied["isError"] === true).toBe(false);

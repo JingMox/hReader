@@ -9,11 +9,11 @@ import { HrError, nodeStyleDeps } from "@hreader/core";
 import type { StyleDeps } from "@hreader/core";
 
 /**
- * The theme resources shipped inside the package (**a different fact**, not a second spelling of the repo root): `build` copies the repo-root `styles/` tree
+ * The theme resources shipped inside the package (**a different fact**, not a second spelling of the in-repo tree): `build` copies `packages/core/themes/`
  * into `<pkg>/styles`, and both `src/style-deps.ts` and `dist/main.js` happen to sit one level below the package root, so `../styles/`
  * points at `<pkg>/styles` in both the source layout and the published layout.
  *
- * The repo root is computed **only** by core: `nodeStyleDeps(workspace).stylesRoot` in `packages/core/src/style/node.ts:14`.
+ * The in-repo fallback is computed **only** by core: `nodeStyleDeps(workspace).stylesRoot` in `packages/core/src/style/node.ts`.
  * That comment says "when publishing, copy styles/ into the package and update here" — this file is that "inside the package"; the two sides must find each other,
  * or a release would change only one.
  */

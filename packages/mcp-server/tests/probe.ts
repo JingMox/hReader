@@ -215,8 +215,8 @@ const stampsOf = async (root: string): Promise<readonly number[]> => {
 };
 
 /**
- * The artifact must be newer than **every source that ends up in dist**: `src/**`, `package.json`, and the repo-root `styles/**` —
- * build copies `styles/` into the package, and missing it means "changed theme, no rebuild, install-sim benchmarks against the previous copy".
+ * The artifact must be newer than **every source that ends up in dist**: `src/**`, `package.json`, and the in-repo `packages/core/themes/**` —
+ * build copies `themes/` into the package as `styles/`, and missing it means "changed theme, no rebuild, install-sim benchmarks against the previous copy".
  * The in-package `styles/` is a generated artifact and does not join the comparison.
  */
 const distIsFresh = async (): Promise<boolean> => {
@@ -227,7 +227,7 @@ const distIsFresh = async (): Promise<boolean> => {
   if (built === 0) return false;
   const stamps = [
     ...(await stampsOf(join(PACKAGE_ROOT, "src"))),
-    ...(await stampsOf(join(REPO_ROOT, "styles"))),
+    ...(await stampsOf(join(REPO_ROOT, "packages", "core", "themes"))),
     await stat(join(PACKAGE_ROOT, "package.json")).then(
       (info) => info.mtimeMs,
       () => 0,

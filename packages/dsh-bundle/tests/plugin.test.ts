@@ -275,10 +275,10 @@ describe("stylesRootOf: where builtin styles live", () => {
     expect(stylesRootOf(pathToFileURL(join(pkg, "index.js")))).toBe(join(pkg, "styles") + "/");
   });
 
-  it("should fall back to the repo-root `styles/` without it (`vitest` runs sources, not dist)", () => {
+  it("should fall back to the in-repo `packages/core/themes/` without it (`vitest` runs sources, not dist)", () => {
     const repo = fileURLToPath(new URL("../../../", import.meta.url));
 
-    expect(stylesRootOf()).toBe(`${repo}styles/`);
+    expect(stylesRootOf()).toBe(`${repo}packages/core/themes/`);
   });
 });
 

@@ -1,4 +1,4 @@
-// Quantitative accessibility gate for every theme under styles/ —
+// Quantitative accessibility gate for every theme under packages/core/themes/ —
 //   1. Contrast measured by the WCAG 2.1 formula: body --hr-fg and secondary --hr-muted against
 //      --hr-bg must be ≥ 4.5:1, code-block text (fg/muted on --hr-code-bg) to the same standard;
 //      accent/warning colors are reported but not gated (mostly large text/decoration).
@@ -15,7 +15,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const STYLES_DIR = fileURLToPath(new URL("../styles/", import.meta.url));
+const STYLES_DIR = fileURLToPath(new URL("../packages/core/themes/", import.meta.url));
 
 const SHELL_CHROME = [
   "#hr-root",
@@ -171,7 +171,7 @@ for (const dir of readdirSync(STYLES_DIR).sort()) {
   try {
     css = readFileSync(file, "utf8");
   } catch {
-    continue; // non-theme directories under styles/ (no theme.css) are skipped
+    continue; // non-theme directories under the themes dir (no theme.css) are skipped
   }
   const clean = stripComments(css);
   const rules = rulesOf(clean);

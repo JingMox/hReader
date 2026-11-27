@@ -13,10 +13,10 @@ export const USE_STYLE_PROMPT = "use-hreader-style";
 const stylised = async (toneId: string, workspace: string): Promise<string> => {
   const ids = await styleIdsOf(workspace);
   if (!ids.includes(toneId)) {
-    // The text must spell out which sources were searched: builtin presets are TS constants (not in styles/), and omitting them makes it look like only the on-disk pair exists.
+    // The text must spell out which sources were searched: builtin presets are TS constants (not in themes/), and omitting them makes it look like only the on-disk pair exists.
     throw new HrError(
       "unknown_style",
-      `未知 toneId：${toneId}；已查内置预设、~/.hreader/styles、仓库 styles/；当前可用：${ids.join("、")}`,
+      `未知 toneId：${toneId}；已查内置预设、~/.hreader/styles、内置 themes/；当前可用：${ids.join("、")}`,
     );
   }
   const loaded = await loadStyle({ id: toneId }, styleDepsOf(workspace));

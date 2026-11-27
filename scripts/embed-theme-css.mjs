@@ -1,4 +1,4 @@
-// Regenerate packages/core/src/templates/builtin/theme-css.ts from styles/<visual>/theme.css.
+// Regenerate packages/core/src/templates/builtin/theme-css.ts from packages/core/themes/<visual>/theme.css.
 // The builtin templates embed the CSS (D11: no filesystem reads at runtime); the byte-for-byte
 // equivalence of the two copies is locked by the real-disk comparison in builtin tests.
 // Usage: node scripts/embed-theme-css.mjs
@@ -16,7 +16,7 @@ const VISUALS = ["atelier-editorial", "deck-noir"];
 const entries = VISUALS.map(
   (visual) =>
     `  ${JSON.stringify(visual)}: ${JSON.stringify(
-      readFileSync(join(ROOT, "styles", visual, "theme.css"), "utf8"),
+      readFileSync(join(ROOT, "packages", "core", "themes", visual, "theme.css"), "utf8"),
     )},`,
 );
 const keys = VISUALS.map((visual) => JSON.stringify(visual)).join(" | ");

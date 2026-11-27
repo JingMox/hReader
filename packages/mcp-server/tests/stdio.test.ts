@@ -131,7 +131,7 @@ describe("dist/main.js · three style exits", () => {
     if (preset === undefined) throw new Error(`no ${STYLE_PRESET} among the builtin presets`);
     // All three exits must trace back to **the same source**: the tool's CSS equals the on-disk theme.css; resource and prompt equal the preset spec.
     const themeCss = await readFile(
-      join(REPO_ROOT, "styles", preset.inheritsVisual, "theme.css"),
+      join(REPO_ROOT, "packages", "core", "themes", preset.inheritsVisual, "theme.css"),
       "utf8",
     );
     const toneSpec = compileTone(preset);

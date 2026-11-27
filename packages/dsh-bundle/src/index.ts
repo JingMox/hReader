@@ -133,15 +133,15 @@ const availableIdsOf = async (deps: StyleDeps): Promise<string[]> => {
 /**
  * Where the builtin `styles/` lives: `build` copies it to `dist/styles` (theme CSS is not bundled and
  * ships only with this package), so a host running off dist reads its own copy; running from source
- * (`vitest`, no dist) has no copy and falls back to the repo-root `styles/` — same content both ways.
- * `nodeStyleDeps().stylesRoot` is not used directly here: that value points at the repo layout (see
- * `packages/core/src/style/node.ts:14`) and would resolve inside the user's tree once installed in a
- * profile. The `moduleUrl` parameter only lets tests inject a `file://` base; production calls omit
- * it, defaulting to `import.meta.url`.
+ * (`vitest`, no dist) has no copy and falls back to the in-repo `packages/core/themes/` — same content
+ * either way. `nodeStyleDeps().stylesRoot` is not used directly here: that value points at the repo
+ * layout (see `packages/core/src/style/node.ts`) and would resolve inside the user's tree once
+ * installed in a profile. The `moduleUrl` parameter only lets tests inject a `file://` base;
+ * production calls omit it, defaulting to `import.meta.url`.
  */
 export const stylesRootOf = (moduleUrl: URL | string = import.meta.url): string => {
   const bundled = fileURLToPath(new URL("./styles/", moduleUrl));
-  return existsSync(bundled) ? bundled : fileURLToPath(new URL("../../../styles/", moduleUrl));
+  return existsSync(bundled) ? bundled : fileURLToPath(new URL("../../core/themes/", moduleUrl));
 };
 
 const depsOf = (workspace: string): StyleDeps => ({

@@ -1,5 +1,5 @@
 // This layer: the builtin template list (D11: provided by a TS data module, no filesystem reads at runtime).
-// 5 managed kind templates (skeletons from `newDocumentHtml`, CSS embedded from styles/<visual>/theme.css)
+// 5 managed kind templates (skeletons from `newDocumentHtml`, CSS embedded from packages/core/themes/<visual>/theme.css)
 // + 1 `blank-html` (free-form HTML). Pure data assembly, no IO.
 
 import { newDocumentHtml } from "../../layout/kinds";

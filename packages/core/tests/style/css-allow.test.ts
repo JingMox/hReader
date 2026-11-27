@@ -59,7 +59,7 @@ describe("assertThemeSafe · 放行", () => {
   it("should accept the real builtin theme (仓库交付物)", async () => {
     const { readFile } = await import("node:fs/promises");
     const css = await readFile(
-      new URL("../../../../styles/atelier-editorial/theme.css", import.meta.url),
+      new URL("../../themes/atelier-editorial/theme.css", import.meta.url),
       "utf8",
     );
 

@@ -133,7 +133,10 @@ describe("fake install (/tmp, no repo)", () => {
     for (const preset of PRESETS) {
       const visualId = preset.inheritsVisual;
       if (themes.has(visualId)) continue;
-      const repo = await readFile(join(REPO_ROOT, "styles", visualId, "theme.css"), "utf8");
+      const repo = await readFile(
+        join(REPO_ROOT, "packages", "core", "themes", visualId, "theme.css"),
+        "utf8",
+      );
       const sentinel = `/* SENTINEL ${basename(sim)} ${visualId} */`;
       expect(repo).not.toContain("SENTINEL");
       const theme: ShippedTheme = { repo, sentinel, shipped: `${repo}\n${sentinel}\n` };

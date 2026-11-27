@@ -42,7 +42,7 @@ export interface PrintHtmlInput {
   /** Full HTML of the source document; this layer takes the outermost `<article>` and lays it out after trimming the UI. */
   readonly documentHtml: string;
   readonly outline: readonly OutlineNode[];
-  /** Full theme CSS (`styles/<visual>/theme.css`); inlined into the product ahead of everything else. */
+  /** Full theme CSS (`packages/core/themes/<visual>/theme.css`); inlined into the product ahead of everything else. */
   readonly themeCss: string;
 }
 

@@ -74,7 +74,7 @@ describe("dist: theme CSS ships with the artifact", () => {
     // Expectations derive from `BUILTIN_STYLES` (not hand-copied): directory names are `inheritsVisual`
     // (`resolveThemePath`'s criterion, see `builtinThemeDir` in `packages/core/src/style/resource.ts`).
     // The first three presets share the atelier visual, deck-noir is its own directory; a build missing
-    // `cp -R ../../styles dist/styles` goes red.
+    // `cp -R packages/core/themes dist/styles` goes red.
     const visualIds = [...new Set(BUILTIN_STYLES.map((style) => style.inheritsVisual))];
     const stylesDir = join(DIST_DIR, "styles");
 

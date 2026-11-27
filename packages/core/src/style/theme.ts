@@ -1,4 +1,4 @@
-// 这层管：视觉维度的主题定位与读取（内置仓库 `styles/` 为主，用户目录可覆盖）；不做 HTML 变换。
+// 这层管：视觉维度的主题定位与读取（内置 `themes/` 为主，用户目录可覆盖）；不做 HTML 变换。
 
 import { join } from "node:path";
 
@@ -28,7 +28,7 @@ export const resolveThemePath = async (visualId: string, deps: StyleDeps): Promi
   }
   throw new HrError(
     "unknown_style",
-    `找不到视觉主题：${visualId}（已查用户 ~/.hreader/styles 与仓库 styles/）`,
+    `找不到视觉主题：${visualId}（已查用户 ~/.hreader/styles 与内置 themes/）`,
   );
 };
 

@@ -1,5 +1,5 @@
 // This layer: consistency between the builtin templates and repo facts — the embedded theme.css is
-// byte-identical to styles/<visual>/theme.css (the regen output of scripts/embed-theme-css.mjs),
+// byte-identical to packages/core/themes/<visual>/theme.css (the regen output of scripts/embed-theme-css.mjs),
 // and "create via the kind's builtin template == the hr new --kind product" (slides: --visual
 // deck-noir, since the builtin ships it while `hr new` defaults to atelier-editorial), the F2a
 // compatibility promise.
@@ -17,10 +17,7 @@ import { createFromTemplate, readTemplate } from "../../src/templates";
 import { fakeFs, rootsOf, depsAt } from "./harness";
 
 const themeFile = (visual: string): string =>
-  readFileSync(
-    fileURLToPath(new URL(`../../../../styles/${visual}/theme.css`, import.meta.url)),
-    "utf8",
-  );
+  readFileSync(fileURLToPath(new URL(`../../themes/${visual}/theme.css`, import.meta.url)), "utf8");
 
 const KINDS = ["note", "report", "minutes", "brief", "slides"] as const;
 
@@ -38,7 +35,7 @@ const HR_NEW_EQUIVALENT: Readonly<Record<(typeof KINDS)[number], string>> = {
 };
 
 describe("builtin templates · theme.css byte-identical to repo source", () => {
-  it("should keep embedded atelier-editorial and deck-noir css in lockstep with styles/", () => {
+  it("should keep embedded atelier-editorial and deck-noir css in lockstep with themes/", () => {
     expect(THEME_CSS["atelier-editorial"]).toBe(themeFile("atelier-editorial"));
     expect(THEME_CSS["deck-noir"]).toBe(themeFile("deck-noir"));
   });
