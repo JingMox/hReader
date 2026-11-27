@@ -1,6 +1,8 @@
 // This layer: consistency between the builtin templates and repo facts — the embedded theme.css is
 // byte-identical to styles/<visual>/theme.css (the regen output of scripts/embed-theme-css.mjs),
-// and "create via the kind's builtin template == the hr new --kind product", the F2a compatibility promise.
+// and "create via the kind's builtin template == the hr new --kind product" (slides: --visual
+// deck-noir, since the builtin ships it while `hr new` defaults to atelier-editorial), the F2a
+// compatibility promise.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -22,6 +24,19 @@ const themeFile = (visual: string): string =>
 
 const KINDS = ["note", "report", "minutes", "brief", "slides"] as const;
 
+/**
+ * The exact `hr new` equivalent of each builtin create: `hr new` defaults every kind to
+ * atelier-editorial, but the slides builtin ships deck-noir (D33) — so slides compares against the
+ * explicit `--visual deck-noir` product, the rest against the defaults.
+ */
+const HR_NEW_EQUIVALENT: Readonly<Record<(typeof KINDS)[number], string>> = {
+  note: "hr new --kind note",
+  report: "hr new --kind report",
+  minutes: "hr new --kind minutes",
+  brief: "hr new --kind brief",
+  slides: "hr new --kind slides --visual deck-noir",
+};
+
 describe("builtin templates · theme.css byte-identical to repo source", () => {
   it("should keep embedded atelier-editorial and deck-noir css in lockstep with styles/", () => {
     expect(THEME_CSS["atelier-editorial"]).toBe(themeFile("atelier-editorial"));
@@ -39,8 +54,8 @@ describe("builtin templates · equivalence with newDocumentHtml (F2a compatibili
     }
   });
 
-  it.each([...KINDS])(
-    "should create bytes identical to `hr new --kind %s --title` with the same theme",
+  it.each(KINDS.map((kind) => [kind, HR_NEW_EQUIVALENT[kind]] as const))(
+    "should create %s bytes identical to `%s --title <title>`",
     async (kind) => {
       const fake = fakeFs({ "/ws/keep.html": "x" });
       const builtin = BUILTIN_TEMPLATES.find((template) => template.manifest.id === kind);
@@ -59,8 +74,9 @@ describe("builtin templates · equivalence with newDocumentHtml (F2a compatibili
       expect(classifyDocument(parsed).cls).toBe("managed");
       expect(checkLayout(parsed.root)).toHaveLength(0);
 
-      // Raw bytes, no normalization: `hr new` is replaceTheme(newDocumentHtml) — createFromTemplate must
-      // land the identical product, injected h1 id included (it follows the retitled text, not "Untitled").
+      // Raw bytes, no normalization: `hr new` is replaceTheme(newDocumentHtml, <visual>) — for slides the
+      // visual is deck-noir (HR_NEW_EQUIVALENT), for the rest the atelier-editorial default; both are
+      // exactly builtin.style. The injected h1 id follows the retitled text, not "Untitled".
       const reference = replaceTheme(
         newDocumentHtml({ kind, title: "等价标题" }),
         builtin.style,
