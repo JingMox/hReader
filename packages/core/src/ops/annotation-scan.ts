@@ -5,7 +5,7 @@
 // files, walk-truncated docs) still surface. Store records that point at unreachable or
 // mis-keyed paths become diagnostics, never a crash.
 
-import { basename, join, relative, sep } from "node:path";
+import { basename, join, relative, resolve, sep } from "node:path";
 
 import type { AnnotationStatus } from "../annotations/model";
 import { decodeUtf8 } from "../io/bytes";
@@ -62,9 +62,26 @@ const posixRelOf = (workspaceReal: string, absolute: string): string => {
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+/**
+ * Error text from lower layers (`resolveTarget`'s lexical path, `failureOf`'s target) carries
+ * workspace-absolute paths — the wire echo of a scan stays relative, the same fold single-doc
+ * errors get: a root followed by a separator or end-of-text collapses to nothing. Roots are
+ * the lexical workspace plus its realpath (longest first, so one inside the other still folds).
+ */
+const elidedOf = (message: string, roots: readonly string[]): string =>
+  [...roots]
+    .sort((left, right) => right.length - left.length)
+    .reduce((text, root) => {
+      if (root === "/") return text;
+      const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return text.replace(new RegExp(`${escaped}(?:[/\\\\]|$)`, "g"), "");
+    }, message);
+
 interface Bucket {
   readonly annotations: WorkspaceAnnotationEntry[];
   readonly diagnostics: string[];
+  /** Workspace roots for folding embedded absolute paths out of diagnostics. */
+  readonly roots: readonly string[];
   docsScanned: number;
   /** Diagnostics dropped past the cap, folded into the trailing summary line. */
   dropped: number;
@@ -76,7 +93,7 @@ const pushDiagnostic = (bucket: Bucket, diagnostic: string): void => {
     bucket.dropped += 1;
     return;
   }
-  bucket.diagnostics.push(diagnostic);
+  bucket.diagnostics.push(elidedOf(diagnostic, bucket.roots));
 };
 
 const statusHitOf = (filter: AnnotationStatusFilter, status: AnnotationStatus): boolean =>
@@ -249,6 +266,9 @@ export const listWorkspaceAnnotations = async (
   const bucket: Bucket = {
     annotations: [],
     diagnostics: [],
+    // The lexical spelling and the realpath are both roots: lower layers report whichever
+    // they resolved, and either leaks host layout if left in the diagnostic.
+    roots: [...new Set([resolve(input.workspace), workspaceReal])],
     docsScanned: 0,
     dropped: 0,
     truncated: false,
