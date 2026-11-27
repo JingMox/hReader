@@ -75,6 +75,24 @@ describe("lint gate effectiveness", () => {
     const ruleIds = await ruleIdsFor("export const probe = process.env.HOME;", APP_SRC_PROBE_FILE);
     expect(ruleIds).toContain("no-restricted-globals");
   }, 120_000);
+
+  it("should report no-restricted-properties for globalThis.<node global> inside packages/app/src", async () => {
+    // `globalThis.process` dodges no-restricted-globals: member access sees no bare
+    // `process` identifier. The property-level ban must catch every banned global
+    // reached through globalThis — and leave browser-side properties (console) alone.
+    for (const source of [
+      "export const probe1 = globalThis.process.env.HOME;",
+      "export const probe2 = globalThis.Buffer.from([]);",
+      'export const probe3 = globalThis.require("fs");',
+    ]) {
+      expect(await ruleIdsFor(source, APP_SRC_PROBE_FILE)).toContain("no-restricted-properties");
+    }
+    const clean = await ruleIdsFor(
+      "export const probe = globalThis.console?.error;",
+      APP_SRC_PROBE_FILE,
+    );
+    expect(clean).not.toContain("no-restricted-properties");
+  }, 120_000);
 });
 
 for (const probe of PROBES) {

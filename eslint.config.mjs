@@ -134,6 +134,16 @@ export default tseslint.config(
           message: "the pure layer must not persist: state lives in state.ts; no browser storage.",
         },
       ],
+      // `globalThis.document` dodges no-restricted-globals the same way globalThis.process
+      // does below: member access carries no bare restricted identifier.
+      "no-restricted-properties": [
+        "error",
+        ...["document", "window", "fetch", "EventSource", "localStorage"].map((property) => ({
+          object: "globalThis",
+          property,
+          message: "the pure layer must not touch the DOM, even via globalThis.",
+        })),
+      ],
       "no-restricted-imports": [
         "error",
         {
@@ -221,6 +231,29 @@ export default tseslint.config(
           message:
             "packages/app/src ships to the browser; Node globals are forbidden (src/version.ts is the only audited Node-side module).",
         },
+      ],
+      // `globalThis.process` is a member access, not a bare identifier — it slips past
+      // no-restricted-globals. Ban the same Node globals as globalThis properties
+      // (globalThis.console stays legal; log.ts uses it as the browser console).
+      "no-restricted-properties": [
+        "error",
+        ...[
+          "process",
+          "Buffer",
+          "__dirname",
+          "__filename",
+          "global",
+          "require",
+          "module",
+          "exports",
+          "setImmediate",
+          "clearImmediate",
+        ].map((property) => ({
+          object: "globalThis",
+          property,
+          message:
+            "packages/app/src ships to the browser; Node globals are forbidden even via globalThis (src/version.ts is the only audited Node-side module).",
+        })),
       ],
     },
   },

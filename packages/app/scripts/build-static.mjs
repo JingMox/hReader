@@ -14,6 +14,7 @@
 
 import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,12 +45,49 @@ await writeFile(
   `// Baked at build time from package.json; see src/version.ts.\nexport const APP_VERSION = ${JSON.stringify(`v${version}`)};\n`,
 );
 
+// Unprefixed builtin specifiers (from "fs", import "path", require("os")) are the same
+// unrunnable-in-the-browser import as the node: forms — ban the whole builtinModules list,
+// not only the prefix. builtinModules also carries node:* aliases; the dedicated node:
+// patterns above already cover those.
+const BARE_BUILTINS = builtinModules.filter((name) => !name.startsWith("node:"));
+const BUILTIN_GROUP = BARE_BUILTINS.join("|");
+
 const FORBIDDEN = [
   { label: 'ESM builtin import (from "node:…")', re: /\bfrom\s*["']node:/ },
   { label: 'bare builtin import (import "node:…")', re: /\bimport\s*["']node:/ },
   { label: 'dynamic builtin import (import("node:…"))', re: /\bimport\s*\(\s*["']node:/ },
   { label: 'CJS builtin require (require("node:…"))', re: /\brequire\s*\(\s*["']node:/ },
+  {
+    label: 'ESM builtin import without prefix (from "<builtin>")',
+    re: new RegExp(`\\bfrom\\s*["'](?:${BUILTIN_GROUP})["']`),
+  },
+  {
+    label: 'bare builtin import without prefix (import "<builtin>")',
+    re: new RegExp(`\\bimport\\s*["'](?:${BUILTIN_GROUP})["']`),
+  },
+  {
+    label: 'dynamic builtin import without prefix (import("<builtin>"))',
+    re: new RegExp(`\\bimport\\s*\\(\\s*["'](?:${BUILTIN_GROUP})["']`),
+  },
+  {
+    label: 'CJS builtin require without prefix (require("<builtin>"))',
+    re: new RegExp(`\\brequire\\s*\\(\\s*["'](?:${BUILTIN_GROUP})["']`),
+  },
   { label: "import.meta file resolution (import.meta.url)", re: /\bimport\.meta\.url\b/ },
+  {
+    label: "import.meta filesystem paths (import.meta.dirname/filename)",
+    re: /\bimport\.meta\.(dirname|filename)\b/,
+  },
+  {
+    label: "import.meta module resolution (import.meta.resolve)",
+    re: /\bimport\.meta\.resolve\b/,
+  },
+  {
+    // Same list as eslint's no-restricted-globals for packages/app/src, reached through
+    // globalThis: member access carries no bare identifier, so it dodges the globals ban.
+    label: "Node globals via globalThis (globalThis.<node global>)",
+    re: /\bglobalThis\.(process|Buffer|__dirname|__filename|global|require|module|exports|setImmediate|clearImmediate)\b/,
+  },
 ];
 
 const jsFilesOf = async (dir) => {

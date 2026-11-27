@@ -96,4 +96,74 @@ describe("build-static · emitted bundle audit", () => {
     expect(status).toBe(1);
     expect(output).toContain("meta.js");
   });
+
+  it("should not fail on bare specifiers that are not Node builtins", () => {
+    const sandbox = sandboxOf({
+      "version.js": TSC_VERSION_EMIT,
+      "extra.js": 'import { helper } from "some-npm-package";\nexport const h = helper;',
+    });
+    const { status, output } = sandbox.run();
+    expect(output.trim()).toBe("");
+    expect(status).toBe(0);
+  });
 });
+
+// Builtins imported without the "node:" prefix and the import.meta filesystem/globals
+// surface reach the browser exactly like the node: forms — same ban, same audit.
+const AUDIT_REJECTS: readonly { readonly name: string; readonly body: string }[] = [
+  {
+    name: 'a bare builtin import (from "fs")',
+    body: 'import { open } from "fs";\nexport const o = open;',
+  },
+  {
+    name: 'a bare builtin subpath (from "fs/promises")',
+    body: 'import { readFile } from "fs/promises";\nexport const r = readFile;',
+  },
+  {
+    name: 'a bare side-effect builtin (import "path")',
+    body: 'import "path";\nexport const p = 1;',
+  },
+  {
+    name: 'a bare dynamic builtin (import("os"))',
+    body: 'export const o = () => import("os");',
+  },
+  {
+    name: 'a bare builtin require (require("child_process"))',
+    body: 'const cp = require("child_process");\nmodule.exports = cp;',
+  },
+  {
+    name: "import.meta.dirname",
+    body: "export const d = import.meta.dirname;",
+  },
+  {
+    name: "import.meta.filename",
+    body: "export const f = import.meta.filename;",
+  },
+  {
+    name: "import.meta.resolve",
+    body: 'export const r = import.meta.resolve("x");',
+  },
+  {
+    name: "Node globals via globalThis (globalThis.process)",
+    body: "export const e = globalThis.process.env.HOME;",
+  },
+  {
+    name: "Node globals via globalThis (globalThis.Buffer)",
+    body: "export const b = globalThis.Buffer;",
+  },
+  {
+    name: "Node globals via globalThis (globalThis.require)",
+    body: 'export const r = globalThis.require("fs");',
+  },
+];
+
+for (const { name, body } of AUDIT_REJECTS) {
+  describe(`build-static · emitted bundle audit rejects ${name}`, () => {
+    it("should fail", () => {
+      const sandbox = sandboxOf({ "version.js": TSC_VERSION_EMIT, "extra.js": body });
+      const { status, output } = sandbox.run();
+      expect(status).toBe(1);
+      expect(output).toContain("extra.js");
+    });
+  });
+}

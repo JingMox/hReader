@@ -54,9 +54,9 @@ describe.skipIf(skip !== undefined)("version-journey", () => {
     // when the page still renders — this is the browser-side mirror of the dist audit.
     const ready = await page.wait(`document.querySelector('#hr-doc') !== null`);
     assert(ready !== false, "reader did not render #hr-doc within 20s");
-    // favicon.ico 404s on every load (the server ships no icon) — pre-existing, not a
-    // module failure; everything else must be clean.
-    const errors = page.consoleErrors().filter((entry) => !entry.includes("favicon.ico"));
+    // Zero tolerance: the reader declares an inline data: icon, so it never even
+    // requests /favicon.ico — any entry here is a real failure.
+    const errors = page.consoleErrors();
     assert(errors.length === 0, `console errors / failed requests: ${JSON.stringify(errors)}`);
   });
 });
