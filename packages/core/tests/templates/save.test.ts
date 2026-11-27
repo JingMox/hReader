@@ -342,6 +342,25 @@ describe("saveTemplate · input and path gates", () => {
     expect([...fake.state.dirs].some((dir) => dir.startsWith(`${WS_TEMPLATES}/t`))).toBe(false);
   });
 
+  it("should refuse a page whose extracted theme fails the theme safety gate", async () => {
+    const fake = setup({
+      "/ws/bad.html":
+        '<html><head><style id="hr-theme">@import url(https://evil.example/x.css);</style></head><body>x</body></html>',
+    });
+
+    // The extracted theme becomes style.css verbatim — an unsafe one would save fine and then
+    // make every createFromTemplate reject the template, so the save itself must refuse first.
+    expect(await codeOfAsync(() => saveAt(fake, { file: "bad.html", id: "t" }))).toBe(
+      "invalid_theme",
+    );
+    expect([...fake.state.dirs].some((dir) => dir.startsWith(`${WS_TEMPLATES}/t`))).toBe(false);
+    expect(
+      [...fake.state.dirs, ...fake.state.files.keys()].some((path) =>
+        path.includes(".hr-template-save-"),
+      ),
+    ).toBe(false);
+  });
+
   it("should return file_exists when the target dir or a same-named file exists", async () => {
     const fake = setup({ "/ws/p.html": "<html><body>x</body></html>" });
     seedDirs(fake, dirOf("taken"));
@@ -404,6 +423,23 @@ describe("saveTemplate · input and path gates", () => {
     const error = await errorOf(() => saveAt(fake, { file: "p.html", id: "t2" }));
     expect(error.code).toBe("invalid_input");
     expect(error.message).toContain("hole.txt");
+  });
+
+  it("should refuse a <stem>_files that resolves into the workspace .hreader store", async () => {
+    const fake = setup(
+      {
+        "/ws/p.html": "<html><body>x</body></html>",
+        "/ws/.hreader/seed/img.png": "PNG",
+      },
+      ["/ws/.hreader/seed"],
+    );
+    // The lexical path stays inside the workspace but the realpath lands in `.hreader/**` —
+    // the same store area resolveTarget refuses for the source file itself.
+    fake.state.links.set("/ws/p_files", "/ws/.hreader/seed");
+
+    expect(await codeOfAsync(() => saveAt(fake, { file: "p.html", id: "t" }))).toBe(
+      "path_outside_workspace",
+    );
   });
 
   it("should follow a <stem>_files symlink that stays inside the workspace", async () => {
@@ -659,5 +695,47 @@ describe("saveTemplate · atomic publish", () => {
 
     expect(await codeOfAsync(() => saveAt(fake, { file: "p.html", id: "t" }))).toBe("io_failure");
     expect(stagingLeftovers(fake)).toEqual([]);
+  });
+});
+
+describe("saveTemplate · staging leftovers", () => {
+  it("should reap crash-leftover staging dirs older than an hour and leave everything else", async () => {
+    const now = Date.parse("2026-11-27T00:00:00.000Z");
+    const fake = setup({ "/ws/p.html": "<html><body>x</body></html>" });
+    const stale = `${WS}/.hreader/.hr-template-save-stale`;
+    const fresh = `${WS}/.hreader/.hr-template-save-fresh`;
+    const loose = `${WS}/.hreader/.hr-template-save-file`;
+    seedDirs(fake, stale, fresh, `${WS}/.hreader/keep-me`);
+    fake.state.files.set(`${stale}/partial.json`, new Uint8Array([1]));
+    fake.state.mtimes.set(stale, now - 3_600_001);
+    fake.state.mtimes.set(fresh, now - 3_599_000);
+    // A prefix-named regular file is not a staging dir and must be left alone.
+    fake.state.files.set(loose, new Uint8Array([1]));
+    fake.state.mtimes.set(loose, now - 3_600_001);
+
+    const deps = { ...depsAt(fake), clock: { now: () => new Date(now) } };
+    const result = await saveTemplate({ file: "p.html", id: "t" }, rootsOf(), deps);
+
+    expect(result.id).toBe("t");
+    expect(fake.state.dirs.has(stale)).toBe(false);
+    expect(fake.state.files.has(`${stale}/partial.json`)).toBe(false);
+    expect(fake.state.dirs.has(fresh)).toBe(true);
+    expect(fake.state.dirs.has(`${WS}/.hreader/keep-me`)).toBe(true);
+    expect(fake.state.files.has(loose)).toBe(true);
+  });
+
+  it("should still save when the reaping scan cannot list or stat the store dir", async () => {
+    const fake = setup({ "/ws/p.html": "<html><body>x</body></html>" });
+    const stale = `${WS}/.hreader/.hr-template-save-stale`;
+    seedDirs(fake, stale);
+    fake.state.mtimes.set(stale, -1);
+    // First save: the listing itself fails → nothing is reaped, the save still succeeds.
+    fake.fail("readdir", systemError("EIO"), (dir: string) => dir === `${WS}/.hreader`);
+    expect((await saveAt(fake, { file: "p.html", id: "t1" })).id).toBe("t1");
+    expect(fake.state.dirs.has(stale)).toBe(true);
+    // Second save: the leftover's lstat fails → it is skipped, the save still succeeds.
+    fake.fail("lstat", systemError("EIO"), (path: string) => path === stale);
+    expect((await saveAt(fake, { file: "p.html", id: "t2" })).id).toBe("t2");
+    expect(fake.state.dirs.has(stale)).toBe(true);
   });
 });

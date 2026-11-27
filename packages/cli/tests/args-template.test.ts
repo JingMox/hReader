@@ -227,6 +227,27 @@ describe("parseArgs · new --template alias", () => {
     });
   });
 
+  it("should accept --home on the alias, the same as `template new`", () => {
+    const aliased = parse(["new", "doc.html", "--template", "note", "--home", "/u"]);
+    const direct = parse(["template", "new", "doc.html", "--template", "note", "--home", "/u"]);
+
+    expect(aliased).toEqual(direct);
+    expect(aliased).toEqual({
+      ok: true,
+      intent: {
+        kind: "templateNew",
+        path: `${CWD}/doc.html`,
+        template: "note",
+        title: undefined,
+        home: "/u",
+        json: false,
+        workspace: CWD,
+      },
+    });
+    // Without --template the skeleton path still does not know --home.
+    expectFailure(["new", "a.html", "--home", "/u"], "--home", "new");
+  });
+
   it("should reject --template combined with --kind, --visual or --force", () => {
     for (const extra of [["--kind", "note"], ["--visual", "atelier-editorial"], ["--force"]]) {
       expectFailure(
