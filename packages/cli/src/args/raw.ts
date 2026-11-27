@@ -32,7 +32,6 @@ const OPTION_SPECS = {
   "page-size": { type: "string" },
   scale: { type: "string" },
   port: { type: "string" },
-  status: { type: "string" },
   template: { type: "string" },
   visual: { type: "string" },
   tone: { type: "string" },
@@ -59,24 +58,36 @@ const OPTION_SPECS = {
 const SPECS = new Map<string, ParseArgsOptionDescriptor>(Object.entries(OPTION_SPECS));
 
 /**
+ * Options that exist only under one subcommand, keyed by the first two positionals:
+ * `--status` belongs to `hr annotations list` — everywhere else it must stay `未知参数`,
+ * exactly like before the option existed.
+ */
+const COMMAND_SPECS: Readonly<Record<string, Record<string, ParseArgsOptionDescriptor>>> = {
+  "annotations list": { status: { type: "string" } },
+};
+
+const nodeArgs = (argv: readonly string[], options: typeof OPTION_SPECS) =>
+  parseNodeArgs({ args: argv, options, allowPositionals: true, strict: false, tokens: true });
+
+/**
  * strict: false + tokens: true lets node:util handle `--flag=val` and the `--` terminator, while this function
  * produces the unified error wording and preserves the existing lexical behavior (`--html --help`, negative
  * arguments, etc.).
  */
 export const tokenize = (argv: readonly string[]): Tokenized => {
-  const { tokens, positionals } = parseNodeArgs({
-    args: argv,
-    options: OPTION_SPECS,
-    allowPositionals: true,
-    strict: false,
-    tokens: true,
-  });
+  // The option table is command-dependent, so a probe pass reads the positionals first:
+  // unregistered options stay loose tokens under strict:false, leaving the command key intact.
+  const probe = nodeArgs(argv, OPTION_SPECS);
+  const scoped = COMMAND_SPECS[probe.positionals.slice(0, 2).join(" ")];
+  const options = scoped === undefined ? OPTION_SPECS : { ...OPTION_SPECS, ...scoped };
+  const specMap = scoped === undefined ? SPECS : new Map(Object.entries(options));
+  const { tokens, positionals } = scoped === undefined ? probe : nodeArgs(argv, options);
   const values = new Map<string, string>();
   const switches = new Set<string>();
   const allowHosts: string[] = [];
   for (const token of tokens) {
     if (token.kind !== "option") continue;
-    const spec = SPECS.get(token.name);
+    const spec = specMap.get(token.name);
     if (spec === undefined) {
       return { ok: false, message: `未知参数：${token.rawName}` };
     }
