@@ -358,6 +358,28 @@ describe("openPageOf · foreign source gating", () => {
       expect(bytes.length).toBeGreaterThan(0);
     });
   });
+
+  it("should gate the PNG path the same way — JS off, requests routed", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({ contentHeight: 900 });
+      await renderPngOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        source: {
+          kind: "foreign",
+          page: {
+            url: "http://hreader-export.invalid/f/cap/index.html",
+            docName: "index.html",
+            gate: () => Promise.resolve({ kind: "deny" }),
+          },
+        },
+        dir,
+        width: 800,
+        scale: 1,
+        maxHeight: 20_000,
+      });
+      expect(page.jsEnabled).toEqual([false]);
+    });
+  });
 });
 
 describe("renderPdfOnBrowserOf · failure mapping", () => {

@@ -14,6 +14,7 @@ export { nodePatchDeps } from "./node-fs";
 export { patchFile } from "./patch-file";
 export type { Clock, FileStat, FileSystem, PatchDeps } from "./ports";
 export {
+  DENIED,
   effectiveOf,
   levelOfScripts,
   patchDocGrant,

@@ -6,6 +6,7 @@ import { HrError, nodePatchDeps } from "@hreader/core";
 
 import { isPdfPageSize, type PdfPageSize, type RenderSource } from "../chrome/types";
 import { dataPdf, humanPdf, jsonOk, type PdfReport } from "../output";
+import { sanitizePdfLinks } from "../pdf/links";
 import { inspectPdfOf } from "../pdf/report";
 import { foreignPlanOf } from "./export-foreign";
 import {
@@ -121,8 +122,13 @@ export const pdfCommand = async (input: PdfCommandInput): Promise<string> => {
     throw new HrError("invalid_input", "--outline 与 --no-outline 不能同时使用");
   }
   await assertPdfOutOf(input);
-  const bytes = await productPdfOf(input, pageSize);
-  assertPdfHeaderOf(bytes);
+  const product = await productPdfOf(input, pageSize);
+  assertPdfHeaderOf(product);
+  // Link-annotation hygiene runs on the artifact, not the DOM: no page-level
+  // rewrite sees every shape Chrome can annotate, so the allowlist verdict
+  // lands on the bytes every `hr pdf` writes. A clean product comes back
+  // byte-identical; a parse failure fails the export closed with no write.
+  const bytes = await sanitizePdfLinks(product);
   // Page and outline counts read the product's true values (one parse yields both); unparseable structure throws `render_empty`,
   // a `--no-outline` product has no `/Outlines` key and naturally counts 0 — no shortcut in the command layer.
   const facts = await inspectPdfOf(bytes);

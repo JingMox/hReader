@@ -19,6 +19,7 @@ export type { LocatedTarget, Outline, OutlineNode, PendingAnnotation, ReadNodeRe
 export { applyPatch, parseFragment } from "./ops";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./ops";
 export {
+  DENIED,
   effectiveOf,
   isInside,
   isInsideOrSelf,

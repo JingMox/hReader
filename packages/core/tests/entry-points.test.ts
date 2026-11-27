@@ -30,6 +30,7 @@ const PUBLIC = [
   "COMPONENT_RULES",
   "DEFAULT_DOC_KIND",
   "DEFAULT_STYLE_ID",
+  "DENIED",
   "DIFF_CHAR_LIMIT",
   "DOC_KINDS",
   "HrError",

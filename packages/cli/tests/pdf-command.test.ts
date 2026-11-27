@@ -277,3 +277,34 @@ describe("pdfCommand · artifact validation", () => {
     });
   });
 });
+
+describe("pdfCommand · link sanitization", () => {
+  it("should write the render bytes untouched when no link needs stripping", async () => {
+    await withDocOf(async (dir) => {
+      const rendered = Buffer.from(pdfOf(2));
+      const out = join(dir, "out.pdf");
+      await pdfCommand(inputOf(dir, { out, render: () => Promise.resolve({ bytes: rendered }) }));
+      // Byte-identical, not merely equivalent: with nothing to strip the
+      // sanitizer must not re-serialize, so clean exports never change.
+      expect(readFileSync(out)).toEqual(rendered);
+    });
+  });
+
+  it("should fail closed and write no file when the output cannot be sanitized", async () => {
+    await withDocOf(async (dir) => {
+      const out = join(dir, "out.pdf");
+      // Passes the %PDF header check, then dies inside the sanitizer's parse —
+      // the exported bytes must never reach disk unsanitized.
+      const error = await failureOf(
+        pdfCommand(
+          inputOf(dir, {
+            out,
+            render: () => Promise.resolve({ bytes: Buffer.from("%PDF-1.4\n%%EOF\n") }),
+          }),
+        ),
+      );
+      expect(error.code).toBe("render_empty");
+      expect(existsSync(out)).toBe(false);
+    });
+  });
+});

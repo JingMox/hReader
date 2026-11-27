@@ -19,8 +19,9 @@
   "devDependencies": {
     "@hreader/core": "workspace:*",
     "@hreader/renderer-html": "workspace:*",
-    "vitest": "catalog:",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "fast-check": "catalog:",
+    "vitest": "catalog:"
   },
   "dependencies": {
     "pdf-lib": "1.17.1",
