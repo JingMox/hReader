@@ -1,13 +1,16 @@
 // This layer: the persisted incremental index under `.hreader/index/search.json` —
-// `{ version: 1, docs: { <rel>: { mtimeMs, size, sha } }, index: <MiniSearch JSON> }`.
+// `{ version: 2, docs: { <rel>: { mtimeMs, size, sha, sidecar } }, index: <MiniSearch JSON> }`.
 // A query-time update walks the workspace (same pruning as the annotation scan), re-indexes
-// only docs whose mtime/size/sha moved, drops deleted docs, and writes through `writeAtomic`
-// under the index's own lock. Diagnostics carry an error code plus a workspace-relative name —
-// never an absolute host path.
+// docs whose mtime/size/sha moved plus any doc whose sidecar store fingerprint moved —
+// annotations change without touching their doc — drops deleted docs, and writes through
+// `writeAtomic` under the index's own lock. Diagnostics carry an error code plus a
+// workspace-relative name — never an absolute host path.
 
 import MiniSearch, { type Options } from "minisearch";
 import { join, relative, resolve, sep } from "node:path";
 
+import type { SidecarAnnotation } from "../annotations/sidecar-model";
+import { annotationPathOf, readSidecarAt, type SidecarFile } from "../io/annotation-store";
 import { mkdirOrFail, writeAtomic } from "../io/atomic";
 import { decodeUtf8, encodeUtf8 } from "../io/bytes";
 import { sha256Hex } from "../io/digest";
@@ -33,7 +36,7 @@ export const SEARCH_LIMITS = {
 
 /** Index file, relative to the workspace root — the same value feeds the lock-key hash. */
 export const INDEX_REL = ".hreader/index/search.json";
-const INDEX_VERSION = 1;
+const INDEX_VERSION = 2;
 
 /** Same skips as `ops/annotation-scan.ts`: hreader's own store plus the two giant dirs. */
 const SKIP_DIRS: ReadonlySet<string> = new Set([".hreader", ".git", "node_modules"]);
@@ -52,6 +55,8 @@ interface IndexEntry {
   readonly docTitle?: string;
   readonly annotationId?: string;
   readonly annotation?: string;
+  /** Which store an annotation entry came from — the sidecar-only refresh drops by it. */
+  readonly source?: "meta" | "sidecar";
 }
 
 const FIELD_BOOSTS = { title: 3, headings: 2, body: 1, annotation: 1 } as const;
@@ -61,7 +66,7 @@ const MINI_OPTIONS: Options<IndexEntry> = {
   // annotation of a matching doc (their doc title rides along as `docTitle` instead).
   fields: ["title", "headings", "body", "annotation"],
   // `title` rides along for display; `annotation` is the snippet source for annotation hits.
-  storeFields: ["path", "kind", "title", "docTitle", "annotationId", "annotation"],
+  storeFields: ["path", "kind", "title", "docTitle", "annotationId", "annotation", "source"],
   tokenize: tokenizeSearchText,
   searchOptions: {
     prefix: true,
@@ -85,8 +90,8 @@ const annotationEntryIdOf = (rel: string, annotationId: string): string =>
   `an\u0000${rel}\u0000${annotationId}`;
 
 /** The indexed (and stored) annotation text: `note + exact`, per the design contract. */
-const annotationTextOf = (entry: DocAnnotationEntry): string =>
-  [entry.annotation.note, entry.annotation.anchor.exact].filter((text) => text !== "").join("\n");
+const annotationTextOf = (annotation: SidecarAnnotation): string =>
+  [annotation.note, annotation.anchor.exact].filter((text) => text !== "").join("\n");
 
 const entriesOf = (
   rel: string,
@@ -107,7 +112,8 @@ const entriesOf = (
     kind: "annotation",
     docTitle: fields.title,
     annotationId: entry.annotation.id,
-    annotation: annotationTextOf(entry),
+    annotation: annotationTextOf(entry.annotation),
+    source: entry.source,
   })),
 ];
 
@@ -218,10 +224,21 @@ const walkSearchDocs = async (
 
 // ---- persistence ----
 
+/** The sidecar store's `{mtimeMs, size}` — `null` when the doc has no sidecar file. */
+interface SidecarFingerprint {
+  readonly mtimeMs: number;
+  readonly size: number;
+}
+
 interface DocRecord {
   readonly mtimeMs: number;
   readonly size: number;
   readonly sha: string;
+  /**
+   * Fingerprint of `<storeDir>/annotations/<sha1(rel)>.json`: sidecar annotations mutate
+   * without touching the doc, so this is what makes their adds/resolves/deletes visible.
+   */
+  readonly sidecar: SidecarFingerprint | null;
 }
 
 interface LoadedIndex {
@@ -237,15 +254,28 @@ const freshIndex = (rebuilt: boolean): LoadedIndex => ({
   rebuilt,
 });
 
+/** `null` (no sidecar), a fingerprint, or `undefined` (malformed → the whole record is dropped). */
+const sidecarFingerprintOf = (value: unknown): SidecarFingerprint | null | undefined => {
+  if (value === null) return null;
+  if (typeof value !== "object") return undefined;
+  const mtimeMs: unknown = Reflect.get(value, "mtimeMs");
+  const size: unknown = Reflect.get(value, "size");
+  if (typeof mtimeMs !== "number" || !Number.isFinite(mtimeMs)) return undefined;
+  if (typeof size !== "number" || !Number.isFinite(size)) return undefined;
+  return { mtimeMs, size };
+};
+
 const docRecordOf = (value: unknown): DocRecord | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
   const mtimeMs: unknown = Reflect.get(value, "mtimeMs");
   const size: unknown = Reflect.get(value, "size");
   const sha: unknown = Reflect.get(value, "sha");
+  const sidecar = sidecarFingerprintOf(Reflect.get(value, "sidecar"));
   if (typeof mtimeMs !== "number" || !Number.isFinite(mtimeMs)) return undefined;
   if (typeof size !== "number" || !Number.isFinite(size)) return undefined;
   if (typeof sha !== "string") return undefined;
-  return { mtimeMs, size, sha };
+  if (sidecar === undefined) return undefined;
+  return { mtimeMs, size, sha, sidecar };
 };
 
 const REBUILT_DIAGNOSTIC = "搜索索引已损坏或版本不兼容，已全量重建";
@@ -316,6 +346,107 @@ const entryIdsFor = (mini: SearchIndex, paths: ReadonlySet<string>): readonly st
   return ids;
 };
 
+// ---- sidecar freshness ----
+
+const sidecarPathOf = (workspaceReal: string, rel: string): string =>
+  annotationPathOf(join(workspaceReal, ".hreader"), rel);
+
+/**
+ * `{mtimeMs, size}` of the doc's sidecar store file; `null` when absent. A stat failure other
+ * than ENOENT reports one diagnostic and reads as absent — the refresh that follows will hit
+ * the same failure through `readSidecarAt` and report the read side too.
+ */
+const liveSidecarFingerprint = async (
+  workspaceReal: string,
+  rel: string,
+  deps: PatchDeps,
+  bucket: SearchBucket,
+): Promise<SidecarFingerprint | null> => {
+  try {
+    const stat = await deps.fs.lstat(sidecarPathOf(workspaceReal, rel));
+    return { mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch (error: unknown) {
+    if (isMissing(error)) return null;
+    pushSearchDiagnostic(bucket, `文档 ${rel} 的批注侧车：${codeNameOf(error)}`);
+    return null;
+  }
+};
+
+/** `undefined` (no trustworthy prior record) counts as changed: the doc takes the full path. */
+const sameSidecar = (
+  prev: SidecarFingerprint | null | undefined,
+  next: SidecarFingerprint | null,
+): boolean =>
+  prev !== undefined &&
+  (prev === null
+    ? next === null
+    : next !== null && prev.mtimeMs === next.mtimeMs && prev.size === next.size);
+
+/** Ids of `rel`'s sidecar-derived annotation entries plus the stored doc title, in one scan. */
+const sidecarIndexStateOf = (
+  mini: SearchIndex,
+  rel: string,
+): { readonly ids: readonly string[]; readonly docTitle: string } => {
+  const ids: string[] = [];
+  let docTitle = "";
+  for (const result of mini.search(MiniSearch.wildcard)) {
+    if (result["path"] !== rel) continue;
+    if (result.id === docEntryIdOf(rel)) {
+      const title: unknown = result["title"];
+      if (typeof title === "string") docTitle = title;
+    } else if (result["kind"] === "annotation" && result["source"] !== "meta") {
+      ids.push(String(result.id));
+    }
+  }
+  return { ids, docTitle };
+};
+
+/**
+ * Re-index only `rel`'s sidecar-sourced annotation entries — the doc bytes never move, so its
+ * doc entry and its hr-meta annotation entries stay as-is. Returns false (and keeps the old
+ * fingerprint) when the store itself could not be read, so the next query retries.
+ */
+const refreshSidecarEntries = async (
+  workspaceReal: string,
+  rel: string,
+  mini: SearchIndex,
+  deps: PatchDeps,
+  bucket: SearchBucket,
+): Promise<boolean> => {
+  let file: SidecarFile;
+  try {
+    file = await readSidecarAt(sidecarPathOf(workspaceReal, rel), rel, deps);
+  } catch (error: unknown) {
+    pushSearchDiagnostic(bucket, `文档 ${rel} 的批注：${codeNameOf(error)}`);
+    return false;
+  }
+  for (const diagnostic of file.diagnostics) pushSearchDiagnostic(bucket, diagnostic);
+  const prior = sidecarIndexStateOf(mini, rel);
+  if (prior.ids.length > 0) mini.discardAll(prior.ids);
+  const fresh = file.annotations
+    .filter((annotation) => {
+      // hr-meta wins an id collision — same rule as listDocAnnotations; the surviving
+      // meta entry is still in the index (its doc bytes never changed).
+      if (!mini.has(annotationEntryIdOf(rel, annotation.id))) return true;
+      pushSearchDiagnostic(
+        bucket,
+        `批注 ${annotation.id} 同时存在于 hr-meta 与侧车，以 hr-meta 为准，已忽略侧车条目`,
+      );
+      return false;
+    })
+    .map((annotation): IndexEntry => ({
+      id: annotationEntryIdOf(rel, annotation.id),
+      path: rel,
+      kind: "annotation",
+      docTitle: prior.docTitle,
+      annotationId: annotation.id,
+      annotation: annotationTextOf(annotation),
+      source: "sidecar",
+    }));
+  if (fresh.length > 0) mini.addAll(fresh);
+  return true;
+};
+
 interface PendingDoc {
   readonly rel: string;
   readonly fields: ExtractedDocFields;
@@ -351,7 +482,17 @@ export const updateIndex = async (
   for (const doc of walked) {
     const rel = posixRelOf(input.workspaceReal, doc.absolute);
     const prev = state.docs.get(rel);
+    // The sidecar store fingerprints every doc — annotations mutate without touching it.
+    const sidecar = await liveSidecarFingerprint(input.workspaceReal, rel, deps, bucket);
+    const storeMoved = !sameSidecar(prev?.sidecar, sidecar);
     if (prev?.mtimeMs === doc.mtimeMs && prev.size === doc.size) {
+      if (storeMoved) {
+        if (await refreshSidecarEntries(input.workspaceReal, rel, state.mini, deps, bucket)) {
+          records.set(rel, { ...prev, sidecar });
+          changed = true;
+          continue;
+        }
+      }
       records.set(rel, prev);
       continue;
     }
@@ -365,7 +506,17 @@ export const updateIndex = async (
     }
     const sha = sha256Hex(bytes);
     if (prev?.sha === sha) {
-      records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha });
+      if (storeMoved) {
+        if (await refreshSidecarEntries(input.workspaceReal, rel, state.mini, deps, bucket)) {
+          records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar });
+          changed = true;
+          continue;
+        }
+        records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar: prev.sidecar });
+        changed = true;
+        continue;
+      }
+      records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar });
       changed = true;
       continue;
     }
@@ -388,7 +539,7 @@ export const updateIndex = async (
     }
     drops.add(rel);
     adds.push({ rel, fields, annotations: listed?.annotations ?? [] });
-    records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha });
+    records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar });
     changed = true;
   }
   // Anything recorded but no longer walked is a deleted doc: its entries leave the index.

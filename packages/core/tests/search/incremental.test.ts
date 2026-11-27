@@ -2,14 +2,16 @@
 // their annotations), an unchanged library never rewrites the index file, and a corrupt
 // index rebuilds in full with one diagnostic.
 
-import { readFile, stat, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, stat, unlink, utimes } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { serializeSidecarFile, type SidecarAnnotation } from "../../src/annotations/sidecar-model";
 import { sha1Hex } from "../../src/io/digest";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import type { PatchDeps } from "../../src/io/ports";
+import { addAnnotation } from "../../src/ops/annotation-ops";
 import {
   addSidecarAnnotation,
   deleteSidecarAnnotation,
@@ -124,7 +126,7 @@ describe("search index incremental updates", () => {
       const healed: unknown = JSON.parse(
         Buffer.from(await nodePatchDeps.fs.readFile(join(dir, INDEX))).toString("utf8"),
       );
-      expect(Reflect.get(healed as object, "version")).toBe(1);
+      expect(Reflect.get(healed as object, "version")).toBe(2);
     });
   });
 
@@ -180,6 +182,7 @@ describe("search index sidecar freshness", () => {
   it("finds a sidecar annotation added to an unchanged doc", async () => {
     await withWorkspace(async (dir) => {
       await writeTextAt(join(dir, "a.html"), DOC("a", "摩托 手册"));
+      await writeTextAt(join(dir, "b.html"), DOC("b", "钢铁 冶炼"));
       await find(dir, "摩托");
       const id = await seedSidecar(dir, "a.html", "轮胎磨损记录");
       const result = await find(dir, "轮胎");
@@ -187,6 +190,8 @@ describe("search index sidecar freshness", () => {
       expect(hit?.kind).toBe("annotation");
       expect(hit?.path).toBe("a.html");
       expect(hit?.annotationId).toBe(id);
+      // The untouched sibling's entries stayed put through the refresh.
+      expect((await find(dir, "钢铁")).results[0]?.path).toBe("b.html");
     });
   });
 
@@ -204,8 +209,9 @@ describe("search index sidecar freshness", () => {
       expect(after.results[0]?.annotationId).toBe(id);
       // The refresh persisted the new sidecar fingerprint into the stored record.
       const sidecarStat = await stat(sidecarPath(dir, "a.html"));
-      expect(await storedRecordOf(dir, "a.html")).toEqual({
-        sidecar: { mtimeMs: sidecarStat.mtimeMs, size: sidecarStat.size },
+      expect((await storedRecordOf(dir, "a.html"))?.sidecar).toEqual({
+        mtimeMs: sidecarStat.mtimeMs,
+        size: sidecarStat.size,
       });
     });
   });
@@ -267,6 +273,169 @@ describe("search index sidecar freshness", () => {
       expect(result.diagnostics.length).toBeGreaterThan(0);
       // The stale annotation entry left with the corrupt store.
       expect((await find(dir, "火花塞")).results).toEqual([]);
+    });
+  });
+
+  it("drops the annotation entries when the sidecar file itself is removed", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("a", "摩托 手册"));
+      await seedSidecar(dir, "a.html", "机油型号");
+      expect((await find(dir, "机油")).results[0]?.kind).toBe("annotation");
+      await unlink(sidecarPath(dir, "a.html"));
+      expect((await find(dir, "机油")).results).toEqual([]);
+    });
+  });
+
+  it("keeps meta entries through a sidecar refresh and skips a colliding sidecar id", async () => {
+    await withWorkspace(async (dir) => {
+      const doc = [
+        "<!doctype html>",
+        '<html><body><article data-hr-id="hr-a"><p data-hr-id="hr-b">摩托 正文</p></article>',
+        '<script id="hr-meta" type="application/json">{"version":1,"annotations":[]}</script>',
+        "</body></html>",
+      ].join("\n");
+      await writeTextAt(join(dir, "a.html"), doc);
+      const meta = await addAnnotation(
+        {
+          workspace: dir,
+          file: "a.html",
+          nodeId: "hr-b",
+          anchor: { exact: "摩托", prefix: "", suffix: "", start: 0 },
+          note: "元批注",
+        },
+        nodePatchDeps,
+      );
+      expect((await find(dir, "元批注")).results[0]?.kind).toBe("annotation");
+      // A hand-written sidecar: one record colliding with the meta id, one fresh.
+      const record = (id: string, note: string): SidecarAnnotation => ({
+        id,
+        selector: "body > p:nth-of-type(1)",
+        anchor: { exact: "摩托", prefix: "", suffix: "", start: 0 },
+        note,
+        status: "pending",
+        createdAt: "t",
+        author: "user",
+        replies: [],
+      });
+      const path = sidecarPath(dir, "a.html");
+      await mkdir(dirname(path), { recursive: true });
+      await writeTextAt(
+        path,
+        serializeSidecarFile("a.html", [
+          record(meta.annotation.id, "同号侧车批注"),
+          record("an-fresh01", "新侧车批注"),
+        ]),
+      );
+      const result = await find(dir, "批注");
+      expect(result.diagnostics.some((line) => line.includes("同时存在于"))).toBe(true);
+      const ids = result.results.map((hit) => hit.annotationId);
+      expect(ids).toContain("an-fresh01");
+      // The meta entry survived the refresh — and the colliding sidecar record did not
+      // duplicate it.
+      expect(ids.filter((id) => id === meta.annotation.id)).toHaveLength(1);
+    });
+  });
+
+  it("refreshes annotations when a doc is touched and its sidecar moved together", async () => {
+    await withWorkspace(async (dir) => {
+      const file = join(dir, "a.html");
+      await writeTextAt(file, DOC("a", "摩托 手册"));
+      await find(dir, "摩托");
+      // Same bytes, new mtime + a brand-new sidecar: both records update in one pass.
+      const future = new Date(Date.now() + 10_000);
+      await utimes(file, future, future);
+      await seedSidecar(dir, "a.html", "减震器漏油");
+      const result = await find(dir, "减震器");
+      expect(result.results[0]?.kind).toBe("annotation");
+      const stored = JSON.parse(await readFile(join(dir, INDEX), "utf8")) as {
+        docs: Record<string, { mtimeMs: number; sidecar: { size: number } | null }>;
+      };
+      const record = stored.docs["a.html"];
+      expect(Math.abs((record?.mtimeMs ?? 0) - future.getTime())).toBeLessThan(1000);
+      expect(record?.sidecar?.size).toBe((await stat(sidecarPath(dir, "a.html"))).size);
+    });
+  });
+
+  it("a failed sidecar read keeps the old fingerprint so the next query retries", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("a", "摩托 手册"));
+      await find(dir, "摩托");
+      await seedSidecar(dir, "a.html", "胎压记录");
+      const deps: PatchDeps = {
+        ...nodePatchDeps,
+        fs: {
+          ...nodePatchDeps.fs,
+          readFile: async (path: string) => {
+            if (path.includes(join(".hreader", "annotations"))) {
+              throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+            }
+            return await nodePatchDeps.fs.readFile(path);
+          },
+        },
+      };
+      const result = await find(dir, "摩托", deps);
+      expect(result.results[0]?.path).toBe("a.html");
+      expect(result.diagnostics.some((line) => line.includes("的批注"))).toBe(true);
+      // Stale fingerprint kept: the annotation lands on the next healthy query.
+      expect((await find(dir, "胎压")).results[0]?.kind).toBe("annotation");
+    });
+  });
+
+  it("a failed sidecar read on a touched doc still persists the new doc fingerprint", async () => {
+    await withWorkspace(async (dir) => {
+      const file = join(dir, "a.html");
+      await writeTextAt(file, DOC("a", "摩托 手册"));
+      await seedSidecar(dir, "a.html", "胎压记录");
+      const before = await stat(sidecarPath(dir, "a.html"));
+      await find(dir, "胎压");
+      // Touch the doc (same bytes, new mtime) and break only the sidecar read.
+      const future = new Date(Date.now() + 10_000);
+      await utimes(file, future, future);
+      await writeTextAt(sidecarPath(dir, "a.html"), "{ not json");
+      const deps: PatchDeps = {
+        ...nodePatchDeps,
+        fs: {
+          ...nodePatchDeps.fs,
+          readFile: async (path: string) => {
+            if (path.includes(join(".hreader", "annotations"))) {
+              throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+            }
+            return await nodePatchDeps.fs.readFile(path);
+          },
+        },
+      };
+      const result = await find(dir, "摩托", deps);
+      expect(result.results[0]?.path).toBe("a.html");
+      const stored = JSON.parse(await readFile(join(dir, INDEX), "utf8")) as {
+        docs: Record<string, { mtimeMs: number; sidecar: { mtimeMs: number } | null }>;
+      };
+      const record = stored.docs["a.html"];
+      expect(Math.abs((record?.mtimeMs ?? 0) - future.getTime())).toBeLessThan(1000);
+      expect(record?.sidecar?.mtimeMs).toBe(before.mtimeMs);
+    });
+  });
+
+  it("an unstatable sidecar reports a diagnostic and the refresh still reads the store", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("a", "摩托 手册"));
+      await seedSidecar(dir, "a.html", "变速箱油位");
+      await find(dir, "变速箱");
+      const deps: PatchDeps = {
+        ...nodePatchDeps,
+        fs: {
+          ...nodePatchDeps.fs,
+          lstat: async (path: string) => {
+            if (path.endsWith(".json") && path.includes(join(".hreader", "annotations"))) {
+              throw Object.assign(new Error("EIO"), { code: "EIO" });
+            }
+            return await nodePatchDeps.fs.lstat(path);
+          },
+        },
+      };
+      const result = await find(dir, "摩托", deps);
+      expect(result.results[0]?.path).toBe("a.html");
+      expect(result.diagnostics.some((line) => line.includes("批注侧车"))).toBe(true);
+      expect((await find(dir, "变速箱")).results[0]?.kind).toBe("annotation");
     });
   });
 });

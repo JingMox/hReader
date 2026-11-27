@@ -19,12 +19,15 @@ import { failureOf, isExists, isMissing } from "./errors";
 import type { ResolvedTarget } from "./paths";
 import type { PatchDeps } from "./ports";
 
-/** One sidecar file per document: `<sha1 of workspace-relative POSIX path>.json`. */
+/** One sidecar file per document: `<storeDir>/annotations/<sha1 of relative POSIX path>.json`. */
+export const annotationPathOf = (storeDir: string, relative: string): string =>
+  join(storeDir, "annotations", `${sha1Hex(relative)}.json`);
+
 export const annotationDirOf = (target: ResolvedTarget): string =>
   join(target.storeDir, "annotations");
 
 export const annotationFileOf = (target: ResolvedTarget): string =>
-  join(annotationDirOf(target), `${sha1Hex(target.relative)}.json`);
+  annotationPathOf(target.storeDir, target.relative);
 
 export interface SidecarFile {
   /** The file exists on disk (corrupt files exist too — they get backed up, not dropped). */
@@ -52,8 +55,18 @@ const corruptRead = (diagnostic: string): SidecarFile => ({
 export const readSidecarFile = async (
   target: ResolvedTarget,
   deps: PatchDeps,
+): Promise<SidecarFile> => readSidecarAt(annotationFileOf(target), target.relative, deps);
+
+/**
+ * The sidecar read for a path already named — same corruption-tolerant contract as
+ * `readSidecarFile`, for callers that hold a `storeDir`/`relative` pair rather than a
+ * resolved doc target (the search index's sidecar-only refresh).
+ */
+export const readSidecarAt = async (
+  path: string,
+  relative: string,
+  deps: PatchDeps,
 ): Promise<SidecarFile> => {
-  const path = annotationFileOf(target);
   let bytes: Uint8Array;
   try {
     bytes = await deps.fs.readFile(path);
@@ -72,7 +85,7 @@ export const readSidecarFile = async (
   } catch {
     return corruptRead("侧车批注文件不是合法 UTF-8，按空批注处理");
   }
-  const parsed = parseSidecarFile(text, target.relative);
+  const parsed = parseSidecarFile(text, relative);
   return {
     exists: true,
     corrupt: parsed.corrupt,
