@@ -8,6 +8,7 @@ import { cutAtCodePoint } from "@hreader/core";
 import type {
   ApplyStyleResult,
   DaemonInfo,
+  DocAnnotationEntry,
   ExtractStats,
   ExtractStyleLlmResult,
   ExtractStyleResult,
@@ -18,12 +19,14 @@ import type {
   LintHit,
   LintReport,
   LoadedTemplate,
+  MigrateResult,
   Outline,
   OutlineNode,
   NormalizeResult,
   PatchResult,
   PendingAnnotation,
   ReadNodeResult,
+  RelocateResult,
   SavedTemplate,
   TemplateDiagnostic,
   TemplateList,
@@ -559,3 +562,69 @@ export const humanTemplateSave = (saved: SavedTemplate, dir: string): string =>
     `saved ${dir} (${saved.id}, ${saved.format}` +
       `${saved.assets.length === 0 ? "" : `, +${String(saved.assets.length)} assets`})\n`,
   );
+
+// ---- annotations commands (`hr annotations <list|migrate>`) ----
+
+/** Same wire shape as the server's `relocationBody`: `via` only rides on success. */
+const relocationJson = (relocation: RelocateResult): string =>
+  relocation.ok
+    ? `{"ok":true,"start":${String(relocation.start)},"end":${String(relocation.end)},` +
+      `"via":${quote(relocation.via)}}`
+    : `{"ok":false,"reason":${quote(relocation.reason)}}`;
+
+/** `id`/`nodeId`/`selector`/`exact` are unbounded at the model layer: same 200-code-point cap as the MCP wire, so a fat record cannot flood either output mode. */
+const ANNOTATION_FIELD_LIMIT = 200;
+
+/** `nodeId`/`selector` print `null` when absent (stable shape): a merged entry knows at most one of them. */
+const annotationEntryJson = (entry: DocAnnotationEntry): string =>
+  `{"id":${quote(cutAtCodePoint(entry.annotation.id, ANNOTATION_FIELD_LIMIT))},` +
+  `"nodeId":${entry.annotation.nodeId === undefined ? "null" : quote(cutAtCodePoint(entry.annotation.nodeId, ANNOTATION_FIELD_LIMIT))},` +
+  `"selector":${entry.annotation.selector === undefined ? "null" : quote(cutAtCodePoint(entry.annotation.selector, ANNOTATION_FIELD_LIMIT))},` +
+  `"note":${quote(entry.annotation.note)},` +
+  `"exact":${quote(cutAtCodePoint(entry.annotation.anchor.exact, ANNOTATION_FIELD_LIMIT))},` +
+  `"status":${quote(entry.annotation.status)},` +
+  `"source":${quote(entry.source)},` +
+  `"relocation":${relocationJson(entry.anchor)}}`;
+
+export const dataAnnotationsList = (
+  path: string,
+  annotations: readonly DocAnnotationEntry[],
+  diagnostics: readonly string[],
+): string =>
+  `{"path":${quote(path)},"annotations":[${annotations.map(annotationEntryJson).join(",")}],` +
+  `"diagnostics":${JSON.stringify(diagnostics)}}`;
+
+/** One annotation per line; note first, the anchored text as the fallback excerpt. `-` = the record carries neither nodeId nor selector. */
+const annotationLine = (entry: DocAnnotationEntry): string => {
+  const annotation = entry.annotation;
+  const target = annotation.nodeId ?? annotation.selector ?? "-";
+  const excerpt = tableCell(annotation.note === "" ? annotation.anchor.exact : annotation.note);
+  const located = entry.anchor.ok
+    ? `已定位（${entry.anchor.via}，${String(entry.anchor.start)}-${String(entry.anchor.end)}）`
+    : `未定位（${entry.anchor.reason}）`;
+  return `  [${annotation.status}] ${cutAtCodePoint(annotation.id, ANNOTATION_FIELD_LIMIT)} (${entry.source}) ${excerpt} → ${cutAtCodePoint(target, ANNOTATION_FIELD_LIMIT)} · ${located}`;
+};
+
+/** An empty list still prints a line: silent success reads like "the command did not run". */
+export const humanAnnotationsList = (
+  annotations: readonly DocAnnotationEntry[],
+  path: string,
+): string =>
+  term(
+    `annotations ${path}（共 ${String(annotations.length)} 条）\n` +
+      annotations.map((entry) => `${annotationLine(entry)}\n`).join(""),
+  );
+
+export const dataAnnotationsMigrate = (result: MigrateResult, path: string): string =>
+  `{"path":${quote(path)},"migrated":${String(result.migrated)},` +
+  `"skipped":${String(result.skipped)},"changed":${bool(result.changed)},` +
+  `"historyPath":${result.historyPath === null ? "null" : quote(result.historyPath)},` +
+  `"diagnostics":${JSON.stringify(result.diagnostics)}}`;
+
+/** `changed:false` = nothing in hr-meta (foreign doc, or a previous run already emptied it — that is what makes migrate idempotent). */
+export const humanAnnotationsMigrate = (result: MigrateResult, path: string): string =>
+  result.changed
+    ? term(
+        `migrated ${path}（迁移 ${String(result.migrated)} 条、跳过 ${String(result.skipped)} 条）\n`,
+      )
+    : term(`unchanged ${path}（没有可迁移的 hr-meta 批注）\n`);

@@ -3,6 +3,7 @@
 import { resolve } from "node:path";
 
 import { COMMAND_NAMES, isCommandName, type CommandName } from "../usage";
+import { annotationsIntent } from "./annotations";
 import {
   checkIntent,
   importIntent,
@@ -81,6 +82,7 @@ const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
   png: pngIntent,
   serve: serveIntent,
   template: templateIntent,
+  annotations: annotationsIntent,
 };
 
 const build = (raw: Raw, cwd: string): ParsedArgs => {

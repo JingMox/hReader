@@ -31,6 +31,8 @@ node skills/hreader/scripts/hr.mjs template list                   # templates a
 node skills/hreader/scripts/hr.mjs template show note              # manifest + guide + sizes for one template
 node skills/hreader/scripts/hr.mjs template new draft.html --template note   # draft from a template
 node skills/hreader/scripts/hr.mjs template save report.html --id my-style   # page → reusable template
+node skills/hreader/scripts/hr.mjs annotations list report.html             # merged hr-meta + sidecar annotations
+node skills/hreader/scripts/hr.mjs annotations migrate report.html          # hr-meta annotations → sidecar store
 ```
 
 Exit codes: `0` success, `1` business failure (missing node / invalid fragment / locked), `2` usage error, `3` IO and path problems, `70` internal error. **On any non-zero exit, read the error text on stderr first — do not guess.**

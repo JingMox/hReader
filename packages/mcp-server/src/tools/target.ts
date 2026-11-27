@@ -48,7 +48,7 @@ export const documentTargetOf = (filePath: string, cwd: string): DocumentTarget 
 };
 
 /** Same shape as core's `io/errors.ts`: take `code` as-is without narrowing; a non-string simply never matches. */
-const codeOf = (error: unknown): unknown =>
+export const codeOf = (error: unknown): unknown =>
   typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
 
 /**

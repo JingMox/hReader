@@ -26,13 +26,14 @@ pnpm -C packages/mcp-server build
 
 | Tool                    | Purpose                                                     |
 | ----------------------- | ----------------------------------------------------------- |
-| `hr_outline`            | Inspect compact heading/node IDs, word counts & annotations |
+| `hr_outline`            | Inspect compact heading/node IDs, word counts & annotations (`pendingAnnotations` for hr-meta, `sidecarAnnotations` for the `.hreader/annotations/` store — absent when the doc has none) |
 | `hr_read_node`          | Read a single subtree by CSS selector or `data-hr-id`       |
 | `hr_create_doc`         | Create a new semantic HTML document inside `--workspace`; optional `kind` (`note` / `report` / `minutes` / `brief` / `slides`) starts from that kind's skeleton |
 | `hr_import_doc`         | Convert foreign HTML (saved pages, scripted decks) into a managed `*.hr.html` document; the report lists what was stripped |
 | `hr_patch_node`         | Atomic `replace`, `insert_before`, `insert_after`, `append`, or `delete`; layout problems in the fragment come back as `warnings` |
 | `hr_apply_style`        | Apply visual theme CSS or check tone / forbidden words      |
-| `hr_resolve_annotation` | Mark reader annotations resolved / replied                  |
+| `hr_resolve_annotation` | Mark reader annotations resolved / replied (hr-meta first, sidecar fallback; the reply carries `source`) |
+| `hr_list_annotations`   | List merged hr-meta + sidecar annotations: `filePath` for one doc, omitted for a bounded workspace scan (≤500 docs / ≤1000 entries, `truncated` flag); `status` filters `pending` / `resolved` / `all` |
 | `hr_list_templates`     | List templates merged across the three tiers (builtin < `~/.hreader/templates` < `<workspace>/.hreader/templates`); broken entries land in `diagnostics` |
 | `hr_get_template`       | Read one template's manifest plus bounded `entry` / `style` / `guide` texts and the asset list |
 | `hr_create_from_template` | Draft a document from a template id (default `blank-html`); assets land under `<stem>_files/` |

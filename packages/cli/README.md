@@ -20,6 +20,8 @@ Build from the repo root with `pnpm -C @hreader/cli build`; the entry point is `
 | `hr template show <id>`                                  | manifest fields, full guide text, and entry/style byte sizes for one template                                                                                          |
 | `hr template new <file> --template <id>`                 | draft a document from a template; assets land under `<stem>_files/`                                                                                                    |
 | `hr template save <file> --id <id> [--global]`           | save a page plus its `<stem>_files/` as a template — the `<style id="hr-theme">` content becomes `style.css`, the entry keeps an empty placeholder; no `--force`       |
+| `hr annotations list <file>`                             | merged hr-meta + sidecar annotations for one doc (`--status pending\|resolved\|all`)                                                                                   |
+| `hr annotations migrate <file>`                          | move a doc's legacy `<script id="hr-meta">` annotations into the `.hreader/annotations/` sidecar store (idempotent — a second run migrates 0)                          |
 
 ## Environment variables
 

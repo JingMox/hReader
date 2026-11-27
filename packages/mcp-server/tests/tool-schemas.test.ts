@@ -16,6 +16,7 @@ const REQUIRED_BY_TOOL: Record<string, readonly string[]> = {
   hr_read_node: ["filePath", "nodeId"],
   hr_patch_node: ["filePath", "nodeId", "action", "htmlContent"],
   hr_apply_style: ["filePath"],
+  hr_list_annotations: [],
   hr_resolve_annotation: ["filePath", "annotationId"],
   hr_create_doc: ["filePath", "title"],
   hr_import_doc: ["filePath"],

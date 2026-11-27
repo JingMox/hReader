@@ -8,6 +8,7 @@ import { createDocCall, createDocShape } from "./create-doc";
 import { createFromTemplateCall, createFromTemplateShape } from "./create-from-template";
 import { getTemplateCall, getTemplateShape } from "./get-template";
 import { importDocCall, importDocShape } from "./import-doc";
+import { listAnnotationsCall, listAnnotationsShape } from "./list-annotations";
 import { listTemplatesCall, listTemplatesShape } from "./list-templates";
 import { outlineCall, outlineShape } from "./outline";
 import { patchNodeCall, patchNodeShape } from "./patch-node";
@@ -86,6 +87,16 @@ const registerEditingTools = (server: McpServer): void => {
       inputSchema: applyStyleShape,
     },
     applyStyleCall,
+  );
+  server.registerTool(
+    "hr_list_annotations",
+    {
+      title: "列批注",
+      description:
+        "列批注：给 filePath 时返回该文档的合并视图（hr-meta + 侧车，各条带锚点定位结果）；省略时扫整个工作区（≤500 文档、≤1000 条，超出给 truncated）。找待处理批注、或盘点哪些文档还有批注时用它",
+      inputSchema: listAnnotationsShape,
+    },
+    listAnnotationsCall,
   );
   server.registerTool(
     "hr_resolve_annotation",
