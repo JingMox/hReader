@@ -51,20 +51,32 @@ const onlyOf = (list: readonly number[]): number => list.reduce((first) => first
 const needleOf = (anchor: TextAnchor): string => anchor.exact;
 
 /**
- * 解析顺序：块还在吗 → `exact` 有没有命中 → **唯一命中直接采用**（不看上下文）→
- * 多处命中才用 `prefix`/`suffix` 消歧 → 仍多命中取最接近 `start` 的；一个都不合上下文 = `ambiguous`。
+ * Matches an anchor within a plain text span: does `exact` occur at all → a **single hit is taken
+ * as is** (context ignored) → several hits are disambiguated by `prefix`/`suffix` → if several still
+ * fit, the one closest to `start` wins; if none fits the context, the result is `ambiguous`.
+ * Unlike `resolveAnchor` there is no "is the block still there" step: for sidecar annotations the
+ * caller picks the text span (the element the selector hits, or the body as a fallback).
  */
-export const resolveAnchor = (annotation: Annotation, doc: AnchorDocument): AnchorResult => {
-  if (!doc.nodeIds.includes(annotation.nodeId)) return { ok: false, reason: "orphaned" };
-  const needle = needleOf(annotation.anchor);
-  const starts = occurrenceStarts(doc.text, needle);
+export const matchAnchorInText = (text: string, anchor: TextAnchor): AnchorResult => {
+  const needle = needleOf(anchor);
+  const starts = occurrenceStarts(text, needle);
   if (starts.length === 0) return { ok: false, reason: "anchor_lost" };
   if (starts.length === 1) {
     const only = onlyOf(starts);
     return { ok: true, start: only, end: only + needle.length };
   }
-  const fitting = starts.filter((at) => fitsContext(doc.text, at, annotation.anchor));
+  const fitting = starts.filter((at) => fitsContext(text, at, anchor));
   if (fitting.length === 0) return { ok: false, reason: "ambiguous" };
-  const start = closestOf(fitting, annotation.anchor.start);
+  const start = closestOf(fitting, anchor.start);
   return { ok: true, start, end: start + needle.length };
+};
+
+/**
+ * Resolution order: is the block still there → does `exact` occur → a **single hit is taken as is**
+ * (context ignored) → several hits are disambiguated by `prefix`/`suffix` → if several still fit, the
+ * one closest to `start` wins; if none fits the context, the result is `ambiguous`.
+ */
+export const resolveAnchor = (annotation: Annotation, doc: AnchorDocument): AnchorResult => {
+  if (!doc.nodeIds.includes(annotation.nodeId)) return { ok: false, reason: "orphaned" };
+  return matchAnchorInText(doc.text, annotation.anchor);
 };

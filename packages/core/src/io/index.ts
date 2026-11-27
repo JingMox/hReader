@@ -33,3 +33,10 @@ export type {
   TrustLevel,
 } from "./permissions";
 export { undoPatch } from "./undo";
+export {
+  annotationDirOf,
+  annotationFileOf,
+  readSidecarFile,
+  writeSidecarFile,
+} from "./annotation-store";
+export type { SidecarFile } from "./annotation-store";

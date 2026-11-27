@@ -19,6 +19,11 @@ const config = {
     "packages/core/src/ops/revert-op.ts",
     "packages/core/src/io/undo.ts",
     "packages/core/src/io/history.ts",
+    // annotations: sidecar store (corruption handling, dangerous keys, limits, relocation)
+    "packages/core/src/annotations/sidecar-model.ts",
+    "packages/core/src/annotations/relocate.ts",
+    "packages/core/src/io/annotation-store.ts",
+    "packages/core/src/ops/sidecar-ops.ts",
     // style: apply, css safety checks, replaceTheme-related
     "packages/core/src/style/apply.ts",
     "packages/core/src/style/apply-file.ts",
