@@ -128,7 +128,7 @@ export interface ChromeRun {
 const chromeHomeOf = (): string | undefined => {
   try {
     return userInfo().homedir;
-    /* v8 ignore start — getpwuid 只在账号无 passwd 条目（scratch 镜像）时才抛；普通机器走不到 */
+    /* v8 ignore start — getpwuid only throws for an account without a passwd entry (scratch images); unreachable on normal machines */
   } catch {
     return undefined;
   }
@@ -140,7 +140,7 @@ export const startChromeOf = (deps: ChromeDeps): ChromeRun => {
   const dir = deps.tempDir();
   const env = { ...deps.env };
   const home = chromeHomeOf();
-  // 有 passwd 条的机器上 chromeHomeOf 恒有值；undefined 分支只在 scratch 镜像里出现（走不到）。
+  // chromeHomeOf is always set on machines with a passwd entry; the undefined branch only appears on scratch images (unreachable).
   /* v8 ignore next */
   if (home !== undefined) env["HOME"] = home;
   try {
