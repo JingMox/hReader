@@ -268,6 +268,9 @@ pub fn run(target: LaunchTarget) -> i32 {
                 })
                 .build()?;
             let _ = window.set_focus();
+            // A Session launch arrives with a doc already open — sync the item
+            // once here or it would stay disabled until the next doc transition.
+            refresh_template_menu(app.handle(), &setup_shared);
             let focus_win = window.clone();
             let focus_shared = Arc::clone(&setup_shared);
             window.on_window_event(move |event| {
@@ -1332,7 +1335,7 @@ fn delete_template_async(app: tauri::AppHandle, shared: SharedState, id: Option<
 fn refresh_template_menu(app: &tauri::AppHandle, shared: &SharedState) {
     let enabled = shared
         .lock()
-        .map(|guard| !guard.doc_id.is_empty())
+        .map(|guard| doc_templates::save_as_template_enabled(&guard.doc_id))
         .unwrap_or(false);
     let Some(menu) = app.menu() else {
         return;
