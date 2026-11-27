@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { link, mkdir, realpath, rm, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import { HrError, isInside, isInsideOrSelf, nodePatchDeps } from "@hreader/core";
+import { HrError, cutAtCodePoint, isInside, isInsideOrSelf, nodePatchDeps } from "@hreader/core";
 
 import { foldedOf } from "../errors";
 
@@ -104,7 +104,7 @@ export const assertInsideWorkspace = async (target: DocumentTarget): Promise<voi
 const PATH_MESSAGE_CHARS = 64;
 
 const tooLongMessageOf = (file: string): string =>
-  `路径过长：${file.slice(0, PATH_MESSAGE_CHARS)}…（共 ${String(file.length)} 字符）`;
+  `路径过长：${cutAtCodePoint(file, PATH_MESSAGE_CHARS)}…（共 ${String(file.length)} 字符）`;
 
 /**
  * Translate errnos into human wording + our codes: **only the call site knows "which file, which operation"** — the fallback mapping cannot see that context.
