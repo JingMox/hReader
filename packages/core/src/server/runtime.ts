@@ -44,7 +44,15 @@ interface RuntimeDeps {
 
 export interface Runtime {
   readonly remember: (docId: string) => Promise<ResolvedTarget>;
-  readonly noteWrite: (written: Written) => void;
+  /**
+   * `announcedBefore` is the marker dispatch captured when this write began: the
+   * last (realPath, revision) pair a doc.changed frame actually announced.
+   * The echo dedupe compares it against the live marker to tell "the watcher
+   * already broadcast this exact output inside the write window" from silent
+   * state.revision moves like remember()'s. Omitted means "nothing was
+   * announced when the write started" — publish normally.
+   */
+  readonly noteWrite: (written: Written, announcedBefore?: unknown) => void;
   readonly dispatch: (
     route: Route,
     params: Readonly<Record<string, string>>,
@@ -58,6 +66,13 @@ interface Watched {
   /** 缓存整份加载结果（含分档）：每次文件变更直接换，不为外来文档反复走 derive-抛错-吞掉的老路。 */
   load: DocumentLoad | undefined;
   revision: string | undefined;
+  /**
+   * The (realPath, revision) pair the last doc.changed frame announced — set
+   * only at the two hub.publish("doc.changed") sites, never by remember(),
+   * which moves `revision` silently. A fresh object per publish: comparing
+   * the marker by identity tells "a frame went out since the snapshot".
+   */
+  announced: { readonly realPath: string; readonly revision: string } | undefined;
 }
 
 const loadOfPath = async (deps: RuntimeDeps, target: ResolvedTarget): Promise<DocumentLoad> =>
@@ -86,6 +101,7 @@ const publishChanged = (input: PublishInput): void => {
   // 字节没变（mtime 抖动/格式化）才不发事件；"模型没差异"不等于"文件没变"（属性、无 id 的新节点）。
   if (revision === input.state.revision) return;
   input.state.revision = revision;
+  input.state.announced = { realPath: input.target.realPath, revision };
   input.hub.publish("doc.changed", {
     docId: input.target.relative,
     revision,
@@ -224,6 +240,8 @@ const dispatchOf =
       readonly remember: Runtime["remember"];
       readonly noteWrite: Runtime["noteWrite"];
       readonly hub: Hub;
+      /** The announce marker at the moment a write enters dispatch: the echo dedupe's window start. */
+      readonly announcedNow: () => Watched["announced"];
     },
     bodyMs: number,
   ) =>
@@ -276,8 +294,9 @@ const dispatchOf =
       const docId = paramOf(params, "docId", options.docId);
       return readReplyOf(context, route.kind, docId, runtime.remember);
     }
+    const announcedBefore = runtime.announcedNow();
     const written = await dispatchWrite(context, route, params, { req, bodyMs });
-    runtime.noteWrite(written);
+    runtime.noteWrite(written, announcedBefore);
     // A sidecar write never touches document bytes (changed:false → doc.changed stays
     // silent); annotation changes ride their own event — success broadcasts, failure says nothing.
     if (SIDECAR_WRITE_KINDS.has(route.kind)) {
@@ -296,14 +315,30 @@ interface NoteContext {
 
 const noteWriterOf =
   (context: NoteContext): Runtime["noteWrite"] =>
-  (written) => {
+  (written, announcedBefore) => {
     const { deps, hub, state, watcher } = context;
     if (!written.changed) return;
     // 写路由可能是这份文档的第一次接触：remember 没跑过就没有它的文件级挂载——
     // 盲窗 reconcile 心跳只跑在文件级挂载上，不补挂会在挂载盲窗里丢一次外部编辑。
     watcher.add(dirname(written.target.realPath), basename(written.target.realPath));
+    // Between patchFile's disk write and this call sits an async window: a queued fs
+    // event or the reconcile heartbeat can read the new bytes and let publishChanged
+    // announce the same revision first — republishing is the duplicate frame.
+    // The dedupe key is the last announced (realPath, revision) pair, not
+    // state.revision: remember() moves revision without publishing, and a write
+    // whose bytes never move revision (grants, trust) still has to broadcast.
+    // Skipping needs all three — an announcement exists, it went out inside this
+    // write's window (the marker changed since dispatch's snapshot), and it
+    // announced exactly this write's output.
+    const announced =
+      state.announced !== undefined &&
+      state.announced !== announcedBefore &&
+      state.announced.realPath === written.target.realPath &&
+      state.announced.revision === written.revision;
     state.active = written.target;
+    if (announced) return;
     state.revision = written.revision;
+    state.announced = { realPath: written.target.realPath, revision: written.revision };
     hub.publish("doc.changed", {
       docId: written.target.relative,
       revision: written.revision,
@@ -359,7 +394,12 @@ export const createRuntime = (
   deps: RuntimeDeps,
   hub: Hub,
 ): Runtime => {
-  const state: Watched = { active: undefined, load: undefined, revision: undefined };
+  const state: Watched = {
+    active: undefined,
+    load: undefined,
+    revision: undefined,
+    announced: undefined,
+  };
   const context: HandlerContext = {
     workspace: options.workspace,
     appDir: options.appDir ?? "",
@@ -387,7 +427,12 @@ export const createRuntime = (
   return {
     remember,
     noteWrite,
-    dispatch: dispatchOf(context, options, { remember, noteWrite, hub }, options.bodyMs),
+    dispatch: dispatchOf(
+      context,
+      options,
+      { remember, noteWrite, hub, announcedNow: () => state.announced },
+      options.bodyMs,
+    ),
     close: () => {
       watcher.close();
     },

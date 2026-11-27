@@ -1,7 +1,15 @@
 // 这层管：只能靠注入 deps 或内部入口打到的 server 分支——runtime 广播、daemon 早退、watcher、
 // limits 计时器、http-io 协议守卫、hub/event-ring 边界与各模块的可单测小部件。
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
@@ -22,13 +30,14 @@ import {
   removeDaemonOf,
   writeDaemonOf,
 } from "../../src/server/daemon";
-import { frameOf, frameTokenOf } from "../../src/server/event-ring";
+import { frameOf, frameTokenOf, type EventRing } from "../../src/server/event-ring";
 import {
   CONNECT_COMMENT,
   MAX_CLIENTS,
   RETRY_AFTER_MS,
   createHub,
   createServerHub,
+  type Hub,
 } from "../../src/server/hub";
 import {
   HttpFault,
@@ -45,13 +54,14 @@ import {
   matchRoute,
   statusOf,
 } from "../../src/server/index";
-import { REVISION_CHARS } from "../../src/server/revision";
+import { REVISION_CHARS, revisionOf } from "../../src/server/revision";
+import { createRuntime, type Runtime } from "../../src/server/runtime";
 import { ROUTES } from "../../src/server/routes";
 import { startServer } from "../../src/server/server";
 import { DEBOUNCE_MS, createWatcher } from "../../src/server/watcher";
 import type { WatchFn } from "../../src/server/watcher";
 import { nodeStyleDeps } from "../../src/style";
-import { disposeWatchers, responseLike, watcherLike } from "./casts";
+import { disposeWatchers, requestLike, responseLike, watcherLike } from "./casts";
 import { cookieOf, DOC, httpCall, openSse, rawExchange, withServer } from "./harness";
 
 const roots: string[] = [];
@@ -357,6 +367,162 @@ describe("watcher · 相邻改动不丢", () => {
       expect(changes).toEqual(["/ws/doc.html"]);
     } finally {
       watcher.close();
+    }
+  });
+});
+
+/**
+ * Runtime over the injected event source, with the hub's ring exposed for counting.
+ * The file-level emit is driven by hand, so the "echo read the new bytes before
+ * noteWrite ran" interleaving is replayed exactly instead of relying on load.
+ */
+const echoHarnessOf = (
+  workspace: string,
+  home: string,
+): {
+  readonly runtime: Runtime;
+  readonly hub: Hub;
+  readonly ring: EventRing;
+  readonly fire: (event: string, name: string | undefined) => void;
+} => {
+  let emitFile: ((event: string, name: string | undefined) => void) | undefined;
+  const watch: WatchFn = (_dir, emit, options) => {
+    if (!options.recursive) emitFile = emit;
+    return { close: () => undefined };
+  };
+  const ring = createEventRing(8);
+  const hub = createHub({ ring, heartbeatMs: 60_000 });
+  const runtime = createRuntime(
+    { workspace, docId: "doc.html", bodyMs: 1_000, home },
+    { patch: nodePatchDeps, style: nodeStyleDeps(workspace), watch },
+    hub,
+  );
+  return {
+    runtime,
+    hub,
+    ring,
+    fire: (event, name) => {
+      emitFile?.(event, name);
+    },
+  };
+};
+
+describe("runtime · self-write echo winning the noteWrite race", () => {
+  it("should not republish a revision the watcher path already announced", async () => {
+    const workspace = root("hr-echo-ws-");
+    const home = root("hr-echo-home-");
+    const file = join(workspace, "doc.html");
+    writeFileSync(file, DOC, "utf8");
+    const { runtime, hub, ring, fire } = echoHarnessOf(workspace, home);
+    try {
+      const target = await runtime.remember("doc.html");
+      // Between patchFile's disk write and noteWrite sits a real async window
+      // (history snapshot, unlock, reply framing). Under load a queued fs event
+      // or the reconcile heartbeat lands in it, reads the *new* bytes, and
+      // announces the revision before the write path can — replayed here by hand.
+      writeFileSync(file, DOC.replace("正文一", "回声一"), "utf8");
+      const revision = revisionOf(readFileSync(file));
+      fire("change", "doc.html");
+      const deadline = Date.now() + 3_000;
+      while (
+        !ring.since(0).events.some((event) => event.type === "doc.changed") &&
+        Date.now() < deadline
+      ) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 10);
+        });
+      }
+      // The echo must have published by now; only then is the race replayed.
+      expect(ring.since(0).events.some((event) => event.type === "doc.changed")).toBe(true);
+      // The write path completes — nothing was announced when this write began,
+      // so the second argument stays omitted; the window-bounded dedupe still sees
+      // that the watcher announced this exact output inside the window and skips.
+      runtime.noteWrite({
+        reply: { status: 200, headers: {}, body: "" },
+        target,
+        revision,
+        changed: true,
+        changedNodes: [],
+      });
+
+      expect(ring.since(0).events.filter((event) => event.type === "doc.changed")).toHaveLength(1);
+    } finally {
+      runtime.close();
+      hub.close();
+    }
+  });
+
+  it("should still publish when a changed write leaves the doc bytes untouched", async () => {
+    // Grant/trust writes report changed:true with the *unchanged* doc revision:
+    // the served document changed (CSP/grant), not the bytes. That republish is
+    // the only signal a client gets, so dedupe must not suppress it — without a
+    // watcher-side announce inside the window, same-revision still means "publish".
+    const workspace = root("hr-echo-ws-");
+    const home = root("hr-echo-home-");
+    const file = join(workspace, "doc.html");
+    writeFileSync(file, DOC, "utf8");
+    const { runtime, hub, ring } = echoHarnessOf(workspace, home);
+    try {
+      const target = await runtime.remember("doc.html");
+      const revision = revisionOf(readFileSync(file));
+      runtime.noteWrite({
+        reply: { status: 200, headers: {}, body: "" },
+        target,
+        revision,
+        changed: true,
+        changedNodes: [],
+      });
+
+      expect(ring.since(0).events.filter((event) => event.type === "doc.changed")).toHaveLength(1);
+    } finally {
+      runtime.close();
+      hub.close();
+    }
+  });
+
+  it("should emit exactly one doc.annotations and no doc.changed for a sidecar write racing an fs event", async () => {
+    // A sidecar write only touches .hreader/: doc bytes never move, so its Written
+    // is changed:false — the echo dedupe (revisionBefore) cannot reach it, and its
+    // broadcast is the unconditional doc.annotations dispatch publishes afterwards.
+    const workspace = root("hr-echo-ws-");
+    const home = root("hr-echo-home-");
+    const file = join(workspace, "doc.html");
+    writeFileSync(file, DOC, "utf8");
+    const { runtime, hub, ring, fire } = echoHarnessOf(workspace, home);
+    try {
+      await runtime.remember("doc.html");
+      const matched = matchRoute("POST", "/api/doc/doc.html/sidecar");
+      if (matched.kind !== "route") throw new Error("sidecar route did not match");
+      const body = JSON.stringify({
+        anchor: { exact: "正文一", prefix: "", suffix: "", start: 0 },
+        selector: "body > article:nth-of-type(1) > p:nth-of-type(1)",
+        note: "边注",
+      });
+      const req = requestLike({
+        on: (event: string, handler: (chunk?: Buffer) => void) => {
+          if (event === "data") handler(Buffer.from(body));
+          if (event === "end") handler();
+          return req;
+        },
+      });
+      const pending = runtime.dispatch(matched.route, matched.params, req);
+      // An fs event on the doc inside the write window reads unchanged bytes:
+      // the sha gate silences it, so neither path may emit doc.changed.
+      fire("change", "doc.html");
+      const reply = await pending;
+      // The echo's async read lands after the write too — drain one macrotask turn,
+      // then the verdict is structural: doc.changed needs a sha delta that never exists.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+
+      expect(reply.status).toBe(201);
+      const events = ring.since(0).events;
+      expect(events.filter((event) => event.type === "doc.annotations")).toHaveLength(1);
+      expect(events.filter((event) => event.type === "doc.changed")).toHaveLength(0);
+    } finally {
+      runtime.close();
+      hub.close();
     }
   });
 });
