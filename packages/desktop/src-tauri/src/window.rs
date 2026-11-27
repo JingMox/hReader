@@ -1040,8 +1040,9 @@ fn open_doc_in_workspace(app: tauri::AppHandle, shared: SharedState, doc: String
 
 fn safe_new_filename(raw: &str, workspace: &Path) -> String {
     let trimmed = raw.trim().replace(['/', '\\', '\0'], "-");
-    // 文件树按点开头跳过：剥掉前导点，否则 `.hidden` 这类名字建出来用户永远看不到。
-    let stem = trimmed.trim_start_matches('.');
+    // Strip leading dots and dashes: dot-prefixed names are invisible to the
+    // file tree, and a `-x` stem reaches the CLI as an unknown flag.
+    let stem = trimmed.trim_start_matches(['.', '-']);
     let stem = if stem.is_empty() {
         format!(
             "doc-{}",
