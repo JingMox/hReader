@@ -155,6 +155,22 @@ const AUDIT_REJECTS: readonly { readonly name: string; readonly body: string }[]
     name: "Node globals via globalThis (globalThis.require)",
     body: 'export const r = globalThis.require("fs");',
   },
+  {
+    name: 'Node globals via globalThis computed access (globalThis["process"])',
+    body: 'export const e = globalThis["process"].env;',
+  },
+  {
+    name: "Node globals via globalThis computed access with inner spaces (globalThis[ 'Buffer' ])",
+    body: "export const b = globalThis[ 'Buffer' ];",
+  },
+  {
+    name: "Node globals via globalThis computed access with a template literal (globalThis[`require`])",
+    body: "export const r = globalThis[`require`];",
+  },
+  {
+    name: 'Node globals via globalThis computed access with outer spaces (globalThis [ "process" ])',
+    body: 'export const e = globalThis [ "process" ].env;',
+  },
 ];
 
 for (const { name, body } of AUDIT_REJECTS) {
@@ -164,6 +180,36 @@ for (const { name, body } of AUDIT_REJECTS) {
       const { status, output } = sandbox.run();
       expect(status).toBe(1);
       expect(output).toContain("extra.js");
+    });
+  });
+}
+
+// The audit bans only the Node-global names through globalThis. Browser globals reached the
+// same way stay legal emits — console (log.ts logs through it) and document (allowed outside
+// the pure layer, whose eslint ban is file-scoped) — and a bare "globalThis" mention in
+// unrelated text is not an access at all.
+const AUDIT_ALLOWS: readonly { readonly name: string; readonly body: string }[] = [
+  {
+    name: 'globalThis["console"]',
+    body: 'export const c = globalThis["console"].error;',
+  },
+  {
+    name: 'globalThis["document"]',
+    body: 'export const d = globalThis["document"].title;',
+  },
+  {
+    name: 'a bare "globalThis" string literal',
+    body: 'export const s = "globalThis";',
+  },
+];
+
+for (const { name, body } of AUDIT_ALLOWS) {
+  describe(`build-static · emitted bundle audit allows ${name}`, () => {
+    it("should not fail", () => {
+      const sandbox = sandboxOf({ "version.js": TSC_VERSION_EMIT, "extra.js": body });
+      const { status, output } = sandbox.run();
+      expect(output.trim()).toBe("");
+      expect(status).toBe(0);
     });
   });
 }

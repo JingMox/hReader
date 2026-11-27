@@ -2,7 +2,8 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignore": [
     "docs/**",
-    "packages/desktop/src-tauri/resources/**",
+    "packages/desktop/src-tauri/resources/app/**",
+    "packages/desktop/src-tauri/resources/cli/**",
     "packages/desktop/src-tauri/target/**"
   ],
   "vitest": {

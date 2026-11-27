@@ -52,6 +52,22 @@ await writeFile(
 const BARE_BUILTINS = builtinModules.filter((name) => !name.startsWith("node:"));
 const BUILTIN_GROUP = BARE_BUILTINS.join("|");
 
+// Same list as eslint's no-restricted-properties for packages/app/src: the Node globals that
+// must never be reached through globalThis. Member access (globalThis.<name>) and computed
+// access (globalThis["<name>"]) share this one list so the two forms cannot drift apart.
+const NODE_GLOBAL_GROUP = [
+  "process",
+  "Buffer",
+  "__dirname",
+  "__filename",
+  "global",
+  "require",
+  "module",
+  "exports",
+  "setImmediate",
+  "clearImmediate",
+].join("|");
+
 const FORBIDDEN = [
   { label: 'ESM builtin import (from "node:…")', re: /\bfrom\s*["']node:/ },
   { label: 'bare builtin import (import "node:…")', re: /\bimport\s*["']node:/ },
@@ -83,10 +99,14 @@ const FORBIDDEN = [
     re: /\bimport\.meta\.resolve\b/,
   },
   {
-    // Same list as eslint's no-restricted-globals for packages/app/src, reached through
-    // globalThis: member access carries no bare identifier, so it dodges the globals ban.
-    label: "Node globals via globalThis (globalThis.<node global>)",
-    re: /\bglobalThis\.(process|Buffer|__dirname|__filename|global|require|module|exports|setImmediate|clearImmediate)\b/,
+    // Reached through globalThis, a banned global carries no bare restricted identifier, so
+    // it dodges the source-level globals ban. Both access forms are audited: member access
+    // (globalThis.<name>) and computed access — globalThis["<name>"], single/double quotes or
+    // a template literal, optional whitespace around the brackets.
+    label: 'Node globals via globalThis (globalThis.<node global> or globalThis["<node global>"])',
+    re: new RegExp(
+      `\\bglobalThis\\s*(?:\\.\\s*(?:${NODE_GLOBAL_GROUP})\\b|\\[\\s*["'\`](?:${NODE_GLOBAL_GROUP})["'\`]\\s*\\])`,
+    ),
   },
 ];
 
