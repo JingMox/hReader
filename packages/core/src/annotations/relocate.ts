@@ -12,6 +12,7 @@ import { classifyDocument } from "../model/classify";
 import type { DocumentModel } from "../model/constants";
 import { toDocumentModel } from "../model/derive";
 import { matchAnchorInText, type AnchorFailure, type AnchorResult } from "./anchor";
+import { bodyTextOf } from "./body-text";
 import type { TextAnchor } from "./model";
 import { elementsOf } from "./meta-insert";
 import type { SidecarAnnotation } from "./sidecar-model";
@@ -264,12 +265,11 @@ export const docRelocatorOf = (
   const managed = classifyDocument(parsed).cls === "managed";
   const model = managed ? toDocumentModel(parsed) : undefined;
   const elements = elementsOf(parsed.root);
-  const body = elements.find((element) => element.tag === "body");
   const view: DocView = {
     root: parsed.root,
     elements,
     model,
-    bodyText: textContentOf(body ?? parsed.root),
+    bodyText: bodyTextOf(parsed),
   };
   return (annotation) => relocate(view, annotation);
 };
