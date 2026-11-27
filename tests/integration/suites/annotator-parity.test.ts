@@ -163,32 +163,30 @@ const leaf = fc.oneof(
   entity,
   comment,
   fc.constantFrom("br", "hr", "wbr").map((tag) => `<${tag}>`),
+  // Unbalanced noscript on purpose — stray closer and unclosed opener: the
+  // annotate frame always runs scripting-on, so both sides must treat noscript
+  // as raw text ending at the first `</noscript>` (D54).
+  fc.constantFrom("</noscript>", "<noscript>"),
 );
 
-const node = (depth: number, inNoscript = false): fc.Arbitrary<string> => {
+const node = (depth: number): fc.Arbitrary<string> => {
   if (depth <= 0) return leaf;
   const element = fc
     .tuple(
       fc.constantFrom(...SAFE_TAGS),
       attr,
-      fc.array(node(depth - 1, inNoscript), { minLength: 0, maxLength: 4 }),
+      fc.array(node(depth - 1), { minLength: 0, maxLength: 4 }),
     )
     .map(([tag, at, kids]) => `<${tag}${at}>${kids.join("")}</${tag}>`);
   // Skipped subtrees carry both raw code (script/style) and inert markup
-  // (template/noscript): nothing inside may enter the domain.
-  // `noscript` descendants are banned INSIDE a noscript: scripting-on parses it
-  // as raw text that ends at the first `</noscript>`, while core parses with
-  // `scriptingEnabled: false` and nests it as markup — that one construct is a
-  // genuine spec-level divergence between the annotate frame and core.
-  const skipTags = inNoscript ? SKIP_TAGS.filter((tag) => tag !== "noscript") : SKIP_TAGS;
-  const skipped = fc.tuple(fc.constantFrom(...skipTags), attr).chain(([tag, at]) => {
-    // Inside a noscript the raw-text view must never see `</noscript>`:
-    // markup children switch to the noscript-free subtree generator.
-    const kids = tag === "noscript" ? node(depth - 1, true) : node(depth - 1, inNoscript);
+  // (template/noscript): nothing inside may enter the domain. Nested noscript
+  // is generated on purpose — core parses the annotation domain scripting-on,
+  // so both sides must agree where the early `</noscript>` cuts the subtree.
+  const skipped = fc.tuple(fc.constantFrom(...SKIP_TAGS), attr).chain(([tag, at]) => {
     return fc
       .oneof(
         safeCode,
-        fc.array(kids, { minLength: 0, maxLength: 3 }).map((xs) => xs.join("")),
+        fc.array(node(depth - 1), { minLength: 0, maxLength: 3 }).map((xs) => xs.join("")),
       )
       .map((inner) => `<${tag}${at}>${inner}</${tag}>`);
   });
@@ -330,6 +328,13 @@ describe.skipIf(skip !== undefined)("annotator-parity", () => {
       `<ul><li>one<li>two<li>three</ul>`,
       `<div><template><p>inert</p></template><span>live</span></div>`,
       `<noscript><p>noscript markup</p></noscript><p>out</p>`,
+      // Nested/unbalanced noscript — D54: both sides read the scripting-on
+      // tree (raw text ending at the first `</noscript>`).
+      `<noscript>a<noscript>b</noscript>c</noscript><p>tail</p>`,
+      `<noscript><p>x</noscript>rest<p>tail</p>`,
+      `<noscript>unclosed<p>rest`,
+      `<p>one</p></noscript><p>two</p>`,
+      `<noscript>a</noscript>mid<noscript>b<noscript>c</noscript>d</noscript>tail`,
       `<style>p { color: red; }</style><p>styled</p>`,
       `<script>var x = "</p" + ">";</script><p>after</p>`,
       `<select><option>opt a<option>opt b</select><p>tail</p>`,
