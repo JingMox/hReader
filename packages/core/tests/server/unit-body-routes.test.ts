@@ -164,8 +164,16 @@ describe("matchRoute · 批注与撤销", () => {
     });
   });
 
-  it("should freeze the table at 24 entries (23 + the /f/ capability route)", () => {
-    expect(ROUTES).toHaveLength(24);
+  it("should match the annotate mint route beside trust", () => {
+    expect(matchRoute("POST", "/api/doc/a.html/annotate")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html" },
+      route: { kind: "docAnnotate", auth: "cookie+csrf" },
+    });
+  });
+
+  it("should freeze the table at 25 entries (24 + the /f/ capability route)", () => {
+    expect(ROUTES).toHaveLength(25);
     expect(matchRoute("GET", "/api/doc/a.html/info")).toMatchObject({
       kind: "route",
       params: { docId: "a.html" },

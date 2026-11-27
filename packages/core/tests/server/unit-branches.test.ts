@@ -1159,8 +1159,8 @@ describe("门面 · 可单测部件仍可用", () => {
     const wrong = matchRoute("POST", "/api/events");
     expect(wrong.kind).toBe("method");
 
-    // 路由表已从 9 条涨到 24 条（静态入口 + 批注/撤销 + doc info + trust/normalize + 三个权限路由 + /f/）。
-    expect(ROUTES).toHaveLength(24);
+    // 路由表已从 9 条涨到 25 条（静态入口 + 批注/撤销 + doc info + trust/annotate/normalize + 三个权限路由 + /f/）。
+    expect(ROUTES).toHaveLength(25);
     expect(statusOf("locked")).toBe(409);
     expect(statusOf("too_many_clients")).toBe(429);
     expect(statusOf("path_outside_workspace")).toBe(403);

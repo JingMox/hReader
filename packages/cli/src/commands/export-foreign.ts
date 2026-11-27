@@ -13,6 +13,7 @@ import { basename, dirname, join, relative } from "node:path";
 
 import {
   classifyDocument,
+  createAnnotateTokenBook,
   createCapabilityBook,
   decodeParams,
   docAssetReply,
@@ -185,6 +186,10 @@ export const foreignPlanOf = async (
     deps: readOnlyDeps,
     styleDeps: nodeStyleDeps(input.workspace),
     caps: createCapabilityBook(),
+    // No mint route exists on the export origin, so the book stays empty —
+    // `?annotate=` on a /f/ URL consumes nothing and falls back to the plain doc,
+    // the same answer the reader's server gives an invalid token.
+    annotateTokens: createAnnotateTokenBook(readOnlyDeps.clock),
   };
   // Same stores the server's documentServeOf resolves — one read per export;
   // documentServeOf re-reads them when it stamps the doc's CSP, keeping the

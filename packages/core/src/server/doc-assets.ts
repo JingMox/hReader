@@ -6,8 +6,9 @@ import { extname, join, relative, sep } from "node:path";
 
 import { isInside } from "../io/paths";
 import type { FileStat } from "../io/ports";
+import { ANNOTATOR_NAME } from "./annotate";
 import type { Reply } from "./contracts";
-import { documentServeOf, type HandlerContext } from "./handlers";
+import { documentServeOf, type AnnotateRequest, type HandlerContext } from "./handlers";
 
 /**
  * D9's extension whitelist — the only resource kinds a page may pull from its
@@ -95,6 +96,26 @@ const withCors = (reply: Reply): Reply => ({
 });
 
 /**
+ * `/f/<cap>/__hr_annotator.js` 是保留名：赢过文档目录里的同名真文件（注入标签只信服务端
+ * 自己的副本，文件树里放什么是文档说了算）。字节来自 `<appDir>/annotator.js`；
+ * 与这条路由其它失败同口径——读不到就是 404，不做存在性区分。
+ */
+const annotatorReply = async (ctx: HandlerContext): Promise<Reply> => {
+  if (ctx.appDir === "") return notFound();
+  let bytes: Uint8Array;
+  try {
+    bytes = await ctx.deps.fs.readFile(join(ctx.appDir, "annotator.js"));
+  } catch {
+    return notFound();
+  }
+  return {
+    status: 200,
+    headers: { ...BASE_HEADERS, "content-type": "text/javascript; charset=utf-8" },
+    body: bytes,
+  };
+};
+
+/**
  * `/f/` path grammar: no empty segment (so `//` and a trailing slash die), no
  * dot-leading segment at all — one rule covers `.`, `..`, `.hreader/` and every
  * dotfile — no NUL and no backslash, bounded length. `..` can therefore never
@@ -116,14 +137,30 @@ export const docAssetReply = async (
   ctx: HandlerContext,
   cap: string,
   rawPath: string,
+  annotate?: string,
 ): Promise<Reply> => {
   const grant = ctx.caps.lookup(cap);
   if (grant === undefined) return notFound();
+  // The reserved name first: it must win over a real file of the same name in
+  // the doc directory (and it can never equal an .html docName).
+  if (rawPath === ANNOTATOR_NAME) return annotatorReply(ctx);
   // The one HTML exception: the document this cap was minted for, by exact
   // basename. It keeps the permission-matrix headers (CSP + sandbox), plus
-  // this route's CORS.
-  if (rawPath === grant.docName) return withCors((await documentServeOf(ctx, grant.doc)).reply);
+  // this route's CORS. `annotate` is only consulted on this branch — every
+  // other asset path ignores the parameter entirely.
+  if (rawPath === grant.docName) {
+    // Stryker disable ConditionalExpression: annotate 缺省时硬造 request 也只给
+    // consume 送一个 undefined token——簿里查无此人，回落同形，等价。
+    const request: AnnotateRequest | undefined =
+      annotate === undefined
+        ? undefined
+        : { cap: grant.cap, docName: grant.docName, token: annotate };
+    // Stryker restore ConditionalExpression
+    return withCors((await documentServeOf(ctx, grant.doc, request)).reply);
+  }
   const segments = segmentsOf(rawPath);
+  // Stryker disable next-line ConditionalExpression: segments===undefined 时下一行的
+  // `...segments` 展开必抛 TypeError，而它就落在 realpath 的 try 里——catch 同收 404，等价。
   if (segments === undefined || typeOf(rawPath) === undefined) return notFound();
   let real: string;
   try {
@@ -133,6 +170,8 @@ export const docAssetReply = async (
     // an unresolvable path can never prove it is in scope.
     return notFound();
   }
+  // Stryker disable next-line ConditionalExpression: 越界的 real 必让 relative 产 `..` 前缀，
+  // 下一道 segmentsOf(rel) 语法重判照样 404——这关与重判严格同义，守住的是可读性不是新口径。
   if (!isInside(grant.dir, real)) return notFound();
   // Re-run the verdict on the *resolved* name: a symlink may point at a name
   // that fails the grammar (dot segment) or the whitelist (.html).

@@ -13,6 +13,7 @@ import {
 import { optionalString, parseBody, requiredString } from "./body";
 import { HrError } from "../hr-error";
 import {
+  annotateReply,
   annotationReply,
   docPermissionsReply,
   LOCK_WAIT_MS,
@@ -60,6 +61,7 @@ const writeReplyOf = (
   }
   if (route.kind === "undo") return undoReply(context, ids.docId, LOCK_WAIT_MS);
   if (route.kind === "docTrust") return trustReply(context, ids.docId, body, LOCK_WAIT_MS);
+  if (route.kind === "docAnnotate") return annotateReply(context, ids.docId);
   if (route.kind === "docPermissions") {
     return docPermissionsReply(context, ids.docId, body, LOCK_WAIT_MS);
   }

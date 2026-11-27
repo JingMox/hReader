@@ -57,6 +57,7 @@ const PUBLIC = [
   "checkLayout",
   "classifyDocument",
   "compileTone",
+  "createAnnotateTokenBook",
   "createCapabilityBook",
   "createFromTemplate",
   "cutAtCodePoint",

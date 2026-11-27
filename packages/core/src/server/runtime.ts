@@ -10,6 +10,7 @@ import type { PatchDeps } from "../io/ports";
 import { loadDocument } from "../model/load";
 import type { DocumentLoad } from "../model/load";
 import type { StyleDeps } from "../style";
+import { createAnnotateTokenBook } from "./annotate";
 import { createCapabilityBook } from "./capability";
 import type { Reply } from "./contracts";
 import { diffNodes } from "./diff-nodes";
@@ -230,7 +231,18 @@ const dispatchOf =
     }
     // `/f/` 与 docId 体系无关：cap 是唯一凭证，目录从能力簿里查。
     if (route.kind === "docAsset") {
-      return docAssetReply(context, paramOf(params, "cap", ""), paramOf(params, "path", ""));
+      // `req.url` 缺失只可能来自手搓的请求对象：与静态路由同口径，给一条能测的 400。
+      if (req.url === undefined) {
+        return jsonOf(400, { code: "invalid_request", message: "请求行缺少 URL" });
+      }
+      // `annotate` 令牌躺在 query 里：只有文档例外分支会消费它，别的资产路径直接忽略。
+      const annotate = new URL(req.url, "http://local").searchParams.get("annotate") ?? undefined;
+      return docAssetReply(
+        context,
+        paramOf(params, "cap", ""),
+        paramOf(params, "path", ""),
+        annotate,
+      );
     }
     if (isStaticKind(route.kind)) {
       // `req.url` 在 HTTP/1.1 的 origin-form 请求里恒有值；缺失只可能来自“手搓的请求对象”，
@@ -339,6 +351,8 @@ export const createRuntime = (
     styleDeps: deps.style,
     // Per-runtime secret: a restart mints a fresh key and every old cap dies.
     caps: createCapabilityBook(),
+    // Same lifetime rule for annotate tokens: injected clock, per-runtime book.
+    annotateTokens: createAnnotateTokenBook(deps.patch.clock),
   };
   const watcher = watchOf(deps, hub, state, options.workspace);
   // 被服务的文档启动时就挂文件级监听，不等第一个 HTTP 触碰：挂载→ready 的盲窗里，

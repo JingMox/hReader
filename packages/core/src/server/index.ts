@@ -12,5 +12,7 @@ export { createWatcher } from "./watcher";
 export { daemonFileOf } from "./daemon";
 export { createCapabilityBook } from "./capability";
 export type { CapabilityBook } from "./capability";
+export { createAnnotateTokenBook } from "./annotate";
+export type { AnnotateTokenBook } from "./annotate";
 export { docAssetReply } from "./doc-assets";
 export type { HandlerContext } from "./handlers";
