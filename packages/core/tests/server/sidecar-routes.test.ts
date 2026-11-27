@@ -141,6 +141,7 @@ interface WireEntry {
   readonly relocation: WireRelocationOk | WireRelocationLost;
   readonly status: string;
   readonly replies: readonly unknown[];
+  readonly resolutionNote?: string;
 }
 
 interface WireList {
@@ -301,6 +302,61 @@ describe("sidecar routes · add basis", () => {
       expect(response.status).toBe(400);
       expect(response.body).toContain("invalid_payload");
       expect(existsSync(sidecarPathOf(ctx, "doc.html"))).toBe(false);
+    }, classSeed);
+  });
+});
+
+describe("sidecar routes · docId in body", () => {
+  it("should accept a docId that agrees with the path on every write", async () => {
+    await withServer(async (ctx) => {
+      const added = await postSidecar(ctx, "doc.html", "", {
+        docId: "doc.html",
+        ...addBody("正文一", CLASSES[0]?.selector),
+      });
+      expect(added.status).toBe(201);
+      const id = (jsonBodyOf(added) as { id: string }).id;
+
+      for (const op of ["resolve", "reopen", "delete"]) {
+        const response = await postSidecar(ctx, "doc.html", `/${id}/${op}`, {
+          docId: "doc.html",
+        });
+        expect(response.status).toBe(200);
+      }
+      const reply = await postSidecar(ctx, "doc.html", "", addBody("正文二", CLASSES[0]?.selector));
+      const replyId = (jsonBodyOf(reply) as { id: string }).id;
+      const replied = await postSidecar(ctx, "doc.html", `/${replyId}/reply`, {
+        docId: "doc.html",
+        note: "hi",
+      });
+      expect(replied.status).toBe(200);
+    }, classSeed);
+  });
+
+  it("should answer 400 invalid_payload when body.docId disagrees with the path", async () => {
+    await withServer(async (ctx) => {
+      const response = await postSidecar(ctx, "doc.html", "", {
+        docId: "other.html",
+        ...addBody("正文一", CLASSES[0]?.selector),
+      });
+      expect(response.status).toBe(400);
+      expect(response.body).toContain("invalid_payload");
+      expect(existsSync(sidecarPathOf(ctx, "doc.html"))).toBe(false);
+    }, classSeed);
+  });
+
+  it("should carry resolutionNote through resolve into the record and the merged list", async () => {
+    await withServer(async (ctx) => {
+      const added = await postSidecar(ctx, "doc.html", "", addBody("正文一", CLASSES[0]?.selector));
+      const id = (jsonBodyOf(added) as { id: string }).id;
+
+      const resolved = await postSidecar(ctx, "doc.html", `/${id}/resolve`, {
+        resolutionNote: "完结",
+      });
+      expect(resolved.status).toBe(200);
+      expect(jsonBodyOf(resolved)).toMatchObject({ resolutionNote: "完结" });
+
+      const listed = jsonBodyOf(await getSidecar(ctx, "doc.html")) as WireList;
+      expect(listed.annotations[0]).toMatchObject({ id, resolutionNote: "完结" });
     }, classSeed);
   });
 });
