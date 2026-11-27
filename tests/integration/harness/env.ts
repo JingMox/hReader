@@ -1,4 +1,6 @@
-// 这层管：跨包集成测试共享的环境事实（仓内产物路径、临时工作区、轮询等待）；不碰业务逻辑。
+// This layer owns: environment facts shared by the cross-package integration
+// tests (in-repo artifact paths, temp workspaces, polling waits); no business
+// logic.
 
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -6,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** 仓根：`tests/integration/harness/env.ts` 往上三层。 */
+/** Repo root: three levels up from `tests/integration/harness/env.ts`. */
 export const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
 export const CLI_BIN = join(REPO_ROOT, "packages/cli/dist/cli.mjs");
@@ -29,11 +31,11 @@ export const chromePath = (): string | undefined =>
 
 export const chromeSkipReason = (): string | undefined => {
   if (process.env["HREADER_SKIP_CHROME"] === "1") return "HREADER_SKIP_CHROME=1";
-  return chromePath() === undefined ? "找不到 Chrome/Edge/Chromium" : undefined;
+  return chromePath() === undefined ? "no Chrome/Edge/Chromium found" : undefined;
 };
 
 export interface TestHome {
-  /** 一次性沙箱根：`ws` 是文档工作区，`home` 给 `hr serve --home`（daemon.json 隔离）。 */
+  /** One-shot sandbox root: `ws` is the document workspace, `home` goes to `hr serve --home` (daemon.json isolation). */
   readonly root: string;
   readonly ws: string;
   readonly home: string;
@@ -42,7 +44,7 @@ export interface TestHome {
 
 const live: string[] = [];
 
-/** 每个用例各拿各的沙箱：测试之间（以及和并行 agent）靠路径隔离，不靠端口协调。 */
+/** Each case gets its own sandbox: tests (and parallel agents) isolate by path, not by port coordination. */
 export const sandbox = (name: string): TestHome => {
   const root = mkdtempSync(join(tmpdir(), `hr-it-${name}-`));
   const ws = join(root, "ws");
@@ -68,8 +70,9 @@ export const sha256File = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
 /**
- * 轮询真条件而不是定时器：事件类断言（SSE 刷新、watcher、daemon 收尾）一律 `until`，
- * 断言才不和"等多久"耦合。返回最后一次采到的值。
+ * Poll a real condition instead of a timer: event-based assertions (SSE
+ * refresh, watcher, daemon teardown) all go through `until`, so assertions
+ * stay decoupled from "how long to wait". Returns the last sampled value.
  */
 export const until = async <T>(
   sample: () => Promise<T> | T,

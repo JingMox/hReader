@@ -1,5 +1,6 @@
-// 旅程 7（桌面壳冒烟）：debug 二进制 --smoke 无界面路径跑通 启动 daemon → 打开文档 → 退出；
-// 结束时断言没有孤儿 hr serve 进程残留。
+// Journey 7 (desktop shell smoke): the debug binary's --smoke headless path
+// runs start daemon → open document → exit; at the end it asserts no orphan
+// hr serve processes remain.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -14,7 +15,7 @@ import { killAllTracked, pidAlive, run } from "../harness/proc.ts";
 
 const skip = existsSync(DESKTOP_DEBUG_BIN)
   ? undefined
-  : `未构建桌面 debug 二进制：${DESKTOP_DEBUG_BIN}`;
+  : `desktop debug binary not built: ${DESKTOP_DEBUG_BIN}`;
 
 describe.skipIf(skip !== undefined)("desktop-smoke", () => {
   let home: TestHome;
@@ -64,30 +65,30 @@ describe.skipIf(skip !== undefined)("desktop-smoke", () => {
   afterAll(async () => {
     await killAllTracked();
     for (const pid of daemonPids()) {
-      assert(!pidAlive(pid), `孤儿 hr serve 进程残留：pid=${String(pid)}`);
+      assert(!pidAlive(pid), `orphan hr serve process remains: pid=${String(pid)}`);
     }
     home.cleanup();
   });
 
-  test("--smoke 无界面路径跑通且输出一行 JSON", async () => {
+  test("should run the --smoke headless path and emit one JSON line", async () => {
     const res = await smoke();
     assertEq(
       res.code,
       0,
-      `desktop --smoke 退出码（stdout: ${res.stdout.slice(0, 300)} stderr: ${res.stderr.slice(0, 300)}）`,
+      `desktop --smoke exit code (stdout: ${res.stdout.slice(0, 300)} stderr: ${res.stderr.slice(0, 300)})`,
     );
     const jsonLine = res.stdout
       .trim()
       .split("\n")
       .find((l) => l.trim().startsWith("{"));
-    assert(jsonLine !== undefined, `--smoke stdout 没有 JSON 行：${res.stdout.slice(0, 300)}`);
+    assert(jsonLine !== undefined, `--smoke stdout has no JSON line: ${res.stdout.slice(0, 300)}`);
   });
 
-  test("--smoke 退出后无孤儿 hr serve 进程", async () => {
+  test("should leave no orphan hr serve processes after --smoke exits", async () => {
     const res = await smoke();
-    assertEq(res.code, 0, "desktop --smoke 退出码");
+    assertEq(res.code, 0, "desktop --smoke exit code");
     for (const pid of daemonPids()) {
-      assert(!pidAlive(pid), `smoke 退出后 daemon 进程仍活：pid=${String(pid)}`);
+      assert(!pidAlive(pid), `daemon process still alive after smoke exit: pid=${String(pid)}`);
     }
   });
 });

@@ -1,5 +1,7 @@
-// 旅程 3（演示模式）：`hr new --kind slides` 原生 slides 文档 → 键盘翻页 + 逐步显示 →
-// 演示中 MCP 改当前页 / 删当前页 → #p=N 刷新回原页 → 退出后状态全部清理。
+// Journey 3 (presentation mode): an `hr new --kind slides` native slides
+// document → keyboard paging + step reveals → MCP edits the current slide /
+// deletes the current slide mid-presentation → a #p=N reload returns to the
+// same page → all state is cleaned up on exit.
 
 import { afterAll, beforeAll, describe, test } from "vitest";
 
@@ -20,12 +22,12 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
   let browser: Browser;
   let page: Page;
   let mcp: McpClient;
-  /** slides 骨架的 section 级 nodeId（MCP outline 顶层节点）。 */
+  /** The section-level nodeIds of the slides skeleton (MCP outline's top-level nodes). */
   let slideIds: string[] = [];
 
   const evalJs = (expr: string): Promise<unknown> => page.eval(expr);
 
-  /** 演示态快照：页码 hash、已放出步进数、是否已到末页且无步进可放（此时翻页键是合法 no-op）。 */
+  /** Presentation-state snapshot: the page hash, how many steps are already revealed, and whether we're on the last slide with no steps left (where the page key is a legal no-op). */
   const PRESENT_SNAPSHOT = `(() => {
     const slides = [...document.querySelectorAll('[data-hr-slide-state]')];
     const idx = slides.findIndex((el) => el.getAttribute('data-hr-slide-state') === 'current');
@@ -37,14 +39,14 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
     };
   })()`;
 
-  /** 一按的真实效果：页码变了，或步进又多放出一条——断言锚 DOM 状态，不锚按键间隔。 */
+  /** One press's real effect: the page hash changed, or one more step got revealed — assertions anchor on DOM state, not on press timing. */
   const pressEffectOf = (prev: unknown): string => `(() => {
     const prev = ${JSON.stringify(prev)};
     return location.hash !== prev.hash ||
       document.querySelectorAll('[data-hr-step-state="current"],[data-hr-step-state="past"]').length > prev.shownSteps;
   })()`;
 
-  /** 按一次并等它落 DOM：末页无步进时翻页是 no-op，其余情况必须看到效果才算送达。 */
+  /** Press once and wait for it to land in the DOM: paging is a no-op on the last slide with no steps left; everywhere else the effect must be seen to count as delivered. */
   const pressAndSettle = async (key: keyof typeof KEYS): Promise<void> => {
     const prev = await evalJs(PRESENT_SNAPSHOT);
     await press(page, key);
@@ -55,13 +57,13 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
       Reflect.get(prev, "futureSteps") === 0;
     if (noop) return;
     const landed = await page.wait(pressEffectOf(prev), 8_000);
-    assert(landed === true, `${key} 按键没有落出任何 DOM 变化`);
+    assert(landed === true, `the ${key} press produced no DOM change`);
   };
 
   const slideNodeIds = async (): Promise<string[]> => {
     const outline = toolJson(await mcp.call("hr_outline", { filePath: DOC }), "hr_outline");
     const nodes = outline["nodes"];
-    assert(Array.isArray(nodes) && nodes.length > 0, "slides 大纲为空");
+    assert(Array.isArray(nodes) && nodes.length > 0, "slides outline is empty");
     const list = nodes as readonly unknown[];
     return list
       .map((node: unknown): unknown =>
@@ -88,65 +90,70 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
     home.cleanup();
   });
 
-  test("进入演示：#hr-present-btn 可见，点击后 #hr-root 落 data-hr-present + #p= hash", async () => {
+  test("should show #hr-present-btn and land data-hr-present + a #p= hash on #hr-root after entering presentation", async () => {
     const ready = await page.wait(`document.querySelector('#hr-doc [data-hr-id]') !== null`);
-    assert(ready === true, "slides 文档没渲染");
-    // slides 文档的演示按钮应取消 hidden。
+    assert(ready === true, "the slides document did not render");
+    // A slides document's present button should have hidden removed.
     const btn = await page.wait(
       `(() => { const b = document.querySelector('#hr-present-btn'); return b && !b.hasAttribute('hidden') && !b.hidden; })()`,
     );
-    assert(btn === true, "slides 文档的 #hr-present-btn 没出现");
+    assert(btn === true, "the slides document's #hr-present-btn did not appear");
     await evalJs(`document.querySelector('#hr-present-btn').click()`);
     const on = await page.wait(
       `document.querySelector('#hr-root').hasAttribute('data-hr-present') && location.hash.startsWith('#p=')`,
     );
-    assert(on === true, "进入演示后没有 data-hr-present / #p= 标记");
+    assert(on === true, "no data-hr-present / #p= marker after entering presentation");
   });
 
-  test("键盘翻页：ArrowRight 先放步进（data-hr-step-state）再翻到 p=2", async () => {
-    // 第一页有 data-hr-step 元素：第一次 ArrowRight 应揭步进而非翻页。
+  test("should reveal steps on ArrowRight (data-hr-step-state) before paging to p=2", async () => {
+    // The first slide has data-hr-step elements: the first ArrowRight should
+    // reveal a step rather than turn the page.
     const stepped = await press(page, "ArrowRight").then(() =>
       page.wait(
         `document.querySelector('[data-hr-step-state="shown"],[data-hr-step-state="current"],[data-hr-step-state="past"]') !== null || location.hash.startsWith('#p=2')`,
         8_000,
       ),
     );
-    assert(stepped === true, "ArrowRight 后步进/页码都没动");
-    // 步进放完后继续按：每一按等效果落 DOM 再按下一按（按键间不靠固定毫秒，
-    // 负载下"上一按还没处理又补一按"会把页翻过头）。
+    assert(stepped === true, "neither the steps nor the page moved after ArrowRight");
+    // Keep pressing once the steps are done: each press waits for its effect
+    // in the DOM before the next (no fixed millisecond gaps between presses —
+    // under load "the previous press hasn't been handled and another arrives"
+    // turns the page too far).
     for (let i = 0; i < 12; i += 1) {
       if (String(await evalJs(`location.hash`)) === "#p=2") break;
       await pressAndSettle("ArrowRight");
     }
     const hash = String(await evalJs(`location.hash`));
-    assert(hash === "#p=2", `步进放完后没翻到第 2 页（hash=${hash}）`);
+    assert(hash === "#p=2", `did not reach slide 2 after the steps ran out (hash=${hash})`);
     const slideState = await evalJs(
       `document.querySelector('[data-hr-slide-state="current"]') !== null`,
     );
-    assert(slideState === true, "第 2 页没有 data-hr-slide-state=current 标记");
+    assert(slideState === true, "slide 2 has no data-hr-slide-state=current marker");
   });
 
-  test("演示中 MCP patch 当前页，DOM 实时更新", async () => {
+  test("should reflect an MCP patch of the current slide in the DOM live during presentation", async () => {
     const target = slideIds[Math.min(1, slideIds.length - 1)];
-    assert(target !== undefined, "slides 大纲没有可 patch 的页");
+    assert(target !== undefined, "the slides outline has no slide to patch");
     const patched = await mcp.call("hr_patch_node", {
       filePath: DOC,
       nodeId: target,
       action: "replace",
       htmlContent: `<section data-hr-id="${target}"><h2>演示中已改</h2><p>LIVE-PATCH</p></section>`,
     });
-    assert(!patched.isError, `演示中 patch 报错：${patched.text}`);
+    assert(!patched.isError, `mid-presentation patch errored: ${patched.text}`);
     const seen = await page.wait(`document.body.textContent.includes('LIVE-PATCH')`);
-    assert(seen === true, "演示中 patch 没有实时反映到幻灯片 DOM");
+    assert(seen === true, "the mid-presentation patch did not reach the slides DOM live");
   });
 
-  test("#p=N 刷新后回到原页", async () => {
-    // 等这一按的效果落 DOM 再抓 before：否则 reload 会抢在按键处理前，
-    // 晚到的翻页把 hash 改掉，刷新后永远等不回旧值。
+  test("should return to the same slide after a #p=N reload", async () => {
+    // Wait for this press's effect to land in the DOM before grabbing `before`:
+    // otherwise reload beats the keypress handling, a late page-turn changes
+    // the hash, and the post-reload wait can never see the old value again.
     await pressAndSettle("ArrowRight");
     const before = String(await evalJs(`location.hash`));
     if (!/^#p=\d+$/u.test(before)) {
-      // 演示态的 hash 可能被清成别的锚点；只要还在演示态就继续测刷新恢复。
+      // The presentation hash may have been cleared to another anchor; as long
+      // as we're still in presentation, keep testing reload recovery.
       return;
     }
     await page.reload();
@@ -159,30 +166,30 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
     );
     assert(
       restored === true,
-      `刷新后演示态没恢复到 ${before}（实际：${String(await evalJs("location.hash"))}）`,
+      `presentation state did not recover to ${before} after reload (actual: ${String(await evalJs("location.hash"))})`,
     );
   });
 
-  test("演示中删掉当前页：不崩，落到有效状态", async () => {
+  test("should not crash and land on a valid state when the current slide is deleted mid-presentation", async () => {
     const hashBefore = String(await evalJs(`location.hash`));
     const pageNo = /^#p=(\d+)$/u.exec(hashBefore)?.[1];
     const index = pageNo === undefined ? 0 : Math.max(0, Number(pageNo) - 1);
     const target = slideIds[Math.min(index, slideIds.length - 1)] ?? slideIds[0];
-    assert(target !== undefined, "没有可删的页");
+    assert(target !== undefined, "no slide to delete");
     const del = await mcp.call("hr_patch_node", {
       filePath: DOC,
       nodeId: target,
       action: "delete",
       htmlContent: "",
     });
-    assert(!del.isError, `演示中删页报错：${del.text}`);
+    assert(!del.isError, `mid-presentation delete errored: ${del.text}`);
     const alive = await page.wait(
       `document.body.children.length > 0 && (location.hash === '' || /^#p=\\d+$/.test(location.hash))`,
     );
-    assert(alive === true, "删当前页后页面崩了");
+    assert(alive === true, "the page crashed after the current slide was deleted");
   });
 
-  test("退出演示后状态全部清理", async () => {
+  test("should clean up all state after exiting presentation", async () => {
     // An Escape fired before `data-hr-present` is painted lands inside the
     // post-reload resume gap: it is dropped while keydown is unbound or reduced
     // to a panelClosed no-op, after which the "#p=" hash resume re-activates
@@ -191,12 +198,15 @@ describe.skipIf(skip !== undefined)("present-journey", () => {
       `document.querySelector('#hr-root').hasAttribute('data-hr-present')`,
       15_000,
     );
-    assert(armed === true, "按 Escape 前演示态没有处于活动状态");
+    assert(armed === true, "presentation was not active before pressing Escape");
     await press(page, "Escape");
     const clean = await page.wait(
       `location.hash === '' && !document.documentElement.hasAttribute('data-hr-present') && !document.body.hasAttribute('data-hr-present') && document.querySelectorAll('[data-hr-slide-state],[data-hr-step-state]').length === 0`,
       15_000,
     );
-    assert(clean === true, `退出演示后残留状态（hash=${String(await evalJs("location.hash"))}）`);
+    assert(
+      clean === true,
+      `state residue after exiting presentation (hash=${String(await evalJs("location.hash"))})`,
+    );
   });
 });

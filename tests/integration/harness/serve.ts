@@ -1,4 +1,5 @@
-// 这层管：`hr serve` 常驻进程的起停（回执行 → DaemonInfo；SIGTERM 收尾验证 daemon.json 清掉）。
+// This layer owns: start/stop of the long-lived `hr serve` process (receipt
+// line → DaemonInfo; SIGTERM teardown verifies daemon.json is removed).
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +16,7 @@ export interface Daemon {
   readonly pid: number;
   readonly proc: LiveProc;
   readonly home: string;
-  /** SIGTERM → 等待退出；返回退出码（被信号杀时为 null）。 */
+  /** SIGTERM → wait for exit; returns the exit code (null when killed by a signal). */
   readonly stop: () => Promise<number | null>;
 }
 
@@ -31,8 +32,9 @@ export const daemonJsonPath = (home: string): string => join(home, ".hreader", "
 export const daemonFileExists = (home: string): boolean => existsSync(daemonJsonPath(home));
 
 /**
- * `--port 0` 由内核分配：测试之间（以及和并行 agent）不撞端口。
- * 回执是 stdout 第一行 `--json`；读不到行就是启动失败，附 stderr 一起报。
+ * `--port 0` is kernel-assigned: tests (and parallel agents) never collide on
+ * ports. The receipt is the first `--json` stdout line; no line means startup
+ * failed, and stderr comes along with the report.
  */
 export const startServe = async (options: ServeOptions): Promise<Daemon> => {
   const proc = live(
@@ -61,12 +63,21 @@ export const startServe = async (options: ServeOptions): Promise<Daemon> => {
   // process before rethrowing: an escaping error plus a live daemon is the leak.
   try {
     const line = await proc.nextLine(20_000);
-    assert(line !== undefined, `hr serve 没有打出回执（stderr：${proc.out.err().slice(0, 400)}）`);
-    const parsed = parseJson(line, "hr serve 回执");
-    assert(typeof parsed === "object" && parsed !== null, `hr serve 回执不是对象：${line}`);
-    assert(Reflect.get(parsed, "ok") === true, `hr serve 回执不是 ok：${line}`);
+    assert(
+      line !== undefined,
+      `hr serve printed no receipt (stderr: ${proc.out.err().slice(0, 400)})`,
+    );
+    const parsed = parseJson(line, "hr serve receipt");
+    assert(
+      typeof parsed === "object" && parsed !== null,
+      `hr serve receipt is not an object: ${line}`,
+    );
+    assert(Reflect.get(parsed, "ok") === true, `hr serve receipt is not ok: ${line}`);
     const dataRaw: unknown = Reflect.get(parsed, "data");
-    assert(typeof dataRaw === "object" && dataRaw !== null, `hr serve 回执缺 data：${line}`);
+    assert(
+      typeof dataRaw === "object" && dataRaw !== null,
+      `hr serve receipt is missing data: ${line}`,
+    );
     const data = dataRaw as JsonObject;
     const port = data["port"];
     const token = data["token"];
@@ -74,7 +85,7 @@ export const startServe = async (options: ServeOptions): Promise<Daemon> => {
     const pid = data["pid"];
     assert(
       typeof port === "number" && typeof token === "string" && typeof url === "string",
-      `hr serve 回执字段不全：${line}`,
+      `hr serve receipt fields are incomplete: ${line}`,
     );
     return {
       port,
