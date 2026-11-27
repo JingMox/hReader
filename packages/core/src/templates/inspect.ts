@@ -224,6 +224,10 @@ export const inspectTemplateDir = async (
   const entry = requiredMember(manifest.entry, members);
   const style = optionalMember("style", manifest.style, DEFAULT_STYLE, members);
   const guide = optionalMember("guide", manifest.guide, DEFAULT_GUIDE, members);
+  const assetsEntry = members.get(ASSETS_DIR);
+  if (assetsEntry !== undefined && !assetsEntry.isDirectory) {
+    throw invalid(`${ASSETS_DIR} 成员是文件不是目录：${dir}`);
+  }
   const assets = memberList
     .filter((member) => !member.isDirectory && member.rel.startsWith(`${ASSETS_DIR}/`))
     .map((member) => ({ rel: member.rel, source: member.source, size: member.size }));
