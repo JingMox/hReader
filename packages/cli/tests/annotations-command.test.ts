@@ -2,7 +2,7 @@
 // meta+sidecar view, status filtering, usage/exit codes, migrate idempotence, and locale paths.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { serializeSidecarFile, type SidecarAnnotation } from "@hreader/core";
@@ -173,6 +173,45 @@ describe("hr annotations list", () => {
       const result = await runIn(dir, ["annotations", "list", "gone.html"]);
       expect(result.code).not.toBe(0);
       expect(result.stderr).toContain("不存在");
+    });
+  });
+
+  it("should emit no host path anywhere — hostile store, both modes, migrate included", async () => {
+    await withTempDir(async (dir) => {
+      writeFileSync(join(dir, "doc.html"), MANAGED);
+      const storeDir = join(dir, ".hreader", "annotations");
+      mkdirSync(storeDir, { recursive: true });
+      const storeName = `${createHash("sha1").update("doc.html", "utf8").digest("hex")}.json`;
+      // doc.html's own record claims an escaping path → mismatch diagnostic, never an echo.
+      writeFileSync(
+        join(storeDir, storeName),
+        '{"version":1,"path":"../../etc/passwd","annotations":[]}',
+      );
+      writeFileSync(join(storeDir, "corrupt.json"), "{{{");
+      writeFileSync(
+        join(storeDir, "escape01.json"),
+        serializeSidecarFile("../../etc/passwd", [sidecarRecord()]),
+      );
+
+      const surfaces = [];
+      for (const argv of [
+        ["annotations", "list", "doc.html"],
+        ["annotations", "list", "doc.html", "--json"],
+        ["annotations", "migrate", "doc.html", "--json"],
+        ["annotations", "migrate", "doc.html"],
+      ]) {
+        surfaces.push(await runIn(dir, argv));
+      }
+      const blob = surfaces.map((r) => `${r.stdout}\n${r.stderr}`).join("\n");
+      for (const banned of ["/Users", "/private", "/tmp", "/var", dir, realpathSync(dir)]) {
+        expect(blob).not.toContain(banned);
+      }
+      // The migrate snapshot receipt stays useful: a workspace-relative history path.
+      expect(blob).toContain(".hreader/history/");
+      // The frozen missing-file wording echoes the resolved absolute — identical for every
+      // file-targeting command (`hr check`, `hr patch`…) and pinned above; not a new leak.
+      const missing = await runIn(dir, ["annotations", "list", "gone.html"]);
+      expect(missing.code).not.toBe(0);
     });
   });
 });

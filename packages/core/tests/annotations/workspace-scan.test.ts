@@ -265,17 +265,19 @@ describe("listWorkspaceAnnotations · store-record discovery", () => {
     expect(result.diagnostics.some((line) => line.includes("目录不可读：.（"))).toBe(true);
   });
 
-  it("should stringify a non-Error fs failure into the diagnostic, not crash", async () => {
+  it("should still not crash on a code-less fs failure, reporting a generic internal code", async () => {
     const fs = fakeFs({ [`${WS}/doc.html`]: "<html><body><p>x</p></body></html>" });
     dirsOf(fs, [WS, `${WS}/.hreader`, `${WS}/.hreader/annotations`]);
     fs.fail("readdir", "plain failure", (dir) => dir.includes("annotations"));
 
     const result = await scan(fs);
 
-    expect(result.diagnostics.some((line) => line.includes("plain failure"))).toBe(true);
+    // No code on the error at all → the generic marker, never the raw thrown text.
+    expect(result.diagnostics.some((line) => line.includes("（internal）"))).toBe(true);
+    expect(result.diagnostics.join("\n")).not.toContain("plain failure");
   });
 
-  it("should fold workspace-absolute paths inside diagnostics to workspace-relative", async () => {
+  it("should emit error codes only — never message text that can embed resolved absolute paths", async () => {
     const fs = fakeFs({
       [`${WS}/bad.html`]: "<html><body><p>x</p></body></html>",
       [`${WS}/.hreader/annotations/${storeNameOf("gone.html")}`]: storeJson("gone.html", [
@@ -287,19 +289,62 @@ describe("listWorkspaceAnnotations · store-record discovery", () => {
 
     const result = await scan(fs);
 
-    // Same fold as single-doc errors: a path under the workspace root collapses to relative.
+    // A `file 逃出了 workspace：…` style message would carry the resolved absolute, which no
+    // elision can fold back: the diagnostic carries the code and the claimed name, that's all.
     expect(
       result.diagnostics.some((line) =>
-        line.includes("指向不可达文档 gone.html（realpath时路径不存在：gone.html）"),
+        line.includes("指向不可达文档 gone.html（not_a_file）"),
       ),
     ).toBe(true);
     expect(
-      result.diagnostics.some(
-        (line) => line.startsWith("文档 bad.html：") && line.includes("bad.html"),
-      ),
+      result.diagnostics.some((line) => line.startsWith("文档 bad.html：io_failure")),
     ).toBe(true);
     for (const line of result.diagnostics) {
       expect(line).not.toContain(`${WS}/`);
+      expect(line).not.toContain("：/ws/");
+    }
+  });
+
+  it("should survive the whole hostile store without a single absolute path leaking", async () => {
+    const fat = "x".repeat(6 * 1024 * 1024);
+    const fs = fakeFs({
+      [`${WS}/doc.html`]: "<html><body><p>x</p></body></html>",
+      [`${WS}/.hreader/annotations/corrupt.json`]: "{{{",
+      [`${WS}/.hreader/annotations/escape01.json`]: storeJson("../../etc/passwd", [record()]),
+      [`${WS}/.hreader/annotations/abs01.json`]: storeJson("/etc/passwd", [record()]),
+      [`${WS}/.hreader/annotations/link01.json`]: storeJson("escape/hosts", [record()]),
+      [`${WS}/.hreader/annotations/${storeNameOf("gone.html")}`]: storeJson("gone.html", [
+        record(),
+      ]),
+      [`${WS}/.hreader/annotations/misnamed.json`]: storeJson("doc.html", [
+        record({ id: "ghost" }),
+      ]),
+      [`${WS}/.hreader/annotations/fat.json`]:
+        `{"version":1,"path":"gone2.html","annotations":[],"pad":"${fat}"}`,
+      [`${WS}/.hreader/annotations/${storeNameOf("doc.html")}`]: storeJson("doc.html", [
+        record(),
+      ]),
+      "/outside/hosts": "root:x:0:0",
+    });
+    dirsOf(fs, [WS, `${WS}/.hreader`, "/outside"]);
+    fs.state.links.set(`${WS}/escape`, "/outside");
+
+    const result = await scan(fs);
+
+    expect(result.annotations).toHaveLength(1);
+    const joined = result.diagnostics.join("\n");
+    expect(joined).toContain(
+      "批注侧车记录 escape01.json 指向不可达文档 ../../etc/passwd（path_outside_workspace）",
+    );
+    // An absolute claim is host data: the name is replaced, the code still says why.
+    expect(joined).toContain("指向不可达文档 <绝对路径>（path_outside_workspace）");
+    expect(joined).toContain("指向不可达文档 escape/hosts（path_outside_workspace）");
+    expect(joined).toContain("指向不可达文档 gone.html（not_a_file）");
+    expect(joined).toContain("指向不可达文档 gone2.html（not_a_file）");
+    expect(joined).toContain("缺少可用的 path 字段");
+    expect(joined).toContain("与文件名不符");
+    for (const banned of ["/Users", "/private", "/tmp", "/var", "/outside", WS]) {
+      expect(joined).not.toContain(banned);
     }
   });
 

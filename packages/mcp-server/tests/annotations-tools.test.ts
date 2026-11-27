@@ -492,3 +492,83 @@ describe("hr_outline · .hreader/** docs", () => {
     }
   });
 });
+
+// `.hreader/**` docs can't own a sidecar — same skip `hr_outline` got: an empty list, no error,
+// and certainly no write-domain `不可 patch` wording leaking through `resolveTarget`.
+describe("hr_list_annotations · .hreader/** docs", () => {
+  it("should answer an empty list for a doc under .hreader", async () => {
+    await mkdir(join(workspace, ".hreader"), { recursive: true });
+    await writeFile(join(workspace, ".hreader", "x.html"), FOREIGN_DOC, "utf8");
+
+    const result = await listOf({ filePath: ".hreader/x.html" });
+
+    expect(isErrorResultOf(result)).toBe(false);
+    const payload = payloadOf(result);
+    expect(payload["annotations"]).toEqual([]);
+    expect(payload["docsScanned"]).toBe(0);
+    expect(payload["truncated"]).toBe(false);
+  });
+});
+
+// The whole hostile-store fixture a reviewer seeds by hand: corrupt JSON, an escaping claim, an
+// absolute claim, a symlink-out claim, a mis-keyed record, a 6 MB record and a missing doc — plus
+// the good doc reached through a lexically-spelled absolute path on a symlinked TMPDIR. None of
+// the surfaces may leak a host path: diagnostics carry codes and relative names only.
+describe("hr_list_annotations · hostile store leaves no host path", () => {
+  it("should keep every emitted surface free of absolute paths", async () => {
+    await writeRaw("doc.html", FOREIGN_DOC);
+    const dir = join(workspace, ".hreader", "annotations");
+    await mkdir(dir, { recursive: true });
+    const record = (file: string) => serializeSidecarFile(file, [sidecarRecord()]);
+    const outside = join(
+      workspace,
+      "..",
+      `hostile-outside-${createHash("sha1").update(workspace).digest("hex").slice(0, 8)}`,
+    );
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(outside, "hosts"), FOREIGN_DOC, "utf8");
+    await symlink(outside, join(workspace, "escape"));
+    extraDirs.push(outside);
+    await writeFile(join(dir, "corrupt.json"), "{{{", "utf8");
+    await writeFile(join(dir, "escape01.json"), record("../../etc/passwd"), "utf8");
+    await writeFile(join(dir, "abs01.json"), record("/etc/passwd"), "utf8");
+    await writeFile(join(dir, "link01.json"), record("escape/hosts"), "utf8");
+    await writeFile(join(dir, storeNameOf("gone.html")), record("gone.html"), "utf8");
+    await writeFile(join(dir, "misnamed.json"), record("doc.html"), "utf8");
+    const fat = JSON.stringify({
+      version: 1,
+      path: "gone2.html",
+      annotations: [],
+      pad: "x".repeat(6 * 1024 * 1024),
+    });
+    await writeFile(join(dir, "fat.json"), fat, "utf8");
+    await writeFile(join(workspace, ".hreader", "x.html"), FOREIGN_DOC, "utf8");
+    await seedStore("doc.html", [sidecarRecord()]);
+
+    const surfaces = await Promise.all([
+      listOf({}),
+      listOf({ filePath: join(workspace, "doc.html") }),
+      listOf({ filePath: ".hreader/x.html" }),
+      outlineOf("doc.html"),
+      outlineOf(".hreader/x.html"),
+    ]);
+    const blob = surfaces
+      .map((result) => `${JSON.stringify(result)}\n${textOf(result)}`)
+      .join("\n");
+
+    const lexical = workspace;
+    const real = process.cwd();
+    for (const banned of ["/Users", "/private", "/tmp", "/var", lexical, real, outside]) {
+      expect(blob).not.toContain(banned);
+    }
+    const scanPayload = payloadOf(surfaces[0] ?? {});
+    expect(entriesOf(scanPayload).map((entry) => entry["id"])).toEqual(["an-side"]);
+    const diagnostics = scanPayload["diagnostics"];
+    expect(
+      Array.isArray(diagnostics) &&
+        diagnostics.some((line) =>
+          String(line).includes("指向不可达文档 ../../etc/passwd（path_outside_workspace）"),
+        ),
+    ).toBe(true);
+  });
+});
