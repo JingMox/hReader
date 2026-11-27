@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import type { ResolvedTarget } from "../../src/io/paths";
 import { nodeStyleDeps } from "../../src/style";
+import { createAnnotateTokenBook } from "../../src/server/annotate";
 import { createCapabilityBook } from "../../src/server/capability";
 import { docAssetReply, MAX_DOC_ASSET_BYTES } from "../../src/server/doc-assets";
 import type { HandlerContext } from "../../src/server/handlers";
@@ -192,6 +193,23 @@ describe("GET /f/<cap>/<path>", () => {
         const res = await httpCall(port, { path: `${base}/${encodeURI(probe)}` });
         expect(res.status, probe).toBe(404);
       }
+    }, seed));
+
+  it("should 404 a real file whose path exceeds the length ceiling", () =>
+    withServer(async ({ port, token, workspace }) => {
+      // The ceiling verdict is lexical and runs before any IO: a whitelisted
+      // file that *exists* under the doc dir still must not be served.
+      const dir = `${"a".repeat(200)}/${"b".repeat(200)}/${"c".repeat(200)}`;
+      const probe = `${dir}/deep.css`;
+      expect(probe.length).toBeGreaterThan(512);
+      mkdirSync(join(workspace, "page", dir), { recursive: true });
+      writeFileSync(join(workspace, "page", dir, "deep.css"), "x{}\n");
+      const frame = await frameUrlOf(port, token, "page/index.html");
+      const base = frame.slice(0, frame.lastIndexOf("/"));
+
+      const res = await httpCall(port, { path: `${base}/${probe}` });
+      expect(res.status).toBe(404);
+      expect(res.body).toBe('{"code":"not_found"}');
     }, seed));
 
   it("should resolve in-scope symlinks and refuse escaping ones", () =>
@@ -460,9 +478,24 @@ describe("docAssetReply · late-IO failures (direct calls)", () => {
       deps: { ...nodePatchDeps, fs: { ...nodePatchDeps.fs, ...fs } },
       styleDeps: nodeStyleDeps(tmpdir()),
       caps,
+      annotateTokens: createAnnotateTokenBook(nodePatchDeps.clock),
     };
     return { ctx, cap: grant.cap };
   };
+
+  it("should 404 the reserved annotator name when appDir is empty, without touching the disk", async () => {
+    let reads = 0;
+    const { ctx, cap } = ctxWith({
+      readFile: () => {
+        reads += 1;
+        return Promise.reject(new Error("must not be called"));
+      },
+    });
+    const reply = await docAssetReply(ctx, cap, "__hr_annotator.js");
+    expect(reply.status).toBe(404);
+    expect(reply.body).toBe('{"code":"not_found"}');
+    expect(reads).toBe(0);
+  });
 
   it("should 404 when lstat loses the race after realpath", async () => {
     const { ctx, cap } = ctxWith({

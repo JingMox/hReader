@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { HrError, nodeStyleDeps } from "../../src";
 import { nodePatchDeps } from "../../src/io/node-fs";
+import { createAnnotateTokenBook } from "../../src/server/annotate";
 import { createCapabilityBook } from "../../src/server/capability";
 import { startServer, type RunningServer } from "../../src/server";
 import { assetReply, indexReply } from "../../src/server/static";
@@ -81,6 +82,7 @@ const contextOf = (appDir: string, readFile: (path: string) => Promise<Uint8Arra
   deps: { ...nodePatchDeps, fs: { ...nodePatchDeps.fs, readFile } },
   styleDeps: nodeStyleDeps(fixture?.workspace ?? tmpdir()),
   caps: createCapabilityBook(),
+  annotateTokens: createAnnotateTokenBook(nodePatchDeps.clock),
 });
 
 describe("static · 未构建与读失败（直接调 Reply 层）", () => {

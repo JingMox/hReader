@@ -35,7 +35,10 @@ const config = {
     "packages/core/src/io/lock.ts",
     "packages/core/src/io/atomic.ts",
     "packages/core/src/io/digest.ts",
-    // server: auth, routes, handlers write gates, http-io body parsing, CSP generation
+    // server: auth, routes, handlers write gates, http-io body parsing, CSP generation,
+    // annotate token book + injection, /f/ asset scope (reserved-name precedence)
+    "packages/core/src/server/annotate.ts",
+    "packages/core/src/server/doc-assets.ts",
     "packages/core/src/server/auth.ts",
     "packages/core/src/server/routes.ts",
     "packages/core/src/server/handlers.ts",

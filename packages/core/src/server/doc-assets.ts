@@ -6,8 +6,9 @@ import { extname, join, relative, sep } from "node:path";
 
 import { isInside } from "../io/paths";
 import type { FileStat } from "../io/ports";
+import { ANNOTATOR_NAME } from "./annotate";
 import type { Reply } from "./contracts";
-import { documentServeOf, type HandlerContext } from "./handlers";
+import { documentServeOf, type AnnotateRequest, type HandlerContext } from "./handlers";
 
 /**
  * D9's extension whitelist — the only resource kinds a page may pull from its
@@ -95,6 +96,28 @@ const withCors = (reply: Reply): Reply => ({
 });
 
 /**
+ * `/f/<cap>/__hr_annotator.js` is a reserved name: it wins over a real file of
+ * the same name in the doc directory (the injected tag trusts only the
+ * server's own copy; the document owns whatever sits in its tree). Bytes come
+ * from `<appDir>/annotator.js`; same verdict as every other failure on this
+ * route — unreadable means 404, with no existence distinction.
+ */
+const annotatorReply = async (ctx: HandlerContext): Promise<Reply> => {
+  if (ctx.appDir === "") return notFound();
+  let bytes: Uint8Array;
+  try {
+    bytes = await ctx.deps.fs.readFile(join(ctx.appDir, "annotator.js"));
+  } catch {
+    return notFound();
+  }
+  return {
+    status: 200,
+    headers: { ...BASE_HEADERS, "content-type": "text/javascript; charset=utf-8" },
+    body: bytes,
+  };
+};
+
+/**
  * `/f/` path grammar: no empty segment (so `//` and a trailing slash die), no
  * dot-leading segment at all — one rule covers `.`, `..`, `.hreader/` and every
  * dotfile — no NUL and no backslash, bounded length. `..` can therefore never
@@ -116,14 +139,32 @@ export const docAssetReply = async (
   ctx: HandlerContext,
   cap: string,
   rawPath: string,
+  annotate?: string,
 ): Promise<Reply> => {
   const grant = ctx.caps.lookup(cap);
   if (grant === undefined) return notFound();
+  // The reserved name first: it must win over a real file of the same name in
+  // the doc directory (and it can never equal an .html docName).
+  if (rawPath === ANNOTATOR_NAME) return annotatorReply(ctx);
   // The one HTML exception: the document this cap was minted for, by exact
   // basename. It keeps the permission-matrix headers (CSP + sandbox), plus
-  // this route's CORS.
-  if (rawPath === grant.docName) return withCors((await documentServeOf(ctx, grant.doc)).reply);
+  // this route's CORS. `annotate` is only consulted on this branch — every
+  // other asset path ignores the parameter entirely.
+  if (rawPath === grant.docName) {
+    // Stryker disable ConditionalExpression: fabricating a request while
+    // annotate is absent only hands consume an undefined token — the book has
+    // no such entry, the fallback is identical, equivalent.
+    const request: AnnotateRequest | undefined =
+      annotate === undefined
+        ? undefined
+        : { cap: grant.cap, docName: grant.docName, token: annotate };
+    // Stryker restore ConditionalExpression
+    return withCors((await documentServeOf(ctx, grant.doc, request)).reply);
+  }
   const segments = segmentsOf(rawPath);
+  // Stryker disable next-line ConditionalExpression: when segments===undefined the
+  // `...segments` spread on the next line must throw TypeError, and it lands inside
+  // the realpath try — the catch returns the same 404, equivalent.
   if (segments === undefined || typeOf(rawPath) === undefined) return notFound();
   let real: string;
   try {
@@ -133,6 +174,10 @@ export const docAssetReply = async (
     // an unresolvable path can never prove it is in scope.
     return notFound();
   }
+  // Stryker disable next-line ConditionalExpression: an out-of-scope real makes
+  // relative() produce a `..`-prefixed rel, and the segmentsOf(rel) grammar
+  // re-verdict below answers the same 404 — this gate is strictly synonymous
+  // with the re-check; it guards readability, not a new rule.
   if (!isInside(grant.dir, real)) return notFound();
   // Re-run the verdict on the *resolved* name: a symlink may point at a name
   // that fails the grammar (dot segment) or the whitelist (.html).

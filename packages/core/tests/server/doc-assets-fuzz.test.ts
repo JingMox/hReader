@@ -15,6 +15,7 @@ import { isInside } from "../../src/io/paths";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import type { ResolvedTarget } from "../../src/io/paths";
 import { nodeStyleDeps } from "../../src/style";
+import { createAnnotateTokenBook } from "../../src/server/annotate";
 import { createCapabilityBook, type DocGrant } from "../../src/server/capability";
 import { docAssetReply } from "../../src/server/doc-assets";
 import type { HandlerContext } from "../../src/server/handlers";
@@ -83,6 +84,7 @@ const fixtureOf = (): Fixture => {
     deps,
     styleDeps: nodeStyleDeps(workspace),
     caps,
+    annotateTokens: createAnnotateTokenBook(deps.clock),
   };
   return { ctx, grant, sibling, workspace, home, reads };
 };

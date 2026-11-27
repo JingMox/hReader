@@ -32,6 +32,7 @@ export {
 } from "./io";
 export type { DocGrant, EffectivePermissions, GlobalModes, ResolvedTarget, TrustLevel } from "./io";
 export {
+  createAnnotateTokenBook,
   createCapabilityBook,
   decodeParams,
   docAssetReply,
@@ -40,6 +41,7 @@ export {
   startServer,
 } from "./server";
 export type {
+  AnnotateTokenBook,
   CapabilityBook,
   DaemonInfo,
   HandlerContext,

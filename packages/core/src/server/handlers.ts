@@ -38,6 +38,7 @@ import { normalizeFile } from "../ops/normalize-file";
 import type { PatchAction, PatchRequest } from "../ops/patch-node";
 import { applyStyle } from "../style/apply-file";
 import type { StyleDeps } from "../style";
+import { annotateNonce, injectAnnotator, type AnnotateTokenBook } from "./annotate";
 import { appendAnnotation, type AnnotationInput, type AnnotationOutcome } from "./annotation";
 import type { CapabilityBook } from "./capability";
 import type { Reply } from "./contracts";
@@ -55,6 +56,8 @@ export interface HandlerContext {
   readonly styleDeps: StyleDeps;
   /** Doc-directory capability book: issues and resolves the caps `/f/` is gated by. */
   readonly caps: CapabilityBook;
+  /** Single-use annotate tokens: minted by the annotate route, burned by `/f/` document serves. */
+  readonly annotateTokens: AnnotateTokenBook;
 }
 
 interface DocumentServe {
@@ -146,8 +149,28 @@ const FOREIGN_CSP: Readonly<Record<"off" | "on", Readonly<Record<"off" | "on", s
   },
 };
 
-const foreignCspOf = (effective: EffectivePermissions): string =>
+/** @internal the lookup itself stays in this file; the annotate row must reuse the same matrix (taken from here, never copied). */
+export const foreignCspOf = (effective: EffectivePermissions): string =>
   FOREIGN_CSP[effective.scripts ? "on" : "off"][effective.network ? "on" : "off"];
+
+/**
+ * Annotate-mode CSP: surgery on the same matrix, so the two strings can never
+ * drift apart.
+ * - Scripts off: `script-src 'none'` → `script-src 'nonce-N'` (the injected
+ *   tag is the only script allowed to run), and bare `sandbox` → `sandbox
+ *   allow-scripts` (still no `allow-same-origin`);
+ * - Scripts on: the row is returned byte-identical — the injected script is
+ *   already `'self'`, and adding a nonce would switch `'unsafe-inline'` off
+ *   (nonce and the inline relaxation are mutually exclusive).
+ * @internal
+ */
+export const annotateCspOf = (effective: EffectivePermissions, nonce: string): string => {
+  const csp = foreignCspOf(effective);
+  if (effective.scripts) return csp;
+  return csp
+    .replace("script-src 'none'", `script-src 'nonce-${nonce}'`)
+    .replace("; sandbox", "; sandbox allow-scripts");
+};
 
 /** 单文档授权 + 全局模式一次读齐；`info`/`/s/`/三个写处理器共用同一个出口。 */
 const permissionsOf = async (
@@ -240,18 +263,36 @@ export const outlineReply = async (ctx: HandlerContext, docId: string): Promise<
 };
 
 /**
+ * The binding pair an `?annotate=<token>` consumes against: values must come from the capability book's grant, not the raw URL.
+ * @internal
+ */
+export interface AnnotateRequest {
+  readonly cap: string;
+  readonly docName: string;
+  readonly token: string;
+}
+
+/**
  * Serve one resolved document with the permission-matrix headers. `/f/` calls
  * this for the doc-itself exception; `/s/` used to (it now only redirects);
  * the unbuilt home page borrows it for the article excerpt.
+ *
+ * `annotate` (one `?annotate=` token) only means something for foreign
+ * documents: a successful burn injects the annotator and swaps in the
+ * annotate CSP; invalid/expired/cross-document all fall back to the plain
+ * document — not even "close" is observable. Managed/normalizable documents
+ * take the early-return branch and the parameter is never read.
  * @internal
  */
 export const documentServeOf = async (
   ctx: HandlerContext,
   target: ResolvedTarget,
+  annotate?: AnnotateRequest,
 ): Promise<DocumentServe> => {
   const bytes = await bytesOf(ctx, target);
   const doc = { target, bytes, revision: revisionOf(bytes) };
-  const parsed = parseHtml(decodeUtf8(doc.bytes, doc.target.realPath));
+  const text = decodeUtf8(doc.bytes, doc.target.realPath);
+  const parsed = parseHtml(text);
   // 托管/可归一文档的响应头逐字节不动；外来文档才按生效权限换 CSP。
   if (classifyDocument(parsed).cls !== "foreign") return { ...doc, reply: htmlReply(doc.bytes) };
   const { effective } = await permissionsOf(ctx, doc.target, doc.bytes);
@@ -259,7 +300,25 @@ export const documentServeOf = async (
   // 字节里摘掉：预取提示不受 CSP 约束，是绕过联网闸的残余通道。只改响应，不动文件。
   const body =
     // Stryker disable next-line ConditionalExpression: 联网开时原文下发，strip 是纯字符串变换。
-    effective.network ? doc.bytes : stripPrefetchLinks(decodeUtf8(doc.bytes, doc.target.realPath));
+    effective.network ? text : stripPrefetchLinks(text);
+  // Tokens burn on read: consuming here leaves exactly two response shapes — injected or plain — with no third distinguishable form.
+  const granted =
+    annotate !== undefined &&
+    ctx.annotateTokens.consume(annotate.cap, annotate.docName, annotate.token);
+  if (granted) {
+    const scriptNonce = annotateNonce();
+    return {
+      ...doc,
+      reply: {
+        status: 200,
+        headers: {
+          ...HTML_HEADERS,
+          "content-security-policy": annotateCspOf(effective, scriptNonce),
+        },
+        body: injectAnnotator(body, annotate.cap, scriptNonce),
+      },
+    };
+  }
   return {
     ...doc,
     reply: {
@@ -508,6 +567,7 @@ const trustBody = z.object({ level: z.enum(["off", "local"]) });
 const foreignDocOf = async (
   ctx: HandlerContext,
   docId: string,
+  action = "权限授权",
 ): Promise<{ readonly target: ResolvedTarget; readonly bytes: Uint8Array }> => {
   const target = await targetOf(ctx, docId);
   const bytes = await bytesOf(ctx, target);
@@ -517,7 +577,7 @@ const foreignDocOf = async (
     // "文档状态不适用此操作"的 409 语义（其余 409 全是锁/快照/端口类）。
     throw new HrError(
       "needs_normalize",
-      `权限授权只对外来文档开放：该文档归作 ${classification.cls}，不执行脚本`,
+      `${action}只对外来文档开放：该文档归作 ${classification.cls}，不执行脚本`,
     );
   }
   return { target, bytes };
@@ -558,6 +618,29 @@ const docPermissionsBody = z
   .refine((v) => v.scripts !== undefined || v.network !== undefined, {
     message: "至少要给 scripts 或 network 其中一个",
   });
+
+/**
+ * `POST /api/doc/:docId/annotate`: mints a single-use annotate token and
+ * answers `{ frameUrl: /f/<cap>/<doc>?annotate=<t> }`.
+ * The cap rides the same minting chain as `info.frameUrl` (register is
+ * idempotent); the token is only burned inside `/f/` document responses.
+ * Foreign documents only — managed/normalizable documents never enter an
+ * iframe shell, so an annotator script means nothing to them.
+ * Document bytes untouched, `changed: false`: noteWrite stays silent (there
+ * is no content change to refresh).
+ */
+export const annotateReply = async (ctx: HandlerContext, docId: string): Promise<Written> => {
+  const doc = await foreignDocOf(ctx, docId, "批注模式");
+  const grant = ctx.caps.register(doc.target);
+  const token = ctx.annotateTokens.mint(grant.cap, grant.docName);
+  return {
+    reply: jsonReply(200, { frameUrl: `${ctx.caps.frameUrlOf(doc.target)}?annotate=${token}` }),
+    target: doc.target,
+    revision: revisionOf(doc.bytes),
+    changed: false,
+    changedNodes: [],
+  };
+};
 
 export const docPermissionsReply = async (
   ctx: HandlerContext,

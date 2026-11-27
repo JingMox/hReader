@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { nodePatchDeps } from "../../src/io/node-fs";
+import { createAnnotateTokenBook } from "../../src/server/annotate";
 import { originAllowed } from "../../src/server/auth";
 import { createCapabilityBook } from "../../src/server/capability";
 import { matchRoute } from "../../src/server/routes";
@@ -157,6 +158,7 @@ describe("assets · 未构建", () => {
         deps: depsOf(fake.port, clock, sleep),
         styleDeps,
         caps: createCapabilityBook(),
+        annotateTokens: createAnnotateTokenBook(clock),
       },
       "leak.js",
     );

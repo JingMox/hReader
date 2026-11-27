@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { HrError } from "../../src/hr-error";
+import { createAnnotateTokenBook } from "../../src/server/annotate";
 import { createCapabilityBook } from "../../src/server/capability";
 import type { HandlerContext } from "../../src/server/handlers";
 import { assetReply, indexReply, themeReply, themesReply } from "../../src/server/static";
@@ -56,6 +57,7 @@ const ctxOf = (appDir: string): HandlerContext => ({
   deps: nodeStyleDeps(fx.workspace),
   styleDeps: { ...nodeStyleDeps(fx.workspace), home: fx.home, stylesRoot: fx.stylesRoot },
   caps: createCapabilityBook(),
+  annotateTokens: createAnnotateTokenBook(nodeStyleDeps(fx.workspace).clock),
 });
 
 describe("indexReply · 构建产物与未构建回退", () => {
