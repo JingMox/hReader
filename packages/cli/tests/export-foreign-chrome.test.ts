@@ -34,7 +34,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { deflateSync } from "node:zlib";
 
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRef, PDFString } from "pdf-lib";
@@ -650,10 +650,12 @@ const linkAnnotsOf = async (pdf: Uint8Array): Promise<LinkAnnots> => {
  * A same-origin anchor resolves onto the minted capability URL, and
  * printToPDF stamps that URL verbatim into the PDF's /URI annotations —
  * a dead `hreader-export.invalid` link leaking the capability. The export
- * rewrites those anchors before printing: fragment links stay internal
- * (/Dest targets), links under the cap scope become the file: URL of the
- * real asset, and same-origin links outside the scope lose their href
- * (no annotation). External links pass through untouched.
+ * neutralizes those anchors before printing: a fragment link to the
+ * document itself stays internal (/Dest); every other same-origin link
+ * loses its href — Chrome always writes absolute URIs, so even a file:
+ * rewrite would leak the exporting machine's absolute paths, and the link
+ * is useless off that machine anyway. External links pass through
+ * untouched.
  */
 describe.skipIf(SKIP_REASON !== null)("foreign export · PDF link annotations", () => {
   it("leaks no capability URL into /URI annotations while keeping external and internal links", async () => {
@@ -679,22 +681,25 @@ describe.skipIf(SKIP_REASON !== null)("foreign export · PDF link annotations", 
       });
       const { uris, dests } = await linkAnnotsOf(pdf);
 
-      // The leak oracle: no annotation may carry the minted origin or the cap.
+      // The leak oracle: no annotation may carry the minted origin, the cap,
+      // a file: URL, or any local path — the exporting machine's layout must
+      // never reach the artifact.
+      const localDirs = [ws, home, dirname(doc)];
       expect(cap.length).toBeGreaterThan(0);
       for (const uri of uris) {
+        expect(uri.startsWith("file:")).toBe(false);
         expect(uri).not.toContain("hreader-export.invalid");
         expect(uri).not.toContain(cap);
+        for (const dir of localDirs) {
+          expect(uri).not.toContain(dir);
+        }
       }
-      // Sibling links survive as file: URLs of the real assets in the doc's directory.
-      expect(uris.some((u) => u.startsWith("file:") && u.endsWith("/img.png"))).toBe(true);
-      expect(uris.some((u) => u.startsWith("file:") && u.endsWith("/sub/pic.png"))).toBe(true);
-      // The external link passes through untouched.
-      expect(uris).toContain(`${ext.url}/x.png`);
+      // Every same-origin non-fragment link — sibling, subdir, ../escape —
+      // loses its href and produces no annotation; the only URI left is the
+      // external one, passed through untouched.
+      expect(uris).toEqual([`${ext.url}/x.png`]);
       // The fragment link stays an internal /Dest — never a URI annotation.
       expect(dests.some((d) => d.endsWith("sec"))).toBe(true);
-      // The same-origin link escaping the doc's directory cannot be expressed
-      // as a local path: its annotation is gone, not rewritten.
-      expect(uris.every((u) => !u.includes("secret"))).toBe(true);
       expect(dests.every((d) => !d.includes("secret"))).toBe(true);
 
       // The rewrite runs under the same snapshot contract: the inline script's
