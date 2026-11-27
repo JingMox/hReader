@@ -203,6 +203,40 @@ describe("parseSidecarFile · per-record dirt", () => {
       `annotations[0].note 长度 ${String(NOTE_LIMIT + 1)} 超过 ${String(NOTE_LIMIT)}，已截断`,
     ]);
   });
+
+  it("should cut an emoji-straddling note at the code-point boundary", () => {
+    const parsed = parseSidecarFile(
+      fileOf(validRecord({ note: `${"n".repeat(NOTE_LIMIT - 1)}😀` })),
+      PATH,
+    );
+
+    const [annotation] = parsed.annotations;
+    // A UTF-16 cut at the limit would split the pair and leave a lone high surrogate behind;
+    // the correct cut drops it and lands one code unit short of the limit.
+    expect(annotation?.note).toBe("n".repeat(NOTE_LIMIT - 1));
+    expect(annotation?.note).not.toMatch(/[\uD800-\uDFFF]/u);
+    expect(parsed.diagnostics).toEqual([
+      `annotations[0].note 长度 ${String(NOTE_LIMIT + 1)} 超过 ${String(NOTE_LIMIT)}，已截断`,
+    ]);
+  });
+
+  it("should cut an emoji-straddling reply note at the code-point boundary", () => {
+    const parsed = parseSidecarFile(
+      fileOf(
+        validRecord({
+          replies: [{ id: "rp-1", createdAt: "t", note: `${"r".repeat(NOTE_LIMIT - 1)}😀` }],
+        }),
+      ),
+      PATH,
+    );
+
+    const [reply] = parsed.annotations[0]?.replies ?? [];
+    expect(reply?.note).toBe("r".repeat(NOTE_LIMIT - 1));
+    expect(reply?.note).not.toMatch(/[\uD800-\uDFFF]/u);
+    expect(parsed.diagnostics).toEqual([
+      `annotations[0].replies[0].note 长度 ${String(NOTE_LIMIT + 1)} 超过 ${String(NOTE_LIMIT)}，已截断`,
+    ]);
+  });
 });
 
 describe("parseSidecarFile · author normalization", () => {
