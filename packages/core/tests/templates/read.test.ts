@@ -202,6 +202,18 @@ describe("readTemplate · symlinks", () => {
     );
   });
 
+  it("should reject a regular file sitting at the assets member path", async () => {
+    const fake = setup({
+      [`${TPL}/template.json`]: manifestText({ id: "my-tpl" }),
+      [`${TPL}/index.html`]: "<html><body>x</body></html>",
+      [`${TPL}/assets`]: "NOT-A-DIR",
+    });
+
+    const error = await errorOf(() => readTemplate("my-tpl", rootsOf(), depsAt(fake)));
+    expect(error.code).toBe("invalid_template");
+    expect(error.message).toContain("assets");
+  });
+
   it("should report a mid-walk readdir failure as a broken template", async () => {
     const fake = setup({
       ...htmlTemplate(TPL),
