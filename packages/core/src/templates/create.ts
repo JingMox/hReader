@@ -284,8 +284,13 @@ const writeAll = async (
       ...new Set([dirname(target.absolute), ...assetData.map((file) => dirname(file.path))]),
     ].sort((a, b) => depthOf(a) - depthOf(b));
     for (const dir of pending) {
-      createdDirs.push(...(await missingDirsOf(dir, deps)));
-      await mkdirOrFail(deps, dir);
+      // `missingDirsOf` is deepest-first: mkdir shallow→deep so each parent exists first, and record
+      // only the segment whose mkdir actually ran — the rollback then walks children before parents.
+      const missing = await missingDirsOf(dir, deps);
+      for (const segment of [...missing].reverse()) {
+        await mkdirOrFail(deps, segment);
+        createdDirs.push(segment);
+      }
     }
     if (assetData.length > 0) {
       await createNewFiles(assetData, deps, target.workspace);
