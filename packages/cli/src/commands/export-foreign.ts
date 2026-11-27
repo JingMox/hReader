@@ -10,7 +10,6 @@
 // and this layer only ever computes the network dimension.
 
 import { basename, dirname, relative } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import {
   classifyDocument,
@@ -214,13 +213,9 @@ export const foreignPlanOf = async (
   };
   const network = effectiveOf(modes, grant).network;
   const framePath = ctx.caps.frameUrlOf(target);
-  // The grant frameUrlOf just minted — register is idempotent per document.
-  const doc = ctx.caps.register(target);
   const linkRewrite: ExportLinkRewrite = {
     origin: EXPORT_ORIGIN,
     framePath,
-    capPrefix: `/f/${doc.cap}/`,
-    fileBase: `${pathToFileURL(doc.dir).href}/`,
   };
   return {
     url: `${EXPORT_ORIGIN}${framePath}`,

@@ -54,22 +54,19 @@ export interface ExportRequestRecord {
 
 /**
  * The same-origin link hygiene a PDF export performs before printToPDF:
- * anchors that resolved onto the minted capability origin are rewritten in
- * the page so no dead `hreader-export.invalid` URL survives into the
+ * anchors that resolved onto the minted capability origin are neutralized
+ * in the page so no dead `hreader-export.invalid` URL survives into the
  * artifact's link annotations. A fragment link to the document itself stays
- * internal; a link under the cap scope becomes the `file:` URL of the real
- * asset; any other same-origin link loses its href (no annotation).
- * External links are untouched.
+ * internal; every other same-origin link loses its href (no annotation) —
+ * Chrome always writes absolute URIs, so a file: rewrite would leak the
+ * exporting machine's absolute paths, and the link is useless off that
+ * machine anyway. External links are untouched.
  */
 export interface ExportLinkRewrite {
   /** The minted origin Chrome resolved the frame's links against. */
   readonly origin: string;
   /** The frame's own `/f/<cap>/<doc>` path — a same-path anchor with a fragment stays an internal link. */
   readonly framePath: string;
-  /** `/f/<cap>/` — same-origin paths under it map onto the document's real directory. */
-  readonly capPrefix: string;
-  /** `file:` URL of the document's real directory with a trailing slash — the base siblings rewrite onto. */
-  readonly fileBase: string;
 }
 
 /**

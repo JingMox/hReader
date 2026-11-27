@@ -282,8 +282,6 @@ describe("pageLikeOf · error folding", () => {
     await page.rewriteExportLinks({
       origin: "http://hreader-export.invalid",
       framePath: "/f/cap/index.html",
-      capPrefix: "/f/cap/",
-      fileBase: "file:///tmp/page/",
     });
     expect(calls.evaluate).toHaveLength(1);
     const expression = calls.evaluate[0] ?? "";
@@ -297,8 +295,6 @@ describe("pageLikeOf · error folding", () => {
       failing.rewriteExportLinks({
         origin: "http://hreader-export.invalid",
         framePath: "/f/cap/index.html",
-        capPrefix: "/f/cap/",
-        fileBase: "file:///tmp/page/",
       }),
     );
     expect(error.code).toBe("chrome_failed");

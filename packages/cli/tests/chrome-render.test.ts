@@ -153,8 +153,6 @@ describe("cssPageParamsOf · slides page frame belongs to CSS", () => {
 const LINK_REWRITE = {
   origin: "http://hreader-export.invalid",
   framePath: "/f/cap/index.html",
-  capPrefix: "/f/cap/",
-  fileBase: "file:///tmp/page/",
 };
 
 describe("openPageOf · foreign source gating", () => {
