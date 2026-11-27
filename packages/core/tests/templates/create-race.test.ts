@@ -136,7 +136,7 @@ const expectTree = async (ws: string, target: string, ref: Reference): Promise<v
   expect(listing.filter((rel) => /\.\d{3,}$/u.test(rel))).toEqual([]);
 };
 
-describe("并发 · N 个子进程 createFromTemplate 同一目标", () => {
+describe("concurrency · N child processes createFromTemplate on the same target", () => {
   it(
     "should produce exactly one winner with a complete tree across flat-target rounds",
     { timeout: 300_000 },

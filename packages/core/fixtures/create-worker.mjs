@@ -1,4 +1,4 @@
-// 这层管：真实子进程的并发 createFromTemplate 试验体——跑真源码（真 fs、真锁），只把结果经 IPC 回给父进程。
+// This layer: the createFromTemplate worker for the real-subprocess race test — runs the real source (real fs, real locks) and reports only the outcome back to the parent over IPC.
 
 import { loadSrc } from "./load-src.mjs";
 
