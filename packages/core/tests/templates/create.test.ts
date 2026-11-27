@@ -267,6 +267,19 @@ describe("createFromTemplate · existing guardrails", () => {
     }
   });
 
+  it("should reject an empty or whitespace-only title as invalid_input", async () => {
+    const fake = setup(htmlTemplate(TPL));
+    for (const title of ["", "   ", " \t\n "]) {
+      expect(
+        await codeOfAsync(() => createAt(fake, { id: "my-tpl", target: "t.html", title })),
+      ).toBe("invalid_input");
+    }
+    // Nothing was written, and an omitted title still keeps the template's own.
+    expect(fake.state.files.has(`${WS}/t.html`)).toBe(false);
+    await createAt(fake, { id: "my-tpl", target: "t.html" });
+    expect(textOf(fake, `${WS}/t.html`)).toContain("<title>T</title>");
+  });
+
   it("should propagate unknown_template and invalid_template through creation", async () => {
     const fake = setup(htmlTemplate(TPL, { manifest: "{broken" }));
     expect(await codeOfAsync(() => createAt(fake, { id: "ghost", target: "x.html" }))).toBe(
