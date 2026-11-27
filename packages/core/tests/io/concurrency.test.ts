@@ -86,7 +86,9 @@ describe("并发 · 两个子进程写同一文件", () => {
           expect([shas().ab, shas().ba]).toContain(
             sha256Of(await readBytesAt(join(dir, DOC_FILE))),
           );
-          expect(childIds(html, "box")).toHaveLength(2);
+          // box already contains p0: two serial appends leave p0 + A + B, three
+          // children — the count of two is only right in the winner-only branch.
+          expect(childIds(html, "box")).toHaveLength(3);
         } else {
           const winner = ok[0] === true ? "a" : "b";
           expect(sha256Of(await readBytesAt(join(dir, DOC_FILE)))).toBe(shas()[winner]);
