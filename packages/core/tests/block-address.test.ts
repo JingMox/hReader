@@ -6,8 +6,9 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { listBlocks, resolveAddress } from "../src/ops/block-address";
+import { applyBlockPatch, listBlocks, resolveAddress } from "../src/ops/block-address";
 import { ADDRESS_LIMIT } from "../src/ops/block-address/constants";
+import { codeOf } from "./io/harness";
 
 const sha1Of = (text: string): string =>
   createHash("sha1").update(text, "utf8").digest("hex").slice(0, 8);
@@ -360,6 +361,27 @@ describe("resolveAddress · relocation", () => {
       ok: false,
       code: "target_moved",
     });
+  });
+
+  it("should give target_moved when the path block was edited even if a same-fingerprint twin exists", () => {
+    // D56: a fingerprint mismatch on the resolved path means the addressed block itself
+    // was edited in place — the same-fingerprint twin elsewhere is a different block,
+    // not the moved original. Searching would patch the wrong element.
+    const [block] = blocksOf("<p>unique</p><div><p>unique</p></div>");
+    const after = "<p>edited</p><div><p>unique</p></div>";
+    expect(resolveAddress(after, block?.address ?? "")).toEqual({
+      ok: false,
+      code: "target_moved",
+    });
+    expect(
+      codeOf(() =>
+        applyBlockPatch(after, {
+          address: block?.address ?? "",
+          action: "replace",
+          html: "<p>new</p>",
+        }),
+      ),
+    ).toBe("target_moved");
   });
 
   it("should give target_moved when two identical blocks are equally close", () => {
