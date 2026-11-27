@@ -46,7 +46,7 @@ pub struct WorkbenchContext {
     pub is_macos: bool,
     /// `Some` 时当前没有打开成功的文档：前端在正文区渲染"这份文档打不开"。
     pub doc_error: Option<DocError>,
-    /// 设置里的默认模板 id：`None` = 新建文档默认走空白文档。
+    /// Default template id from settings: `None` = new documents use the blank path.
     pub default_template: Option<String>,
     /// 原生桥导航（`hr-desktop.local`）的会话令牌：页面 JS 必须回带它壳才认账。
     /// **只经 `sync_payload_js` 投递**（`win.eval` 只跑主 frame）；`init_script`

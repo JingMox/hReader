@@ -103,7 +103,7 @@ hrd.state = {
   expandedDirs: new Set(),
   lastAutoExpandedDoc: "",
   themeHydrated: false,
-  // hr template list 最近一次下发的结果：idle|loading|ready|error。
+  // Latest result pushed by `hr template list`: idle|loading|ready|error.
   templates: { status: "idle", list: [], diagnostics: [], error: "" },
 };
 

@@ -523,8 +523,8 @@ pub fn enriched_path_env() -> OsString {
     std::env::join_paths(dirs).unwrap_or_default()
 }
 
-/// 同步执行一条短 CLI 子命令（`style` / `pdf` / `png` / `export` / `template`）。
-/// `&[impl AsRef<str>]` 同时吃 `&["a","b"]` 字面量与 `Vec<String>`（动态拼的 argv）。
+/// Run one short CLI subcommand synchronously (`style` / `pdf` / `png` / `export` / `template`).
+/// `&[impl AsRef<str>]` accepts both `&["a","b"]` literals and `Vec<String>` (dynamically built argv).
 pub fn run_cli_task(
     cli: &Path,
     workspace: &Path,

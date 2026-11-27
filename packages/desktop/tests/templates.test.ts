@@ -123,7 +123,7 @@ describe("new-doc modal · template select", () => {
   });
 });
 
-describe("settings modal · 文档模板 section", () => {
+describe("settings modal · document templates section", () => {
   function openSettingsWithList(s: Sandbox): void {
     s.hrd.openSettingsModal();
     pushList(s);

@@ -48,7 +48,7 @@ struct DesktopState {
     doc_error: Option<workbench::DocError>,
     /// 外来 iframe 的外部导航门栏：webview 经 `/doc-state` 桥同步；`None` = 非外来壳。
     doc_gate: Option<DocGate>,
-    /// 壳级设置（默认模板等）：`<home>/settings.json`，启动时读一次。
+    /// Shell-level prefs (default template, etc.): `<home>/settings.json`, read once at startup.
     settings: settings::ShellSettings,
 }
 
@@ -86,7 +86,7 @@ impl DesktopState {
 
 type SharedState = Arc<Mutex<DesktopState>>;
 
-/// `settings.json` 放壳的私有 home；home 都定位不到时偏好只是"没有"。
+/// `settings.json` lives in the shell's private home; when no home can be located, prefs are simply absent.
 fn load_shell_settings() -> settings::ShellSettings {
     crate::default_home()
         .map(|home| settings::read_settings(&home))
@@ -366,7 +366,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         )?)
         .separator()
         .item(&item(app, "save-doc", "立即保存", Some("CmdOrCtrl+S"))?)
-        // "存为模板…" 只在有文档打开时可用：`refresh_template_menu` 跟着 doc_id 走。
+        // "存为模板…" stays enabled only while a doc is open: `refresh_template_menu` tracks `doc_id`.
         .item(&MenuItem::with_id(
             app,
             "save-as-template",
@@ -775,7 +775,7 @@ fn handle_bridge_navigation(app: &tauri::AppHandle, shared: &SharedState, url: &
             let title = query_param(url, "title").unwrap_or_else(|| "未命名文档".to_string());
             let raw_file = query_param(url, "file").unwrap_or_default();
             match query_param(url, "template") {
-                // `template=` 走 `hr template new`；没有它就是原有空白路径——一字节都不能变。
+                // `template=` goes through `hr template new`; without it the blank path stays byte-identical.
                 Some(template) if !template.is_empty() => {
                     create_doc_from_template(
                         app.clone(),
@@ -1107,8 +1107,8 @@ fn open_welcome(app: tauri::AppHandle, shared: SharedState) {
     });
 }
 
-/// 一轮 `hr template list --json` 变成 `__hrTemplateResult` 的载荷：
-/// 解析失败与 CLI 失败都落成 `{ok:false,message}`——列表只是填弹窗的数据，绝不挡创建。
+/// One `hr template list --json` run becomes the `__hrTemplateResult` payload:
+/// parse failures and CLI failures both collapse to `{ok:false,message}` — the list only feeds the modal, never blocks creation.
 fn template_list_payload(cli: &Path, workspace: &Path) -> serde_json::Value {
     match supervisor::run_cli_task(cli, workspace, &doc_templates::template_list_args()) {
         Ok(stdout) => match doc_templates::parse_template_list(&stdout) {
@@ -1145,8 +1145,8 @@ fn refresh_templates(app: tauri::AppHandle, shared: SharedState) {
     });
 }
 
-/// `/new?template=<id>`：`hr template new` 起稿，之后照旧 `ensure_daemon_and_open`。
-/// 文件名仍走 `safe_new_filename`——去重与清洗语义与空白路径一致。
+/// `/new?template=<id>`: `hr template new` drafts the doc, then `ensure_daemon_and_open` as usual.
+/// The file name still goes through `safe_new_filename` — same dedupe and sanitation as the blank path.
 fn create_doc_from_template(
     app: tauri::AppHandle,
     shared: SharedState,
@@ -1176,8 +1176,8 @@ fn create_doc_from_template(
     });
 }
 
-/// `/template-save?doc=&id=&name=&desc=&global=1` → `hr template save <doc> --id … --json`。
-/// 成功后推一份新列表给页面——设置面板若开着就原地刷新。
+/// `/template-save?doc=&id=&name=&desc=&global=1` → `hr template save <doc> --id … --json`.
+/// On success push a fresh list to the page so an open settings panel re-renders in place.
 fn save_template_async(app: tauri::AppHandle, shared: SharedState, url: &tauri::Url) {
     let id = query_param(url, "id").unwrap_or_default();
     let name = query_param(url, "name").unwrap_or_default();
@@ -1217,7 +1217,7 @@ fn save_template_async(app: tauri::AppHandle, shared: SharedState, url: &tauri::
     });
 }
 
-/// 两个"打开模板目录"按钮：目录不存在就先建，再用现成的 reveal 机制。
+/// The two "open template directory" buttons: create the directory if missing, then reveal it via the existing mechanism.
 fn open_template_dir(app: &tauri::AppHandle, shared: &SharedState, scope: Option<&str>) {
     let dir = match scope {
         Some("user") => doc_templates::user_templates_dir(),
@@ -1238,8 +1238,8 @@ fn open_template_dir(app: &tauri::AppHandle, shared: &SharedState, scope: Option
     reveal_path(&dir);
 }
 
-/// 默认模板 = 壳级设置（`settings.json`）。`id=None` 就是"清除默认"。
-/// 落盘成功才算数：写不进文件就不改内存里的设置。
+/// The default template is a shell-level pref (`settings.json`); `id=None` means "clear default".
+/// Only a successful write counts: an unwritable file leaves the in-memory setting untouched.
 fn set_default_template(app: &tauri::AppHandle, shared: &SharedState, id: Option<String>) {
     let value = match id {
         Some(raw) if doc_templates::is_valid_template_id(&raw) => Some(raw),
@@ -1273,9 +1273,9 @@ fn set_default_template(app: &tauri::AppHandle, shared: &SharedState, id: Option
     }
 }
 
-/// `/template-delete?id=<id>`：先重新拉一次列表当事实源（目录名必须从 CLI 的
-/// 输出里来，裸桥参数不可信），再过 `deletable_template_dir` 的路径闸，
-/// 最后 `trash::delete` 进废纸篓而不是 unlink。
+/// `/template-delete?id=<id>`: re-fetch the list as the source of truth (the
+/// directory name must come from CLI output — raw bridge args are untrusted),
+/// pass the `deletable_template_dir` path guard, then `trash::delete` to the Trash.
 fn delete_template_async(app: tauri::AppHandle, shared: SharedState, id: Option<String>) {
     let Some(id) = id.filter(|raw| !raw.is_empty()) else {
         return;
@@ -1328,7 +1328,7 @@ fn delete_template_async(app: tauri::AppHandle, shared: SharedState, id: Option<
     });
 }
 
-/// "存为模板…"跟着 `doc_id` 走：每个改 `doc_id` 的点都把它同步到原生菜单。
+/// "存为模板…" tracks `doc_id`: every site that mutates `doc_id` also syncs the native menu.
 fn refresh_template_menu(app: &tauri::AppHandle, shared: &SharedState) {
     let enabled = shared
         .lock()
