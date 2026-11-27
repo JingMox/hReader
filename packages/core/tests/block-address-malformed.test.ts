@@ -1,15 +1,11 @@
 // This layer covers block addresses on malformed/edge-input HTML: unclosed tags, implied
-// closes, foster-parented tables, BOM/CRLF byte shapes, and a 10 MB document bound.
+// closes, foster-parented tables, BOM/CRLF byte shapes, and a 10 MB document pass. The
+// absolute CPU-time budget lives in tests/perf/block-address.perf.test.ts — coverage
+// instrumentation would false-red it here.
 
 import { describe, expect, it } from "vitest";
 
 import { applyBlockPatch, listBlocks, resolveAddress } from "../src/ops/block-address";
-
-/** Milliseconds of this process's own CPU time — scheduling stalls don't inflate it. */
-const cpuMs = (): number => {
-  const { user, system } = process.cpuUsage();
-  return (user + system) / 1000;
-};
 
 describe("malformed HTML", () => {
   it("should address blocks in a document with unclosed tags", () => {
@@ -133,7 +129,7 @@ describe("malformed HTML", () => {
     expect(outcome.html).toBe("<article>\r\n<p>ONE</p>\r\n<p>two</p>\r\n</article>\r\n");
   });
 
-  it("should list blocks on a 10 MB document in bounded CPU time", { timeout: 120_000 }, () => {
+  it("should list and resolve blocks on a 10 MB document", { timeout: 120_000 }, () => {
     const section =
       "<section><h2>标题标题标题标题</h2><p>" +
       "正文正文正文正文正文正文正文正文正文正文正文正文".repeat(8) +
@@ -145,21 +141,11 @@ describe("malformed HTML", () => {
     const html = `<!DOCTYPE html><html><body><article>${group.repeat(repeat)}</article></body></html>`;
     expect(html.length).toBeGreaterThanOrEqual(10 * 1024 * 1024);
 
-    const start = cpuMs();
     const blocks = listBlocks(html);
-    const listCost = cpuMs() - start;
-
-    const resolveStart = cpuMs();
+    expect(blocks.length).toBeGreaterThan(100);
     const last = blocks[blocks.length - 1];
     expect(last).toBeDefined();
     if (last === undefined) return;
     expect(resolveAddress(html, last.address)).toEqual({ ok: true, block: last });
-    const resolveCost = cpuMs() - resolveStart;
-
-    // The whole doc is one O(n) scan each; 10 MB stays far under the test timeout.
-    // (Reference: same-machine html-perf bounds parse+inject around single-digit seconds.)
-    expect(listCost).toBeLessThan(15_000);
-    expect(resolveCost).toBeLessThan(15_000);
-    expect(blocks.length).toBeGreaterThan(100);
   });
 });
