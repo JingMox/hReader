@@ -2137,6 +2137,30 @@ mod tests {
         assert_eq!(safe_new_filename("note.html", ws), "note.html");
     }
 
+    /// A leading `-` reaches the CLI as a flag (`hr template new -notes.html`
+    /// parses `-n` as an unknown argument; the blank path leaves the doc
+    /// unstyled): the sanitized name must never lead with a dash.
+    #[test]
+    fn new_doc_names_never_start_with_a_dash() {
+        let ws = Path::new("/tmp/ws");
+        for raw in ["-notes", "--global", "---", "-", ".-notes"] {
+            let name = safe_new_filename(raw, ws);
+            assert!(
+                !name.starts_with('-'),
+                "{raw:?} produced {name:?} — the CLI would read a `-x` stem as an unknown flag"
+            );
+        }
+        assert_eq!(safe_new_filename("-notes", ws), "notes.html");
+        assert_eq!(safe_new_filename("--global", ws), "global.html");
+        for raw in ["---", "-", ".-", "-.-"] {
+            let name = safe_new_filename(raw, ws);
+            assert!(
+                name.starts_with("doc-") && name.ends_with(".html"),
+                "{raw:?} strips to nothing and must fall back to the default name, got {name:?}"
+            );
+        }
+    }
+
     /// D2：外来 iframe 的外部导航裁决——联网关时连系统浏览器都不给开，
     /// 联网开时留在框架内（联网是全包语义）；非外来壳照旧交系统浏览器。
     #[test]
