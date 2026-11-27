@@ -294,12 +294,19 @@ describe("createFromTemplate · atomic rollback", () => {
     readonly links: ReadonlyMap<string, string>;
   }
 
+  // The create lock lives under `.hreader/locks/` — infra, not payload: snapshots skip it so a
+  // rollback check compares only the workspace tree (dirs, files, links and every byte of content).
+  const isLockInfra = (path: string): boolean =>
+    path === `${WS}/.hreader` || path.startsWith(`${WS}/.hreader/locks`);
+
   const snapshotOf = (fake: FakeFs): FakeSnapshot => ({
     files: new Map(
-      [...fake.state.files].map(([path, bytes]) => [path, new TextDecoder().decode(bytes)]),
+      [...fake.state.files]
+        .filter(([path]) => !isLockInfra(path))
+        .map(([path, bytes]) => [path, new TextDecoder().decode(bytes)]),
     ),
-    dirs: new Set(fake.state.dirs),
-    links: new Map(fake.state.links),
+    dirs: new Set([...fake.state.dirs].filter((path) => !isLockInfra(path))),
+    links: new Map([...fake.state.links].filter(([path]) => !isLockInfra(path))),
   });
 
   const expectUnchanged = (fake: FakeFs, before: FakeSnapshot): void => {
@@ -407,6 +414,54 @@ describe("createFromTemplate · atomic rollback", () => {
 
     await createAt(fake, { id: "my-tpl", target: "x.html" });
     expect(fake.state.files.has(`${WS}/x.html`)).toBe(true);
+  });
+
+  const deepAssetTemplate = (): Record<string, string> =>
+    htmlTemplate(TPL, {
+      entry: '<html><body><img src="assets/a/b/c.png"></body></html>',
+      assets: { "a/b/c.png": "PNG-C" },
+    });
+
+  const deepAssetDirs = [`${TPL}/assets`, `${TPL}/assets/a`, `${TPL}/assets/a/b`];
+
+  it("should remove the whole created dir tree when the pre-existing target wins", async () => {
+    const fake = setup({ ...deepAssetTemplate(), "/ws/doc.html": "EXISTING" }, deepAssetDirs);
+    const before = snapshotOf(fake);
+
+    const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "doc.html" }));
+    expect(error.code).toBe("file_exists");
+    expectUnchanged(fake, before);
+
+    // Retry once the cause is removed: the whole tree must land.
+    fake.state.files.delete("/ws/doc.html");
+    await createAt(fake, { id: "my-tpl", target: "doc.html" });
+    expect(textOf(fake, `${WS}/doc_files/a/b/c.png`)).toBe("PNG-C");
+  });
+
+  it("should remove the whole created dir tree when a deep asset write fails", async () => {
+    const fake = setup(deepAssetTemplate(), deepAssetDirs);
+    fake.fail("link", systemError("ENOSPC"), (path: string) =>
+      path.startsWith(`${WS}/doc_files/a/b/c.png.`),
+    );
+    const before = snapshotOf(fake);
+
+    const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "doc.html" }));
+    expect(error.code).toBe("io_failure");
+    expectUnchanged(fake, before);
+
+    // Retry after the cause is removed must succeed.
+    await createAt(fake, { id: "my-tpl", target: "doc.html" });
+    expect(textOf(fake, `${WS}/doc_files/a/b/c.png`)).toBe("PNG-C");
+  });
+
+  it("should remove the whole created dir tree when the final page write fails", async () => {
+    const fake = setup(deepAssetTemplate(), deepAssetDirs);
+    fake.fail("link", systemError("ENOSPC"), (path: string) => path.startsWith(`${WS}/doc.html.`));
+    const before = snapshotOf(fake);
+
+    const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "doc.html" }));
+    expect(error.code).toBe("io_failure");
+    expectUnchanged(fake, before);
   });
 
   it("should keep the original failure when a rollback rmdir cannot empty a created dir", async () => {

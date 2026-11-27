@@ -230,7 +230,12 @@ const writeMethodsOf = (
   },
   mkdir: (path) => {
     guard(state, "mkdir", path);
-    state.dirs.add(path);
+    // `mkdir -p`: the real port passes {recursive:true}, so every missing ancestor segment lands too.
+    let pivot = path;
+    while (pivot.length > 1 && !state.dirs.has(pivot)) {
+      state.dirs.add(pivot);
+      pivot = pivot.slice(0, pivot.lastIndexOf("/")) || "/";
+    }
     return Promise.resolve();
   },
   rmdir: (path) => {
