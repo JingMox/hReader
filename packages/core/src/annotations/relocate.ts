@@ -293,7 +293,11 @@ const relocate = (view: DocView, annotation: SidecarAnnotation): RelocateResult 
 export const docRelocatorOf = (
   html: string,
 ): ((annotation: SidecarAnnotation) => RelocateResult) => {
-  const parsed = parseHtml(html);
+  // scriptingEnabled:true — D54: the body-text domain is always read inside a
+  // scripting-on browser (the annotate frame forces allow-scripts, the reader
+  // itself runs scripts), so `<noscript>` is raw text ending at the first
+  // `</noscript>`; parsing otherwise hides the post-close text the browser sees.
+  const parsed = parseHtml(html, { scriptingEnabled: true });
   const managed = classifyDocument(parsed).cls === "managed";
   const model = managed ? toDocumentModel(parsed) : undefined;
   const elements = elementsOf(parsed.root);

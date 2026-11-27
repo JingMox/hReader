@@ -111,4 +111,29 @@ describe("docRelocatorOf · body fallback text domain", () => {
 
     expect(result).toEqual({ ok: true, start: 7, end: 13, via: "body" });
   });
+
+  it("should see text after a nested noscript's early end (the browser's scripting-on view)", () => {
+    // With scripting enabled <noscript> is raw text that ends at the FIRST
+    // `</noscript>`: "a<noscript>b" is the raw payload, "needle" is live body
+    // text and the stray closer drops. The annotation domain must parse like
+    // the browser — every browser surface this domain faces runs scripts.
+    const relocate = docRelocatorOf(
+      "<html><body><p>visible</p><noscript>a<noscript>b</noscript>needle</noscript></body></html>",
+    );
+    const result = relocate(note({ selector: "body > table:nth-of-type(1)" }));
+
+    expect(result).toEqual({ ok: true, start: 7, end: 13, via: "body" });
+  });
+
+  it("should still relocate around a plain (non-nested) noscript", () => {
+    // Non-regression: the scripting flip must not move offsets for documents
+    // that carry a simple noscript — annotations made before the change stay
+    // anchored.
+    const relocate = docRelocatorOf(
+      "<html><body><p>a needle</p><noscript><p>hidden</p></noscript>tail</body></html>",
+    );
+    const result = relocate(note({ selector: "body > table:nth-of-type(1)" }));
+
+    expect(result).toEqual({ ok: true, start: 2, end: 8, via: "body" });
+  });
 });

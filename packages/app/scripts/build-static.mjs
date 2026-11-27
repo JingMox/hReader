@@ -31,9 +31,12 @@ const fail = (message) => {
 await mkdir(out, { recursive: true });
 await copyFile(join(app, "static", "index.html"), join(app, "dist", "index.html"));
 await copyFile(join(app, "static", "styles.css"), join(out, "styles.css"));
-// The annotate-mode stub: served by the daemon as `/f/<cap>/__hr_annotator.js`,
-// so it must sit next to index.html — not under assets/.
-await copyFile(join(app, "static", "annotator.js"), join(dist, "annotator.js"));
+// The annotate-mode script: served by the daemon as `/f/<cap>/__hr_annotator.js`,
+// so it must sit next to index.html — not under assets/. It is bundled from
+// src/annotator/ by scripts/build-annotator.mjs before this script runs.
+if (!existsSync(join(dist, "annotator.js"))) {
+  fail(`dist/annotator.js missing — run scripts/build-annotator.mjs first`);
+}
 
 // tsc must have emitted src/version.ts at exactly this path; a moved or renamed source
 // would leave this file missing (and the stray Node-side emit somewhere else in dist).

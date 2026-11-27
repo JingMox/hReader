@@ -36,6 +36,7 @@ interface ParseContext {
   readonly diagnostics: Diagnostic[];
   readonly metaScripts: HtmlNode[];
   readonly locations: boolean;
+  readonly scriptingEnabled: boolean;
 }
 
 /** 元素必有 startTag；缺位置时整体退化为零宽区间。 */
@@ -253,7 +254,10 @@ const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Docum
     sourceCodeLocationInfo: context.locations,
     // 浏览器在不跑脚本时的默认口径：`<noscript>` 内容按标记解析（实体解码），不是 raw text。
     // parse5 自己的默认是 true，会把它当 raw text 保留原始实体串，序列化时再被转义一次。
-    scriptingEnabled: false,
+    // The annotation body-text domain (relocate) needs true instead: that tree always
+    // runs in a scripting-enabled browser, where `<noscript>` ends at the first
+    // `</noscript>`, and both sides must agree on the visible text.
+    scriptingEnabled: context.scriptingEnabled,
     onParseError: (error) => {
       const code = PARSE5_TO_DIAGNOSTIC[error.code];
       if (code !== undefined) {
@@ -264,10 +268,14 @@ const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Docum
     },
   });
 
-/** `locations` 只在需要按源码区间回写时打开：默认关，关闭时产出的树与诊断不变。 */
+/** `locations` is enabled only when writing back by source range; off by default, and
+ *  turning it off leaves the tree and diagnostics unchanged. `scriptingEnabled` is
+ *  enabled only for the annotation body-text domain (relocate): that tree always runs
+ *  in a scripting-enabled browser (`<noscript>` is cut as raw text); every other path
+ *  keeps the no-scripting view. */
 export const parseHtml = (
   html: string,
-  options: { readonly locations?: boolean } = {},
+  options: { readonly locations?: boolean; readonly scriptingEnabled?: boolean } = {},
 ): ParsedHtml => {
   if (!isString(html)) {
     throw new HrError("invalid_html", "parseHtml 只接受字符串；类型系统外的输入不可恢复");
@@ -276,6 +284,7 @@ export const parseHtml = (
     diagnostics: [],
     metaScripts: [],
     locations: options.locations === true,
+    scriptingEnabled: options.scriptingEnabled === true,
   };
   if (html.trim().length === 0) {
     context.diagnostics.push(

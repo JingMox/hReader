@@ -292,6 +292,58 @@ body {
   background: #fff;
 }
 
+/* Annotate popover: fixed-positioned above the iframe; `.annotate-pop` sets no display (same [hidden] convention).
+   Width matches POPOVER_METRICS.width — the placement arithmetic lives in annotate-proto.ts. */
+.annotate-pop {
+  position: fixed;
+  z-index: 30;
+  width: 320px;
+  box-sizing: border-box;
+  padding: 8px;
+  background: var(--hr-paper);
+  border: 1px solid var(--hr-rule);
+  box-shadow: 0 4px 16px rgba(27, 26, 23, 0.2);
+  font-size: 13px;
+}
+
+.annotate-draft {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  color: var(--hr-ink);
+  background: #fff;
+  border: 1px solid var(--hr-rule);
+  padding: 4px 6px;
+}
+
+.annotate-view {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.annotate-hint {
+  margin: 0;
+  color: #8a1f11;
+  font-size: 12px;
+}
+
+.annotate-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.annotate-actions button {
+  font-size: 12px;
+  padding: 0 8px;
+  cursor: pointer;
+  color: var(--hr-ink);
+  background: transparent;
+  border: 1px solid var(--hr-rule);
+}
+
 /* 单文档权限开关（`#hr-perms` 不设 display：作者层 display 会压掉 UA 的 `[hidden]`）。
    `data-on` 是生效态的唯一事实源——全局模式接管时 `disabled` + "由设置统一控制"提示。 */
 .perm-toggle {

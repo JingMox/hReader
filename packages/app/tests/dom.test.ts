@@ -137,6 +137,19 @@ describe("on/destroy · 监听与解绑", () => {
     expect(seen).toEqual(["v"]);
     expect(element.listeners).toEqual([]);
   });
+
+  it("should forward a string event key and omit a non-string one", () => {
+    const element = fakeElement("div");
+    const host = createDomHost(docWith([["#o", element]]));
+    const seen: (string | undefined)[] = [];
+    host.on("#o", "keydown", (target) => {
+      seen.push(target.key);
+    });
+    element.fire("keydown", {}, { key: "Escape" });
+    element.fire("keydown", {});
+    element.fire("keydown", {}, { key: 13 });
+    expect(seen).toEqual(["Escape", undefined, undefined]);
+  });
 });
 
 describe("on/destroy · tocId 预解析", () => {

@@ -86,6 +86,9 @@ importers:
       eslint-plugin-import:
         specifier: ^2.32.0
         version: 2.32.0(@typescript-eslint/parser@8.72.2(eslint@9.39.1(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.1(jiti@2.7.0))
+      fast-check:
+        specifier: 'catalog:'
+        version: 4.11.0
       globals:
         specifier: ^16.5.0
         version: 16.5.0
@@ -113,6 +116,12 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
+      esbuild:
+        specifier: 'catalog:'
+        version: 0.28.2
+      happy-dom:
+        specifier: 'catalog:'
+        version: 21.0.4
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/node@26.6.6)(happy-dom@21.0.4)(jiti@2.7.0)(yaml@2.9.1)

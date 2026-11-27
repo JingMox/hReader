@@ -34,6 +34,8 @@
         <div id="hr-foreign" class="foreign-banner" hidden>
           <span id="hr-foreign-text"></span>
           <button id="hr-foreign-action" type="button" hidden></button>
+          <!-- Annotate-mode toggle: foreign docs only (the foreign widget attaches/detaches hidden by cls). -->
+          <button id="hr-annotate-btn" type="button" class="perm-toggle" hidden></button>
           <span id="hr-foreign-error" class="foreign-error" role="alert"></span>
         </div>
         <iframe
@@ -43,6 +45,22 @@
           allow="fullscreen"
           hidden
         ></iframe>
+        <!-- Annotate popover: fixed-positioned; position = iframe bounding rect + in-frame selection rect (carried by the frame's message). -->
+        <div id="hr-annotate-pop" class="annotate-pop" hidden>
+          <textarea
+            id="hr-annotate-draft"
+            class="annotate-draft"
+            rows="4"
+            maxlength="2000"
+            hidden
+          ></textarea>
+          <p id="hr-annotate-view" class="annotate-view" hidden></p>
+          <p id="hr-annotate-hint" class="annotate-hint" hidden></p>
+          <div id="hr-annotate-actions" class="annotate-actions">
+            <button id="hr-annotate-cancel" type="button"></button>
+            <button id="hr-annotate-save" type="button" hidden></button>
+          </div>
+        </div>
       </main>
       <div id="hr-present">
         <span id="hr-present-pager" role="status"></span>

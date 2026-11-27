@@ -15,7 +15,7 @@ import { selectionIntentOf, type RawSelection, type SelectionIntent } from "./wi
 const ROOT = "#hr-root";
 
 /** 真 `keydown` 的最小视图：读 `key`/`metaKey`/`ctrlKey`/`altKey`/`shiftKey` 五项 + `target`（`tagName`/`isContentEditable`）。清单以 `keys.ts` 的 `KeyLike` 为唯一标准——少转发一个，就有快捷键从真实入口永久不可达（曾漏 `shiftKey`，Shift+D 产不出 `diffToggled`）；`keys.ts` 新读字段时必须同步这里与 `keySourceOf`。 */
-export interface KeyboardLike {
+interface KeyboardLike {
   readonly key: string;
   readonly metaKey?: boolean;
   readonly ctrlKey?: boolean;

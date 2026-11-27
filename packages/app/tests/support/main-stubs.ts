@@ -22,6 +22,8 @@ export interface BrowserStubs {
   keyHandlers: ((event: KeyboardLike) => void)[];
   pagehide: ((event: KeyboardLike) => void)[];
   mouseups: (() => void)[];
+  /** `window.addEventListener("message")` registrations (the annotate env). */
+  messages: ((event: { source?: unknown; origin?: string; data?: unknown }) => void)[];
   fetched: string[];
   /** 每次 `fetch` 的原始入参（用来断言 POST 的 JSON 正文）。 */
   requests: { url: string; method: string; body: unknown }[];
@@ -62,6 +64,7 @@ export const stubs: BrowserStubs = {
   keyHandlers: [],
   pagehide: [],
   mouseups: [],
+  messages: [],
   fetched: [],
   requests: [],
   selection: null,
@@ -89,6 +92,7 @@ export const installGlobals = (
   stubs.keyHandlers = [];
   stubs.pagehide = [];
   stubs.mouseups = [];
+  stubs.messages = [];
   stubs.fetched = [];
   stubs.requests = [];
   stubs.selection = null;
@@ -101,9 +105,12 @@ export const installGlobals = (
   });
   vi.stubGlobal("window", {
     location: { href },
-    addEventListener: (type: string, listener: (event: KeyboardLike) => void) => {
+    innerWidth: 1024,
+    innerHeight: 768,
+    addEventListener: (type: string, listener: (event: unknown) => void) => {
       if (type === "keydown") stubs.keyHandlers.push(listener);
       if (type === "pagehide") stubs.pagehide.push(listener);
+      if (type === "message") stubs.messages.push(listener);
       if (type === "mouseup")
         stubs.mouseups.push(() => {
           listener({ key: "" });
