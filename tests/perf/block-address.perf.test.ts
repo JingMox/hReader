@@ -1,7 +1,7 @@
 // Absolute CPU-time budget for `listBlocks` + `resolveAddress` on a ~10 MB
-// document. Coverage instrumentation would false-red it, so it runs only under
-// `pnpm test:perf` (see vitest.perf.config.ts); the 10 MB structural checks
-// stay in packages/core/tests/block-address-malformed.test.ts.
+// document, plus the structural 10 MB checks. Both live here and only here:
+// coverage instrumentation would false-red the budget, and per-test timeouts
+// do not belong in the unit suite (see vitest.perf.config.ts).
 
 import { describe, expect, it } from "vitest";
 
@@ -44,6 +44,21 @@ const measure = (html: string): number => {
 };
 
 describe("block addresses · 10 MB document", () => {
+  it(
+    "should list and resolve every block on a 10 MB document",
+    () => {
+      const html = buildDocument(10 * 1024 * 1024);
+      expect(html.length).toBeGreaterThanOrEqual(10 * 1024 * 1024);
+      const blocks = listBlocks(html);
+      expect(blocks.length).toBeGreaterThan(100);
+      const last = blocks[blocks.length - 1];
+      expect(last).toBeDefined();
+      if (last === undefined) return;
+      expect(resolveAddress(html, last.address)).toEqual({ ok: true, block: last });
+    },
+    TIMEOUT_MS,
+  );
+
   it(
     "should list and resolve on a 10 MB document in bounded CPU time",
     () => {

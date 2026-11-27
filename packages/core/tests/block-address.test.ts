@@ -252,6 +252,43 @@ describe("address format", () => {
     ]);
   });
 
+  it("should list the same blocks as before source-ownership validation on well-formed docs", () => {
+    // D58 regression pin: on ordinary well-formed input every leaf block's range was
+    // already exactly its own bytes, so ownership validation changes nothing here.
+    const corpus: readonly (readonly [string, readonly string[]])[] = [
+      [DOC, ["h1", "p", "p", "li", "p"]],
+      [
+        "<div><p>a</p><p>b</p></div><section><ul><li>x</li><li>y</li></ul></section>",
+        ["p", "p", "li", "li"],
+      ],
+      [
+        "<!DOCTYPE html><html><head><title>t</title></head><body><article><h1>T</h1><p>a<b>b</b>c</p><pre>code</pre></article></body></html>",
+        ["h1", "p", "pre"],
+      ],
+      ["<dl><dt>t1</dt><dd>d1</dd><dt>t2</dt><dd><p>nested</p></dd></dl>", ["dt", "dd", "dt", "p"]],
+      [
+        "<figure><img src=x><figcaption>cap</figcaption></figure><blockquote><p>q</p></blockquote>",
+        ["figcaption", "p"],
+      ],
+      [
+        "<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>c</td></tr></tbody></table><details><summary>s</summary><p>d</p></details>",
+        ["table", "summary", "p"],
+      ],
+      ["<p>para<div>indiv</div>", ["p", "div"]],
+      ["<article><p>one<p>two<div>three", ["p", "p", "div"]],
+    ];
+    for (const [html, tags] of corpus) {
+      const blocks = listBlocks(html);
+      expect(blocks.map((b) => b.tag)).toEqual(tags);
+      for (const block of blocks) {
+        // Every listed block's range is its own outerHTML and resolves round-trip.
+        const slice = html.slice(block.start, block.end);
+        expect(slice.startsWith(`<${block.tag}`)).toBe(true);
+        expect(resolveAddress(html, block.address)).toEqual({ ok: true, block });
+      }
+    }
+  });
+
   it("should produce an address bounded by the selector limits plus the fingerprint suffix", () => {
     const nested = `${"<div>".repeat(40)}<p>x</p>${"</div>".repeat(40)}`;
     const [block] = blocksOf(nested);
