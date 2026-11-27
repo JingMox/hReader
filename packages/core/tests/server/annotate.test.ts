@@ -1,5 +1,7 @@
-// 这层管：批注模式的纯件——一次性令牌簿（TTL/单次核销/绑定/容量/冲突重抽）、
-// `<script nonce>` 注入点（doctype 之后或字节 0）与批注档 CSP 的全档扫查。
+// This layer owns the annotate-mode pure pieces: the single-use token book
+// (TTL / single burn / binding / capacity / collision redraw), the
+// `<script nonce>` injection point (after the doctype or byte 0), and the
+// annotate CSP sweep across all four permission rows.
 
 import { describe, expect, it } from "vitest";
 

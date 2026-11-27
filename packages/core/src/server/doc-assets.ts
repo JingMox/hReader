@@ -96,9 +96,11 @@ const withCors = (reply: Reply): Reply => ({
 });
 
 /**
- * `/f/<cap>/__hr_annotator.js` 是保留名：赢过文档目录里的同名真文件（注入标签只信服务端
- * 自己的副本，文件树里放什么是文档说了算）。字节来自 `<appDir>/annotator.js`；
- * 与这条路由其它失败同口径——读不到就是 404，不做存在性区分。
+ * `/f/<cap>/__hr_annotator.js` is a reserved name: it wins over a real file of
+ * the same name in the doc directory (the injected tag trusts only the
+ * server's own copy; the document owns whatever sits in its tree). Bytes come
+ * from `<appDir>/annotator.js`; same verdict as every other failure on this
+ * route — unreadable means 404, with no existence distinction.
  */
 const annotatorReply = async (ctx: HandlerContext): Promise<Reply> => {
   if (ctx.appDir === "") return notFound();
@@ -149,8 +151,9 @@ export const docAssetReply = async (
   // this route's CORS. `annotate` is only consulted on this branch — every
   // other asset path ignores the parameter entirely.
   if (rawPath === grant.docName) {
-    // Stryker disable ConditionalExpression: annotate 缺省时硬造 request 也只给
-    // consume 送一个 undefined token——簿里查无此人，回落同形，等价。
+    // Stryker disable ConditionalExpression: fabricating a request while
+    // annotate is absent only hands consume an undefined token — the book has
+    // no such entry, the fallback is identical, equivalent.
     const request: AnnotateRequest | undefined =
       annotate === undefined
         ? undefined
@@ -159,8 +162,9 @@ export const docAssetReply = async (
     return withCors((await documentServeOf(ctx, grant.doc, request)).reply);
   }
   const segments = segmentsOf(rawPath);
-  // Stryker disable next-line ConditionalExpression: segments===undefined 时下一行的
-  // `...segments` 展开必抛 TypeError，而它就落在 realpath 的 try 里——catch 同收 404，等价。
+  // Stryker disable next-line ConditionalExpression: when segments===undefined the
+  // `...segments` spread on the next line must throw TypeError, and it lands inside
+  // the realpath try — the catch returns the same 404, equivalent.
   if (segments === undefined || typeOf(rawPath) === undefined) return notFound();
   let real: string;
   try {
@@ -170,8 +174,10 @@ export const docAssetReply = async (
     // an unresolvable path can never prove it is in scope.
     return notFound();
   }
-  // Stryker disable next-line ConditionalExpression: 越界的 real 必让 relative 产 `..` 前缀，
-  // 下一道 segmentsOf(rel) 语法重判照样 404——这关与重判严格同义，守住的是可读性不是新口径。
+  // Stryker disable next-line ConditionalExpression: an out-of-scope real makes
+  // relative() produce a `..`-prefixed rel, and the segmentsOf(rel) grammar
+  // re-verdict below answers the same 404 — this gate is strictly synonymous
+  // with the re-check; it guards readability, not a new rule.
   if (!isInside(grant.dir, real)) return notFound();
   // Re-run the verdict on the *resolved* name: a symlink may point at a name
   // that fails the grammar (dot segment) or the whitelist (.html).

@@ -149,16 +149,19 @@ const FOREIGN_CSP: Readonly<Record<"off" | "on", Readonly<Record<"off" | "on", s
   },
 };
 
-/** @internal 查表本身留在本文件；批注档要复用同一份矩阵（只能从这里取，不可抄串）。 */
+/** @internal the lookup itself stays in this file; the annotate row must reuse the same matrix (taken from here, never copied). */
 export const foreignCspOf = (effective: EffectivePermissions): string =>
   FOREIGN_CSP[effective.scripts ? "on" : "off"][effective.network ? "on" : "off"];
 
 /**
- * 批注档 CSP：拿同一份矩阵动手术，两个字符串不可能漂移。
- * - 脚本关：`script-src 'none'` → `script-src 'nonce-N'`（注入标签是唯一可跑脚本），
- *   裸 `sandbox` → `sandbox allow-scripts`（沙箱仍无 `allow-same-origin`）；
- * - 脚本开：原档逐字节不动——注入脚本本来就是 `'self'`，加 nonce 反而会关掉
- *   `'unsafe-inline'`（nonce 与 inline 放宽互斥）。
+ * Annotate-mode CSP: surgery on the same matrix, so the two strings can never
+ * drift apart.
+ * - Scripts off: `script-src 'none'` → `script-src 'nonce-N'` (the injected
+ *   tag is the only script allowed to run), and bare `sandbox` → `sandbox
+ *   allow-scripts` (still no `allow-same-origin`);
+ * - Scripts on: the row is returned byte-identical — the injected script is
+ *   already `'self'`, and adding a nonce would switch `'unsafe-inline'` off
+ *   (nonce and the inline relaxation are mutually exclusive).
  * @internal
  */
 export const annotateCspOf = (effective: EffectivePermissions, nonce: string): string => {
@@ -260,7 +263,7 @@ export const outlineReply = async (ctx: HandlerContext, docId: string): Promise<
 };
 
 /**
- * `?annotate=<token>` 核销用的绑定对：值必须来自能力簿里的 grant，不是 URL 原文。
+ * The binding pair an `?annotate=<token>` consumes against: values must come from the capability book's grant, not the raw URL.
  * @internal
  */
 export interface AnnotateRequest {
@@ -274,9 +277,11 @@ export interface AnnotateRequest {
  * this for the doc-itself exception; `/s/` used to (it now only redirects);
  * the unbuilt home page borrows it for the article excerpt.
  *
- * `annotate`（一枚 `?annotate=` 令牌）只对外来文档有意义：核销成功才注入
- * 批注脚本并换批注档 CSP；无效/过期/错文档一律回落普通文档——连"差一点"都不可见。
- * 托管/可归一文档走早退分支，令牌参数根本不读。
+ * `annotate` (one `?annotate=` token) only means something for foreign
+ * documents: a successful burn injects the annotator and swaps in the
+ * annotate CSP; invalid/expired/cross-document all fall back to the plain
+ * document — not even "close" is observable. Managed/normalizable documents
+ * take the early-return branch and the parameter is never read.
  * @internal
  */
 export const documentServeOf = async (
@@ -296,7 +301,7 @@ export const documentServeOf = async (
   const body =
     // Stryker disable next-line ConditionalExpression: 联网开时原文下发，strip 是纯字符串变换。
     effective.network ? text : stripPrefetchLinks(text);
-  // 令牌是"即查即焚"：这里核销掉，响应就只剩注入版与普通版两种（无第三种可分辨的形状）。
+  // Tokens burn on read: consuming here leaves exactly two response shapes — injected or plain — with no third distinguishable form.
   const granted =
     annotate !== undefined &&
     ctx.annotateTokens.consume(annotate.cap, annotate.docName, annotate.token);
@@ -615,10 +620,14 @@ const docPermissionsBody = z
   });
 
 /**
- * `POST /api/doc/:docId/annotate`：签发一次性批注令牌，回 `{ frameUrl: /f/<cap>/<doc>?annotate=<t> }`。
- * cap 走 `info.frameUrl` 同一条铸币链（register 幂等），令牌只在 `/f/` 的文档响应里核销。
- * 只对外来文档开放——托管/可归一文档进不了 iframe 壳，批注脚本对它们没有意义。
- * 文档字节不动，`changed: false`：noteWrite 不广播（没有可刷新的内容变化）。
+ * `POST /api/doc/:docId/annotate`: mints a single-use annotate token and
+ * answers `{ frameUrl: /f/<cap>/<doc>?annotate=<t> }`.
+ * The cap rides the same minting chain as `info.frameUrl` (register is
+ * idempotent); the token is only burned inside `/f/` document responses.
+ * Foreign documents only — managed/normalizable documents never enter an
+ * iframe shell, so an annotator script means nothing to them.
+ * Document bytes untouched, `changed: false`: noteWrite stays silent (there
+ * is no content change to refresh).
  */
 export const annotateReply = async (ctx: HandlerContext, docId: string): Promise<Written> => {
   const doc = await foreignDocOf(ctx, docId, "批注模式");

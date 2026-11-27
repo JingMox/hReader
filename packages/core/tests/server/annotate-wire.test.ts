@@ -1,6 +1,8 @@
-// 这层管：批注模式的线端面——`POST /api/doc/<docId>/annotate` 的鉴权与签发形状、
-// `/f/<cap>/<doc>?annotate=<token>` 的注入/回落语义、`__hr_annotator.js` 保留名服务。
-// 令牌核销的失败侧只有一个可观察形状：普通文档、原档 CSP、无 nonce。
+// This layer owns the annotate-mode wire surface: auth and mint shape of
+// `POST /api/doc/<docId>/annotate`, the inject/fallback semantics of
+// `/f/<cap>/<doc>?annotate=<token>`, and the `__hr_annotator.js` reserved
+// name. The failure side of a token burn has exactly one observable shape:
+// plain document, original CSP, no nonce.
 
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,7 +60,7 @@ const frameUrlOf = async (ctx: TestServer, docId = "doc.html"): Promise<string> 
   return body.frameUrl;
 };
 
-/** 帧 URL 的形状（冻结契约）：`/f/<cap-22>/<doc>?annotate=<token-22>`。 */
+/** Frame URL shape (frozen contract): `/f/<cap-22>/<doc>?annotate=<token-22>`. */
 const FRAME_URL = /^\/f\/[A-Za-z0-9_-]{22}\/[^/?]+\?annotate=[A-Za-z0-9_-]{22}$/u;
 
 const nonceOf = (response: HttpResponse): string | undefined =>

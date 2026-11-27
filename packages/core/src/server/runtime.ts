@@ -231,11 +231,11 @@ const dispatchOf =
     }
     // `/f/` 与 docId 体系无关：cap 是唯一凭证，目录从能力簿里查。
     if (route.kind === "docAsset") {
-      // `req.url` 缺失只可能来自手搓的请求对象：与静态路由同口径，给一条能测的 400。
+      // A missing `req.url` can only come from a hand-made request object: same verdict as the static routes, a testable 400.
       if (req.url === undefined) {
         return jsonOf(400, { code: "invalid_request", message: "请求行缺少 URL" });
       }
-      // `annotate` 令牌躺在 query 里：只有文档例外分支会消费它，别的资产路径直接忽略。
+      // The `annotate` token rides in the query: only the document exception branch consumes it; every other asset path ignores it outright.
       const annotate = new URL(req.url, "http://local").searchParams.get("annotate") ?? undefined;
       return docAssetReply(
         context,
