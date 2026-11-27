@@ -744,9 +744,8 @@ describe.skipIf(SKIP_REASON !== null)("foreign export · PDF link annotations", 
       const { uris, dests } = await linkAnnotsOf(pdf);
 
       // The cap rides on the served /f/ request URLs, not the plan handle.
-      const cap = /\/f\/([^/]+)\//.exec(
-        audit.find((r) => r.action === "serve")?.url ?? "",
-      )?.[1] ?? "";
+      const cap =
+        /\/f\/([^/]+)\//.exec(audit.find((r) => r.action === "serve")?.url ?? "")?.[1] ?? "";
       expect(cap.length).toBeGreaterThan(0);
 
       // The leak oracle: no annotation may carry the minted origin, the cap,
@@ -764,9 +763,7 @@ describe.skipIf(SKIP_REASON !== null)("foreign export · PDF link annotations", 
       // The exact surviving set: the external link and the mailto — every
       // same-origin shape, the javascript: link, and the /f/ absolute link
       // produce no annotation at all.
-      expect([...uris].sort()).toEqual(
-        ["https://example.com/ext.png", "mailto:a@b.c"].sort(),
-      );
+      expect([...uris].sort()).toEqual(["https://example.com/ext.png", "mailto:a@b.c"].sort());
       // The fragment link stays an internal /Dest — never a URI annotation.
       expect(dests.some((d) => d.endsWith("sec"))).toBe(true);
       expect(dests.every((d) => !d.includes("secret"))).toBe(true);
