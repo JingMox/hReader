@@ -7,8 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { classifyDocument, checkLayout, parseHtml } from "../../src";
-import type { HtmlNode } from "../../src/html/constants";
+import { classifyDocument, checkLayout, parseHtml, replaceTheme } from "../../src";
 import { newDocumentHtml } from "../../src/layout/kinds";
 import { BUILTIN_TEMPLATES } from "../../src/templates/builtin";
 import { THEME_CSS } from "../../src/templates/builtin/theme-css";
@@ -20,30 +19,6 @@ const themeFile = (visual: string): string =>
     fileURLToPath(new URL(`../../../../styles/${visual}/theme.css`, import.meta.url)),
     "utf8",
   );
-
-/**
- * Structural fingerprint: tag sequence + text + non-injected attributes. `data-hr-id` (injected at create
- * time), `<style>` blocks (the theme-inline product — the reference side has none) and whitespace-only
- * text nodes (serialization may rewrite indentation) are excluded — what remains is the skeleton itself,
- * and equal fingerprints = structural equivalence.
- */
-const STRUCTURAL_TEXT = (node: HtmlNode): boolean =>
-  !(node.kind === "text" && node.value.trim().length === 0) &&
-  !(node.kind === "element" && node.tag === "style");
-
-const fingerprint = (node: HtmlNode): unknown => {
-  if (node.kind === "text") return { kind: "text", value: node.value.trim() };
-  if (node.kind === "doctype") return { kind: "doctype", name: node.name };
-  if (node.kind !== "element" && node.kind !== "document") return node.kind;
-  if (node.kind === "document") {
-    return { tag: "document", children: node.children.filter(STRUCTURAL_TEXT).map(fingerprint) };
-  }
-  return {
-    tag: node.tag,
-    attrs: node.attrs.filter(([name]) => name !== "data-hr-id"),
-    children: node.children.filter(STRUCTURAL_TEXT).map(fingerprint),
-  };
-};
 
 const KINDS = ["note", "report", "minutes", "brief", "slides"] as const;
 
@@ -65,9 +40,11 @@ describe("builtin templates · equivalence with newDocumentHtml (F2a compatibili
   });
 
   it.each([...KINDS])(
-    "should create a document structurally identical to `hr new --kind %s`",
+    "should create bytes identical to `hr new --kind %s --title` with the same theme",
     async (kind) => {
       const fake = fakeFs({ "/ws/keep.html": "x" });
+      const builtin = BUILTIN_TEMPLATES.find((template) => template.manifest.id === kind);
+      if (builtin === undefined) throw new Error(`builtin list is missing ${kind}`);
       const result = await createFromTemplate(
         { id: kind, target: `${kind}.html`, title: "等价标题" },
         rootsOf(),
@@ -82,10 +59,10 @@ describe("builtin templates · equivalence with newDocumentHtml (F2a compatibili
       expect(classifyDocument(parsed).cls).toBe("managed");
       expect(checkLayout(parsed.root)).toHaveLength(0);
 
-      // Equivalence baseline: the `hr new --kind` product is newDocumentHtml; fingerprints must match
-      // outside the injected ids and theme.
-      const reference = parseHtml(newDocumentHtml({ kind, title: "等价标题" }));
-      expect(fingerprint(parsed.root)).toEqual(fingerprint(reference.root));
+      // Raw bytes, no normalization: `hr new` is replaceTheme(newDocumentHtml) — createFromTemplate must
+      // land the identical product, injected h1 id included (it follows the retitled text, not "Untitled").
+      const reference = replaceTheme(newDocumentHtml({ kind, title: "等价标题" }), builtin.style).html;
+      expect(created).toBe(reference);
     },
   );
 });
