@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { PrintHtmlResult } from "@hreader/renderer-html";
 import { EXIT_FAILURE, EXIT_IO, EXIT_OK, EXIT_USAGE, exitCodeOf } from "../src/exit-codes";
 import {
+  bounded,
   dataExport,
   dataImport,
   dataLint,
@@ -414,6 +415,42 @@ describe("term · terminal-safe human output", () => {
 
   it("should leave plain Chinese and emoji titles byte-identical", () => {
     expect(term("中文标题 📖 第二章")).toBe("中文标题 📖 第二章");
+  });
+});
+
+describe("bounded · the stderr line cap", () => {
+  const LONE_LEAD = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u;
+  const LONE_TAIL = /(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
+
+  it("should not split a surrogate pair when the cap lands inside an emoji", () => {
+    // 8191 'a' + 😀 = 8193 code units: the 8192-unit cut falls between the emoji's two halves.
+    const written = bounded(`${"a".repeat(8191)}😀`);
+    expect(written).not.toMatch(LONE_LEAD);
+    expect(written).not.toMatch(LONE_TAIL);
+    expect(written).toContain("…[truncated 2 chars]");
+    expect(written.startsWith("a".repeat(8191))).toBe(true);
+  });
+
+  it("should keep a surrogate pair whose tail ends exactly on the cap", () => {
+    // 8190 'a' + 😀 + 'b' = 8193 units: the cut lands just after the whole pair — keep it, drop 'b'.
+    const written = bounded(`${"a".repeat(8190)}😀b`);
+    expect(written).toContain("😀");
+    expect(written).toContain("…[truncated 1 chars]");
+    expect(written).not.toMatch(LONE_LEAD);
+    expect(written).not.toMatch(LONE_TAIL);
+  });
+
+  it("should leave a text exactly at the cap untouched, emoji included", () => {
+    const exact = `${"a".repeat(8190)}😀`;
+    expect(bounded(exact)).toBe(exact);
+  });
+
+  it("should preserve a surrogate that is already lone in the input", () => {
+    // Malformed input is echoed, not "fixed": the cut must not create new lone surrogates, but it does
+    // not silently drop a pre-existing one either.
+    const written = bounded(`${"a".repeat(8191)}\uD800b`);
+    expect(written.startsWith(`${"a".repeat(8191)}\uD800`)).toBe(true);
+    expect(written).toContain("…[truncated 1 chars]");
   });
 });
 

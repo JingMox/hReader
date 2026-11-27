@@ -40,6 +40,11 @@ export interface ForeignInput {
   readonly scripts: boolean;
   /** 外来文档的生效权限视图；normalizable 没有（权限对它无意义）。 */
   readonly permissions?: DocPermissions;
+  /**
+   * `/f/<cap>/<file>` frame entry minted by the server (multi-file pages);
+   * absent on older servers — `srcOf` then falls back to the `/s/` redirect.
+   */
+  readonly frameUrl?: string;
 }
 
 /** 外来壳的主题下拉：`POST /api/style` 把 `<style id="hr-theme">` 写进外来文件本身。 */
@@ -113,7 +118,10 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
   let dead = false;
 
   const srcOf = (tag: string | undefined): string => {
-    const base = `/s/${encodeURIComponent(deps.docId)}`;
+    // Prefer the server's `/f/` entry (no 302 hop); `/s/` stays the fallback
+    // for older servers. `info` is re-read per call so a resync's fresher
+    // cap always wins over a stale, now-404ing one.
+    const base = info.frameUrl ?? `/s/${encodeURIComponent(deps.docId)}`;
     return tag === undefined ? base : `${base}?r=${encodeURIComponent(tag)}`;
   };
 
@@ -351,7 +359,10 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     refresh,
     syncInfo: (next: ForeignInput): void => {
       if (dead) return;
-      const changed = effectiveOf(next.permissions) !== effectiveOf(perms);
+      // A rotated cap (server restart) must reload even when the effective
+      // combo is unchanged — otherwise the frame keeps a stale URL that 404s.
+      const changed =
+        effectiveOf(next.permissions) !== effectiveOf(perms) || next.frameUrl !== info.frameUrl;
       info = next;
       perms = next.permissions;
       paint();

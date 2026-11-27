@@ -467,6 +467,128 @@ describe("foreign · syncInfo 对账", () => {
   });
 });
 
+describe("foreign · frameUrl", () => {
+  it("should use info.frameUrl as the iframe src when the server provides one", () => {
+    const fake = createFakeHost();
+    mountForeign(
+      depsOf(fake, {
+        info: {
+          cls: "foreign",
+          scripts: true,
+          permissions: permsOf(),
+          frameUrl: "/f/capA/page/index.html",
+        },
+      }),
+    );
+
+    expect(attrsOf(fake, FRAME, "src")).toEqual(["/f/capA/page/index.html"]);
+  });
+
+  it("should fall back to /s/<docId> when info carries no frameUrl", () => {
+    const fake = createFakeHost();
+    mountForeign(depsOf(fake));
+
+    expect(attrsOf(fake, FRAME, "src")).toEqual(["/s/%E5%A4%96%20%E6%96%87%E6%A1%A3.html"]);
+  });
+
+  it("should append the reload tag to frameUrl on refresh", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(
+      depsOf(fake, {
+        info: {
+          cls: "foreign",
+          scripts: true,
+          permissions: permsOf(),
+          frameUrl: "/f/capA/page/index.html",
+        },
+      }),
+    );
+
+    handle.refresh("r9");
+    handle.refresh();
+
+    expect(attrsOf(fake, FRAME, "src")).toEqual([
+      "/f/capA/page/index.html",
+      "/f/capA/page/index.html?r=r9",
+      "/f/capA/page/index.html?r=n1",
+    ]);
+  });
+
+  it("should reload onto the new frameUrl when a resync reports a rotated cap", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(
+      depsOf(fake, {
+        info: {
+          cls: "foreign",
+          scripts: true,
+          permissions: permsOf(),
+          frameUrl: "/f/capA/page/index.html",
+        },
+      }),
+    );
+
+    // Same effective combo, different cap (e.g. a server restart minted a new
+    // one): the frame must move to the fresh URL, not keep the stale 404ing one.
+    handle.syncInfo({
+      cls: "foreign",
+      scripts: true,
+      permissions: permsOf(),
+      frameUrl: "/f/capB/page/index.html",
+    });
+
+    expect(attrsOf(fake, FRAME, "src")).toEqual([
+      "/f/capA/page/index.html",
+      "/f/capB/page/index.html?r=n1",
+    ]);
+  });
+
+  it("should not reload when a resync repeats the same frameUrl and combo", () => {
+    const fake = createFakeHost();
+    const handle = mountForeign(
+      depsOf(fake, {
+        info: {
+          cls: "foreign",
+          scripts: true,
+          permissions: permsOf(),
+          frameUrl: "/f/capA/page/index.html",
+        },
+      }),
+    );
+
+    handle.syncInfo({
+      cls: "foreign",
+      scripts: true,
+      permissions: permsOf(),
+      frameUrl: "/f/capA/page/index.html",
+    });
+
+    expect(attrsOf(fake, FRAME, "src")).toEqual(["/f/capA/page/index.html"]);
+  });
+
+  it("should reset a hostile self-navigation back to frameUrl with network off", () => {
+    const fake = createFakeHost();
+    mountForeign(
+      depsOf(fake, {
+        info: {
+          cls: "foreign",
+          scripts: true,
+          permissions: permsOf(),
+          frameUrl: "/f/capA/doc.html",
+        },
+      }),
+    );
+    const docSrc = "/f/capA/doc.html";
+
+    // First load consumes the mount navigation; the second is the document
+    // navigating itself away — the reset must point at the same /f/ entry.
+    fake.fire(FRAME, "load", {});
+    fake.fire(FRAME, "load", {});
+
+    expect(attrsOf(fake, FRAME, "src")).toEqual([docSrc, docSrc]);
+    expect(lastText(fake, ERROR)).toBe(COPY.foreignNavBlocked);
+  });
+});
+
 describe("foreign · destroy", () => {
   it("should unbind the action/toggles, blank the frame and hand the chrome back", () => {
     const fake = createFakeHost();

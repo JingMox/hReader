@@ -1563,6 +1563,24 @@ mod tests {
         assert_eq!(nav("https://phish.example/?next=/s/x"), NavClass::External);
     }
 
+    /// The reader now points the foreign iframe straight at `/f/<cap>/<file>`:
+    /// capability URLs are loopback paths like any other and must stay Local —
+    /// an External verdict would hand the frame to the system browser.
+    #[test]
+    fn capability_frame_urls_stay_local() {
+        use tauri::Url;
+        let nav = |raw: &str| classify_navigation(&Url::parse(raw).expect("url"));
+        for raw in [
+            "http://127.0.0.1:8123/f/AbCdEfGhIjKlMnOpQrStUv/index.html",
+            "http://127.0.0.1:8123/f/AbCdEfGhIjKlMnOpQrStUv/index.html?r=n2",
+            "http://127.0.0.1:8123/f/AbCdEfGhIjKlMnOpQrStUv/assets/style.css",
+            "http://localhost:8123/f/AbCdEfGhIjKlMnOpQrStUv/page/img.png",
+            "http://[::1]:8123/f/AbCdEfGhIjKlMnOpQrStUv/doc.html",
+        ] {
+            assert_eq!(nav(raw), NavClass::Local, "{raw}");
+        }
+    }
+
     #[test]
     fn bridge_urls_require_the_session_token() {
         use tauri::Url;

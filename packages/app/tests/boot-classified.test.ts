@@ -186,6 +186,40 @@ describe("bootDocument · 三类分流", () => {
   });
 });
 
+describe("bootDocument · frameUrl", () => {
+  it("should point the iframe at info.frameUrl when the server provides one", async () => {
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => ({
+      ...foreignInfo,
+      frameUrl: "/f/capA/page/index.html",
+    }));
+
+    await bootDocument(deps);
+
+    expect(attrsOf(h, FRAME, "src")).toEqual(["/f/capA/page/index.html"]);
+  });
+
+  it("should reload onto the resynced frameUrl when the cap rotated server-side", async () => {
+    const h = harnessOf(true);
+    let current: DocInfo = { ...foreignInfo, frameUrl: "/f/capA/doc.html" };
+    const { deps, handlers } = classifiedOf(h, () => current);
+    const booted = await bootDocument(deps);
+
+    // A restarted daemon mints a new cap; the same doc.changed cycle carries
+    // the refresh on the stale URL first, then the resync corrects it.
+    current = { ...foreignInfo, frameUrl: "/f/capB/doc.html" };
+    handlers.current?.onEvent({ id: 1, type: "doc.changed", payload: { revision: "r2" } });
+    await flush();
+
+    expect(attrsOf(h, FRAME, "src")).toEqual([
+      "/f/capA/doc.html",
+      "/f/capA/doc.html?r=r2",
+      "/f/capB/doc.html?r=n1",
+    ]);
+    booted.destroy();
+  });
+});
+
 describe("bootDocument · 桌面桥门栏上报", () => {
   const stubBridge = (token?: string): string[] => {
     const assigned: string[] = [];

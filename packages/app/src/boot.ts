@@ -90,6 +90,8 @@ export interface DocInfo {
   readonly scripts?: boolean;
   /** 外来文档的生效权限视图（脚本/联网 + 来源 + 全局模式）；managed/normalizable 无此字段。 */
   readonly permissions?: DocPermissions;
+  /** `/f/<cap>/<file>` iframe entry minted by the server; absent on older servers. */
+  readonly frameUrl?: string;
 }
 
 /** managed 路径才需要的页面数据（主题清单 + 正文 HTML）；iframe 路径不拉正文。 */
@@ -458,6 +460,7 @@ const bootForeign = (
       cls,
       scripts: info.scripts === true,
       ...(info.permissions === undefined ? {} : { permissions: info.permissions }),
+      ...(info.frameUrl === undefined ? {} : { frameUrl: info.frameUrl }),
     },
     setPermissions: deps.postPermissions,
     normalize: async () => {
@@ -498,6 +501,7 @@ const bootForeign = (
           cls: next.cls,
           scripts: next.scripts === true,
           ...(next.permissions === undefined ? {} : { permissions: next.permissions }),
+          ...(next.frameUrl === undefined ? {} : { frameUrl: next.frameUrl }),
         });
       });
     }),

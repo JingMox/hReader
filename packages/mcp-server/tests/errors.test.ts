@@ -152,6 +152,54 @@ describe("log", () => {
 
     expect(stderr.read()).toContain("truncated");
   });
+
+  it("should not split a surrogate pair when the line cap lands inside an emoji", () => {
+    const stderr = stderrText();
+    // 8191 'a' + 😀 = 8193 code units: the 8192-unit cut falls between the emoji's two halves.
+    logLine(`${"a".repeat(8191)}😀`);
+
+    const written = stderr.read();
+    expect(written).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+    expect(written).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+    expect(written).toContain("…[truncated 2 chars]");
+  });
+
+  it("should keep a surrogate pair whose tail ends exactly on the line cap", () => {
+    const stderr = stderrText();
+    // 8190 'a' + 😀 + 'b' = 8193 units: the cut lands just after the whole pair — keep it, drop 'b'.
+    logLine(`${"a".repeat(8190)}😀b`);
+
+    const written = stderr.read();
+    expect(written).toContain("😀");
+    expect(written).toContain("…[truncated 1 chars]");
+    expect(written).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+  });
+
+  it("should leave a line exactly at the cap untouched, emoji included", () => {
+    const stderr = stderrText();
+    const exact = `${"a".repeat(8190)}😀`;
+
+    logLine(exact);
+
+    expect(stderr.read()).toBe(`[hreader-mcp] ${exact}\n`);
+  });
+
+  it("should keep the truncated-causes marker visible inside the line cap", () => {
+    const stderr = stderrText();
+    // Deep chain of megabyte stacks: joined sections far exceed the 8 KiB line cap, and the tail marker
+    // used to sit past the cut — the earlier stacks ate it.
+    let error = new Error(`root ${"r".repeat(1024 * 1024)}`);
+    for (let index = 0; index < 16; index += 1) {
+      error = new Error(`wrap ${"w".repeat(1024 * 1024)}`, { cause: error });
+    }
+
+    logFailure("hr_probe", error);
+
+    const written = stderr.read();
+    expect(written).toContain("…[truncated further causes]");
+    expect(written).toContain("caused by");
+    expect(longestLineOf(written)).toBeLessThan(10_000);
+  });
 });
 
 describe("absolute-path folding", () => {
