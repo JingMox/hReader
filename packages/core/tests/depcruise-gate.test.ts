@@ -1,9 +1,9 @@
 // dependency-cruiser gate: git-ignored build artifacts under packages/desktop/src-tauri/
-// (resources/, target/) must never enter the cruise. prepare-resources copies a bundled
-// cli.mjs there whose optional imports (yauzl, proxy-agent) resolve nowhere — scanned as
-// sources they produce false no-unresolvable reds that mask real violations. The test
-// rebuilds a minimal package tree in a temp dir and runs the real CLI against the real
-// config, same entry point `pnpm depcruise` uses.
+// (resources/app/, resources/cli/, target/) must never enter the cruise. prepare-resources
+// copies a bundled cli.mjs there whose optional imports (yauzl, proxy-agent) resolve
+// nowhere — scanned as sources they produce false no-unresolvable reds that mask real
+// violations. The test rebuilds a minimal package tree in a temp dir and runs the real
+// CLI against the real config, same entry point `pnpm depcruise` uses.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -72,6 +72,19 @@ describe("dependency-cruiser gate", () => {
     const { status, output } = run();
     expect(output).toContain("no dependency violations");
     expect(status).toBe(0);
+  }, 60_000);
+
+  it("should flag unresolvable imports directly under resources/", () => {
+    // .gitignore only covers resources/app/ and resources/cli/ — a file tracked directly in
+    // resources/ is real input, not generated output, so the cruise must see it.
+    const run = sandboxOf({
+      "packages/desktop/src-tauri/resources/stray.mjs":
+        'import { leaked } from "hr-gate-unresolvable-stray";\nexport { leaked };\n',
+      "packages/probe/src/util.ts": "export const util = 1;\n",
+    });
+    const { status, output } = run();
+    expect(status).not.toBe(0);
+    expect(output).toContain("packages/desktop/src-tauri/resources/stray.mjs");
   }, 60_000);
 
   it("should still flag unresolvable imports in real source files", () => {
