@@ -232,6 +232,22 @@ describe("daemon 记录的进程存活判定", () => {
   });
 });
 
+/** 保证已关的端口：从 OS 拿一个再释放。固定端口（9 discard、80 等）不能假设本机空闲。 */
+const closedPort = async (): Promise<number> => {
+  const probe = createServer();
+  await new Promise<void>((resolve) => {
+    probe.listen(0, "127.0.0.1", resolve);
+  });
+  const address = probe.address();
+  const port = typeof address === "object" && address !== null ? address.port : 0;
+  await new Promise<void>((resolve) => {
+    probe.close(() => {
+      resolve();
+    });
+  });
+  return port;
+};
+
 describe("portOpen · 真连接探活", () => {
   it("should see a listening port and a closed one", async () => {
     const server = createServer();
@@ -253,6 +269,6 @@ describe("portOpen · 真连接探活", () => {
   });
 
   it("should give up after the timeout when nothing answers", async () => {
-    expect(await portOpen(9, 50)).toBe(false);
+    expect(await portOpen(await closedPort(), 50)).toBe(false);
   });
 });
