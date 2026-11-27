@@ -531,6 +531,24 @@ describe("sanitizePdfLinks · structural strictness", () => {
     expect((failure as HrError).code).toBe("render_empty");
   });
 
+  it("should fail closed on a dangling reference behind an indirect container", async () => {
+    const bytes = await buildPdfOf((doc) => [
+      // The /A action dict itself arrives by reference; the dangling ref sits
+      // inside the resolved object, not inside the annotation dict literal.
+      linkAnnotOf(
+        doc,
+        doc.context.register(doc.context.obj({ S: PDFName.of("GoTo"), D: PDFRef.of(9993, 0) })),
+      ),
+      destAnnotOf(
+        doc,
+        doc.context.register(doc.context.obj([PDFName.of("pg"), PDFRef.of(9992, 0)])),
+      ),
+    ]);
+    const failure = await failureOf(bytes);
+    expect(failure).toBeInstanceOf(HrError);
+    expect((failure as HrError).code).toBe("render_empty");
+  });
+
   it("should fail closed on a dangling reference nested inside an array value", async () => {
     const bytes = await buildPdfOf((doc) => [
       destAnnotOf(doc, [PDFName.of("Fit"), PDFRef.of(9995, 0)]),
