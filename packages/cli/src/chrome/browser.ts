@@ -45,6 +45,10 @@ export interface ViewportSpec {
 export interface RoutedRequest {
   readonly url: string;
   readonly method: string;
+  /** True for a frame navigation (document load, meta refresh, form submit, anchor activation) — a fetch is never one. */
+  readonly navigation: boolean;
+  /** True when the requesting frame is the page's main frame — export only ever snapshots that one. */
+  readonly mainFrame: boolean;
   /** Answer from local bytes — no socket is touched (the /f/ serving verdicts run in-process). */
   respond(reply: {
     readonly status: number;
@@ -85,10 +89,13 @@ interface PuppeteerSession {
   send(method: "Page.getLayoutMetrics"): Promise<unknown>;
 }
 
-/** Minimal shape of puppeteer's `HTTPRequest`; only the four members interception needs. */
+/** Minimal shape of puppeteer's `HTTPRequest`; only the members interception needs. */
 interface PuppeteerRequest {
   url(): string;
   method(): string;
+  isNavigationRequest(): boolean;
+  /** The frame the request was issued for — same object as `page.mainFrame()` for main-document navigations. */
+  frame(): object | null;
   respond(response: {
     status: number;
     headers: Record<string, string>;
@@ -109,6 +116,8 @@ interface PuppeteerPage {
   createCDPSession(): Promise<PuppeteerSession>;
   setJavaScriptEnabled(enabled: boolean): Promise<void>;
   setRequestInterception(value: boolean): Promise<void>;
+  /** The page's top-level frame — `request.frame()` identity-compares against it. */
+  mainFrame(): object;
   on(event: "request", handler: (request: PuppeteerRequest) => void): void;
 }
 
@@ -161,6 +170,8 @@ export const pageLikeOf = (page: PuppeteerPage): PageLike => {
           void handler({
             url: request.url(),
             method: request.method(),
+            navigation: request.isNavigationRequest(),
+            mainFrame: request.frame() === page.mainFrame(),
             respond: (reply) =>
               request.respond({
                 status: reply.status,

@@ -76,6 +76,35 @@ const gateRequestOf = async (
   else await request.abort();
 };
 
+/**
+ * D40: export is ONE navigation and one snapshot — a meta refresh needs no
+ * JS and rides no CSP, so it can repaint the page mid-capture (a same-origin
+ * /f/ path always serves, even with network off; under a granted network an
+ * external page replaces the document). Veto every main-frame navigation
+ * after the initial goto. The veto answers 204 rather than aborting: a
+ * cancelled navigation commits Chrome's error page over the document, while
+ * a no-content response drops the navigation and keeps the document —
+ * nothing reaches the wire either way. Subframe and non-navigation requests
+ * still take the normal gate verdict — the veto only knows the top frame.
+ */
+const exportHandlerOf = (
+  plan: ForeignPagePlan,
+  audit: RequestAudit | undefined,
+): ((request: RoutedRequest) => Promise<void>) => {
+  let initialNavDone = false;
+  return async (request) => {
+    if (request.navigation && request.mainFrame) {
+      if (initialNavDone) {
+        audit?.({ url: request.url, action: "deny" });
+        await request.respond({ status: 204, headers: {}, body: "" });
+        return;
+      }
+      initialNavDone = true;
+    }
+    await gateRequestOf(request, plan, audit);
+  };
+};
+
 /** Shared opening for both render commands: newPage -> open the source (temp sheet file or gated capability URL) -> wait for load. */
 const openPageOf = async (
   browser: BrowserLike,
@@ -90,7 +119,7 @@ const openPageOf = async (
     // for the interactive reader, and a grant-free snapshot is the export
     // contract. The browser switch is the hard floor; CSP is defense-in-depth.
     await page.setJavaScriptEnabled(false);
-    await page.routeRequests((request) => gateRequestOf(request, source.page, audit));
+    await page.routeRequests(exportHandlerOf(source.page, audit));
     await page.goto(source.page.url);
     return page;
   }

@@ -178,6 +178,8 @@ describe("openPageOf · foreign source gating", () => {
       await page.routed({
         url: "https://cdn.example/x.png",
         method: "GET",
+        navigation: false,
+        mainFrame: false,
         respond: () => {
           settled.push("respond");
           return Promise.resolve();
@@ -230,6 +232,8 @@ describe("openPageOf · foreign source gating", () => {
         page.routed?.({
           url,
           method: "GET",
+          navigation: false,
+          mainFrame: false,
           respond: (reply) => {
             settled.push("respond");
             replies.push(reply);
@@ -249,6 +253,85 @@ describe("openPageOf · foreign source gating", () => {
       expect(settled).toEqual(["respond", "continue"]);
       expect(replies).toEqual([
         { status: 200, headers: { "content-type": "image/png" }, body: "bytes" },
+      ]);
+    });
+  });
+
+  it("should no-content every main-frame navigation after the initial one — meta refresh, anchor, or form submit", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({});
+      const records: { url: string; action: string }[] = [];
+      const plan = {
+        url: "http://hreader-export.invalid/f/cap/index.html",
+        // The gate would happily serve the refresh target — the veto must not
+        // come from the gate but from the interception layer in front of it.
+        gate: () =>
+          Promise.resolve({
+            kind: "serve" as const,
+            reply: { status: 200, headers: { "content-type": "text/css" }, body: "css" },
+          }),
+      };
+      await renderPdfOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        source: { kind: "foreign", page: plan },
+        dir,
+        pageSize: "a4",
+        outline: false,
+        preferCSSPageSize: false,
+        audit: (record) => {
+          records.push(record);
+        },
+      });
+      if (page.routed === undefined) throw new Error("interception was never armed");
+      const settled: string[] = [];
+      const fire = (url: string, navigation: boolean, mainFrame: boolean) =>
+        page.routed?.({
+          url,
+          method: "GET",
+          navigation,
+          mainFrame,
+          respond: (reply) => {
+            settled.push(`respond${String(reply.status)}`);
+            return Promise.resolve();
+          },
+          continue: () => {
+            settled.push("continue");
+            return Promise.resolve();
+          },
+          abort: () => {
+            settled.push("abort");
+            return Promise.resolve();
+          },
+        });
+
+      // The initial goto's own navigation runs the gate — it's the only one.
+      await fire("http://hreader-export.invalid/f/cap/index.html", true, true);
+      // A meta refresh or <a target=_self>/form navigation to a same-origin
+      // /f/ path is vetoed before the gate can serve it — answered 204 so the
+      // navigation cancels without committing Chrome's error page over the
+      // document (abort() would replace it, still hijacking the snapshot).
+      await fire("http://hreader-export.invalid/f/cap/style.css", true, true);
+      // ...and so is an external navigation, even with a gate that would allow it.
+      await fire("https://evil.example/stolen", true, true);
+      // A subframe navigation is not a main-frame navigation: the gate still
+      // answers it (the CSP's frame-src 'none' is what keeps real iframes out).
+      await fire("http://hreader-export.invalid/f/cap/inner.html", true, false);
+      // A plain subresource fetch is untouched either way.
+      await fire("http://hreader-export.invalid/f/cap/img.png", false, true);
+
+      expect(settled).toEqual([
+        "respond200",
+        "respond204",
+        "respond204",
+        "respond200",
+        "respond200",
+      ]);
+      expect(records.map((r) => r.action)).toEqual([
+        "serve",
+        "deny",
+        "deny",
+        "serve",
+        "serve",
       ]);
     });
   });

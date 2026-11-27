@@ -38,6 +38,10 @@ const stubOf = <T, R>(calls: T[], failure: Error | undefined, ok: R): ((arg: T) 
   };
 };
 
+/** Shared identity object: `request.frame() === page.mainFrame()` is an object-identity check. */
+const MAIN_FRAME = { frame: "main" } as const;
+const SUB_FRAME = { frame: "sub" } as const;
+
 const puppeteerPageOf = (calls: Calls, failures: Failures = {}) => ({
   goto: (url: string, options: { waitUntil: "load"; timeout: number }) => {
     calls.goto.push({ url, options });
@@ -63,6 +67,7 @@ const puppeteerPageOf = (calls: Calls, failures: Failures = {}) => ({
     calls.interception.push(value);
     return Promise.resolve();
   },
+  mainFrame: () => MAIN_FRAME,
   on: (_event: "request", handler: (request: never) => void) => {
     calls.requestHandler = handler as (request: unknown) => void;
   },
@@ -140,9 +145,15 @@ describe("pageLikeOf · request routing", () => {
     aborted: number;
   }
 
-  const puppeteerRequestOf = (url: string, calls: RequestCalls) => ({
+  const puppeteerRequestOf = (
+    url: string,
+    calls: RequestCalls,
+    nav: { navigation: boolean; mainFrame: boolean } = { navigation: true, mainFrame: true },
+  ) => ({
     url: () => url,
     method: () => "GET",
+    isNavigationRequest: () => nav.navigation,
+    frame: () => (nav.mainFrame ? MAIN_FRAME : SUB_FRAME),
     respond: (reply: unknown) => {
       calls.responded.push(reply);
       return Promise.resolve();
@@ -193,6 +204,38 @@ describe("pageLikeOf · request routing", () => {
     expect(hits.aborted).toBe(1);
     expect(hits.responded).toEqual([]);
     expect(hits.continued).toBe(0);
+  });
+
+  it("should expose isNavigationRequest and the main-frame identity on each routed request", async () => {
+    const calls = callsOf();
+    const page = pageLikeOf(puppeteerPageOf(calls));
+    const seen: { navigation: boolean; mainFrame: boolean }[] = [];
+    await page.routeRequests((request) => {
+      seen.push({ navigation: request.navigation, mainFrame: request.mainFrame });
+      return request.abort();
+    });
+    const hits: RequestCalls = { responded: [], continued: 0, aborted: 0 };
+    calls.requestHandler?.(
+      puppeteerRequestOf("http://hreader-export.invalid/f/cap/doc.html", hits),
+    );
+    calls.requestHandler?.(
+      puppeteerRequestOf("https://cdn.example/x.png", hits, {
+        navigation: false,
+        mainFrame: true,
+      }),
+    );
+    calls.requestHandler?.(
+      puppeteerRequestOf("http://hreader-export.invalid/f/cap/inner.html", hits, {
+        navigation: true,
+        mainFrame: false,
+      }),
+    );
+    await flushOf();
+    expect(seen).toEqual([
+      { navigation: true, mainFrame: true },
+      { navigation: false, mainFrame: true },
+      { navigation: true, mainFrame: false },
+    ]);
   });
 });
 
