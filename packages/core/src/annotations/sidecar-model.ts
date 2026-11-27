@@ -116,7 +116,17 @@ const noteOf = (raw: unknown, label: string, diagnostics: string[]): string => {
   return clipped(value, NOTE_LIMIT);
 };
 
-const authorOf = (raw: unknown): SidecarAuthor => (raw === "agent" ? "agent" : "user");
+/**
+ * `"agent"` is the only non-default author; an absent or `"user"` value normalizes silently.
+ * Anything else is dirt: the record still reads as `"user"` (never dropped over a cosmetic
+ * field) but the diagnostic names the offending value so a mistyped store is visible.
+ */
+const authorOf = (raw: unknown, label: string, diagnostics: string[]): SidecarAuthor => {
+  if (raw === "agent") return "agent";
+  if (raw === undefined || raw === "user") return "user";
+  diagnostics.push(`${label}.author 无法识别：${JSON.stringify(raw)}，按 user 处理`);
+  return "user";
+};
 
 const parseReplyOf = (raw: unknown, index: number, parent: number): ReplyOutcome | string => {
   const label = `annotations[${String(parent)}].replies[${String(index)}]`;
@@ -130,7 +140,7 @@ const parseReplyOf = (raw: unknown, index: number, parent: number): ReplyOutcome
   return {
     reply: {
       id,
-      author: authorOf(record.data["author"]),
+      author: authorOf(record.data["author"], label, diagnostics),
       note: noteOf(record.data["note"], `${label}.note`, diagnostics),
       createdAt,
     },
@@ -183,13 +193,22 @@ const parseEntryOf = (raw: unknown, index: number): AnnotationOutcome | string =
     if (!list.success) {
       diagnostics.push(`${label}.replies 不是数组，已忽略`);
     } else {
+      // Reply ids dedupe per annotation, the same rule annotation ids get at file level:
+      // keep the first, skip the rest with a diagnostic (and drop its own diagnostics).
+      const seenReplies = new Set<string>();
       list.data.slice(0, SIDECAR_LIMITS.replies).forEach((item, replyIndex) => {
         const outcome = parseReplyOf(item, replyIndex, index);
-        if (typeof outcome === "string") diagnostics.push(outcome);
-        else {
-          replies.push(outcome.reply);
-          diagnostics.push(...outcome.diagnostics);
+        if (typeof outcome === "string") {
+          diagnostics.push(outcome);
+          return;
         }
+        if (seenReplies.has(outcome.reply.id)) {
+          diagnostics.push(`${label} 回复 id 重复：${outcome.reply.id}，已跳过`);
+          return;
+        }
+        seenReplies.add(outcome.reply.id);
+        replies.push(outcome.reply);
+        diagnostics.push(...outcome.diagnostics);
       });
       if (list.data.length > SIDECAR_LIMITS.replies) {
         diagnostics.push(
@@ -210,7 +229,7 @@ const parseEntryOf = (raw: unknown, index: number): AnnotationOutcome | string =
         resolvedAt: looseString.parse(record.data["resolvedAt"]),
         resolutionNote: looseString.parse(record.data["resolutionNote"]),
       }),
-      author: authorOf(record.data["author"]),
+      author: authorOf(record.data["author"], label, diagnostics),
       replies,
     },
     diagnostics,
