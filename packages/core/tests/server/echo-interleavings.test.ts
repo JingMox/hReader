@@ -159,7 +159,6 @@ describe("echo dedupe · interleaving probes", () => {
     const { runtime, hub, ring, fire } = harnessOf(workspace, home);
     try {
       const target = await runtime.remember("doc.html");
-      const r0 = revisionOf(readFileSync(file));
       const aBytes = DOC.replace("正文一", "甲写");
       const bBytes = DOC.replace("正文二", "乙写");
       writeFileSync(file, aBytes, "utf8");
@@ -170,8 +169,8 @@ describe("echo dedupe · interleaving probes", () => {
       await waitForFrame(ring); // echo announces R_B (last disk state)
       await settle();
       // B's noteWrite: dedupe skips (R_B already announced). Then A's runs late.
-      runtime.noteWrite(writtenOf(target, rb), r0);
-      runtime.noteWrite(writtenOf(target, ra), r0);
+      runtime.noteWrite(writtenOf(target, rb));
+      runtime.noteWrite(writtenOf(target, ra));
       const frames = docChanged(ring);
       // The stream ends on R_A while the disk holds R_B — stale until the next event.
       expect(frames[frames.length - 1]?.payload["revision"]).toBe(ra);
@@ -194,7 +193,6 @@ describe("echo dedupe · interleaving probes", () => {
     const { runtime, hub, ring, fire } = harnessOf(workspace, home);
     try {
       const target = await runtime.remember("doc.html");
-      const r0 = revisionOf(readFileSync(file));
       // Our patch lands R1; the queued echo announces it before noteWrite runs.
       writeFileSync(file, DOC.replace("正文一", "回声一"), "utf8");
       const r1 = revisionOf(readFileSync(file));
@@ -202,7 +200,7 @@ describe("echo dedupe · interleaving probes", () => {
       await waitForFrame(ring);
       await settle();
       // Write path completes: dedupe skips the second R1 frame.
-      runtime.noteWrite(writtenOf(target, r1), r0);
+      runtime.noteWrite(writtenOf(target, r1));
       expect(revisions(ring)).toEqual([r1]);
       // External edit lands afterwards: genuinely different bytes must publish.
       writeFileSync(file, DOC.replace("正文一", "外部改"), "utf8");
@@ -226,7 +224,6 @@ describe("echo dedupe · interleaving probes", () => {
     const { runtime, hub, ring, fire } = harnessOf(workspace, home);
     try {
       const target = await runtime.remember("doc.html");
-      const r0 = revisionOf(readFileSync(file));
       // Our write R1 then an external R2 land before the echo is read.
       writeFileSync(file, DOC.replace("正文一", "回声一"), "utf8");
       const r1 = revisionOf(readFileSync(file));
@@ -238,7 +235,7 @@ describe("echo dedupe · interleaving probes", () => {
       // The echo reads R2 (latest bytes) and announces the external revision.
       expect(revisions(ring)).toContain(r2);
       // The write path then publishes its own R1 frame — stale ordering, pre-existing.
-      runtime.noteWrite(writtenOf(target, r1), r0);
+      runtime.noteWrite(writtenOf(target, r1));
       const revs = revisions(ring);
       expect(revs[revs.length - 1]).toBe(r1);
       // Convergence still comes from a later event.
@@ -262,12 +259,11 @@ describe("echo dedupe · interleaving probes", () => {
     const { runtime, hub, ring } = harnessOf(workspace, home);
     try {
       const target = await runtime.remember("doc.html");
-      const r0 = revisionOf(readFileSync(file));
       writeFileSync(file, DOC.replace("正文一", "回声一"), "utf8");
       const r1 = revisionOf(readFileSync(file));
       // Active doc switched mid-window.
       await runtime.remember("other.html");
-      runtime.noteWrite(writtenOf(target, r1), r0);
+      runtime.noteWrite(writtenOf(target, r1));
       expect(docChanged(ring)).toHaveLength(1);
       expect(revisions(ring)[0]).toBe(r1);
     } finally {
@@ -278,8 +274,9 @@ describe("echo dedupe · interleaving probes", () => {
 
   it("should still publish when remember silently adopts the written revision inside the window", async () => {
     // Regression probe: remember() bumps state.revision without publishing. If a read
-    // route re-remembers the written doc inside the window, the dedupe mistakes that
-    // silent adoption for a watcher-side announce and the frame is never emitted.
+    // route re-remembers the written doc inside the window, the dedupe must not
+    // mistake that silent adoption for a watcher-side announce — otherwise the
+    // frame is never emitted.
     const workspace = root("hr-ir-ws-");
     const home = root("hr-ir-home-");
     const file = join(workspace, "doc.html");
@@ -290,7 +287,6 @@ describe("echo dedupe · interleaving probes", () => {
     try {
       // The reader is viewing other.html; a write to doc.html is in flight.
       await runtime.remember("other.html");
-      const revisionBefore = revisionOf(readFileSync(other));
       // patchFile lands the new bytes on doc.html.
       writeFileSync(file, DOC.replace("正文一", "回声一"), "utf8");
       const r1 = revisionOf(readFileSync(file));
@@ -302,9 +298,9 @@ describe("echo dedupe · interleaving probes", () => {
       // The fs echo now hits the sha gate: R1 === state.revision, silenced.
       fire("doc.html");
       await settle();
-      // The write path completes: the dedupe sees state.revision === written.revision
-      // and skips — no doc.changed for R1 is ever emitted.
-      runtime.noteWrite(writtenOf(target, r1), revisionBefore);
+      // The write path completes: nothing was ever announced for doc.html, so the
+      // frame must go out — silently adopting R1 is not an announcement.
+      runtime.noteWrite(writtenOf(target, r1));
       expect(docChanged(ring).length).toBeGreaterThan(0);
       expect(revisions(ring)).toContain(r1);
     } finally {

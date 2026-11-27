@@ -416,9 +416,6 @@ describe("runtime · self-write echo winning the noteWrite race", () => {
     const { runtime, hub, ring, fire } = echoHarnessOf(workspace, home);
     try {
       const target = await runtime.remember("doc.html");
-      // dispatch captures state.revision when a write begins — replayed here by
-      // reading the bytes' sha before the simulated write lands on disk.
-      const revisionBefore = revisionOf(readFileSync(file));
       // Between patchFile's disk write and noteWrite sits a real async window
       // (history snapshot, unlock, reply framing). Under load a queued fs event
       // or the reconcile heartbeat lands in it, reads the *new* bytes, and
@@ -437,18 +434,16 @@ describe("runtime · self-write echo winning the noteWrite race", () => {
       }
       // The echo must have published by now; only then is the race replayed.
       expect(ring.since(0).events.some((event) => event.type === "doc.changed")).toBe(true);
-      // The write path completes — currently this republishes the same revision,
-      // producing two adjacent identical doc.changed frames.
-      runtime.noteWrite(
-        {
-          reply: { status: 200, headers: {}, body: "" },
-          target,
-          revision,
-          changed: true,
-          changedNodes: [],
-        },
-        revisionBefore,
-      );
+      // The write path completes — nothing was announced when this write began,
+      // so the second argument stays omitted; the window-bounded dedupe still sees
+      // that the watcher announced this exact output inside the window and skips.
+      runtime.noteWrite({
+        reply: { status: 200, headers: {}, body: "" },
+        target,
+        revision,
+        changed: true,
+        changedNodes: [],
+      });
 
       expect(ring.since(0).events.filter((event) => event.type === "doc.changed")).toHaveLength(1);
     } finally {
@@ -470,16 +465,13 @@ describe("runtime · self-write echo winning the noteWrite race", () => {
     try {
       const target = await runtime.remember("doc.html");
       const revision = revisionOf(readFileSync(file));
-      runtime.noteWrite(
-        {
-          reply: { status: 200, headers: {}, body: "" },
-          target,
-          revision,
-          changed: true,
-          changedNodes: [],
-        },
+      runtime.noteWrite({
+        reply: { status: 200, headers: {}, body: "" },
+        target,
         revision,
-      );
+        changed: true,
+        changedNodes: [],
+      });
 
       expect(ring.since(0).events.filter((event) => event.type === "doc.changed")).toHaveLength(1);
     } finally {
