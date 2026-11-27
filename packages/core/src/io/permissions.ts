@@ -128,7 +128,8 @@ const tableOf = async (deps: PatchDeps, path: string): Promise<TrustTable> => {
   return table;
 };
 
-const DENIED: DocGrant = { scripts: false, network: false };
+/** The empty grant: a document with no stored record is denied on both dimensions. */
+export const DENIED: DocGrant = { scripts: false, network: false };
 
 const serializeTable = (table: TrustTable): string =>
   // 旧键与新键落在同一份 JSON 里：旧键只可能被读成 legacy（值是字符串），不会被当 grant。

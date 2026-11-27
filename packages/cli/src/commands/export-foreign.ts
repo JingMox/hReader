@@ -9,7 +9,7 @@
 // artifact); the browser-level kill switch in chrome/render.ts is the enforcement,
 // and this layer only ever computes the network dimension.
 
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -17,6 +17,7 @@ import {
   createAnnotateTokenBook,
   createCapabilityBook,
   decodeParams,
+  DENIED,
   docAssetReply,
   effectiveOf,
   isInside,
@@ -126,33 +127,41 @@ const serveOf = (ctx: HandlerContext, method: string, pathname: string): Promise
 /**
  * An outside-workspace source is a legitimate export input (`hr pdf` reads
  * anywhere), but it can hold no per-document grant — a grant anchors to the
- * exporting workspace's `.hreader/` (D39). The capability still needs a
- * target to bind, so root one at the doc's own directory: the /f/ scope is
- * the same directory either way. The store anchor is the void path *under
- * the document file*: nothing can live under a regular file, so the grant
- * table is empty by construction — a `trust.json` planted beside the doc is
- * never read, and the lazy migration can never write there either.
+ * exporting workspace's `.hreader/` (D39). `docStore: false` marks that: the
+ * plan resolves the grant to DENIED by construction and pins it on the
+ * context, so no fs call ever consults — or writes — a store for this
+ * document. The capability still needs a target to bind, so root one at the
+ * doc's own directory (the /f/ scope is the same directory either way); its
+ * store anchors only exist to satisfy `ResolvedTarget`'s shape and point at
+ * the document FILE itself — a regular file can have no children, so even a
+ * stray lookup would still find nothing.
  */
-const exportTargetOf = async (path: string, workspace: string): Promise<ResolvedTarget> => {
+const exportTargetOf = async (
+  path: string,
+  workspace: string,
+): Promise<{ target: ResolvedTarget; docStore: boolean }> => {
   const realPath = await readOnlyFs.realpath(path);
   const workspaceReal = await readOnlyFs.realpath(workspace);
   if (isInside(workspaceReal, realPath)) {
-    return resolveTarget(
-      { workspace: workspaceReal, file: relative(workspaceReal, realPath) },
-      readOnlyFs,
-    );
+    return {
+      target: await resolveTarget(
+        { workspace: workspaceReal, file: relative(workspaceReal, realPath) },
+        readOnlyFs,
+      ),
+      docStore: true,
+    };
   }
   const dir = dirname(realPath);
   const name = basename(realPath);
-  // Stryker disable next-line StringLiteral: any child of the document file is equally un-plantable — "" resolves to realPath itself, which is just as dead.
-  const voidStoreDir = join(realPath, ".hreader");
   return {
-    realPath,
-    relative: name,
-    workspace: dir,
-    storeDir: voidStoreDir,
-    // Stryker disable next-line StringLiteral: ResolvedTarget requires the field but the export serve path never locks — reads only.
-    lockPath: join(voidStoreDir, "locks", "export.lock"),
+    target: {
+      realPath,
+      relative: name,
+      workspace: dir,
+      storeDir: realPath,
+      lockPath: realPath,
+    },
+    docStore: false,
   };
 };
 
@@ -176,7 +185,18 @@ export const foreignPlanOf = async (
 ): Promise<ForeignPagePlan | undefined> => {
   const html = await readTextFile(input.path);
   if (classifyDocument(parseHtml(html)).cls !== "foreign") return undefined;
-  const target = await exportTargetOf(input.path, input.workspace);
+  const { target, docStore } = await exportTargetOf(input.path, input.workspace);
+  const bytes = await readOnlyFs.readFile(target.realPath);
+  // The same grant the server's documentServeOf would resolve, computed once
+  // at plan time: an inside-workspace doc reads the exporting workspace's
+  // trust.json; an outside doc has no per-document store at all, so its grant
+  // is DENIED by construction — global modes still apply, and per-doc mode
+  // leaves both switches off. The value is pinned on the context below, so
+  // the /f/ serve path's CSP re-resolution never re-consults a store.
+  const [modes, grant] = await Promise.all([
+    readGlobalModes(input.home, readOnlyDeps),
+    docStore ? readDocGrant({ target, bytes }, readOnlyDeps) : DENIED,
+  ]);
   const ctx: HandlerContext = {
     workspace: input.workspace,
     // No reader app exists during export — only /f/ is served, and it never
@@ -191,15 +211,8 @@ export const foreignPlanOf = async (
     // `?annotate=` on a /f/ URL consumes nothing and falls back to the plain doc,
     // the same answer the reader's server gives an invalid token.
     annotateTokens: createAnnotateTokenBook(readOnlyDeps.clock),
+    grantOverride: grant,
   };
-  // Same stores the server's documentServeOf resolves — one read per export;
-  // documentServeOf re-reads them when it stamps the doc's CSP, keeping the
-  // answer identical to the reader's.
-  const bytes = await readOnlyFs.readFile(target.realPath);
-  const [modes, grant] = await Promise.all([
-    readGlobalModes(input.home, readOnlyDeps),
-    readDocGrant({ target, bytes }, readOnlyDeps),
-  ]);
   const network = effectiveOf(modes, grant).network;
   const framePath = ctx.caps.frameUrlOf(target);
   // The grant frameUrlOf just minted — register is idempotent per document.

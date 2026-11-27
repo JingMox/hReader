@@ -118,5 +118,11 @@ describe("foreignPlanOf · out-of-workspace documents consult no per-document st
     const settingsRead = `readFile ${join(home, ".hreader", "permissions.json")}`;
     const touched = recorded.filter((entry) => entry.includes(".hreader"));
     expect(new Set(touched)).toEqual(new Set([settingsRead]));
+
+    // The dead store anchors point at the document FILE: a regular file can
+    // have no children, so any per-document store access — even a stray one
+    // — could only ever probe a path beneath it. Nothing may go there.
+    const underDoc = recorded.filter((entry) => entry.includes(`${doc}/`));
+    expect(underDoc).toEqual([]);
   });
 });

@@ -58,6 +58,13 @@ export interface HandlerContext {
   readonly caps: CapabilityBook;
   /** Single-use annotate tokens: minted by the annotate route, burned by `/f/` document serves. */
   readonly annotateTokens: AnnotateTokenBook;
+  /**
+   * Pinned per-document grant: when set, `permissionsOf` uses it instead of
+   * re-reading the document's store. The export resolves the grant once at
+   * plan time — an out-of-workspace document resolves DENIED because no
+   * per-document store exists for it at all — and serves that snapshot.
+   */
+  readonly grantOverride?: DocGrant;
 }
 
 interface DocumentServe {
@@ -184,7 +191,9 @@ const permissionsOf = async (
 }> => {
   const [modes, grant] = await Promise.all([
     readGlobalModes(ctx.home, ctx.deps),
-    readDocGrant({ target, bytes }, ctx.deps),
+    ctx.grantOverride === undefined
+      ? readDocGrant({ target, bytes }, ctx.deps)
+      : Promise.resolve(ctx.grantOverride),
   ]);
   return { grant, modes, effective: effectiveOf(modes, grant) };
 };

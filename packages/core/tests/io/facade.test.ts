@@ -35,6 +35,7 @@ describe("门面导出面", () => {
     // 同一公开面的第二处拼写在 `packages/core/tests/entry-points.test.ts`（根 barrel 的精确集）：
     // 往 io 门面加导出时两处都要动，否则只有这一半会红。
     expect(Object.keys(ioFacade).sort()).toEqual([
+      "DENIED",
       "annotationDirOf",
       "annotationFileOf",
       "effectiveOf",
