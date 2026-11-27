@@ -54,13 +54,18 @@ const listOneDoc = async (
   ]).catch((error: unknown) => {
     throw coreFailureOf(error, target);
   });
+  const file = relative(workspaceReal, absoluteReal).split(sep).join("/");
+  // `.hreader/**` docs can't own a sidecar — same skip `hr_outline` got: an empty list, never
+  // the write-domain `不可 patch` verdict `resolveTarget` hands store paths.
+  if (file === ".hreader" || file.startsWith(".hreader/")) {
+    return okResult({ annotations: [], diagnostics: [], docsScanned: 0, truncated: false });
+  }
   const listed = await listDocAnnotations(
     { workspace: workspaceReal, file: relative(workspaceReal, absoluteReal) },
     nodePatchDeps,
   ).catch((error: unknown) => {
     throw coreFailureOf(error, target);
   });
-  const file = relative(workspaceReal, absoluteReal).split(sep).join("/");
   const entries = listed.annotations
     .filter((entry) => hitsStatus(status, entry.annotation.status))
     .map((entry) => annotationEntryBody(entry, file));
