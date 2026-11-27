@@ -25,7 +25,7 @@ export interface BrowserStubs {
   /** `window.addEventListener("message")` registrations (the annotate env). */
   messages: ((event: { source?: unknown; origin?: string; data?: unknown }) => void)[];
   fetched: string[];
-  /** 每次 `fetch` 的原始入参（用来断言 POST 的 JSON 正文与 CSRF 头）。 */
+  /** Raw arguments of every `fetch` call (to assert on the POST JSON body and CSRF header). */
   requests: {
     url: string;
     method: string;

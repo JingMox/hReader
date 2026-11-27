@@ -345,9 +345,10 @@ body {
   border: 1px solid var(--hr-rule);
 }
 
-/* 外来批注面板（D55，`ann-panel` widget 是唯一写点）：只在
-   `#hr-root[data-hr-doc][data-hr-annotate]` 下占位——正文区让出第三列给批注列表，
-   布局与 `#hr-notes` 同款。`.ann-panel` 不设 display（同 `[hidden]` 约定）。 */
+/* Foreign annotation panel (D55; the `ann-panel` widget is its only writer). It takes a
+   slot only under `#hr-root[data-hr-doc][data-hr-annotate]`: the content area yields a
+   third column to the annotation list, laid out like `#hr-notes`. `.ann-panel` sets no
+   display (same `[hidden]` convention). */
 #hr-root[data-hr-doc][data-hr-annotate] #hr-canvas {
   grid-column: 1 / 3;
 }
