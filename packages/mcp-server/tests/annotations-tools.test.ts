@@ -259,6 +259,20 @@ describe("hr_list_annotations · single file", () => {
     expect(textOf(result)).toContain("nope.html");
   });
 
+  it("should cut a fat record's id/nodeId/selector at the wire cap, like note and exact", async () => {
+    await writeRaw("fat.html", FOREIGN_DOC);
+    const fat = "x".repeat(5000);
+    await seedStore("fat.html", [sidecarRecord({ id: fat, nodeId: fat, selector: fat })]);
+
+    const result = await listOf({ filePath: "fat.html" });
+
+    expect(isErrorResultOf(result)).toBe(false);
+    const [entry] = entriesOf(payloadOf(result));
+    expect(entry?.["id"]).toBe("x".repeat(200));
+    expect(entry?.["nodeId"]).toBe("x".repeat(200));
+    expect(entry?.["selector"]).toBe("x".repeat(200));
+  });
+
   it("should surface an unreadable store directory as an error", async () => {
     await writeRaw("foreign.html", FOREIGN_DOC);
     await writeRaw(".hreader", "not a directory");

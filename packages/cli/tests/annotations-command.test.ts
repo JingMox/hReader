@@ -85,6 +85,25 @@ describe("hr annotations list", () => {
     });
   });
 
+  it("should cut a fat record's id/nodeId/selector at the field cap in both output modes", async () => {
+    await withTempDir(async (dir) => {
+      writeFileSync(join(dir, "doc.html"), FOREIGN);
+      const fat = "x".repeat(5000);
+      seedStore(dir, "doc.html", [sidecarRecord({ id: fat, nodeId: fat, selector: fat })]);
+
+      const human = await runIn(dir, ["annotations", "list", "doc.html"]);
+      expect(human.code).toBe(0);
+      expect(human.stdout).toContain("x".repeat(200));
+      expect(human.stdout).not.toContain(fat);
+
+      const json = await runIn(dir, ["annotations", "list", "doc.html", "--json"]);
+      const entries = jsonData(json)["annotations"] as Record<string, unknown>[];
+      expect(entries[0]?.["id"]).toBe("x".repeat(200));
+      expect(entries[0]?.["nodeId"]).toBe("x".repeat(200));
+      expect(entries[0]?.["selector"]).toBe("x".repeat(200));
+    });
+  });
+
   it("should mark an unrelocatable annotation as 未定位 in human mode and ok:false in --json", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(join(dir, "doc.html"), FOREIGN);
