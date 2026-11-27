@@ -232,7 +232,7 @@ describe("daemon 记录的进程存活判定", () => {
   });
 });
 
-/** 保证已关的端口：从 OS 拿一个再释放。固定端口（9 discard、80 等）不能假设本机空闲。 */
+/** A guaranteed-closed port: take one from the OS, then release it. Fixed ports (9 discard, 80, ...) must not be assumed free. */
 const closedPort = async (): Promise<number> => {
   const probe = createServer();
   await new Promise<void>((resolve) => {
