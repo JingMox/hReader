@@ -109,7 +109,6 @@ const NOT_FOUND: Reply = {
  */
 const serveOf = (ctx: HandlerContext, method: string, pathname: string): Promise<Reply> => {
   const lookup = matchRoute(method, pathname);
-  // Stryker disable next-line ConditionalExpression: any other route shape still yields no cap param, so the answer is the same uniform 404.
   if (lookup.kind === "route" && lookup.route.kind === "docAsset") {
     const decoded = decodeParams(lookup.params);
     if (!decoded.ok) return Promise.resolve(NOT_FOUND);
