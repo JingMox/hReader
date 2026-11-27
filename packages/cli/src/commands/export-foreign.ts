@@ -10,6 +10,7 @@
 // and this layer only ever computes the network dimension.
 
 import { basename, dirname, join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   classifyDocument,
@@ -34,7 +35,7 @@ import {
   type ResolvedTarget,
 } from "@hreader/core";
 
-import type { ExportGateAnswer, ForeignPagePlan } from "../chrome/types";
+import type { ExportGateAnswer, ExportLinkRewrite, ForeignPagePlan } from "../chrome/types";
 import { readTextFile } from "../input";
 
 /**
@@ -200,9 +201,19 @@ export const foreignPlanOf = async (
     readDocGrant({ target, bytes }, readOnlyDeps),
   ]);
   const network = effectiveOf(modes, grant).network;
+  const framePath = ctx.caps.frameUrlOf(target);
+  // The grant frameUrlOf just minted — register is idempotent per document.
+  const doc = ctx.caps.register(target);
+  const linkRewrite: ExportLinkRewrite = {
+    origin: EXPORT_ORIGIN,
+    framePath,
+    capPrefix: `/f/${doc.cap}/`,
+    fileBase: `${pathToFileURL(doc.dir).href}/`,
+  };
   return {
-    url: `${EXPORT_ORIGIN}${ctx.caps.frameUrlOf(target)}`,
+    url: `${EXPORT_ORIGIN}${framePath}`,
     docName: basename(target.realPath),
+    linkRewrite,
     gate: async (rawUrl, method) => {
       let parsed: URL;
       try {

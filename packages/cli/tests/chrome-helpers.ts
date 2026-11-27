@@ -14,7 +14,7 @@ import type {
   ViewportSpec,
 } from "../src/chrome/browser";
 import type { ChromeDeps, ChromeProcess } from "../src/chrome/process";
-import type { RenderSource } from "../src/chrome/types";
+import type { ExportLinkRewrite, RenderSource } from "../src/chrome/types";
 
 import { pngOf } from "./chrome-png";
 
@@ -117,6 +117,8 @@ export interface FakePageOptions {
   readonly png?: "ok" | "error" | "hang" | "not-png" | "half-width" | "half-height";
   /** `setTitleFallback` mode; `"error"` rejects so the render's degrade path is exercised. */
   readonly titleFallback?: "ok" | "error";
+  /** `rewriteExportLinks` mode; `"error"` rejects so the render's degrade path is exercised. */
+  readonly linkRewrite?: "ok" | "error";
 }
 
 export interface FakePage extends PageLike {
@@ -128,6 +130,8 @@ export interface FakePage extends PageLike {
   readonly jsEnabled: boolean[];
   /** `setTitleFallback` history — the foreign branch always hands over the doc's file name. */
   readonly titleFallbacks: string[];
+  /** `rewriteExportLinks` history — the PDF foreign branch rewrites once; PNG and sheet sources never do. */
+  readonly linkRewrites: ExportLinkRewrite[];
   /** The request handler armed via `routeRequests`; `undefined` = interception was never wired. */
   readonly routed: ((request: RoutedRequest) => Promise<void>) | undefined;
 }
@@ -213,6 +217,7 @@ export const fakePageOf = (options: FakePageOptions = {}): FakePage => {
   const viewports: ViewportSpec[] = [];
   const jsEnabled: boolean[] = [];
   const titleFallbacks: string[] = [];
+  const linkRewrites: ExportLinkRewrite[] = [];
   const routedRef: { current: FakePage["routed"] } = { current: undefined };
   return {
     goneTo,
@@ -221,6 +226,7 @@ export const fakePageOf = (options: FakePageOptions = {}): FakePage => {
     viewports,
     jsEnabled,
     titleFallbacks,
+    linkRewrites,
     get routed() {
       return routedRef.current;
     },
@@ -239,6 +245,13 @@ export const fakePageOf = (options: FakePageOptions = {}): FakePage => {
     setTitleFallback: (name) => {
       titleFallbacks.push(name);
       if (options.titleFallback === "error") {
+        return Promise.reject(new HrError("chrome_failed", "Runtime.evaluate 失败：eval boom"));
+      }
+      return Promise.resolve();
+    },
+    rewriteExportLinks: (rewrite) => {
+      linkRewrites.push(rewrite);
+      if (options.linkRewrite === "error") {
         return Promise.reject(new HrError("chrome_failed", "Runtime.evaluate 失败：eval boom"));
       }
       return Promise.resolve();

@@ -7,6 +7,7 @@ import { connect, ProtocolError, type ConnectOptions } from "puppeteer-core";
 import { HrError } from "@hreader/core";
 
 import { firstErrorLineOf, messageOf } from "../errors";
+import type { ExportLinkRewrite } from "./types";
 
 /** `page.pdf` arguments: sizes and margins always carry unit strings — puppeteer treats bare numbers as px, not inches. */
 export interface PdfPrintOptions {
@@ -81,6 +82,14 @@ export interface PageLike {
    * still runs under `setJavaScriptEnabled(false)`: only page scripts die.
    */
   setTitleFallback(name: string): Promise<void>;
+  /**
+   * The link-annotation hygiene the PDF path runs before printToPDF:
+   * same-origin anchors resolved onto the dead capability origin, and Chrome
+   * stamps resolved hrefs into the artifact verbatim. Mutating href attributes
+   * in the already-loaded page can neither re-arm scripts nor navigate — the
+   * same inspector-evaluate channel `setTitleFallback` uses.
+   */
+  rewriteExportLinks(rewrite: ExportLinkRewrite): Promise<void>;
   /** Arm request interception: every request the page issues runs `handler` exactly once and waits for its verdict. */
   routeRequests(handler: (request: RoutedRequest) => Promise<void>): Promise<void>;
 }
@@ -151,6 +160,26 @@ const callOf = async <T>(method: string, run: () => Promise<T>): Promise<T> => {
   }
 };
 
+/**
+ * The in-page half of `rewriteExportLinks`, kept as source text for the
+ * inspector evaluate: `anchor.href` reads the resolved URL Chrome would stamp
+ * into the PDF annotation, so a same-origin anchor under the cap scope lands
+ * on the real file, a fragment to the document itself stays internal, and a
+ * same-origin anchor that escapes the scope loses its href (no annotation).
+ */
+const REWRITE_LINKS_SOURCE = `(spec => {
+  for (const anchor of document.querySelectorAll("a[href]")) {
+    const url = new URL(anchor.href);
+    if (url.origin !== spec.origin) continue;
+    if (url.hash !== "" && url.pathname === spec.framePath) continue;
+    if (url.pathname.startsWith(spec.capPrefix)) {
+      anchor.setAttribute("href", spec.fileBase + url.pathname.slice(spec.capPrefix.length));
+    } else {
+      anchor.removeAttribute("href");
+    }
+  }
+})`;
+
 /** `timeout: 0` disables puppeteer's own timeout: the deadline is owned by the outer `deadline`, keeping failures a stable `render_timeout`. */
 export const pageLikeOf = (page: PuppeteerPage): PageLike => {
   let session: Promise<PuppeteerSession> | undefined;
@@ -176,6 +205,10 @@ export const pageLikeOf = (page: PuppeteerPage): PageLike => {
         await page.evaluate(
           `(name => { if (document.title === "") document.title = name; })(${JSON.stringify(name)})`,
         );
+      }),
+    rewriteExportLinks: (rewrite) =>
+      callOf("Runtime.evaluate", async () => {
+        await page.evaluate(`(${REWRITE_LINKS_SOURCE})(${JSON.stringify(rewrite)})`);
       }),
     routeRequests: (handler) =>
       callOf("Network.setRequestInterception", async () => {

@@ -53,6 +53,26 @@ export interface ExportRequestRecord {
 }
 
 /**
+ * The same-origin link hygiene a PDF export performs before printToPDF:
+ * anchors that resolved onto the minted capability origin are rewritten in
+ * the page so no dead `hreader-export.invalid` URL survives into the
+ * artifact's link annotations. A fragment link to the document itself stays
+ * internal; a link under the cap scope becomes the `file:` URL of the real
+ * asset; any other same-origin link loses its href (no annotation).
+ * External links are untouched.
+ */
+export interface ExportLinkRewrite {
+  /** The minted origin Chrome resolved the frame's links against. */
+  readonly origin: string;
+  /** The frame's own `/f/<cap>/<doc>` path — a same-path anchor with a fragment stays an internal link. */
+  readonly framePath: string;
+  /** `/f/<cap>/` — same-origin paths under it map onto the document's real directory. */
+  readonly capPrefix: string;
+  /** `file:` URL of the document's real directory with a trailing slash — the base siblings rewrite onto. */
+  readonly fileBase: string;
+}
+
+/**
  * The plan a foreign document exports under: the capability URL Chrome
  * navigates to plus the per-request verdict it runs. The same shape the
  * reader's `/f/` route enforces, minus the socket.
@@ -61,6 +81,8 @@ export interface ForeignPagePlan {
   readonly url: string;
   /** The document's file name — the /Title fallback when it carries no `<title>` (the URL would leak the minted origin instead). */
   readonly docName: string;
+  /** The link-annotation hygiene the PDF path applies before printToPDF — PNG pixels carry no URLs, so it does not run there. */
+  readonly linkRewrite: ExportLinkRewrite;
   readonly gate: (url: string, method: string) => Promise<ExportGateAnswer>;
 }
 

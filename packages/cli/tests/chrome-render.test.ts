@@ -149,6 +149,14 @@ describe("cssPageParamsOf · slides page frame belongs to CSS", () => {
   });
 });
 
+/** The link-rewrite spec a foreign plan carries — the PDF path must hand it to the page verbatim before printToPDF. */
+const LINK_REWRITE = {
+  origin: "http://hreader-export.invalid",
+  framePath: "/f/cap/index.html",
+  capPrefix: "/f/cap/",
+  fileBase: "file:///tmp/page/",
+};
+
 describe("openPageOf · foreign source gating", () => {
   it("should disable JS, route every request through the gate, and abort a deny verdict", async () => {
     await withDir(async (dir) => {
@@ -161,6 +169,7 @@ describe("openPageOf · foreign source gating", () => {
           page: {
             url: "http://hreader-export.invalid/f/cap/index.html",
             docName: "index.html",
+            linkRewrite: LINK_REWRITE,
             gate: () => Promise.resolve({ kind: "deny" }),
           },
         },
@@ -176,6 +185,8 @@ describe("openPageOf · foreign source gating", () => {
       expect(page.goneTo).toEqual(["http://hreader-export.invalid/f/cap/index.html"]);
       // The doc's file name is the /Title fallback — never the minted URL.
       expect(page.titleFallbacks).toEqual(["index.html"]);
+      // The PDF path rewrites same-origin links with the plan's spec before printToPDF.
+      expect(page.linkRewrites).toEqual([LINK_REWRITE]);
       if (page.routed === undefined) throw new Error("interception was never armed");
       const settled: string[] = [];
       await page.routed({
@@ -207,6 +218,7 @@ describe("openPageOf · foreign source gating", () => {
       const plan = {
         url: "http://hreader-export.invalid/f/cap/index.html",
         docName: "index.html",
+        linkRewrite: LINK_REWRITE,
         gate: (url: string) =>
           Promise.resolve(
             url.endsWith("/local.png")
@@ -268,6 +280,7 @@ describe("openPageOf · foreign source gating", () => {
       const plan = {
         url: "http://hreader-export.invalid/f/cap/index.html",
         docName: "index.html",
+        linkRewrite: LINK_REWRITE,
         // The gate would happily serve the refresh target — the veto must not
         // come from the gate but from the interception layer in front of it.
         gate: () =>
@@ -345,6 +358,7 @@ describe("openPageOf · foreign source gating", () => {
           page: {
             url: "http://hreader-export.invalid/f/cap/index.html",
             docName: "index.html",
+            linkRewrite: LINK_REWRITE,
             gate: () => Promise.resolve({ kind: "deny" }),
           },
         },
@@ -356,6 +370,56 @@ describe("openPageOf · foreign source gating", () => {
       // A failed evaluate only loses the /Title fix — the artifact still lands.
       expect(page.titleFallbacks).toEqual(["index.html"]);
       expect(bytes.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("should still render when the link-rewrite evaluate fails — the hygiene is best-effort", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({ pages: 1, linkRewrite: "error" });
+      const bytes = await renderPdfOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        source: {
+          kind: "foreign",
+          page: {
+            url: "http://hreader-export.invalid/f/cap/index.html",
+            docName: "index.html",
+            linkRewrite: LINK_REWRITE,
+            gate: () => Promise.resolve({ kind: "deny" }),
+          },
+        },
+        dir,
+        pageSize: "a4",
+        outline: false,
+        preferCSSPageSize: false,
+      });
+      // The rewrite was attempted on the PDF path; its failure degrades to the
+      // dead-URL annotations, it must not kill the render.
+      expect(page.linkRewrites).toEqual([LINK_REWRITE]);
+      expect(bytes.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("should skip the link rewrite on the PNG path — PNG pixels carry no annotations", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({ contentHeight: 900 });
+      await renderPngOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        source: {
+          kind: "foreign",
+          page: {
+            url: "http://hreader-export.invalid/f/cap/index.html",
+            docName: "index.html",
+            linkRewrite: LINK_REWRITE,
+            gate: () => Promise.resolve({ kind: "deny" }),
+          },
+        },
+        dir,
+        width: 800,
+        scale: 1,
+        maxHeight: 20_000,
+      });
+      expect(page.jsEnabled).toEqual([false]);
+      expect(page.linkRewrites).toEqual([]);
     });
   });
 });

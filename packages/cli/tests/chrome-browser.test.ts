@@ -275,6 +275,35 @@ describe("pageLikeOf · error folding", () => {
     expect(error.code).toBe("chrome_failed");
     expect(error.message).toBe("Runtime.evaluate 失败：eval gone");
   });
+
+  it("should embed the rewrite spec in the link evaluate and fold a failure as Runtime.evaluate", async () => {
+    const calls = callsOf();
+    const page = pageLikeOf(puppeteerPageOf(calls));
+    await page.rewriteExportLinks({
+      origin: "http://hreader-export.invalid",
+      framePath: "/f/cap/index.html",
+      capPrefix: "/f/cap/",
+      fileBase: "file:///tmp/page/",
+    });
+    expect(calls.evaluate).toHaveLength(1);
+    const expression = calls.evaluate[0] ?? "";
+    // The spec travels as one JSON literal inside the same evaluate channel the
+    // title fallback uses — the rewrite itself is only DOM attribute edits.
+    expect(expression).toContain("removeAttribute");
+    expect(expression).toContain('{"origin":"http://hreader-export.invalid"');
+
+    const failing = pageLikeOf(puppeteerPageOf(callsOf(), { evaluate: new Error("eval gone") }));
+    const error = await failureOf(
+      failing.rewriteExportLinks({
+        origin: "http://hreader-export.invalid",
+        framePath: "/f/cap/index.html",
+        capPrefix: "/f/cap/",
+        fileBase: "file:///tmp/page/",
+      }),
+    );
+    expect(error.code).toBe("chrome_failed");
+    expect(error.message).toBe("Runtime.evaluate 失败：eval gone");
+  });
 });
 
 describe("pageLikeOf · protocol names per method", () => {
