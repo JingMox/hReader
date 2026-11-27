@@ -128,9 +128,19 @@ export {
   annotationIdOf,
   DIFF_CHAR_LIMIT,
   diffText,
+  docRelocatorOf,
+  elementByPath,
+  matchAnchorInText,
   NOTE_LIMIT,
+  parseSelectorPath,
+  parseSidecarFile,
   readAnnotations,
+  replyIdOf,
   resolveAnchor,
+  SELECTOR_LIMITS,
+  serializeSidecarFile,
+  SIDECAR_LIMITS,
+  SIDECAR_VERSION,
   writeAnnotations,
 } from "./annotations";
 export type {
@@ -142,6 +152,13 @@ export type {
   ChunkKind,
   DiffResult,
   ReadResult,
+  RelocateResult,
+  RelocateVia,
+  SelectorStep,
+  SidecarAnnotation,
+  SidecarAuthor,
+  SidecarParse,
+  SidecarReply,
   TextAnchor,
   TextChunk,
 } from "./annotations";
@@ -157,6 +174,28 @@ export type {
   ListResult,
   ResolveInput,
 } from "./ops/annotation-ops";
+export {
+  addSidecarAnnotation,
+  deleteSidecarAnnotation,
+  listDocAnnotations,
+  migrateMetaAnnotations,
+  reopenSidecarAnnotation,
+  replySidecarAnnotation,
+  resolveSidecarAnnotation,
+} from "./ops/sidecar-ops";
+export type {
+  AddSidecarInput,
+  DocAnnotationEntry,
+  DocAnnotationsResult,
+  MigrateResult,
+  ReplySidecarInput,
+  ResolveSidecarInput,
+  SidecarIdInput,
+  SidecarReplyResult,
+  SidecarWriteResult,
+} from "./ops/sidecar-ops";
+export { annotationDirOf, annotationFileOf, readSidecarFile, writeSidecarFile } from "./io";
+export type { SidecarFile } from "./io";
 export { revertLast } from "./ops/revert-op";
 export type { RevertResult } from "./ops/revert-op";
 export { normalizeFile } from "./ops/normalize-file";

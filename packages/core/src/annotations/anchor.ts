@@ -51,20 +51,29 @@ const onlyOf = (list: readonly number[]): number => list.reduce((first) => first
 const needleOf = (anchor: TextAnchor): string => anchor.exact;
 
 /**
- * 解析顺序：块还在吗 → `exact` 有没有命中 → **唯一命中直接采用**（不看上下文）→
+ * 纯文本段内的锚点匹配：`exact` 有没有命中 → **唯一命中直接采用**（不看上下文）→
  * 多处命中才用 `prefix`/`suffix` 消歧 → 仍多命中取最接近 `start` 的；一个都不合上下文 = `ambiguous`。
+ * 与 `resolveAnchor` 的区别只在少了"块还在吗"那一层——侧车批注的文本域由调用方决定（选择器命中元素或 body 兜底）。
  */
-export const resolveAnchor = (annotation: Annotation, doc: AnchorDocument): AnchorResult => {
-  if (!doc.nodeIds.includes(annotation.nodeId)) return { ok: false, reason: "orphaned" };
-  const needle = needleOf(annotation.anchor);
-  const starts = occurrenceStarts(doc.text, needle);
+export const matchAnchorInText = (text: string, anchor: TextAnchor): AnchorResult => {
+  const needle = needleOf(anchor);
+  const starts = occurrenceStarts(text, needle);
   if (starts.length === 0) return { ok: false, reason: "anchor_lost" };
   if (starts.length === 1) {
     const only = onlyOf(starts);
     return { ok: true, start: only, end: only + needle.length };
   }
-  const fitting = starts.filter((at) => fitsContext(doc.text, at, annotation.anchor));
+  const fitting = starts.filter((at) => fitsContext(text, at, anchor));
   if (fitting.length === 0) return { ok: false, reason: "ambiguous" };
-  const start = closestOf(fitting, annotation.anchor.start);
+  const start = closestOf(fitting, anchor.start);
   return { ok: true, start, end: start + needle.length };
+};
+
+/**
+ * 解析顺序：块还在吗 → `exact` 有没有命中 → **唯一命中直接采用**（不看上下文）→
+ * 多处命中才用 `prefix`/`suffix` 消歧 → 仍多命中取最接近 `start` 的；一个都不合上下文 = `ambiguous`。
+ */
+export const resolveAnchor = (annotation: Annotation, doc: AnchorDocument): AnchorResult => {
+  if (!doc.nodeIds.includes(annotation.nodeId)) return { ok: false, reason: "orphaned" };
+  return matchAnchorInText(doc.text, annotation.anchor);
 };
