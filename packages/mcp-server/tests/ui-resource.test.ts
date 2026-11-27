@@ -89,7 +89,9 @@ describe("ui://hreader/view", () => {
 });
 
 /** `resources/read` failures go through a JSON-RPC error: `code` is the spec code, `data.code` our fine code. */
-const resourceErrorOf = async (uri: string): Promise<{ code: unknown; data: unknown }> => {
+const resourceErrorOf = async (
+  uri: string,
+): Promise<{ code: unknown; data: unknown; message: unknown }> => {
   const session = await sessionOf();
   const error: unknown = await session.client.readResource({ uri }).then(
     () => undefined,
@@ -99,6 +101,7 @@ const resourceErrorOf = async (uri: string): Promise<{ code: unknown; data: unkn
   return {
     code: Reflect.get(Object(error), "code"),
     data: Reflect.get(Object(error), "data"),
+    message: Reflect.get(Object(error), "message"),
   };
 };
 
@@ -136,6 +139,22 @@ describe("ui://hreader/view · missing no longer fakes success", () => {
 
     expect(code).toBe(-32002);
     expect(Reflect.get(Object(data), "code")).toBe("not_found");
+  });
+
+  it("should not split a surrogate pair when the echoed docId is cut at 32 chars", async () => {
+    // The echoed id is the raw URI suffix, not the decode: an emoji wedged into an otherwise-invalid
+    // base64url id still lands in the not_found message — and at index 31-32 the 32-unit cut would
+    // split its pair into a lone surrogate served to the model.
+    const base = docIdOf(`../${"p".repeat(60)}`);
+    const docId = `${base.slice(0, 31)}😀${base.slice(31)}`;
+    const { code, data, message } = await resourceErrorOf(`${VIEW_URI_PREFIX}${docId}`);
+
+    expect(code).toBe(-32002);
+    expect(Reflect.get(Object(data), "code")).toBe("not_found");
+    // Format unchanged apart from the safe cut: the echoed id is the 31 kept chars.
+    expect(String(message)).toContain(`无法解析（${base.slice(0, 31)}）`);
+    expect(String(message)).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+    expect(String(message)).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
   });
 });
 
