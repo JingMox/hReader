@@ -77,6 +77,7 @@ const readOnlyFs: FileSystem = {
   rename: writeDenied,
   unlink: writeDenied,
   mkdir: writeDenied,
+  rmdir: writeDenied,
   open: writeDenied,
   close: writeDenied,
 };

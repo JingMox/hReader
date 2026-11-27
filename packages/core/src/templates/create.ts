@@ -1,5 +1,7 @@
 // This layer: createFromTemplate — fetch template → rewrite (title/asset refs/theme inline/node ids) →
-// atomically land the target + `<stem>_files/`. Every pre-write check runs before any write; the write itself goes to io primitives.
+// land the assets under `<stem>_files/` first, then the page as the exclusive create that publishes the
+// result. Any failure rolls back every file and directory this call created (pre-existing entries are
+// never touched), so a failed attempt leaves the filesystem as it was and a retry can succeed.
 
 import { basename, dirname, extname, join, relative } from "node:path";
 
@@ -13,6 +15,7 @@ import { drainStack } from "../html/stack";
 import { mkdirOrFail } from "../io/atomic";
 import { encodeUtf8, readBytes } from "../io/bytes";
 import { createNewFile, createNewFiles } from "../io/create";
+import { codeOf, failureOf, rmdirQuiet, unlinkQuiet } from "../io/errors";
 import { resolveNewTarget, type ResolvedNewTarget } from "../io/paths";
 import { classifyDocument } from "../model/classify";
 import { replaceTheme } from "../style/apply";
@@ -190,6 +193,83 @@ const renderTemplate = (
   };
 };
 
+/**
+ * `<stem>_files/` occupied in ANY form (dir, file or symlink) means `file_exists` before a single write:
+ * the batch claims the whole name, and a retry after the cause is removed must still find the name free.
+ */
+const assertAssetsDirFree = async (dir: string, deps: TemplateDeps): Promise<void> => {
+  try {
+    await deps.fs.lstat(dir);
+  } catch (error: unknown) {
+    const code = codeOf(error);
+    if (code === "ENOENT" || code === "ENOTDIR") return;
+    throw failureOf("检查资源目录", dir, error);
+  }
+  throw new HrError("file_exists", `目标已存在：${dir}`);
+};
+
+/**
+ * Which dirs on `dir`'s chain are absent right now — i.e. the ones a recursive mkdir is about to create.
+ * Deepest-first, stopping at the first existing ancestor (a file ancestor also stops the walk: the mkdir
+ * that follows will surface ENOTDIR on its own).
+ */
+const missingDirsOf = async (dir: string, deps: TemplateDeps): Promise<string[]> => {
+  const missing: string[] = [];
+  let cursor: string | undefined = dir;
+  while (cursor !== undefined) {
+    try {
+      await deps.fs.lstat(cursor);
+      break;
+    } catch (error: unknown) {
+      const code = codeOf(error);
+      if (code !== "ENOENT" && code !== "ENOTDIR") {
+        throw failureOf("检查目录", cursor, error);
+      }
+    }
+    missing.push(cursor);
+    const parent = dirname(cursor);
+    cursor = parent === cursor ? undefined : parent;
+  }
+  return missing;
+};
+
+const depthOf = (path: string): number => path.split(/[\\/]/u).length;
+
+/**
+ * The write phase, all-or-nothing: dirs → assets → the exclusive page create that publishes the result.
+ * On failure, every file and directory this call created is reclaimed — `createdDirs` is walked in
+ * reverse so children go before their parents; a foreign entry inside a created dir just leaves the dir.
+ */
+const writeAll = async (
+  rendered: RenderedTemplate,
+  target: ResolvedNewTarget,
+  data: Uint8Array,
+  assetData: readonly { path: string; data: Uint8Array }[],
+  deps: TemplateDeps,
+): Promise<void> => {
+  const createdDirs: string[] = [];
+  const createdFiles: string[] = [];
+  try {
+    if (assetData.length > 0) await assertAssetsDirFree(rendered.assetsDir, deps);
+    const pending = [
+      ...new Set([dirname(target.absolute), ...assetData.map((file) => dirname(file.path))]),
+    ].sort((a, b) => depthOf(a) - depthOf(b));
+    for (const dir of pending) {
+      createdDirs.push(...(await missingDirsOf(dir, deps)));
+      await mkdirOrFail(deps, dir);
+    }
+    if (assetData.length > 0) {
+      await createNewFiles(assetData, deps);
+      createdFiles.push(...assetData.map((file) => file.path));
+    }
+    await createNewFile(target.absolute, data, deps);
+  } catch (error: unknown) {
+    for (const file of createdFiles) await unlinkQuiet(deps.fs, file);
+    for (const dir of [...createdDirs].reverse()) await rmdirQuiet(deps.fs, dir);
+    throw error;
+  }
+};
+
 export const createFromTemplate = async (
   input: CreateFromTemplateInput,
   roots: TemplateRoots,
@@ -217,13 +297,7 @@ export const createFromTemplate = async (
       throw templateFailure(`无法读取模板资源：${file.rel}`, error);
     }
   }
-  await mkdirOrFail(deps, dirname(target.absolute));
-  await createNewFile(target.absolute, data, deps);
-  if (assetData.length > 0) {
-    const dirs = new Set(assetData.map((file) => dirname(file.path)));
-    for (const dir of dirs) await mkdirOrFail(deps, dir);
-    await createNewFiles(assetData, deps);
-  }
+  await writeAll(rendered, target, data, assetData, deps);
   return {
     path: target.relative,
     bytes: data.byteLength,

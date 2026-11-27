@@ -11,6 +11,7 @@ export type FsMethod =
   | "link"
   | "unlink"
   | "mkdir"
+  | "rmdir"
   | "lstat"
   | "readdir"
   | "realpath"
@@ -136,7 +137,7 @@ const handleOf = (state: FakeState, path: string): OpenFile => ({
 
 const readMethodsOf = (
   state: FakeState,
-): Omit<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "unlink" | "mkdir"> => ({
+): Omit<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "unlink" | "mkdir" | "rmdir"> => ({
   readFile: (path) => {
     guard(state, "readFile", path);
     const bytes = readFileOf(state, path);
@@ -193,7 +194,10 @@ const readMethodsOf = (
 
 const writeMethodsOf = (
   state: FakeState,
-): Pick<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "link" | "unlink" | "mkdir"> => ({
+): Pick<
+  FileSystem,
+  "writeFile" | "writeFileAtomic" | "rename" | "link" | "unlink" | "mkdir" | "rmdir"
+> => ({
   writeFile: (path, data) => {
     guard(state, "writeFile", path);
     state.files.set(path, new Uint8Array(data));
@@ -227,6 +231,14 @@ const writeMethodsOf = (
   mkdir: (path) => {
     guard(state, "mkdir", path);
     state.dirs.add(path);
+    return Promise.resolve();
+  },
+  rmdir: (path) => {
+    guard(state, "rmdir", path);
+    const resolved = resolveLinks(state, path);
+    if (!state.dirs.has(resolved)) throw systemError("ENOENT");
+    if (dirEntriesOf(state, resolved).length > 0) throw systemError("ENOTEMPTY");
+    state.dirs.delete(resolved);
     return Promise.resolve();
   },
 });

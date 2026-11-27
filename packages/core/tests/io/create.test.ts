@@ -30,6 +30,7 @@ const withoutLink = (port: FileSystem): FileSystem => ({
   rename: (from, to) => port.rename(from, to),
   unlink: (path) => port.unlink(path),
   mkdir: (path) => port.mkdir(path),
+  rmdir: (path) => port.rmdir(path),
   lstat: (path) => port.lstat(path),
   readdir: (path) => port.readdir(path),
   realpath: (path) => port.realpath(path),

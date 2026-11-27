@@ -315,10 +315,10 @@ describe("createFromTemplate · atomic rollback", () => {
   const assetDirs = [`${TPL}/assets`, `${TPL}/assets/deep`];
 
   it("should refuse a pre-existing <stem>_files asset and write nothing", async () => {
-    const fake = setup(
-      { ...assetTemplate(), "/ws/collide_files/a.png": "FOREIGN" },
-      [...assetDirs, `${WS}/collide_files`],
-    );
+    const fake = setup({ ...assetTemplate(), "/ws/collide_files/a.png": "FOREIGN" }, [
+      ...assetDirs,
+      `${WS}/collide_files`,
+    ]);
     const before = snapshotOf(fake);
 
     const error = await errorOf(() => createAt(fake, { id: "my-tpl", target: "collide.html" }));
@@ -368,9 +368,7 @@ describe("createFromTemplate · atomic rollback", () => {
 
   it("should roll back the copied assets when the final page write fails", async () => {
     const fake = setup(assetTemplate(), assetDirs);
-    fake.fail("link", systemError("ENOSPC"), (path: string) =>
-      path.startsWith(`${WS}/roll.html.`),
-    );
+    fake.fail("link", systemError("ENOSPC"), (path: string) => path.startsWith(`${WS}/roll.html.`));
     const before = snapshotOf(fake);
 
     expect(await codeOfAsync(() => createAt(fake, { id: "my-tpl", target: "roll.html" }))).toBe(

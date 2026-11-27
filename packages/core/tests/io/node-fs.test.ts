@@ -10,6 +10,7 @@ import { nodePatchDeps } from "../../src/io/node-fs";
 import type { OpenFile } from "../../src/io/ports";
 import {
   codeOfAsync,
+  existsAt,
   readBytesAt,
   readTextAt,
   realDirOf,
@@ -33,6 +34,7 @@ describe("nodePatchDeps · 默认依赖", () => {
       "readdir",
       "realpath",
       "rename",
+      "rmdir",
       "unlink",
       "writeFile",
       "writeFileAtomic",
@@ -122,6 +124,13 @@ describe("node-fs · 其余端口", () => {
       await fsApi.unlink(join(nested, "y.html"));
       expect(await codeOfAsync(() => fsApi.unlink(join(nested, "y.html")))).toBe("ENOENT");
       expect(sha1Of(await fsApi.realpath(nested))).toHaveLength(40);
+      // rmdir only takes empty dirs: a populated one is ENOTEMPTY until it is emptied.
+      await fsApi.mkdir(join(dir, "hold"));
+      await writeTextAt(join(dir, "hold", "z.html"), "z");
+      expect(await codeOfAsync(() => fsApi.rmdir(join(dir, "hold")))).toBe("ENOTEMPTY");
+      await fsApi.unlink(join(dir, "hold", "z.html"));
+      await fsApi.rmdir(join(dir, "hold"));
+      expect(await existsAt(join(dir, "hold"))).toBe(false);
     });
   });
 

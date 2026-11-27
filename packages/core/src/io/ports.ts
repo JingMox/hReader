@@ -27,6 +27,8 @@ export interface FileSystem {
   readonly link?: (from: string, to: string) => Promise<void>;
   readonly unlink: (path: string) => Promise<void>;
   readonly mkdir: (path: string) => Promise<void>;
+  /** Remove an empty directory (`ENOTEMPTY` when it still holds entries): rollback pair for `mkdir`. */
+  readonly rmdir: (path: string) => Promise<void>;
   readonly lstat: (path: string) => Promise<FileStat>;
   readonly readdir: (path: string) => Promise<readonly string[]>;
   readonly realpath: (path: string) => Promise<string>;

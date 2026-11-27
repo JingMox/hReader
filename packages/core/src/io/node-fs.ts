@@ -10,6 +10,7 @@ import {
   readdir,
   realpath,
   rename,
+  rmdir,
   unlink,
   writeFile,
   type FileHandle,
@@ -59,6 +60,9 @@ const nodeFileSystem: FileSystem = {
   },
   mkdir: async (path) => {
     await mkdir(path, { recursive: true });
+  },
+  rmdir: async (path) => {
+    await rmdir(path);
   },
   lstat: async (path) => lstat(path),
   readdir: async (path) => readdir(path),
