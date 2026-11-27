@@ -44,6 +44,7 @@ vi.mock("@hreader/core", async (importOriginal) => {
     rename: tap("rename", base.rename),
     unlink: tap("unlink", base.unlink),
     mkdir: tap("mkdir", base.mkdir),
+    rmdir: tap("rmdir", base.rmdir),
     open: tap("open", base.open),
     close: tap("close", base.close),
   };
