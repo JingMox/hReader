@@ -198,6 +198,13 @@ pub fn blank_style_args(doc_name: &str) -> [&str; 4] {
     ["style", doc_name, "--visual", "atelier-editorial"]
 }
 
+/// Whether the save-as-template menu item is enabled: only while a document
+/// is open. Launching with a doc already open must yield `true` immediately —
+/// the item must not wait for the first doc transition.
+pub fn save_as_template_enabled(doc_id: &str) -> bool {
+    !doc_id.is_empty()
+}
+
 /// User tier root `<config home>/.hreader/templates`. The CLI resolves
 /// `HREADER_HOME` as the config root (parent of `.hreader/`); unset = real home.
 /// `run_cli_task` inherits the environment, so this stays consistent with
@@ -292,6 +299,13 @@ pub fn deletable_template_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn save_as_template_enabled_reflects_a_doc_open_at_launch() {
+        assert!(!save_as_template_enabled(""));
+        assert!(save_as_template_enabled("notes.html"));
+        assert!(save_as_template_enabled("dir/notes.html"));
+    }
 
     fn summary(id: &str, source: &str) -> TemplateSummary {
         TemplateSummary {
