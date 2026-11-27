@@ -379,6 +379,22 @@ describe("docRelocatorOf · D49 fallback chain levels", () => {
     // the node level; the body level still finds the context-fitting one.
     expect(result).toEqual({ ok: true, start: 7, end: 9, via: "body" });
   });
+
+  it("should descend to body when the selector resolves inside a skipped subtree", () => {
+    // <noscript> content stays in the parsed tree but contributes no body-text
+    // span: the selector finds the element, the level still yields no region.
+    const relocate = docRelocatorOf(
+      "<body><noscript><p>AB</p></noscript><p>先 AB 后</p></body>",
+    );
+    const result = relocate(
+      note({
+        selector: "body > noscript:nth-of-type(1) > p:nth-of-type(1)",
+        anchor: { exact: "AB", prefix: "先 ", suffix: " 后", start: 0 },
+      }),
+    );
+
+    expect(result).toEqual({ ok: true, start: 2, end: 4, via: "body" });
+  });
 });
 
 describe("docRelocatorOf · degenerate documents", () => {
