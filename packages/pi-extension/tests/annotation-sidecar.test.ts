@@ -199,7 +199,7 @@ describe("sidecar merge into the pending push", () => {
       ],
     });
     expect(fake.sentMessages).toHaveLength(1);
-    expect(fake.sentMessages[0]?.content).toContain("锚点 p1");
+    expect(fake.sentMessages[0]?.content).toContain("节点 p1");
   });
 
   it("should keep the meta push working when the sidecar reply has no annotations array", async () => {

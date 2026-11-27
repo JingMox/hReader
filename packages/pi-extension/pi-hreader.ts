@@ -915,7 +915,10 @@ const injectionOf = (
         ? "（批注没有节点锚点，按摘录位置处理）"
         : nodeSliceOf(document, annotation.nodeId);
   return [
-    `hReader 批注（文档 ${docId}，锚点 ${annotation.anchor}）`,
+    // Meta pushes (and sidecar entries that do carry a nodeId) keep the pre-sidecar header —
+    // `锚点 <anchor>` only names a nodeId-less sidecar entry, where the anchor is a selector
+    // or excerpt rather than a node.
+    `hReader 批注（文档 ${docId}，${annotation.nodeId === undefined ? `锚点 ${annotation.anchor}` : `节点 ${annotation.nodeId}`}）`,
     "",
     "节点源码：",
     source ?? "（该节点已不在文档里）",
