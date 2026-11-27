@@ -378,6 +378,34 @@ describe("createFromTemplate · atomic rollback", () => {
   });
 });
 
+describe("createFromTemplate · control characters in the title", () => {
+  it("should normalize NUL and C0 controls to U+FFFD for both formats", async () => {
+    for (const [format, entry] of [
+      [
+        "html",
+        "<html><head><title>OLD</title></head><body><h1>OLD</h1></body></html>",
+      ],
+      [
+        "managed",
+        "<html><head><title>OLD</title></head><body><article><h1>OLD</h1><p>x</p></article></body></html>",
+      ],
+    ] as const) {
+      const fake = setup(
+        htmlTemplate(TPL, { manifest: manifestText({ id: "my-tpl", format }), entry }),
+      );
+      await createAt(fake, { id: "my-tpl", target: `c0-${format}.html`, title: "a\0b\x01c\td" });
+
+      const text = textOf(fake, `${WS}/c0-${format}.html`);
+      expect(text).not.toContain("\u0000");
+      expect(text).not.toContain("\u0001");
+      const parsed = parseHtml(text);
+      // Tab (and LF/CR) are the only C0 controls kept; everything else is one U+FFFD each.
+      expect(textContentOf(firstElement(parsed, "title"))).toBe("a\uFFFDb\uFFFDc\td");
+      expect(textContentOf(firstElement(parsed, "h1"))).toBe("a\uFFFDb\uFFFDc\td");
+    }
+  });
+});
+
 describe("createFromTemplate · property tests", () => {
   // \0 is replaced by the parser with U+FFFD and \r is normalized to \n in preprocessing:
   // neither is in the "roundtrippable text" domain, so filter them out.
