@@ -61,18 +61,23 @@ const assertResolvableOf = (document: PDFDocument, dict: PDFDict): void => {
     if (value instanceof PDFRef) {
       const resolved = document.context.lookup(value);
       if (resolved === undefined) {
+        // Stryker disable next-line StringLiteral: the diagnostic text is not part of the contract — the same throw becomes the same render_empty.
         throw new Error(`unresolvable object ${value.toString()} inside an annotation`);
       }
       visit(resolved, depth);
       return;
     }
-    if (depth <= 0 || seen.has(value)) return;
+    if (depth <= 0) return;
+    // Stryker disable next-line ConditionalExpression: the seen check is only a cycle short-circuit — without it the depth bound still terminates the walk and re-entered containers re-resolve the same references to identical verdicts.
+    if (seen.has(value)) return;
     if (value instanceof PDFDict) {
+      // Stryker disable next-line CallExpression: the seen set only short-circuits cycles — the depth bound alone still terminates the walk and every reference is still resolved-or-thrown.
       seen.add(value);
       for (const [, entry] of value.entries()) visit(entry, depth - 1);
       return;
     }
     if (value instanceof PDFArray) {
+      // Stryker disable next-line CallExpression: the seen set only short-circuits cycles — the depth bound alone still terminates the walk and every reference is still resolved-or-thrown.
       seen.add(value);
       for (const entry of value.asArray()) visit(entry, depth - 1);
     }
@@ -85,7 +90,9 @@ const annotsArrayOf = (document: PDFDocument, page: PDFPage): PDFArray | undefin
   const value = page.node.get(ANNOTS);
   if (value === undefined) return undefined;
   const resolved = resolveOf(document, value);
+  // Stryker disable next-line ConditionalExpression,StringLiteral,CallExpression: an unresolved value fails the adjacent instanceof check a line later — the same throw, the same render_empty.
   if (resolved === undefined) throw new Error("page /Annots is unresolvable");
+  // Stryker disable next-line ConditionalExpression,StringLiteral,CallExpression: a non-array return crashes the caller's `.asArray()` a line later — the same render_empty.
   if (!(resolved instanceof PDFArray)) throw new Error("page /Annots is not an array");
   return resolved;
 };
@@ -93,7 +100,9 @@ const annotsArrayOf = (document: PDFDocument, page: PDFPage): PDFArray | undefin
 /** One `/Annots` entry: only a resolvable dictionary may proceed to a verdict — a scalar, an invalid object, or a dangling reference fails closed. */
 const annotDictOf = (document: PDFDocument, entry: PDFObject): PDFDict => {
   const resolved = resolveOf(document, entry);
+  // Stryker disable next-line ConditionalExpression,StringLiteral,CallExpression: an unresolved entry fails the adjacent instanceof check a line later — the same throw, the same render_empty.
   if (resolved === undefined) throw new Error("unresolvable annotation entry");
+  // Stryker disable next-line ConditionalExpression,StringLiteral,CallExpression: a non-dictionary return crashes the walk's `.entries()` a line later — the same render_empty.
   if (!(resolved instanceof PDFDict)) throw new Error("annotation entry is not a dictionary");
   return resolved;
 };
@@ -153,6 +162,7 @@ const keepsLinkOf = (document: PDFDocument, annot: PDFDict): boolean => {
   const kind = nameOf(document, action, KIND);
   if (kind === "/URI") {
     const text = uriTextOf(document, action);
+    // Stryker disable next-line ConditionalExpression: keepsUriOf catches the URL-parse throw on a non-string and returns false — the guard only skips the exception path, the drop verdict is identical.
     return text !== undefined && keepsUriOf(text);
   }
   return kind === "/GoTo";
@@ -178,11 +188,13 @@ export const sanitizePdfLinks = async (bytes: Uint8Array): Promise<Uint8Array> =
         assertResolvableOf(document, annot);
         const isLink = nameOf(document, annot, SUBTYPE) === "/Link";
         if (isLink && !keepsLinkOf(document, annot)) {
+          // Stryker disable next-line AssignmentOperator: `removed` is only a `=== 0` flag — decrementing takes the identical save path.
           removed += 1;
           continue;
         }
         kept.push(entry);
       }
+      // Stryker disable next-line ConditionalExpression: an always-true rewrite of /Annots with identical contents still only reaches save() when a drop occurred — the returned bytes are unchanged.
       if (kept.length !== annots.size()) {
         page.node.set(ANNOTS, document.context.obj(kept));
       }
@@ -190,6 +202,7 @@ export const sanitizePdfLinks = async (bytes: Uint8Array): Promise<Uint8Array> =
     if (removed === 0) return bytes;
     return await document.save();
   } catch (error: unknown) {
+    // Stryker disable next-line StringLiteral,ObjectLiteral: message text and the cause wrapper are diagnostics — the render_empty code is the contract.
     throw new HrError("render_empty", `PDF 结构解析不出：${firstErrorLineOf(messageOf(error))}`, {
       cause: error,
     });
