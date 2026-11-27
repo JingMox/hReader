@@ -1,5 +1,7 @@
-// 旅程 4（多写者并发）：CLI / MCP / HTTP 三入口对同一文档并发 patch/style/undo。
-// 断言：锁串行化（无 5xx/撕裂）、每次写拿到互不相同的 revision（无丢更新）、最终文件完整。
+// Journey 4 (multi-writer concurrency): the CLI / MCP / HTTP entry points run
+// patch/style/undo against the same document at once.
+// Asserted: lock serialization (no 5xx/tearing), every write lands on a
+// distinct revision (no lost update), and the final file stays intact.
 
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -21,14 +23,17 @@ let daemon: Daemon;
 let api: Api;
 let mcp: McpClient;
 let visualId = "";
-/** `hr new` 骨架里前两个正文块的 data-hr-id。 */
+/** The data-hr-ids of the first two body blocks in the `hr new` skeleton. */
 let nodeA = "";
 let nodeB = "";
 
 const infoRevision = async (): Promise<string> => {
   const info = await api.getJson(`${docApi(DOC)}/info`);
   const rev = info["revision"];
-  assert(typeof rev === "string" && rev !== "", `info.revision 异常：${JSON.stringify(info)}`);
+  assert(
+    typeof rev === "string" && rev !== "",
+    `info.revision is abnormal: ${JSON.stringify(info)}`,
+  );
   return rev;
 };
 
@@ -40,14 +45,21 @@ beforeAll(async () => {
   mcp = await startMcp(home.ws);
   const themes = await api.getJson("/api/theme");
   const ids = themes["themes"];
-  assert(Array.isArray(ids) && ids.length > 0, `/api/theme 列表异常：${JSON.stringify(themes)}`);
+  assert(
+    Array.isArray(ids) && ids.length > 0,
+    `/api/theme list is abnormal: ${JSON.stringify(themes)}`,
+  );
   const first: unknown = ids[0];
-  assert(typeof first === "string", "主题 id 不是字符串");
+  assert(typeof first === "string", "theme id is not a string");
   visualId = first;
   const html = await readFile(docPath(home.ws, DOC), "utf8");
   const allIds = [...html.matchAll(/data-hr-id="([^"]+)"/gu)].map((m) => m[1]);
-  assert(allIds.length >= 3, `hr new 骨架 data-hr-id 不足三个：${allIds.join(",")}`);
-  // 跳过第一个（容器元素：replace 它会把子块一起删掉），取两个兄弟级正文块。
+  assert(
+    allIds.length >= 3,
+    `hr new skeleton has fewer than three data-hr-ids: ${allIds.join(",")}`,
+  );
+  // Skip the first (the container element: replacing it would delete its child
+  // blocks along with it); take two sibling-level body blocks.
   const [, a, b] = allIds;
   nodeA = a ?? "";
   nodeB = b ?? "";
@@ -60,7 +72,7 @@ afterAll(async () => {
   home.cleanup();
 });
 
-test("三入口并发 patch/style：全部成功、HTTP 无 5xx、revision 互不相同", async () => {
+test("should keep concurrent patch/style from all three entries successful, 5xx-free and on distinct revisions", async () => {
   const revs = new Set<string>();
   let revSeen = 0;
   let writes = 0;
@@ -86,8 +98,8 @@ test("三入口并发 patch/style：全部成功、HTTP 无 5xx、revision 互�
       ],
       { cwd: home.ws },
     );
-    assertEq(cli.code, 0, `第 ${String(i)} 轮 CLI patch 失败：${cli.stderr} ${cli.stdout}`);
-    const cliBody = jsonOf(cli, `第 ${String(i)} 轮 CLI patch`);
+    assertEq(cli.code, 0, `round ${String(i)} CLI patch failed: ${cli.stderr} ${cli.stdout}`);
+    const cliBody = jsonOf(cli, `round ${String(i)} CLI patch`);
     writes += 1;
     if (typeof cliBody["data"] === "object" && cliBody["data"] !== null) {
       collect(Reflect.get(cliBody["data"], "revision"));
@@ -99,8 +111,8 @@ test("三入口并发 patch/style：全部成功、HTTP 无 5xx、revision 互�
       action: "replace",
       htmlContent: `<p data-hr-id="${nodeB}">MCP-${String(i)}</p>`,
     });
-    assert(!viaMcp.isError, `第 ${String(i)} 轮 MCP patch 失败：${viaMcp.text}`);
-    const mcpJson = toolJson(viaMcp, `第 ${String(i)} 轮 MCP patch`);
+    assert(!viaMcp.isError, `round ${String(i)} MCP patch failed: ${viaMcp.text}`);
+    const mcpJson = toolJson(viaMcp, `round ${String(i)} MCP patch`);
     writes += 1;
     collect(mcpJson["revision"]);
 
@@ -110,8 +122,8 @@ test("三入口并发 patch/style：全部成功、HTTP 无 5xx、revision 互�
       action: "replace",
       fragment: `<p data-hr-id="${nodeA}">HTTP-${String(i)}</p>`,
     });
-    assert(http.status === 200, `第 ${String(i)} 轮 HTTP patch 状态 ${String(http.status)}`);
-    const httpBody = parseJson(await http.text(), "HTTP patch 响应");
+    assert(http.status === 200, `round ${String(i)} HTTP patch status ${String(http.status)}`);
+    const httpBody = parseJson(await http.text(), "HTTP patch response");
     writes += 1;
     if (typeof httpBody === "object" && httpBody !== null) {
       collect(Reflect.get(httpBody, "revision"));
@@ -123,19 +135,23 @@ test("三入口并发 patch/style：全部成功、HTTP 无 5xx、revision 互�
     mcp.call("hr_apply_style", { filePath: DOC, visualId }),
     api.post("/api/style", { docId: DOC, visualId }),
   ]);
-  assert(!styleMcp.isError, `并发 hr_apply_style 报错：${styleMcp.text}`);
-  assert(styleHttp.status === 200, `并发 HTTP style 状态 ${String(styleHttp.status)}`);
-  // revision 只有 HTTP 回执带（CLI/MCP 契约是 historyPath/changed）：收到的每个都该是全新值，
-  // 丢更新/覆写会表现为 revision 重复。
+  assert(!styleMcp.isError, `concurrent hr_apply_style errored: ${styleMcp.text}`);
+  assert(styleHttp.status === 200, `concurrent HTTP style status ${String(styleHttp.status)}`);
+  // Only HTTP receipts carry a revision (the CLI/MCP contract is
+  // historyPath/changed): every one received must be a fresh value — a lost
+  // update/overwrite shows up as a duplicate revision.
   assert(
     revs.size === revSeen && revSeen === 9,
-    `丢更新嫌疑：${String(revSeen)} 个回执 revision 只有 ${String(revs.size)} 个不同值（writes=${String(writes)}）`,
+    `lost-update suspect: ${String(revSeen)} receipt revisions contain only ${String(revs.size)} distinct values (writes=${String(writes)})`,
   );
   const bytes = await readFile(docPath(home.ws, DOC), "utf8");
-  assert(bytes.includes("<html") && bytes.trimEnd().endsWith("</html>"), "文件半写（头尾不完整）");
+  assert(
+    bytes.includes("<html") && bytes.trimEnd().endsWith("</html>"),
+    "file half-written (head/tail incomplete)",
+  );
 });
 
-test("并发 undo + patch：锁串行化，最终文件完整、history 目录正常", async () => {
+test("should serialize concurrent undo + patch and leave the file and history dir intact", async () => {
   const before = await infoRevision();
   const [undo1, undo2, mcpUndo, httpUndo, patch] = await Promise.all([
     hr(["undo", DOC, "--workspace", home.ws, "--json"], { cwd: home.ws }),
@@ -158,25 +174,34 @@ test("并发 undo + patch：锁串行化，最终文件完整、history 目录�
       { cwd: home.ws },
     ),
   ]);
-  assertEq(patch.code, 0, `并发中 patch 失败：${patch.stderr} ${patch.stdout}`);
+  assertEq(patch.code, 0, `patch failed mid-concurrency: ${patch.stderr} ${patch.stdout}`);
   for (const [index, undo] of [undo1, undo2].entries()) {
     assert(
       undo.code === 0 || (undo.code === 1 && undo.stdout.includes("nothing_to_undo")),
-      `并发 undo[${String(index)}] 非法失败：${undo.stdout} ${undo.stderr}`,
+      `concurrent undo[${String(index)}] failed illegally: ${undo.stdout} ${undo.stderr}`,
     );
   }
   assert(
     httpUndo.status === 200 || httpUndo.status === 409 || httpUndo.status === 422,
-    `HTTP undo 状态 ${String(httpUndo.status)}`,
+    `HTTP undo status ${String(httpUndo.status)}`,
   );
   if (mcpUndo.isError) {
-    assert(/nothing_to_undo|history|undo/i.test(mcpUndo.text), `MCP undo 异常：${mcpUndo.text}`);
+    assert(
+      /nothing_to_undo|history|undo/i.test(mcpUndo.text),
+      `MCP undo is abnormal: ${mcpUndo.text}`,
+    );
   }
   const after = await infoRevision();
-  assert(after !== "" && after !== before, `并发 undo 后 revision 异常：${before} → ${after}`);
+  assert(
+    after !== "" && after !== before,
+    `revision abnormal after concurrent undo: ${before} → ${after}`,
+  );
   const histDir = join(home.ws, ".hreader", "history");
   const snaps = await readdir(histDir).catch(() => [] as string[]);
-  assert(Array.isArray(snaps), "history 目录读失败");
+  assert(Array.isArray(snaps), "failed to read the history dir");
   const bytes = await readFile(docPath(home.ws, DOC), "utf8");
-  assert(bytes.includes("<html") && bytes.includes("</html>"), "最终文件不是完整 HTML（半写）");
+  assert(
+    bytes.includes("<html") && bytes.includes("</html>"),
+    "final file is not complete HTML (half-written)",
+  );
 });

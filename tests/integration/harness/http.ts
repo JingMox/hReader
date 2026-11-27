@@ -1,5 +1,7 @@
-// 这层管：daemon 的 HTTP 客户端（token → cookie 引导、cookie+csrf 写命令、SSE 事件流）。
-// 与阅读器前端同一条认证通道：先 `GET /?token=` 拿 cookie，写操作再带 `x-hr-csrf: 1`。
+// This layer owns: the daemon's HTTP client (token → cookie bootstrap,
+// cookie+csrf write commands, SSE event stream).
+// Same auth channel as the reader frontend: `GET /?token=` for the cookie
+// first, then writes carry `x-hr-csrf: 1`.
 
 import { assert, parseJson } from "./check.ts";
 import type { JsonObject } from "./cli.ts";
@@ -21,22 +23,22 @@ export interface SseEvent {
 }
 
 export interface SseStream {
-  /** 下一个 `type` 匹配的事件；超时回 undefined（调用方判，不 sleep 断言）。 */
+  /** The next event whose `type` matches; undefined on timeout (the caller decides — no sleep assertions). */
   readonly next: (type: string, timeoutMs?: number) => Promise<SseEvent | undefined>;
   readonly close: () => void;
 }
 
 const baseOf = (port: number): string => `http://127.0.0.1:${String(port)}`;
 
-/** `GET /?token=` → 302 + Set-Cookie；与浏览器首访同一条 bootstrap 路径。 */
+/** `GET /?token=` → 302 + Set-Cookie; the same bootstrap path as a browser's first visit. */
 export const connect = async (port: number, token: string): Promise<Api> => {
   const boot = await fetch(`${baseOf(port)}/?token=${encodeURIComponent(token)}`, {
     redirect: "manual",
   });
-  assert(boot.status === 302, `bootstrap 期望 302，实际 ${String(boot.status)}`);
+  assert(boot.status === 302, `bootstrap expected 302, got ${String(boot.status)}`);
   const setCookie = boot.headers.get("set-cookie") ?? "";
   const pair = /(?:^|;\s*)hr=([^;]+)/u.exec(setCookie);
-  assert(pair !== null, `bootstrap 没下发 hr cookie：${setCookie}`);
+  assert(pair !== null, `bootstrap did not hand out an hr cookie: ${setCookie}`);
   const cookie = `hr=${pair[1] ?? ""}`;
 
   const get = (path: string): Promise<Response> =>
@@ -49,21 +51,21 @@ export const connect = async (port: number, token: string): Promise<Api> => {
     });
   const getJson = async (path: string): Promise<JsonObject> => {
     const res = await get(path);
-    const body = parseJson(await res.text(), `GET ${path} 响应`);
-    assert(typeof body === "object" && body !== null, `GET ${path} 响应不是对象`);
+    const body = parseJson(await res.text(), `GET ${path} response`);
+    assert(typeof body === "object" && body !== null, `GET ${path} response is not an object`);
     return body as JsonObject;
   };
   const postJson = async (path: string, body: JsonObject): Promise<JsonObject> => {
     const res = await post(path, body);
-    const parsed = parseJson(await res.text(), `POST ${path} 响应`);
-    assert(typeof parsed === "object" && parsed !== null, `POST ${path} 响应不是对象`);
+    const parsed = parseJson(await res.text(), `POST ${path} response`);
+    assert(typeof parsed === "object" && parsed !== null, `POST ${path} response is not an object`);
     return parsed as JsonObject;
   };
 
   const openSse = async (): Promise<SseStream> => {
     const res = await get("/api/events");
-    assert(res.status === 200, `SSE 期望 200，实际 ${String(res.status)}`);
-    assert(res.body !== null, "SSE 响应没有 body");
+    assert(res.status === 200, `SSE expected 200, got ${String(res.status)}`);
+    assert(res.body !== null, "SSE response has no body");
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -81,7 +83,7 @@ export const connect = async (port: number, token: string): Promise<Api> => {
         if (line.startsWith("data:")) dataText += line.slice(5).trim();
       }
       if (dataText === "") return;
-      const parsed = parseJson(dataText, "SSE data 帧");
+      const parsed = parseJson(dataText, "SSE data frame");
       if (typeof parsed !== "object" || parsed === null) return;
       const type: unknown = Reflect.get(parsed, "type");
       const event: SseEvent = {

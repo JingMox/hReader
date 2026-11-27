@@ -131,10 +131,10 @@ const pdfPagesOf = async (c: Case, doc: string, name: string): Promise<number> =
     cwd: c.ws,
     env: envOf(c.home),
   });
-  assertEq(result.code, 0, `hr pdf ${doc} 退出码（stderr: ${result.stderr.slice(0, 300)}）`);
+  assertEq(result.code, 0, `hr pdf ${doc} exit code (stderr: ${result.stderr.slice(0, 300)})`);
   const data = dataOf(result, `hr pdf ${doc}`);
   const pages = data["pages"];
-  assert(typeof pages === "number", "hr pdf 的 data.pages 不是数字");
+  assert(typeof pages === "number", "hr pdf's data.pages is not a number");
   return pages;
 };
 
@@ -146,11 +146,11 @@ const pngHeightOf = async (c: Case, doc: string, name: string): Promise<number> 
       env: envOf(c.home),
     },
   );
-  assertEq(result.code, 0, `hr png ${doc} 退出码（stderr: ${result.stderr.slice(0, 300)}）`);
+  assertEq(result.code, 0, `hr png ${doc} exit code (stderr: ${result.stderr.slice(0, 300)})`);
   const data = dataOf(result, `hr png ${doc}`);
   const height = data["height"];
-  assert(typeof height === "number", "hr png 的 data.height 不是数字");
-  assert(data["clipped"] === false, "hr png 结果不应被 max-height 截断");
+  assert(typeof height === "number", "hr png's data.height is not a number");
+  assert(data["clipped"] === false, "hr png result must not be clipped by max-height");
   return height;
 };
 
@@ -168,14 +168,14 @@ describe.skipIf(skip !== undefined)("export-foreign", () => {
     const height = await pngHeightOf(c, "page/index.html", "denied.png");
     // The sibling stylesheet reached the renderer (4400px marker paginates
     // onto multiple A4 pages; the natural-size img keeps its 303px).
-    assert(pages >= 2, `css 未生效：pages=${String(pages)}`);
+    assert(pages >= 2, `css did not take effect: pages=${String(pages)}`);
     assert(
       height >= HEIGHT_LOW && height <= HEIGHT_HIGH,
-      `导出高度异常：${String(height)}（脚本曾运行或兄弟资源丢失）`,
+      `export height abnormal: ${String(height)} (a script ran or a sibling asset was lost)`,
     );
     assert(
       readFileSync(c.out("denied.pdf")).subarray(0, 5).toString("latin1") === "%PDF-",
-      "denied.pdf 不是 PDF",
+      "denied.pdf is not a PDF",
     );
   }, 120_000);
 
@@ -184,10 +184,10 @@ describe.skipIf(skip !== undefined)("export-foreign", () => {
     grantOf(c.ws, { scripts: true, network: true });
     const pages = await pdfPagesOf(c, "page/index.html", "granted.pdf");
     const height = await pngHeightOf(c, "page/index.html", "granted.png");
-    assert(pages >= 2, `css 未生效：pages=${String(pages)}`);
+    assert(pages >= 2, `css did not take effect: pages=${String(pages)}`);
     assert(
       height >= HEIGHT_LOW && height <= HEIGHT_HIGH,
-      `授权后高度异常：${String(height)}（30000px 的脚本副作用不应出现）`,
+      `post-grant height abnormal: ${String(height)} (the 30000px script side effect must not appear)`,
     );
   }, 120_000);
 
@@ -197,7 +197,10 @@ describe.skipIf(skip !== undefined)("export-foreign", () => {
     const c: Case = { ws: box.ws, home: box.home, out: (f) => join(box.ws, f) };
     const pages = await pdfPagesOf(c, "doc.hr.html", "managed.pdf");
     const height = await pngHeightOf(c, "doc.hr.html", "managed.png");
-    assert(pages >= 1, `托管文档页数异常：${String(pages)}`);
-    assert(height > 0 && height < HEIGHT_HIGH, `托管文档高度异常：${String(height)}`);
+    assert(pages >= 1, `managed document page count abnormal: ${String(pages)}`);
+    assert(
+      height > 0 && height < HEIGHT_HIGH,
+      `managed document height abnormal: ${String(height)}`,
+    );
   }, 120_000);
 });

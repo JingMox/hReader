@@ -1,6 +1,8 @@
-// 这层管：真 Chrome 的驱动。底层是 puppeteer-core（cli 渲染层同款依赖，catalog 统版）：
-// launch/newPage/CdpSession 是主流面，断言仍全落在页面真实状态上。
-// 对外保留原手写 CDP 的 Page 最小接口（eval/wait/key/click/navigate/reload），套件代码不变。
+// This layer owns: driving real Chrome. Underneath is puppeteer-core (the same
+// dependency as the cli render layer, catalog-pinned): launch/newPage/CdpSession
+// is the mainstream face, while assertions still all land on real page state.
+// Externally it keeps the old hand-rolled CDP driver's minimal Page interface
+// (eval/wait/key/click/navigate/reload), so suite code stays unchanged.
 
 import {
   launch,
@@ -21,13 +23,13 @@ export interface Browser {
 
 export interface Page {
   readonly sessionId: string;
-  /** 页面内求值（返回值是 Promise 会自动 await）；抛错即失败。 */
+  /** Evaluate in the page (a Promise return is auto-awaited); a throw is a failure. */
   readonly eval: (expression: string) => Promise<unknown>;
-  /** 页面内轮询谓词直到 truthy / 超时；返回最终值（调用方 assert）。 */
+  /** Poll a predicate in the page until truthy / timeout; returns the final value (the caller asserts). */
   readonly wait: (expression: string, timeoutMs?: number) => Promise<unknown>;
   readonly key: (key: string, code: string, windowsKeyCode: number) => Promise<void>;
   readonly click: (selector: string) => Promise<void>;
-  /** 每次新文档创建时先跑这段脚本（早于页面与 iframe 的一切脚本）：免竞态的安装通道。 */
+  /** Run this source first on every new document (before any page or iframe script): a race-free install channel. */
   readonly onNewDocument: (source: string) => Promise<void>;
   readonly navigate: (url: string) => Promise<void>;
   readonly reload: () => Promise<void>;
@@ -35,8 +37,9 @@ export interface Page {
   readonly consoleErrors: () => readonly string[];
 }
 
-// 老 hand-rolled 驱动同款旗标（headless 本身走 launch({ headless: true }），
-// user-data-dir 交给 puppeteer 自管临时 profile，close() 时一并清掉。
+// The same flags as the old hand-rolled driver (headless itself goes through
+// launch({ headless: true })); user-data-dir is puppeteer's self-managed temp
+// profile, cleaned up on close().
 const CHROME_ARGS: readonly string[] = [
   "--disable-gpu",
   "--no-sandbox",
@@ -46,9 +49,11 @@ const CHROME_ARGS: readonly string[] = [
 ];
 
 const wrapPage = (inner: PuppeteerPage, session: CDPSession): Omit<Page, "consoleErrors"> => {
-  // 直走 CDPSession 而非 page.evaluate：需要 `userGesture: true` 让求值带上
-  // transient user activation——演示模式入口内部会 requestFullscreen()，没激活态
-  // 的 el.click() 会当场被拒（page.evaluate 没有暴露这个开关）。
+  // Go through CDPSession directly rather than page.evaluate: `userGesture:
+  // true` gives the evaluation transient user activation — the presentation-mode
+  // entry calls requestFullscreen() internally, and an el.click() without
+  // activation is rejected on the spot (page.evaluate doesn't expose this
+  // switch).
   const evaluate = async (expression: string, awaitPromise = true): Promise<unknown> => {
     const result = (await session.send("Runtime.evaluate", {
       expression,
@@ -64,7 +69,7 @@ const wrapPage = (inner: PuppeteerPage, session: CDPSession): Omit<Page, "consol
           ? Reflect.get(detail, "description")
           : undefined;
       throw new Error(
-        `页面求值异常：${typeof description === "string" ? description : JSON.stringify(exception).slice(0, 300)}`,
+        `page evaluation failed: ${typeof description === "string" ? description : JSON.stringify(exception).slice(0, 300)}`,
       );
     }
     const value = result["result"];
@@ -75,8 +80,10 @@ const wrapPage = (inner: PuppeteerPage, session: CDPSession): Omit<Page, "consol
   return {
     sessionId: session.id(),
     eval: (expression) => evaluate(expression),
-    // waitForFunction 把谓词搬进页面轮询（polling 间隔 60ms），谓词返回 Promise 也会被 await；
-    // 导航销毁执行上下文会让整次等待 reject——和旧实现一样，捕获后在 deadline 内重开一轮。
+    // waitForFunction moves the predicate into in-page polling (60ms interval); a
+    // predicate returning a Promise is awaited too. Navigation destroying the
+    // execution context rejects the whole wait — same as the old implementation,
+    // catch it and reopen a round within the deadline.
     wait: async (expression, timeoutMs = 20_000) => {
       const deadline = Date.now() + timeoutMs;
       const wrapped = `(() => { try { return (${expression}); } catch (error) { return false; } })()`;
@@ -93,7 +100,7 @@ const wrapPage = (inner: PuppeteerPage, session: CDPSession): Omit<Page, "consol
           return value;
         } catch (error: unknown) {
           if (error instanceof TimeoutError) return false;
-          // 执行上下文销毁/连接瞬断：睡一拍重试，直到 deadline。
+          // Execution context destroyed / transient disconnect: sleep a beat and retry until the deadline.
           await new Promise((resolve) => setTimeout(resolve, 120));
         }
       }
@@ -117,8 +124,9 @@ const wrapPage = (inner: PuppeteerPage, session: CDPSession): Omit<Page, "consol
     onNewDocument: async (source) => {
       await inner.evaluateOnNewDocument(source);
     },
-    // goto 等 domcontentloaded：旧 Page.navigate 火后即忘，调用方随后都要 wait 状态；
-    // 等到可解析 DOM 再回来，语义只增不减。
+    // goto waits for domcontentloaded: the old Page.navigate was fire-and-forget
+    // and callers then had to wait for state; returning only once a parseable DOM
+    // exists adds semantics without removing any.
     navigate: async (next) => {
       await inner.goto(next, { waitUntil: "domcontentloaded", timeout: 30_000 });
     },
@@ -130,7 +138,7 @@ const wrapPage = (inner: PuppeteerPage, session: CDPSession): Omit<Page, "consol
 
 export const launchBrowser = async (): Promise<Browser> => {
   const bin = chromePath();
-  assert(bin !== undefined, "找不到 Chrome");
+  assert(bin !== undefined, "no Chrome binary found");
   const browser: PuppeteerBrowser = await launch({
     executablePath: bin,
     headless: true,
@@ -189,7 +197,7 @@ export const launchBrowser = async (): Promise<Browser> => {
   };
 };
 
-/** 键盘常量：键名 / code / Windows 虚拟键码（Input.dispatchKeyEvent 三件套）。 */
+/** Key constants: key name / code / Windows virtual key code (the Input.dispatchKeyEvent triple). */
 export const KEYS = {
   p: ["p", "KeyP", 80],
   w: ["w", "KeyW", 87],

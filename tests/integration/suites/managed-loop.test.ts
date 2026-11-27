@@ -1,7 +1,11 @@
-// 旅程 1（托管文档全闭环）：hr new → hr serve → 真 Chrome 打开阅读器 → MCP patch 经 SSE 实时刷新 →
-// 阅读器划词批注 → agent 经 MCP 读批注/patch/resolve → 多次 undo 回到初始字节；
-// 中途外部编辑器直写与"写临时文件再 rename"两种改法。
-// 变体：乱序（undo 在任何写之前、patch 已删块、resolve 不存在的批注）与中断（SIGTERM/SIGINT 后恢复）。
+// Journey 1 (managed document end-to-end): hr new → hr serve → real Chrome
+// opens the reader → an MCP patch refreshes live over SSE → a reader
+// highlight-annotation → the agent reads/patches/resolves it via MCP →
+// repeated undos return to the initial bytes; midway, an external editor's
+// direct write and a "write tmp file then rename" edit both go through.
+// Variants: out-of-order (undo before any write, patch a deleted block,
+// resolve a nonexistent annotation) and interruption (recovery after
+// SIGTERM/SIGINT).
 
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -33,14 +37,14 @@ describe.skipIf(skip !== undefined)("managed-loop", () => {
       `(() => { const el = document.querySelector(${JSON.stringify(selector)}); return el ? el.textContent : null; })()`,
     );
 
-  /** 第一个正文块的 data-hr-id（hr new 骨架里 <h1> 也有 id，取 section 里第一个 p 更稳）。 */
+  /** The data-hr-id of the first body block (the <h1> in the hr new skeleton has an id too; the first p inside the section is more stable). */
   const firstBlockId = async (): Promise<string> => {
     const outline = toolJson(await mcp.call("hr_outline", { filePath: DOC }), "hr_outline");
     const nodes = outline["nodes"];
-    assert(Array.isArray(nodes) && nodes.length > 0, "hr_outline 返回空大纲");
+    assert(Array.isArray(nodes) && nodes.length > 0, "hr_outline returned an empty outline");
     const first = nodes[0] as JsonObject;
     const id = first["id"];
-    assert(typeof id === "string" && id !== "", "hr_outline 首节点没有 id");
+    assert(typeof id === "string" && id !== "", "hr_outline's first node has no id");
     return id;
   };
 
@@ -63,16 +67,16 @@ describe.skipIf(skip !== undefined)("managed-loop", () => {
     home.cleanup();
   });
 
-  test("阅读器渲染托管文档（块 + 目录 + 状态栏）", async () => {
+  test("should render the managed document in the reader (blocks + outline + status bar)", async () => {
     const ready = await page.wait(`document.querySelector('#hr-doc [data-hr-id]') !== null`);
-    assert(ready !== false, "阅读器 20s 内没有渲染出任何 data-hr-id 块");
+    assert(ready !== false, "the reader rendered no data-hr-id block within 20s");
     const conn = await page.wait(
       `(() => { const el = document.querySelector('#hr-conn'); return el && el.textContent !== '' ? el.textContent : false; })()`,
     );
-    assertIncludes(String(conn), "已同步", "状态栏连接态");
+    assertIncludes(String(conn), "已同步", "status bar connection state");
   });
 
-  test("MCP hr_patch_node 落盘，SSE 推 doc.changed，阅读器实时刷新", async () => {
+  test("should land an MCP hr_patch_node on disk, push doc.changed over SSE and refresh the reader live", async () => {
     const sse = await api.openSse();
     const nodeId = await firstBlockId();
     const patch = await mcp.call("hr_patch_node", {
@@ -81,18 +85,19 @@ describe.skipIf(skip !== undefined)("managed-loop", () => {
       action: "replace",
       htmlContent: `<h2 data-hr-id="${nodeId}">MCP-刷新标记</h2>`,
     });
-    assert(!patch.isError, `hr_patch_node 报错：${patch.text}`);
+    assert(!patch.isError, `hr_patch_node errored: ${patch.text}`);
     const event = await sse.next("doc.changed");
     sse.close();
-    assert(event !== undefined, "MCP patch 后 SSE 没推 doc.changed");
+    assert(event !== undefined, "SSE never pushed doc.changed after the MCP patch");
     const seen = await page.wait(
       `document.querySelector('#hr-doc').textContent.includes('MCP-刷新标记')`,
     );
-    assert(seen === true, "MCP patch 后阅读器 DOM 没有经 SSE 更新");
+    assert(seen === true, "the reader DOM did not update over SSE after the MCP patch");
   });
 
-  test("划词批注 → agent 经 MCP 闭环（outline 读到 → patch → resolve）", async () => {
-    // 真实划词：在第一个正文块的文本节点上造 Range，再补一个 window mouseup（main.ts 的接线点）。
+  test("should close the annotation loop via MCP (outline sees it → patch → resolve) when a passage is highlighted", async () => {
+    // A real highlight: build a Range on the first body block's text node, then
+    // fire a window mouseup (main.ts's wiring point).
     const selected = await page.eval(`(() => {
       const block = document.querySelector('#hr-doc [data-hr-id] p, #hr-doc [data-hr-id] h1, #hr-doc [data-hr-id] h2');
       if (!block) return 'no-block';
@@ -109,12 +114,12 @@ describe.skipIf(skip !== undefined)("managed-loop", () => {
     })()`);
     assert(
       typeof selected === "object" && selected !== null,
-      `划词失败：${JSON.stringify(selected)}`,
+      `highlight failed: ${JSON.stringify(selected)}`,
     );
     const btnReady = await page.wait(
       `(() => { const el = document.querySelector('#hr-note-btn'); return el && !el.hidden; })()`,
     );
-    assert(btnReady === true, "选区之后“批注选区”按钮没有亮出");
+    assert(btnReady === true, "the annotate-selection button did not appear after the selection");
     await page.click("#hr-note-btn");
     const typed = await page.eval(`(() => {
       const draft = document.querySelector('#hr-note-draft');
@@ -122,11 +127,14 @@ describe.skipIf(skip !== undefined)("managed-loop", () => {
       draft.dispatchEvent(new Event('input', { bubbles: true }));
       return draft.value;
     })()`);
-    assertEq(typed, "MCP 闭环批注", "批注草稿");
+    assertEq(typed, "MCP 闭环批注", "annotation draft");
     await page.click("#hr-note-submit");
-    // 右栏先出乐观卡、POST 完了才落真卡：断言盯服务端真相——轮询 outline 的 pendingAnnotations。
+    // The right rail shows an optimistic card first and only lands the real
+    // card after the POST completes: assert on server truth — poll outline's
+    // pendingAnnotations.
     const outline = await until(
-      async () => toolJson(await mcp.call("hr_outline", { filePath: DOC }), "hr_outline(批注)"),
+      async () =>
+        toolJson(await mcp.call("hr_outline", { filePath: DOC }), "hr_outline (annotation)"),
       (value) => {
         const p = value["pendingAnnotations"];
         return Array.isArray(p) && p.length === 1;
@@ -136,17 +144,20 @@ describe.skipIf(skip !== undefined)("managed-loop", () => {
     const pending = outline["pendingAnnotations"];
     assert(
       Array.isArray(pending) && pending.length === 1,
-      `agent 侧读到的待处理批注数异常：${JSON.stringify(outline).slice(0, 400)}`,
+      `pending annotation count read on the agent side is abnormal: ${JSON.stringify(outline).slice(0, 400)}`,
     );
     const card = await page.wait(
       `document.querySelector('#hr-notes-pending [data-hr-annotation]') !== null`,
     );
-    assert(card === true, "批注提交后未处理列表里没有卡片");
+    assert(card === true, "no card in the pending list after the annotation was submitted");
     const annotation = pending[0] as JsonObject;
-    assertIncludes(String(annotation["comment"]), "MCP 闭环批注", "批注内容");
+    assertIncludes(String(annotation["comment"]), "MCP 闭环批注", "annotation content");
     const targetId = annotation["targetId"];
     const anId = annotation["id"];
-    assert(typeof targetId === "string" && typeof anId === "string", "批注缺 targetId/id");
+    assert(
+      typeof targetId === "string" && typeof anId === "string",
+      "annotation is missing targetId/id",
+    );
 
     const fixed = await mcp.call("hr_patch_node", {
       filePath: DOC,
@@ -154,69 +165,86 @@ describe.skipIf(skip !== undefined)("managed-loop", () => {
       action: "replace",
       htmlContent: `<p data-hr-id="${targetId}">已按批注修订。</p>`,
     });
-    assert(!fixed.isError, `按批注 patch 失败：${fixed.text}`);
+    assert(!fixed.isError, `annotation-driven patch failed: ${fixed.text}`);
     const resolved = await mcp.call("hr_resolve_annotation", {
       filePath: DOC,
       annotationId: anId,
       resolutionNote: "已修订该段",
     });
-    assert(!resolved.isError, `hr_resolve_annotation 报错：${resolved.text}`);
-    const after = toolJson(await mcp.call("hr_outline", { filePath: DOC }), "hr_outline(结后)");
-    assertEq(JSON.stringify(after["pendingAnnotations"]), "[]", "resolve 后仍有待处理批注");
+    assert(!resolved.isError, `hr_resolve_annotation errored: ${resolved.text}`);
+    const after = toolJson(
+      await mcp.call("hr_outline", { filePath: DOC }),
+      "hr_outline (after resolve)",
+    );
+    assertEq(
+      JSON.stringify(after["pendingAnnotations"]),
+      "[]",
+      "pending annotations remain after resolve",
+    );
     const archived = await page.wait(
       `document.querySelector('#hr-notes-resolved [data-hr-annotation]') !== null`,
     );
-    assert(archived === true, "resolve 后右栏没有出现已归档卡片");
+    assert(archived === true, "no archived card appeared in the right rail after resolve");
   });
 
-  test("乱序：undo 先于任何写、patch 已删节点、resolve 不存在的批注", async () => {
+  test("should reject out-of-order calls: undo before any write, patch on a deleted node, resolve on a nonexistent annotation", async () => {
     const ws2 = sandbox("managed-oos");
     try {
       await newDoc(ws2.ws, "fresh.hr.html");
       const undo = await hr(["undo", "fresh.hr.html", "--workspace", ws2.ws, "--json"], {
         cwd: ws2.ws,
       });
-      assertEq(undo.code, 1, "空历史 undo 退出码");
-      assertEq(errorOf(undo, "空历史 undo").code, "nothing_to_undo", "空历史 undo 错误码");
+      assertEq(undo.code, 1, "empty-history undo exit code");
+      assertEq(
+        errorOf(undo, "empty-history undo").code,
+        "nothing_to_undo",
+        "empty-history undo error code",
+      );
 
       await newDoc(ws2.ws, "victim.hr.html");
       const victimHtml = await readFile(docPath(ws2.ws, "victim.hr.html"), "utf8");
-      // 文件里第一个 data-hr-id 是容器（article/root，不许删）；取最后一个叶子块。
+      // The file's first data-hr-id is the container (article/root, must not be
+      // deleted); take the last leaf block.
       const allIds = [...victimHtml.matchAll(/data-hr-id="([^"]+)"/gu)].map((m) => m[1]);
       const target = allIds.at(-1);
-      assert(target !== undefined, "hr new 骨架里没有 data-hr-id");
+      assert(target !== undefined, "no data-hr-id in the hr new skeleton");
       const removed = await hr(
         ["patch", "victim.hr.html", target, "--action", "delete", "--workspace", ws2.ws, "--json"],
         { cwd: ws2.ws },
       );
-      assertEq(removed.code, 0, "删除首个块退出码");
+      assertEq(removed.code, 0, "delete-block exit code");
       const again = await hr(
         ["patch", "victim.hr.html", target, "--action", "delete", "--workspace", ws2.ws, "--json"],
         { cwd: ws2.ws },
       );
-      assertEq(errorOf(again, "patch 已删节点").code, "node_not_found", "patch 已删节点错误码");
+      assertEq(
+        errorOf(again, "patch deleted node").code,
+        "node_not_found",
+        "patch-deleted-node error code",
+      );
 
       const bogus = await mcp.call("hr_resolve_annotation", {
         filePath: DOC,
         annotationId: "an_deadbeef",
       });
-      assert(bogus.isError, "resolve 不存在的批注竟然成功");
+      assert(bogus.isError, "resolving a nonexistent annotation unexpectedly succeeded");
     } finally {
       ws2.cleanup();
     }
   });
 
-  test("外部编辑器直写与 tmp+rename 两种改法都经 watcher/SSE 刷新", async () => {
+  test("should refresh via watcher/SSE for both direct external writes and tmp+rename edits", async () => {
     const path = docPath(home.ws, DOC);
     const before = await readFile(path, "utf8");
-    // 往首个 <p data-hr-id> 块里注入文本：无 id 的新节点进不了块级 diff。
+    // Inject text into the first <p data-hr-id> block: a new node without an id
+    // can't enter the block-level diff.
     const injected = before.replace(/(<p data-hr-id="[^"]+">)/u, "$1外部直写标记 EXT-DIRECT ");
-    assert(injected !== before, "直写注入点没找到");
+    assert(injected !== before, "direct-write injection point not found");
     await writeFile(path, injected, "utf8");
     const direct = await page.wait(
       `document.querySelector('#hr-doc').textContent.includes('EXT-DIRECT')`,
     );
-    assert(direct === true, "外部直写没有经 watcher/SSE 刷到阅读器");
+    assert(direct === true, "the direct external write did not reach the reader via watcher/SSE");
 
     const staged = injected.replace("EXT-DIRECT", "RENAME-替换标记");
     const tmp = join(home.ws, `.swap-${String(process.pid)}.tmp`);
@@ -225,65 +253,78 @@ describe.skipIf(skip !== undefined)("managed-loop", () => {
     const swapped = await page.wait(
       `document.querySelector('#hr-doc').textContent.includes('RENAME-替换标记')`,
     );
-    assert(swapped === true, "tmp+rename 改写没有经 watcher/SSE 刷到阅读器");
+    assert(swapped === true, "the tmp+rename rewrite did not reach the reader via watcher/SSE");
   });
 
-  test("连续 undo 回到 hr new 的初始字节", async () => {
+  test("should return to hr new's initial bytes after repeated undos", async () => {
     for (let i = 0; i < 15; i += 1) {
       const undo = await hr(["undo", DOC, "--workspace", home.ws, "--json"], { cwd: home.ws });
       if (undo.code !== 0) {
-        assertEq(errorOf(undo, "undo 到底").code, "nothing_to_undo", "undo 耗尽时的错误码");
+        assertEq(
+          errorOf(undo, "undo exhausted").code,
+          "nothing_to_undo",
+          "error code when undo is exhausted",
+        );
         break;
       }
-      assert(i < 14, "undo 15 次仍未耗尽快照链（历史裁剪应 ≤10）");
+      assert(
+        i < 14,
+        "15 undos still have not exhausted the snapshot chain (history pruning should be ≤10)",
+      );
     }
     const finalSha = sha256File(await readFile(docPath(home.ws, DOC)));
-    assertEq(finalSha, initialSha, "undo 到底后的文档 sha（应等于 hr new 初始字节）");
+    assertEq(
+      finalSha,
+      initialSha,
+      "document sha after undo bottoms out (should equal hr new's initial bytes)",
+    );
     const seen = await page.wait(`document.querySelector('#hr-doc').textContent.includes('要点')`);
-    assert(seen === true, "undo 回到初始后阅读器没有同步回来");
+    assert(seen === true, "the reader did not sync back after undo returned to the initial state");
   });
 
-  test("中断：SIGTERM 后阅读器转入重连，daemon 重启可恢复", async () => {
+  test("should switch the reader to reconnecting after SIGTERM and recover on a daemon restart", async () => {
     const code = await daemon.stop();
-    assert(code === 0 || code === null, `SIGTERM 后退出码异常：${String(code)}`);
-    assert(!daemonFileExists(daemon.home), "SIGTERM 后 daemon.json 没清掉");
+    assert(code === 0 || code === null, `abnormal exit code after SIGTERM: ${String(code)}`);
+    assert(!daemonFileExists(daemon.home), "daemon.json not cleaned up after SIGTERM");
     const conn = await page.wait(
       `(() => { const el = document.querySelector('#hr-conn'); return el && /重连|离线/.test(el.textContent) ? el.textContent : false; })()`,
       25_000,
     );
     assert(
       conn !== false,
-      `断线后状态栏没有转入重连/离线（当前：${String(await textOf("#hr-conn"))}）`,
+      `the status bar did not switch to reconnecting/offline after the disconnect (current: ${String(await textOf("#hr-conn"))})`,
     );
 
-    // 新 daemon 是新端口+新 token：旧页面那条 SSE 永远回不来——降级态是终点。
-    // 恢复路径 = 用新 daemon 的 url 重开（等价于用户重新打开链接）。
+    // A new daemon means a new port + new token: the old page's SSE can never
+    // come back — the degraded state is terminal.
+    // Recovery path = reopen with the new daemon's url (equivalent to the user
+    // reopening the link).
     daemon = await startServe({ file: DOC, workspace: home.ws, home: home.home });
     api = await connect(daemon.port, daemon.token);
     await page.navigate(daemon.url);
     const again = await page.wait(`document.querySelector('#hr-doc [data-hr-id]') !== null`);
-    assert(again === true, "daemon 重启 + 重新打开后阅读器没有恢复");
+    assert(again === true, "the reader did not recover after the daemon restart + reopen");
     const conn2 = await page.wait(
       `(() => { const el = document.querySelector('#hr-conn'); return el && el.textContent.includes('已同步') ? el.textContent : false; })()`,
       20_000,
     );
-    assert(conn2 !== false, "daemon 重启后状态栏没有回到已同步");
+    assert(conn2 !== false, "the status bar did not return to synced after the daemon restart");
   });
 
-  test("中断：SIGINT 与 SIGTERM 同样优雅（daemon.json 清掉、端口释放）", async () => {
+  test("should handle SIGINT as gracefully as SIGTERM (daemon.json removed, port released)", async () => {
     daemon.proc.kill("SIGINT");
     const code = await daemon.proc.exited;
-    assert(code === 0 || code === null, `SIGINT 后退出码异常：${String(code)}`);
-    assert(!daemonFileExists(daemon.home), "SIGINT 后 daemon.json 没清掉");
+    assert(code === 0 || code === null, `abnormal exit code after SIGINT: ${String(code)}`);
+    assert(!daemonFileExists(daemon.home), "daemon.json not cleaned up after SIGINT");
     const closed = await until(
       () => portClosed(daemon.port),
       (v) => v,
     );
-    assert(closed, `SIGINT 后端口 ${String(daemon.port)} 仍在监听`);
+    assert(closed, `port ${String(daemon.port)} still listening after SIGINT`);
     const dead = await fetch(`http://127.0.0.1:${String(daemon.port)}/healthz`).then(
       () => false,
       () => true,
     );
-    assert(dead, "SIGINT 后 healthz 仍通");
+    assert(dead, "healthz still reachable after SIGINT");
   });
 });

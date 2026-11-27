@@ -1,4 +1,5 @@
-// 这层管：`hr` 真二进制的执行封装（dist/cli.mjs，不是 src——旅程测的就是打包产物）。
+// This layer owns: the execution wrapper for the real `hr` binary
+// (dist/cli.mjs, not src — journeys test the packaged artifact).
 
 import { join } from "node:path";
 
@@ -11,42 +12,45 @@ export type JsonObject = Readonly<Record<string, unknown>>;
 export const hr = (args: readonly string[], options: RunOptions = {}): Promise<RunResult> =>
   run(process.execPath, [CLI_BIN, ...args], options);
 
-/** `--json` 契约：恰好一行、可解析、`ok` 布尔。 */
+/** The `--json` contract: exactly one line, parseable, boolean `ok`. */
 export const jsonOf = (result: RunResult, label: string): JsonObject => {
   const lines = result.stdout.split("\n").filter((line) => line !== "");
-  assertEq(lines.length, 1, `${label}：--json 的 stdout 行数`);
+  assertEq(lines.length, 1, `${label}: --json stdout line count`);
   const parsed = parseJson(lines[0] ?? "", label);
   assert(
     typeof parsed === "object" && parsed !== null && typeof Reflect.get(parsed, "ok") === "boolean",
-    `${label}：--json 输出缺 ok 字段`,
+    `${label}: --json output is missing the ok field`,
   );
   return parsed as JsonObject;
 };
 
 export const dataOf = (result: RunResult, label: string): JsonObject => {
   const body = jsonOf(result, label);
-  assert(body["ok"] === true, `${label}：命令失败 ${JSON.stringify(body)}`);
+  assert(body["ok"] === true, `${label}: command failed ${JSON.stringify(body)}`);
   const data = body["data"];
-  assert(typeof data === "object" && data !== null, `${label}：data 不是对象`);
+  assert(typeof data === "object" && data !== null, `${label}: data is not an object`);
   return data as JsonObject;
 };
 
 export const errorOf = (result: RunResult, label: string): { readonly code: string } => {
   const body = jsonOf(result, label);
-  assert(body["ok"] === false, `${label}：预期失败却成功 ${JSON.stringify(body)}`);
+  assert(
+    body["ok"] === false,
+    `${label}: expected failure but it succeeded ${JSON.stringify(body)}`,
+  );
   const code = body["code"];
-  assert(typeof code === "string", `${label}：错误体缺 code`);
+  assert(typeof code === "string", `${label}: error body is missing code`);
   return { code };
 };
 
-/** 新建托管文档（旅程的固定第一步）：回 `hr new` 的 data + 落盘字节。 */
+/** Create a managed document (the fixed first step of a journey): returns `hr new`'s data + the on-disk bytes. */
 export const newDoc = async (
   ws: string,
   name: string,
   extra: readonly string[] = [],
 ): Promise<JsonObject> => {
   const result = await hr(["new", name, "--workspace", ws, "--json", ...extra], { cwd: ws });
-  assertEq(result.code, 0, `hr new ${name} 退出码`);
+  assertEq(result.code, 0, `hr new ${name} exit code`);
   return dataOf(result, `hr new ${name}`);
 };
 

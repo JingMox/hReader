@@ -1,4 +1,5 @@
-// 这层管：子进程原语（一次性执行 / 常驻 spawn / 退出等待 / 孤儿清扫）；不含测试断言。
+// This layer owns: child-process primitives (one-shot exec / long-lived spawn /
+// exit waiting / orphan sweeps); no test assertions.
 
 import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -7,7 +8,7 @@ import { createServer } from "node:net";
 import { killPid, registerChild } from "../../leak-guard/registry.ts";
 
 export interface RunResult {
-  /** `null` 表示被信号杀死（那时看 `signal`）。 */
+  /** `null` means killed by a signal (check `signal` then). */
   readonly code: number | null;
   readonly signal: string | null;
   readonly stdout: string;
@@ -17,14 +18,14 @@ export interface RunResult {
 export interface RunOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
-  /** 写到 stdin 后关流；不给 = stdin 直接关。 */
+  /** Written to stdin, then the stream is closed; omit = stdin closes right away. */
   readonly input?: string | Uint8Array;
-  /** `live` 专用：给子进程接可写 stdin（MCP stdio 要它）；不给 = stdin 关闭。 */
+  /** `live` only: gives the child a writable stdin (MCP stdio needs it); omit = stdin closed. */
   readonly stdin?: boolean;
   readonly timeoutMs?: number;
 }
 
-/** 跑完即回：CLI 类命令都走这里；`timeoutMs` 到时 SIGKILL（不是 SIGTERM：卡死的进程要真的死）。 */
+/** Returns when done: CLI-style commands all go through here; at `timeoutMs` it's SIGKILL (not SIGTERM: a hung process must really die). */
 export const run = (
   file: string,
   args: readonly string[],
@@ -44,10 +45,11 @@ export const run = (
       },
       (error, stdout, stderr) => {
         if (error !== null && error.killed === true) {
-          reject(new Error(`进程超时被杀：${file} ${args.join(" ")}`));
+          reject(new Error(`process killed on timeout: ${file} ${args.join(" ")}`));
           return;
         }
-        // execFile 的 error 只在"非 0 退出 / 信号"时出现；结果照原样回传，退出码由调用方判。
+        // execFile's error only appears on "non-zero exit / signal"; the result
+        // goes back as-is, the caller judges the exit code.
         resolve({
           code: error === null ? 0 : typeof error.code === "number" ? error.code : null,
           signal: error !== null && typeof error.code === "string" ? error.code : null,
@@ -60,18 +62,18 @@ export const run = (
     child.stdin?.end(options.input);
   });
 
-/** shell 管道路线（`| head`、`set -e` 语义只有真 shell 才测得出来）。 */
+/** The shell-pipeline path (`| head`, `set -e` semantics are only testable through a real shell). */
 export const runSh = (script: string, options: RunOptions = {}): Promise<RunResult> =>
   run("/bin/sh", ["-c", script], options);
 
 export interface LiveProc {
   readonly proc: ChildProcess;
   readonly pid: number;
-  /** 累计 stdout/stderr（诊断用；行消费走 `nextLine`）。 */
+  /** Accumulated stdout/stderr (for diagnostics; line consumption goes through `nextLine`). */
   readonly out: { readonly text: () => string; readonly err: () => string };
-  /** 已缓冲的行先吐；等不到新行就超时 `undefined`（调用方判）。 */
+  /** Buffered lines come first; if no new line arrives it times out to `undefined` (the caller decides). */
   readonly nextLine: (timeoutMs?: number) => Promise<string | undefined>;
-  /** 已退出则 resolve 退出码；`signal` 时 code 为 null。 */
+  /** Resolves the exit code once exited; code is null on `signal`. */
   readonly exited: Promise<number | null>;
   readonly kill: (signal?: NodeJS.Signals) => void;
   readonly alive: () => boolean;
@@ -82,7 +84,7 @@ interface LineWaiter {
   readonly timer: NodeJS.Timeout;
 }
 
-/** 常驻进程：行缓冲 stdout + 全量留底；进程死掉时挂着的 `nextLine` 一律 undefined 收尾。 */
+/** Long-lived process: line-buffered stdout + full retention; pending `nextLine` calls all settle as undefined when the process dies. */
 export const live = (file: string, args: readonly string[], options: RunOptions = {}): LiveProc => {
   const proc = spawn(file, [...args], {
     cwd: options.cwd,
@@ -263,7 +265,7 @@ export const pidAlive = (pid: number): boolean => {
   }
 };
 
-/** 端口释放探测（`hr serve` 死透的旁证之一）：`listen` 失败 = 端口已还。 */
+/** Port-release probe (one piece of evidence that `hr serve` is fully dead): `listen` failing = the port was returned. */
 export const portClosed = (port: number): Promise<boolean> =>
   new Promise((resolve) => {
     const probe = createServer();

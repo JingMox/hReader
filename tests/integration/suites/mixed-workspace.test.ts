@@ -1,5 +1,8 @@
-// 旅程 5（混合工作区）：托管/可规范化/外来/损坏/空/二进制伪装/超大/子目录/符号链接/中文与 emoji 文件名
-// 全部共存。断言：各文档 /s/:docId 可开或明确拒绝（无 5xx）、check 分类正确、normalize 收编可规范化的。
+// Journey 5 (mixed workspace): managed / normalizable / foreign / corrupt /
+// empty / binary-in-disguise / oversized / subdirectory / symlink / Chinese and
+// emoji file names all coexist. Asserted: each doc's /s/:docId either opens or
+// is cleanly refused (no 5xx), check classifies correctly, and normalize
+// adopts the normalizable ones.
 
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -47,7 +50,8 @@ const checkCls = async (file: string): Promise<{ code: number | null; cls: strin
 beforeAll(async () => {
   home = sandbox("mixed");
   const ws = home.ws;
-  // 托管文档用 `hr new` 造：手写 data-hr-id 不算 managed（骨架还有归一化标记）。
+  // Managed docs are made by `hr new`: a hand-written data-hr-id does not count
+  // as managed (the skeleton also carries normalization marks).
   await mkdir(join(ws, "subdir"), { recursive: true });
   await newDoc(ws, "managed.hr.html");
   await newDoc(ws, "中文文档.hr.html");
@@ -76,68 +80,69 @@ afterAll(async () => {
   home.cleanup();
 });
 
-test("每个共存文档的 /s/:docId 与 info 都可开或明确拒绝", async () => {
+test("should open or cleanly refuse /s/:docId and info for every coexisting document", async () => {
   for (const doc of DOCS) {
     const info = await api.get(`/api/doc/${encodeURIComponent(doc)}/info`);
     if (doc === "binary.png.html") {
-      // invalid_utf8 按冻结契约是"文档文件的码"=500；要钉的是它返回结构化 code 而不是裸崩。
+      // invalid_utf8 is, per the frozen contract, the "document file" code = 500;
+      // what's pinned is that it returns a structured code, not a bare crash.
       const body = await info.text();
-      assertEq(info.status, 500, "二进制文档 info 状态");
+      assertEq(info.status, 500, "binary document info status");
       assert(
         body.includes("invalid_utf8"),
-        `二进制文档 info 不是结构化错误：${body.slice(0, 200)}`,
+        `binary document info is not a structured error: ${body.slice(0, 200)}`,
       );
       continue;
     }
-    assert(info.status < 500, `${doc} info 5xx：${String(info.status)}`);
+    assert(info.status < 500, `${doc} info 5xx: ${String(info.status)}`);
     const res = await fetch(
       `http://127.0.0.1:${String(daemon.port)}/s/${encodeURIComponent(doc)}?token=${encodeURIComponent(daemon.token)}`,
       { redirect: "manual" },
     );
-    assert(res.status < 500, `${doc} /s/ 5xx：${String(res.status)}`);
-    await res.arrayBuffer(); // 把 body 排空，连接复用不被挂住
+    assert(res.status < 500, `${doc} /s/ 5xx: ${String(res.status)}`);
+    await res.arrayBuffer(); // drain the body so connection reuse is not held up
   }
 });
 
-test("check 分类：托管/可规范化/外来各自归位", async () => {
-  assertEq((await checkCls("managed.hr.html")).cls, "managed", "managed 分类");
+test("should classify managed/normalizable/foreign docs into their own buckets via check", async () => {
+  assertEq((await checkCls("managed.hr.html")).cls, "managed", "managed classification");
   const norm = await checkCls("normalizable.html");
   assert(
     norm.cls === "normalizable" || norm.cls === "managed" || norm.cls === "foreign",
-    `normalizable 分类异常：${norm.cls}`,
+    `normalizable classification abnormal: ${norm.cls}`,
   );
-  assertEq((await checkCls("foreign.html")).cls, "foreign", "foreign 分类");
+  assertEq((await checkCls("foreign.html")).cls, "foreign", "foreign classification");
   const unicode = await checkCls("中文文档.hr.html");
-  assertEq(unicode.cls, "managed", "中文文件名 managed 分类");
+  assertEq(unicode.cls, "managed", "Chinese-filename managed classification");
   const emoji = await checkCls("📚docs.hr.html");
-  assertEq(emoji.cls, "managed", "emoji 文件名 managed 分类");
+  assertEq(emoji.cls, "managed", "emoji-filename managed classification");
 });
 
-test("损坏/空/二进制/超大文档：check 给出明确退出码，不崩不挂", async () => {
+test("should give corrupt/empty/binary/oversized docs a definite check exit code without crashing or hanging", async () => {
   for (const file of ["corrupt.html", "empty.html", "超大.html"]) {
     const res = await hr(["check", file, "--workspace", home.ws, "--json"], { cwd: home.ws });
     assert(
       res.code === 0 || res.code === 1 || res.code === 3,
-      `${file} check 非法退出码 ${String(res.code)}（stderr: ${res.stderr.slice(0, 200)}）`,
+      `${file} check illegal exit code ${String(res.code)} (stderr: ${res.stderr.slice(0, 200)})`,
     );
   }
   const binary = await hr(["check", "binary.png.html", "--workspace", home.ws, "--json"], {
     cwd: home.ws,
   });
-  assertEq(binary.code, 3, "二进制伪装文档 check 应 exit 3（invalid_utf8）");
-  assert(jsonOf(binary, "binary check")["ok"] === false, "二进制 check 应 ok:false");
+  assertEq(binary.code, 3, "binary-in-disguise check should exit 3 (invalid_utf8)");
+  assert(jsonOf(binary, "binary check")["ok"] === false, "binary check should be ok:false");
 });
 
-test("normalize 收编 normalizable：HTTP 端点写盘后 check 变 managed", async () => {
+test("should adopt a normalizable doc via normalize: check turns managed after the HTTP endpoint writes", async () => {
   const res = await api.post(`/api/doc/${encodeURIComponent("normalizable.html")}/normalize`, {});
-  assert(res.status === 200 || res.status === 422, `normalize 状态 ${String(res.status)}`);
+  assert(res.status === 200 || res.status === 422, `normalize status ${String(res.status)}`);
   if (res.status === 200) {
     const after = await checkCls("normalizable.html");
-    assertEq(after.cls, "managed", "normalize 后分类");
+    assertEq(after.cls, "managed", "classification after normalize");
   }
 });
 
-test("符号链接文档：可读或明确拒绝，不返回 5xx", async () => {
+test("should read or cleanly refuse a symlinked doc without a 5xx", async () => {
   const res = await api.get(`/api/doc/${encodeURIComponent("subdir/linked.hr.html")}/info`);
-  assert(res.status < 500, `符号链接文档 info ${String(res.status)}`);
+  assert(res.status < 500, `symlinked document info ${String(res.status)}`);
 });
