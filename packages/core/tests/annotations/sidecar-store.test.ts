@@ -264,6 +264,95 @@ describe("writeSidecarFile · landing", () => {
     expect(fs.textAt(path)).toContain('"note":"新"');
   });
 
+  describe("corrupt backup naming", () => {
+    const stamp = CLOCK.now().toISOString().replaceAll(/[-:.]/gu, "");
+    const stem = `${storePathOf().slice(0, -".json".length)}.corrupt-${stamp}`;
+
+    const corruptReadAt = async (fs: ReturnType<typeof fakeFs>, bytes: string) => {
+      const path = storePathOf();
+      fs.state.files.set(path, new TextEncoder().encode(bytes));
+      return readSidecarFile(await targetOf(fs.port), deps(fs.port));
+    };
+
+    it("should name the backup with a filename-safe stamp (no colons or dots inside)", async () => {
+      const fs = fakeFs({ ...seed, [storePathOf()]: "{broken" });
+      const prior = await corruptReadAt(fs, "{broken");
+      await writeSidecarFile(await targetOf(fs.port), deps(fs.port), prior, [annotation]);
+
+      const names = corruptBackups(fs).map(([name]) => name);
+      expect(names).toEqual([`${stem}.json`]);
+    });
+
+    it("should keep the earlier backup when two corruptions land in the same millisecond", async () => {
+      const fs = fakeFs(seed);
+      const target = await targetOf(fs.port);
+
+      const first = await corruptReadAt(fs, "{broken one");
+      await writeSidecarFile(target, deps(fs.port), first, [annotation]);
+
+      const second = await corruptReadAt(fs, "{broken two");
+      await writeSidecarFile(target, deps(fs.port), second, [annotation]);
+
+      const names = corruptBackups(fs).map(([name]) => name);
+      expect(names).toEqual(expect.arrayContaining([`${stem}.json`, `${stem}-1.json`]));
+      expect(names).toHaveLength(2);
+      expect(fs.textAt(`${stem}.json`)).toBe("{broken one");
+      expect(fs.textAt(`${stem}-1.json`)).toBe("{broken two");
+    });
+
+    it("should fail closed rather than overwrite an earlier backup when every candidate is taken", async () => {
+      const taken = Object.fromEntries(
+        [
+          `${stem}.json`,
+          ...Array.from({ length: 9 }, (_u, i) => `${stem}-${String(i + 1)}.json`),
+        ].map((name, i) => [name, `old-${String(i)}`]),
+      );
+      const path = storePathOf();
+      const fs = fakeFs({ ...seed, [path]: "{broken", ...taken });
+      const target = await targetOf(fs.port);
+      const prior = await readSidecarFile(target, deps(fs.port));
+
+      const code = await codeOfAsync(() =>
+        writeSidecarFile(target, deps(fs.port), prior, [annotation]),
+      );
+
+      expect(code).toBe("io_failure");
+      expect(fs.textAt(path)).toBe("{broken");
+      for (const [name, text] of Object.entries(taken)) {
+        expect(fs.textAt(name)).toBe(text);
+      }
+    });
+
+    it("should take the next suffix when a rename loses the race for a name", async () => {
+      const path = storePathOf();
+      const fs = fakeFs({ ...seed, [path]: "{broken" });
+      fs.fail("rename", systemError("EEXIST"));
+      const target = await targetOf(fs.port);
+      const prior = await readSidecarFile(target, deps(fs.port));
+
+      await writeSidecarFile(target, deps(fs.port), prior, [annotation]);
+
+      expect(corruptBackups(fs).map(([name]) => name)).toEqual([`${stem}-1.json`]);
+      expect(fs.textAt(`${stem}-1.json`)).toBe("{broken");
+      expect(fs.textAt(path)).toContain('"annotations"');
+    });
+
+    it("should fail the write when probing backup names errors", async () => {
+      const path = storePathOf();
+      const fs = fakeFs({ ...seed, [path]: "{broken" });
+      fs.fail("lstat", systemError("EACCES"), (name) => name.includes(".corrupt-"));
+      const target = await targetOf(fs.port);
+      const prior = await readSidecarFile(target, deps(fs.port));
+
+      const code = await codeOfAsync(() =>
+        writeSidecarFile(target, deps(fs.port), prior, [annotation]),
+      );
+
+      expect(code).toBe("io_failure");
+      expect(fs.textAt(path)).toBe("{broken");
+    });
+  });
+
   it("should rename a corrupt file aside before writing the fresh one", async () => {
     const path = storePathOf();
     const original = "{broken json";
