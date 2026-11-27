@@ -502,7 +502,10 @@ describe("property · serialize → parse round-trip", () => {
       resolvedAt: fc.option(fc.string({ minLength: 1, maxLength: 30 }), { nil: undefined }),
       resolutionNote: fc.option(fc.string({ maxLength: 60 }), { nil: undefined }),
       author: fc.constantFrom("user", "agent"),
-      replies: fc.array(replyArb, { maxLength: 5 }),
+      // parseSidecarFile dedupes reply ids per annotation (keep-first + diagnostic):
+      // a draw with repeated ids is legitimately lossy, so the arbitrary must not
+      // generate it — same treatment annotation ids get at file level.
+      replies: fc.uniqueArray(replyArb, { maxLength: 5, selector: (reply) => reply.id }),
     })
     .map(
       (item) =>
