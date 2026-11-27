@@ -5,6 +5,7 @@
 
 import { sha256Hex } from "../io/digest";
 import { jsonArray, jsonObject, looseString, parseJson } from "../schema";
+import { cutAtCodePoint } from "../text/truncate";
 import {
   NOTE_LIMIT,
   normalizeAnchor,
@@ -107,13 +108,11 @@ interface ReplyOutcome {
   readonly diagnostics: readonly string[];
 }
 
-const clipped = (value: string, limit: number): string => value.slice(0, limit);
-
 const noteOf = (raw: unknown, label: string, diagnostics: string[]): string => {
   const value = looseString.parse(raw) ?? "";
   if (value.length <= NOTE_LIMIT) return value;
   diagnostics.push(`${label} 长度 ${String(value.length)} 超过 ${String(NOTE_LIMIT)}，已截断`);
-  return clipped(value, NOTE_LIMIT);
+  return cutAtCodePoint(value, NOTE_LIMIT);
 };
 
 /**
