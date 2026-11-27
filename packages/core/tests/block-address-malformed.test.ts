@@ -53,6 +53,58 @@ describe("malformed HTML", () => {
     expect(outcome.html).toBe("<p>before</p><pre>t</pre><p>after</p>");
   });
 
+  it("should not let an unclosed block's range absorb ancestor end tags", () => {
+    // parse5 stretches an unclosed element's end past `</body>`/`</html>`; the patchable
+    // range must stop at the block's own subtree.
+    const html = "<body><li>a<li>b</body>";
+    const [first, second] = listBlocks(html);
+    expect(html.slice(second?.start ?? 0, second?.end ?? 0)).toBe("<li>b");
+    const outcome = applyBlockPatch(html, {
+      address: second?.address ?? "",
+      action: "delete",
+    });
+    expect(outcome.html).toBe("<body><li>a</body>");
+    expect(first?.tag).toBe("li");
+  });
+
+  it("should land insertAfter before the ancestor end tag of an unclosed block", () => {
+    const html = "<body><p>x</body>";
+    const [block] = listBlocks(html);
+    expect(html.slice(block?.start ?? 0, block?.end ?? 0)).toBe("<p>x");
+    const outcome = applyBlockPatch(html, {
+      address: block?.address ?? "",
+      action: "insertAfter",
+      html: "<p>y</p>",
+    });
+    expect(outcome.html).toBe("<body><p>x<p>y</p></body>");
+  });
+
+  it("should clamp a fostered block's range inside its container's end tag", () => {
+    // The <p> is foster-parented out of <table>, but its bytes sit inside the table's span;
+    // the range must still end before `</table>`, not run to `</body>`.
+    const html = "<body><table><p>x</table></body>";
+    const [block] = listBlocks(html);
+    expect(block?.tag).toBe("p");
+    expect(html.slice(block?.start ?? 0, block?.end ?? 0)).toBe("<p>x");
+    const outcome = applyBlockPatch(html, {
+      address: block?.address ?? "",
+      action: "delete",
+    });
+    expect(outcome.html).toBe("<body><table></table></body>");
+  });
+
+  it("should clamp an unclosed block before trailing text and ancestor end tags", () => {
+    const html = "<body><ul><li>a<li>b</ul>TRAIL<li>c</body>";
+    const blocks = listBlocks(html);
+    const last = blocks[blocks.length - 1];
+    expect(html.slice(last?.start ?? 0, last?.end ?? 0)).toBe("<li>c");
+    const outcome = applyBlockPatch(html, {
+      address: last?.address ?? "",
+      action: "delete",
+    });
+    expect(outcome.html).toBe("<body><ul><li>a<li>b</ul>TRAIL</body>");
+  });
+
   it("should patch a block after a BOM byte-for-byte", () => {
     const inner = "<article><p>一</p><p>二</p></article>";
     const html = `\uFEFF${inner}`;
