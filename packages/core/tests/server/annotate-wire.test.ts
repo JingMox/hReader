@@ -137,6 +137,27 @@ describe("annotate route · auth", () => {
   });
 });
 
+describe("annotate route · reserved-name document", () => {
+  const reservedSeed = (workspace: string): void => {
+    foreignSeed(workspace);
+    // A document whose basename shadows the annotator resource: minting a
+    // frameUrl for it would serve the annotator script instead of the doc.
+    writeFileSync(join(workspace, "__HR_ANNOTATOR.JS"), FOREIGN, "utf8");
+    writeFileSync(join(workspace, "__hr_annotator.js"), FOREIGN, "utf8");
+  };
+
+  it("should refuse a document named like the annotator asset, case-insensitively", async () => {
+    await withServer(async (ctx) => {
+      for (const docId of ["__hr_annotator.js", "__HR_ANNOTATOR.JS"]) {
+        const response = await postAnnotate(ctx, docId);
+
+        expect(response.status).toBe(422);
+        expect(response.body).toContain("invalid_document");
+      }
+    }, reservedSeed);
+  });
+});
+
 describe("annotate route · mint", () => {
   it("should return a frameUrl with a fresh 22-char token", async () => {
     await withServer(async (ctx) => {
@@ -358,6 +379,21 @@ describe("annotator asset · reserved name", () => {
       const frameUrl = await frameUrlOf(ctx);
       const cap = /\/f\/([A-Za-z0-9_-]{22})\//u.exec(frameUrl)?.[1];
       const response = await httpCall(ctx.port, { path: `/f/${cap ?? ""}/__hr_annotator.js` });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toContain("marker:real annotator");
+      expect(response.body).not.toContain("planted evil");
+    });
+  });
+
+  it("should shadow a case-variants file — the reserved name match is case-insensitive", async () => {
+    await withApp({ "annotator.js": "/* marker:real annotator */\n" }, async (ctx) => {
+      // On a case-sensitive filesystem `__HR_ANNOTATOR.JS` is a different file
+      // that would otherwise be served as a plain .js asset.
+      writeFileSync(join(ctx.workspace, "__HR_ANNOTATOR.JS"), "/* marker:planted evil */\n");
+      const frameUrl = await frameUrlOf(ctx);
+      const cap = /\/f\/([A-Za-z0-9_-]{22})\//u.exec(frameUrl)?.[1];
+      const response = await httpCall(ctx.port, { path: `/f/${cap ?? ""}/__HR_ANNOTATOR.JS` });
 
       expect(response.status).toBe(200);
       expect(response.body).toContain("marker:real annotator");

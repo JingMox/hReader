@@ -27,6 +27,13 @@ import {
 import { bodyRecordOf } from "./http-io";
 import { docQueueKey, withDocQueue } from "./queue";
 import { paramOf, type Route } from "./routes";
+import {
+  sidecarAddReply,
+  sidecarDeleteReply,
+  sidecarReopenReply,
+  sidecarReplyReply,
+  sidecarResolveReply,
+} from "./sidecar-replies";
 
 const requiredDocId = z.object({ docId: requiredString });
 const optionalDocId = z.object({ docId: optionalString });
@@ -66,6 +73,21 @@ const writeReplyOf = (
     return docPermissionsReply(context, ids.docId, body, LOCK_WAIT_MS);
   }
   if (route.kind === "docNormalize") return normalizeReply(context, ids.docId, LOCK_WAIT_MS);
+  if (route.kind === "sidecarAdd") {
+    return sidecarAddReply(context, ids.docId, body, LOCK_WAIT_MS);
+  }
+  if (route.kind === "sidecarResolve") {
+    return sidecarResolveReply(context, ids, body, LOCK_WAIT_MS);
+  }
+  if (route.kind === "sidecarReopen") {
+    return sidecarReopenReply(context, ids, body, LOCK_WAIT_MS);
+  }
+  if (route.kind === "sidecarReply") {
+    return sidecarReplyReply(context, ids, body, LOCK_WAIT_MS);
+  }
+  if (route.kind === "sidecarDelete") {
+    return sidecarDeleteReply(context, ids, body, LOCK_WAIT_MS);
+  }
   return annotationReply(context, body, LOCK_WAIT_MS);
 };
 

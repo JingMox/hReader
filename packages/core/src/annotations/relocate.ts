@@ -6,14 +6,18 @@ import type { HtmlElementNode, HtmlNode } from "../html/constants";
 import { HR_ID_ATTRIBUTE } from "../html/constants";
 import { parseHtml } from "../html/parse";
 import { drainStack } from "../html/stack";
-import { textContentOf } from "../html/text";
 import { attributeOf } from "../model/attrs";
 import { classifyDocument } from "../model/classify";
 import type { DocumentModel } from "../model/constants";
 import { toDocumentModel } from "../model/derive";
-import { matchAnchorInText, type AnchorFailure, type AnchorResult } from "./anchor";
-import { bodyTextOf } from "./body-text";
-import type { TextAnchor } from "./model";
+import {
+  matchAnchorInRegions,
+  matchAnchorInText,
+  type AnchorFailure,
+  type AnchorRegion,
+  type AnchorResult,
+} from "./anchor";
+import { bodyMapOf, type BodyTextMap } from "./body-text";
 import { elementsOf } from "./meta-insert";
 import type { SidecarAnnotation } from "./sidecar-model";
 
@@ -174,7 +178,12 @@ export const elementByPath = (
 
 // ---- relocation ----
 
-/** Which text domain the anchor was matched in; `none` = the record has no locating info at all. */
+/**
+ * Which level of the fallback chain produced the verdict; `none` = the record
+ * carries no locating info at all. `start`/`end` always index into
+ * `bodyTextOf(parsed)` — the same body text the annotator reads — so the level
+ * that hit only changes `via`, never the offset domain.
+ */
 export type RelocateVia = "node" | "selector" | "body" | "none";
 
 export type RelocateResult =
@@ -210,52 +219,75 @@ interface DocView {
   readonly root: HtmlNode;
   readonly elements: readonly HtmlElementNode[];
   readonly model: DocumentModel | undefined;
-  readonly bodyText: string;
+  readonly body: BodyTextMap;
+}
+
+/** One fallback level: the body-text slices an `exact` occurrence must lie fully inside. */
+interface Level {
+  readonly via: RelocateVia;
+  readonly regions: readonly AnchorRegion[];
 }
 
 /**
- * `nodeId` resolution by document class: managed documents keep the model-based logic
- * (ids + per-block normalized text, identical to the meta flow); other classes fall back
- * to a raw `data-hr-id` scan of the element tree — their ids are just attributes there.
+ * `nodeId` regions by document class: managed documents keep the model-based verdict
+ * (the model's id set is the addressable set — ids outside the article never resolve);
+ * other classes scan `data-hr-id` attributes — their ids are just attributes there.
+ * Either way the matchable text is the element's own body slice: several hits give
+ * several regions, and an element inside a skipped subtree contributes nothing.
  */
-const byNodeId = (view: DocView, nodeId: string, anchor: TextAnchor): RelocateResult => {
-  if (view.model !== undefined) {
-    const nodes = flattenModel(view.model);
-    if (!nodes.some((node) => node.id === nodeId)) return failed("orphaned", "node");
-    const text = nodes
-      .filter((node) => node.id === nodeId)
-      .map((node) => node.text)
-      .join("");
-    return matched(matchAnchorInText(text, anchor), "node");
+const nodeRegionsOf = (view: DocView, nodeId: string): readonly AnchorRegion[] => {
+  if (view.model !== undefined && !flattenModel(view.model).some((node) => node.id === nodeId)) {
+    return [];
   }
-  const hits = view.elements.filter((element) => attributeOf(element, HR_ID_ATTRIBUTE) === nodeId);
-  if (hits.length === 0) return failed("orphaned", "node");
-  const text = hits.map(textContentOf).join("");
-  return matched(matchAnchorInText(text, anchor), "node");
+  const regions: AnchorRegion[] = [];
+  for (const element of view.elements) {
+    if (attributeOf(element, HR_ID_ATTRIBUTE) !== nodeId) continue;
+    const span = view.body.spans.get(element);
+    if (span !== undefined) regions.push(span);
+  }
+  return regions;
 };
 
-const bySelector = (view: DocView, selector: string, anchor: TextAnchor): RelocateResult => {
+/**
+ * The element the selector path still resolves to, as a body-text slice. An
+ * unparseable selector, a missing element, or a match inside a skipped subtree
+ * yields no region — the level simply cannot hit and the chain descends.
+ */
+const selectorRegionsOf = (view: DocView, selector: string): readonly AnchorRegion[] => {
   const steps = parseSelectorPath(selector);
   const element = steps === undefined ? undefined : elementByPath(view.root, steps);
-  if (element !== undefined) {
-    return matched(matchAnchorInText(textContentOf(element), anchor), "selector");
-  }
-  // Selector miss: the anchor gets one more chance against the whole body text.
-  return matched(matchAnchorInText(view.bodyText, anchor), "body");
+  if (element === undefined) return [];
+  const span = view.body.spans.get(element);
+  return span === undefined ? [] : [span];
 };
 
+/**
+ * D49 fallback chain: `nodeId` first, then the selector, then the whole body
+ * text. A level only hits when `exact` occurs fully inside one of its regions —
+ * with the usual prefix/suffix disambiguation read from the body text — and
+ * every level missed leaves the body verdict (`via: "body"`) as the answer.
+ * A record with neither `nodeId` nor `selector` is orphaned outright.
+ */
 const relocate = (view: DocView, annotation: SidecarAnnotation): RelocateResult => {
-  if (annotation.nodeId !== undefined) return byNodeId(view, annotation.nodeId, annotation.anchor);
-  if (annotation.selector !== undefined) {
-    return bySelector(view, annotation.selector, annotation.anchor);
+  const levels: Level[] = [];
+  if (annotation.nodeId !== undefined) {
+    levels.push({ via: "node", regions: nodeRegionsOf(view, annotation.nodeId) });
   }
-  return failed("orphaned", "none");
+  if (annotation.selector !== undefined) {
+    levels.push({ via: "selector", regions: selectorRegionsOf(view, annotation.selector) });
+  }
+  if (levels.length === 0) return failed("orphaned", "none");
+  for (const level of levels) {
+    const result = matchAnchorInRegions(view.body.text, annotation.anchor, level.regions);
+    if (result.ok) return { ok: true, start: result.start, end: result.end, via: level.via };
+  }
+  return matched(matchAnchorInText(view.body.text, annotation.anchor), "body");
 };
 
 /**
  * Parse once, relocate many: the returned closure resolves each sidecar annotation against
- * this document's bytes — model blocks for managed docs, `data-hr-id` scan for the rest,
- * selector path with a body fallback otherwise. `body` is always implied by the parser;
+ * this document's bytes — model ids for managed docs, `data-hr-id` scan for the rest,
+ * then the selector path, then the body text. `body` is always implied by the parser;
  * an empty document's fallback text is the empty string.
  */
 export const docRelocatorOf = (
@@ -269,7 +301,7 @@ export const docRelocatorOf = (
     root: parsed.root,
     elements,
     model,
-    bodyText: bodyTextOf(parsed),
+    body: bodyMapOf(parsed),
   };
   return (annotation) => relocate(view, annotation);
 };

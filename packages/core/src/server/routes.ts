@@ -31,6 +31,12 @@ export type RouteKind =
   | "permissionsGet"
   | "permissionsSet"
   | "docNormalize"
+  | "sidecar"
+  | "sidecarAdd"
+  | "sidecarResolve"
+  | "sidecarReopen"
+  | "sidecarReply"
+  | "sidecarDelete"
   | "events";
 
 const DOC_PARAM = ":docId";
@@ -101,6 +107,35 @@ export const ROUTES: readonly Route[] = Object.freeze([
   route("GET", ["api", "permissions"], "cookie", "permissionsGet"),
   route("POST", ["api", "permissions"], "cookie+csrf", "permissionsSet"),
   route("POST", ["api", "doc", DOC_PARAM, "normalize"], "cookie+csrf", "docNormalize"),
+  // Sidecar annotations: a merged meta/sidecar read view plus five write commands.
+  // Reads take the cookie, writes cookie+csrf — the same auth layering as the
+  // existing annotation routes. Add-only: these six entries are the whole delta.
+  route("GET", ["api", "doc", DOC_PARAM, "sidecar"], "cookie", "sidecar"),
+  route("POST", ["api", "doc", DOC_PARAM, "sidecar"], "cookie+csrf", "sidecarAdd"),
+  route(
+    "POST",
+    ["api", "doc", DOC_PARAM, "sidecar", AN_PARAM, "resolve"],
+    "cookie+csrf",
+    "sidecarResolve",
+  ),
+  route(
+    "POST",
+    ["api", "doc", DOC_PARAM, "sidecar", AN_PARAM, "reopen"],
+    "cookie+csrf",
+    "sidecarReopen",
+  ),
+  route(
+    "POST",
+    ["api", "doc", DOC_PARAM, "sidecar", AN_PARAM, "reply"],
+    "cookie+csrf",
+    "sidecarReply",
+  ),
+  route(
+    "POST",
+    ["api", "doc", DOC_PARAM, "sidecar", AN_PARAM, "delete"],
+    "cookie+csrf",
+    "sidecarDelete",
+  ),
   route("GET", ["api", "events"], "cookie", "events"),
 ]);
 
