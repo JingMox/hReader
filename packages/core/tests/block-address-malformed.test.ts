@@ -127,6 +127,10 @@ describe("source ownership (D58)", () => {
     // A trailing `<` with no following byte is literal text inside an owned leaf — the
     // block keeps exactly its own bytes.
     ["<p>x<", ["p"]],
+    // `<` + non-letter/non-slash (above and below the ASCII letter ranges) is literal
+    // text — owned content, so the block stays listed.
+    ["<p>a<{b</p>", ["p"]],
+    ["<p>a < b</p>", ["p"]],
     // `</`-looking bytes inside owned comments and raw-text/RCDATA children are content:
     // the ranges are skipped, and the blocks keep exactly their own bytes.
     ["<div>x<!-- c </p> -->y</div>", ["div"]],
