@@ -6,6 +6,7 @@
 
 import { readFile } from "node:fs/promises";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -27,8 +28,29 @@ const coreStringConstOf = (source: string, name: string): string | undefined =>
   (new RegExp(`export const ${name} = '([^']*)';`).exec(source) ??
     new RegExp(`export const ${name} = "([^"]*)";`).exec(source))?.[1]?.replace(/\\n/g, "\n");
 
-const quotedOf = (text: string): readonly string[] =>
-  [...text.matchAll(/"([^"]*)"/g)].map((match) => match[1] ?? "");
+/**
+ * String-literal members of `export type NAME = "a" | "b" | ...`, read through the TypeScript
+ * parser: comments are not AST nodes, so they can neither truncate the match nor leak phantom
+ * members the way the old source-text regex did. `undefined` when the alias is missing or a
+ * member is not a string literal — the pin's lower bound then fails loud instead of comparing
+ * a silently truncated set.
+ */
+const unionMembersOf = (source: string, name: string): readonly string[] | undefined => {
+  const file = ts.createSourceFile("union.ts", source, ts.ScriptTarget.Latest, true);
+  const alias = file.statements.find(
+    (statement): statement is ts.TypeAliasDeclaration =>
+      ts.isTypeAliasDeclaration(statement) && statement.name.text === name,
+  );
+  if (alias === undefined) return undefined;
+  const target = ts.isParenthesizedTypeNode(alias.type) ? alias.type.type : alias.type;
+  const members = ts.isUnionTypeNode(target) ? [...target.types] : [target];
+  const literals: string[] = [];
+  for (const member of members) {
+    if (!ts.isLiteralTypeNode(member) || !ts.isStringLiteral(member.literal)) return undefined;
+    literals.push(member.literal.text);
+  }
+  return literals;
+};
 
 /** Segment lists like `["api","doc",DOC_PARAM,"model"]` in `routes.ts`, where placeholders are constant names. */
 const constantOf = (source: string, name: string): string | undefined =>
@@ -149,11 +171,35 @@ describe("event names ↔ publish() literals", () => {
   });
 });
 
+describe("unionMembersOf extractor", () => {
+  // Two comment shapes corrupted the old extraction: a `;` inside a comment ended the source-text
+  // match early (real members silently dropped), and quoted words inside comments leaked in as
+  // phantom members. The fixture carries both; the extractor must see through comments entirely.
+  const HOSTILE_UNION = `export type FixtureCode =
+  | "alpha" // "phantom_code" is comment text, not a member;
+  | "beta"
+  /* "block_phantom" is not a member either; */
+  | "gamma";`;
+
+  it("should ignore comments inside the union and return exactly the real members", () => {
+    expect(unionMembersOf(HOSTILE_UNION, "FixtureCode")).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("should return undefined when the alias is absent, so the pin's lower bound fails loud", () => {
+    expect(unionMembersOf('export type Other = "x";', "FixtureCode")).toBeUndefined();
+  });
+
+  it("should return undefined when a member is not a string literal, so a shape change cannot silently drop members", () => {
+    expect(
+      unionMembersOf('export type FixtureCode = "a" | number;', "FixtureCode"),
+    ).toBeUndefined();
+  });
+});
+
 describe("patch actions ↔ PatchAction", () => {
   it("should match the five actions of `ops/patch-node/constants.ts`'s union type verbatim", async () => {
     const source = await coreFileOf("ops/patch-node/constants.ts");
-    const union = /export type PatchAction =([\s\S]*?);/.exec(source)?.[1] ?? "";
-    const actions = quotedOf(union);
+    const actions = unionMembersOf(source, "PatchAction") ?? [];
     expect(actions.length).toBeGreaterThanOrEqual(5);
     expect([...PATCH_ACTIONS].sort()).toEqual([...actions].sort());
   });
@@ -162,8 +208,7 @@ describe("patch actions ↔ PatchAction", () => {
 describe("error codes ↔ HrErrorCode", () => {
   it("should cover every error code in core and contain no code core lacks", async () => {
     const source = await coreFileOf("hr-error.ts");
-    const union = /export type HrErrorCode =([\s\S]*?);/.exec(source)?.[1] ?? "";
-    const codes = quotedOf(union);
+    const codes = unionMembersOf(source, "HrErrorCode") ?? [];
     expect(codes.length).toBeGreaterThanOrEqual(25);
     expect(Object.keys(ERROR_TEXTS).sort()).toEqual([...codes].sort());
   });
