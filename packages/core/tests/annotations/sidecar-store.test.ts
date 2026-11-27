@@ -362,7 +362,8 @@ describe("writeSidecarFile · landing", () => {
 
     await writeSidecarFile(target, deps(fs.port), prior, [annotation]);
 
-    const backup = `/ws/.hreader/annotations/${sha1Of("doc.html")}.corrupt-${CLOCK.now().toISOString()}.json`;
+    const stamp = CLOCK.now().toISOString().replaceAll(/[-:.]/gu, "");
+    const backup = `/ws/.hreader/annotations/${sha1Of("doc.html")}.corrupt-${stamp}.json`;
     expect(fs.textAt(backup)).toBe(original);
     expect(fs.textAt(path)).toBe(
       JSON.stringify({ version: 1, path: "doc.html", annotations: [annotation] }),

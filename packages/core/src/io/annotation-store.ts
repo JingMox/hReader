@@ -15,7 +15,7 @@ import { HrError } from "../hr-error";
 import { mkdirOrFail, writeAtomic } from "./atomic";
 import { decodeUtf8, encodeUtf8 } from "./bytes";
 import { sha1Hex } from "./digest";
-import { failureOf, isMissing } from "./errors";
+import { failureOf, isExists, isMissing } from "./errors";
 import type { ResolvedTarget } from "./paths";
 import type { PatchDeps } from "./ports";
 
@@ -81,13 +81,55 @@ export const readSidecarFile = async (
   };
 };
 
-const corruptBackupOf = (path: string, at: string): string =>
-  join(dirname(path), `${basename(path, ".json")}.corrupt-${at}.json`);
+/**
+ * Bound on backup-name candidates: `BACKUP_ATTEMPTS` occupied same-stamp names means a stuck
+ * clock or a hostile directory — the write fails closed rather than pick an unbounded suffix.
+ */
+const BACKUP_ATTEMPTS = 10;
+
+/** The write clock rendered as `YYYYMMDDTHHmmssSSSZ`: ISO ordering without `:` or `.`. */
+const backupStampOf = (at: Date): string => at.toISOString().replaceAll(/[-:.]/gu, "");
+
+/**
+ * Backup names are `<store>.corrupt-<stamp>[-N].json`: the stamp keeps ISO order while staying
+ * legal on Windows filesystems, where `:` is a reserved character. Two corruptions inside one
+ * millisecond share a stamp, so an occupied candidate takes `-1`, `-2`, … — each name is probed
+ * before the rename and an `EEXIST` on the rename itself moves to the next suffix, so a lost
+ * race never clobbers an earlier backup. After `BACKUP_ATTEMPTS` occupied names the write fails
+ * closed. A vanished corrupt file needs no backup: an `ENOENT` on the rename is tolerated.
+ */
+const backupCorrupt = async (deps: PatchDeps, path: string): Promise<void> => {
+  const stem = join(
+    dirname(path),
+    `${basename(path, ".json")}.corrupt-${backupStampOf(deps.clock.now())}`,
+  );
+  for (let attempt = 0; attempt < BACKUP_ATTEMPTS; attempt += 1) {
+    const candidate = attempt === 0 ? `${stem}.json` : `${stem}-${String(attempt)}.json`;
+    try {
+      await deps.fs.lstat(candidate);
+      continue;
+    } catch (error: unknown) {
+      if (!isMissing(error)) throw failureOf("备份损坏的批注侧车文件", candidate, error);
+    }
+    try {
+      await deps.fs.rename(path, candidate);
+      return;
+    } catch (error: unknown) {
+      if (isMissing(error)) return;
+      if (isExists(error)) continue;
+      throw failureOf("备份损坏的批注侧车文件", path, error);
+    }
+  }
+  throw new HrError(
+    "io_failure",
+    `备份损坏的批注侧车文件失败：${path}（${String(BACKUP_ATTEMPTS)} 个候选备份名均被占用）`,
+  );
+};
 
 /**
  * Serialize → size check → back up a corrupt prior file → atomic write, in that order: a store
  * that fails the cap leaves the old file untouched, and a corrupt file is never silently
- * overwritten (renamed to `<name>.corrupt-<clock>.json` first; a vanished one needs no backup).
+ * overwritten (renamed to `<name>.corrupt-<stamp>.json` first; a vanished one needs no backup).
  * The caller holds the per-file lock: the read passed as `prior` is the merge base, not a re-read.
  */
 export const writeSidecarFile = async (
@@ -105,12 +147,7 @@ export const writeSidecarFile = async (
     );
   }
   if (prior.exists && prior.corrupt) {
-    const backup = corruptBackupOf(path, deps.clock.now().toISOString());
-    try {
-      await deps.fs.rename(path, backup);
-    } catch (error: unknown) {
-      if (!isMissing(error)) throw failureOf("备份损坏的批注侧车文件", path, error);
-    }
+    await backupCorrupt(deps, path);
   }
   await mkdirOrFail(deps, dirname(path));
   await writeAtomic({ path, workspace: target.workspace, data }, deps);
