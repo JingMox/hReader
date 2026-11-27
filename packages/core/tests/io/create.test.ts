@@ -120,6 +120,25 @@ describe("createNewFile · parent-swap recheck", () => {
     expect(fake.state.log.some((line) => line.startsWith("writeFileAtomic:"))).toBe(false);
   });
 
+  it("should fail closed when the landing dir cannot be re-proved before link", async () => {
+    const fake = fakeFs({ "/ws/keep.html": "x" });
+    const resolved = await resolveNewTarget({ workspace: "/ws", file: "new.html" }, fake.port);
+    // The pre-staging proof's realpath passes; the pre-link re-proof can't resolve — fail closed
+    // (same arm as an escape: any HrError from the re-check must propagate unmapped).
+    let probes = 0;
+    fake.fail("realpath", systemError("EACCES"), () => {
+      probes += 1;
+      return probes > 1;
+    });
+
+    expect(
+      await codeOfAsync(() =>
+        createNewFile(resolved.absolute, encodeUtf8("x"), depsAt(fake), resolved.workspace),
+      ),
+    ).toBe("path_outside_workspace");
+    expect(residueNames(fake)).toHaveLength(0);
+  });
+
   it("should apply the same recheck on the open fallback path", async () => {
     const fake = fakeFs({ "/ws/keep.html": "x", "/outside/escape.html": "e" });
     const resolved = await resolveNewTarget({ workspace: "/ws", file: "new.html" }, fake.port);
