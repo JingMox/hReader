@@ -75,8 +75,10 @@ afterAll(() => {
 
 const withCode = (error: Error, code: string): Error => Object.assign(error, { code });
 
+// A real 408 is a status line anywhere in the stream; "408" inside a body
+// (pid, uptime, model payload) is not a frame the server sent.
 const assertNo408 = (raw: string): void => {
-  expect(raw).not.toContain("408");
+  expect(raw).not.toMatch(/^HTTP\/1\.1 408\b/mu);
 };
 
 /**
