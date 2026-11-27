@@ -75,6 +75,10 @@ afterAll(() => {
 
 const withCode = (error: Error, code: string): Error => Object.assign(error, { code });
 
+const assertNo408 = (raw: string): void => {
+  expect(raw).not.toContain("408");
+};
+
 /**
  * A port that is guaranteed closed: take one from the OS, then release it.
  * Tests must not assume a fixed port (80, 81, ...) is free on this machine.
@@ -667,7 +671,7 @@ describe("limits · keep-alive 空闲到点", () => {
 
         const raw = Buffer.concat(chunks).toString("latin1");
         expect(raw).toMatch(/^HTTP\/1\.1 200/u);
-        expect(raw).not.toContain("408");
+        assertNo408(raw);
         // The flag is set before destroy, so a self-inflicted close can't pass
         // for the server's keepAliveTimeout.
         expect(closedByServer).toBe(true);
@@ -772,7 +776,7 @@ describe("limits · idle 计时器自己触发（不是 header 计时器）", ()
         );
 
         expect(raw).toMatch(/^HTTP\/1\.1 200/u);
-        expect(raw).not.toContain("408");
+        assertNo408(raw);
         // The close must come from the server's keepAliveTimeout (idleMs=100),
         // not from the helper's fallback destroy.
         expect(closedByServer).toBe(true);
@@ -1006,6 +1010,27 @@ const headTimeout = async (port: number): Promise<string> => {
   return Buffer.concat(chunks).toString("latin1");
 };
 
+describe("assertNo408 · body digits vs status line", () => {
+  // /healthz answers {"ok":true,"uptimeMs":N,"pid":P}: a pid like 20408 puts
+  // "408" in the body without the server ever sending a 408 status line.
+  it("should not flag a 200 response whose body contains the digits 408", () => {
+    const raw =
+      "HTTP/1.1 200 OK\r\n" +
+      "Content-Type: application/json\r\n" +
+      "Content-Length: 37\r\n" +
+      "\r\n" +
+      '{"ok":true,"uptimeMs":12,"pid":20408}';
+
+    assertNo408(raw);
+  });
+
+  it("should still flag a real 408 status line", () => {
+    expect(() => {
+      assertNo408("HTTP/1.1 408 Request Timeout\r\nContent-Length: 0\r\n\r\n");
+    }).toThrow();
+  });
+});
+
 describe("limits · 两档计时器的收尾路径", () => {
   // 空闲到点 = 静默关连接（Node `keepAliveTimeout`），不再有自造 408。
   it("should close an idle keep-alive socket without a 408 frame", async () => {
@@ -1014,7 +1039,7 @@ describe("limits · 两档计时器的收尾路径", () => {
         const raw = await idleClose(ctx.port, cookieOf(ctx.token));
 
         expect(raw).toMatch(/^HTTP\/1\.1 200/u);
-        expect(raw).not.toContain("408");
+        assertNo408(raw);
       },
       { headersMs: 1_000, bodyMs: 1_000, idleMs: 120 },
     );
