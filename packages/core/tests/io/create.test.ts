@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { encodeUtf8 } from "../../src/io/bytes";
 import { createNewFile, createNewFiles } from "../../src/io/create";
+import { resolveNewTarget } from "../../src/io/paths";
 import type { FileSystem, PatchDeps } from "../../src/io/ports";
 import {
   codeOfAsync,
@@ -84,6 +85,38 @@ describe("createNewFile · link path", () => {
       "io_failure",
     );
     expect(fake.state.files.has(TARGET)).toBe(false);
+  });
+});
+
+describe("createNewFile · parent-swap recheck", () => {
+  it("should refuse to land when the parent dir was swapped for an outside link after resolve", async () => {
+    const fake = fakeFs({ "/ws/keep.html": "x", "/outside/escape.html": "e" });
+    const resolved = await resolveNewTarget({ workspace: "/ws", file: "new.html" }, fake.port);
+
+    // Mid-flight swap: the checked parent is now a link that resolves outside the workspace.
+    fake.state.links.set("/ws", "/outside");
+
+    expect(
+      await codeOfAsync(() =>
+        createNewFile(resolved.absolute, encodeUtf8("x"), depsAt(fake), resolved.workspace),
+      ),
+    ).toBe("path_outside_workspace");
+    expect(fake.state.files.has(resolved.absolute)).toBe(false);
+    expect(fake.state.files.has("/outside/new.html")).toBe(false);
+    expect(residueNames(fake)).toHaveLength(0);
+  });
+
+  it("should apply the same recheck on the open fallback path", async () => {
+    const fake = fakeFs({ "/ws/keep.html": "x", "/outside/escape.html": "e" });
+    const resolved = await resolveNewTarget({ workspace: "/ws", file: "new.html" }, fake.port);
+    fake.state.links.set("/ws", "/outside");
+
+    expect(
+      await codeOfAsync(() =>
+        createNewFile(resolved.absolute, encodeUtf8("x"), depsAtNoLink(fake), resolved.workspace),
+      ),
+    ).toBe("path_outside_workspace");
+    expect(fake.state.files.has(resolved.absolute)).toBe(false);
   });
 });
 
