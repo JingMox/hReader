@@ -6,6 +6,7 @@ import { extname } from "node:path";
 import { HrError, type HrErrorCode } from "../hr-error";
 import { decodeUtf8, encodeUtf8 } from "../io/bytes";
 import { jsonObject, parseJson } from "../schema";
+import { cutAtCodePoint } from "../text/truncate";
 import { COOKIE_NAME, CSRF_HEADER, cookieOf, csrfAllowed, tokenMatches } from "./auth";
 import { MAX_BODY_BYTES } from "./body";
 import type { Reply } from "./contracts";
@@ -38,7 +39,7 @@ const FIXED_MESSAGES: Partial<Record<HrErrorCode, string>> = {
 const publicMessageOf = (text: string): string => {
   const withoutPaths = text.replace(/\/(?:[\w.@%+-]+\/+)+[\w.@%+-]*/gu, "[路径已隐藏]");
   const withoutSource = withoutPaths.replace(/["'`][^"'"'`]{40,}["'`]/gu, "[内容已隐藏]");
-  return withoutSource.length > 200 ? `${withoutSource.slice(0, 200)}…` : withoutSource;
+  return withoutSource.length > 200 ? `${cutAtCodePoint(withoutSource, 200)}…` : withoutSource;
 };
 
 export const sendResult = (res: ServerResponse, reply: Reply): void => {
