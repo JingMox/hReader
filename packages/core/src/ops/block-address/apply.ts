@@ -1,0 +1,143 @@
+// This layer: the pure byte splice behind `patchBlock`. It resolves the address on the exact
+// bytes it rewrites, validates the fragment through the managed-document pipeline
+// (`fragment.ts` checks + the content-model gate), then replaces only the block's outerHTML
+// range — every other byte is untouched. No IO, no id injection: foreign files never grow
+// `data-hr-id`s.
+
+import type { HtmlElementNode, HtmlNode, SourceSpan } from "../../html/constants";
+import { parseHtml } from "../../html/parse";
+import { serializeHtml } from "../../html/serialize";
+import { ZERO_SPAN } from "../../html/span";
+import { HrError } from "../../hr-error";
+import { assertFragmentFits } from "../patch-node/content";
+import { fragmentIdWarnings, parseFragmentWithDiagnostics } from "../patch-node/fragment";
+import { parentElementOf } from "../patch-node/locate";
+import { collectBlocks, formatAddress } from "./blocks";
+import {
+  BLOCK_ACTIONS,
+  type BlockAction,
+  type BlockPatchOutcome,
+  type BlockPatchRequest,
+} from "./constants";
+import { locateBlock } from "./resolve";
+
+/** Same contract as `patch-node/apply.ts`: `delete` carries no content, the others must. */
+type FragmentRequest =
+  | { readonly action: "delete" }
+  | { readonly action: Exclude<BlockAction, "delete">; readonly html: string };
+
+const isBlockAction = (value: BlockAction): value is BlockAction =>
+  BLOCK_ACTIONS.some((action) => action === value);
+
+const fragmentRequestOf = (request: BlockPatchRequest): FragmentRequest => {
+  if (request.action === "delete") {
+    // Stryker disable next-line StringLiteral: the contract pins the code, not the wording.
+    if (request.html !== undefined) throw new HrError("invalid_input", "delete 不接受 html");
+    return { action: "delete" };
+  }
+  if (request.html === undefined) {
+    // Stryker disable next-line StringLiteral: the contract pins the code, not the wording.
+    throw new HrError("invalid_input", `${request.action} 需要 html`);
+  }
+  return { action: request.action, html: request.html };
+};
+
+// Stryker disable next-line StringLiteral: the hint only lives inside a human-facing message.
+const ADDRESS_HINT = "css:body > p:nth-of-type(1)@ab12cd34";
+
+const locateError = (address: string, code: "target_moved" | "invalid_selector"): HrError =>
+  code === "invalid_selector"
+    ? new HrError(
+        "invalid_selector",
+        // Stryker disable next-line StringLiteral: the contract pins the code + data.reason, not the wording.
+        `块地址无法解析：${JSON.stringify(address)}（期望形如 ${ADDRESS_HINT}）`,
+        { data: { reason: "syntax" } },
+      )
+    : new HrError(
+        "target_moved",
+        // Stryker disable next-line StringLiteral: same — the contract pins the code, not the wording.
+        `块地址已失效：${JSON.stringify(address)} —— 路径没有命中同指纹的块，全文也找不到唯一的同指纹候选（目标被编辑、移动、删除或重复）；重新 list 取新地址`,
+      );
+
+const spanOf = (node: HtmlElementNode): SourceSpan => ({ ...ZERO_SPAN, ...node.span });
+
+/** The address of the first leaf block fully inside `[from, to)` of `html` — the written range. */
+const firstBlockAddressIn = (html: string, from: number, to: number): string | undefined => {
+  const entries = collectBlocks(parseHtml(html, { locations: true }).root);
+  for (const entry of entries) {
+    const span = spanOf(entry.node);
+    if (span.start >= from && span.end <= to) return formatAddress(entry);
+  }
+  return undefined;
+};
+
+const fragmentText = (fragment: HtmlNode): string =>
+  // serializeHtml only reads `root`; the diagnostics field is dead weight required by the
+  // ParsedHtml shape.
+  // Stryker disable next-line ArrayDeclaration
+  serializeHtml({ root: { kind: "document", children: [fragment] }, diagnostics: [] });
+
+/** `replace` lands in place; `insertBefore`/`insertAfter` splice at one offset. */
+const rangeFor = (
+  span: SourceSpan,
+  action: Exclude<BlockAction, "delete">,
+): { from: number; to: number } =>
+  action === "replace"
+    ? { from: span.start, to: span.end }
+    : action === "insertBefore"
+      ? { from: span.start, to: span.start }
+      : { from: span.end, to: span.end };
+
+export const applyBlockPatch = (html: string, request: BlockPatchRequest): BlockPatchOutcome => {
+  if (!isBlockAction(request.action)) {
+    const action: unknown = request.action;
+    // Stryker disable next-line StringLiteral: the contract pins the code, not the wording.
+    throw new HrError("invalid_input", `未知 action：${String(action)}`);
+  }
+  const fragmentRequest = fragmentRequestOf(request);
+  const parsed = parseHtml(html, { locations: true });
+  const located = locateBlock(parsed, request.address);
+  if (!located.ok) throw locateError(request.address, located.code);
+  const span = spanOf(located.entry.node);
+  if (fragmentRequest.action === "delete") {
+    const next = `${html.slice(0, span.start)}${html.slice(span.end)}`;
+    return {
+      html: next,
+      newIds: [],
+      replacedIds: [],
+      warnings: [],
+      // A located element's outer span is never empty: delete always removes bytes.
+      changed: true,
+      address: undefined,
+    };
+  }
+  const {
+    root: fragment,
+    warnings,
+    rootId: fragmentRootId,
+  } = parseFragmentWithDiagnostics(fragmentRequest.html);
+  const parent = parentElementOf(parsed.root, located.entry.node);
+  if (parent !== undefined) assertFragmentFits(parent, fragment);
+  const text = fragmentText(fragment);
+  const { from, to } = rangeFor(span, fragmentRequest.action);
+  // 等值 replace 不写盘：字节相同就没有"改动"可言（同 `applyPatch` 的 sameContent 分支）。
+  if (fragmentRequest.action === "replace" && html.slice(from, to) === text) {
+    return {
+      html,
+      newIds: [],
+      replacedIds: [],
+      warnings: [],
+      changed: false,
+      address: formatAddress(located.entry),
+    };
+  }
+  const next = `${html.slice(0, from)}${text}${html.slice(to)}`;
+  return {
+    html: next,
+    newIds: [],
+    replacedIds: [],
+    warnings: [...warnings, ...fragmentIdWarnings(fragmentRootId, undefined)],
+    changed: true,
+    address: firstBlockAddressIn(next, from, from + text.length),
+  };
+};

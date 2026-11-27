@@ -11,6 +11,7 @@ import { elementsOf } from "./meta-insert";
  * an anchor quoting script/style bytes would re-land on invisible source, and
  * `template`/`noscript` children are inert markup that is never read as text.
  * `<script id="hr-meta">` is covered by `script` — its JSON is metadata, not prose.
+ * Exported for `ops/block-address`: the block fingerprint hashes the same text domain.
  */
 export const TEXT_SKIP_TAGS: ReadonlySet<string> = new Set([
   "script",

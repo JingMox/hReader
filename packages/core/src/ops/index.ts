@@ -8,5 +8,15 @@ export { locateTarget, patchTargetIdOf } from "./locate";
 export type { LocatedTarget } from "./locate";
 export { applyPatch, parseFragment } from "./patch-node";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./patch-node";
+export { applyBlockPatch, listBlocks, resolveAddress } from "./block-address";
+export type {
+  BlockAction,
+  BlockInfo,
+  BlockPatchOutcome,
+  BlockPatchRequest,
+  ResolveResult,
+} from "./block-address";
+export { patchBlock } from "./patch-block";
+export type { PatchBlockInput, PatchBlockResult } from "./patch-block";
 export { importForeign } from "./import";
 export type { ImportDiscard, ImportOptions, ImportReport, ImportResult } from "./import";

@@ -75,6 +75,8 @@ const STATUS: Readonly<Record<ServerCode, number>> = {
   // 文档缺 `data-hr-id` 与服务端口被占都是“可一步修好的状态”，不是请求本身写错了。
   needs_normalize: 409,
   port_in_use: 409,
+  // 块地址失效同样是"可一步修好的状态"：重新 list 取新地址即可重发。
+  target_moved: 409,
 };
 
 export const statusOf = (code: ServerCode): number => STATUS[code];
