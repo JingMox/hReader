@@ -121,7 +121,6 @@ export const sanitizePdfLinks = async (bytes: Uint8Array): Promise<Uint8Array> =
     if (removed === 0) return bytes;
     return await document.save();
   } catch (error: unknown) {
-    if (error instanceof HrError) throw error;
     throw new HrError("render_empty", `PDF 结构解析不出：${firstErrorLineOf(messageOf(error))}`, {
       cause: error,
     });

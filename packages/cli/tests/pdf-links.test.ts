@@ -45,10 +45,11 @@ const linkAnnotOf = (
 const uriAnnotOf = (doc: PDFDocument, uri: string): PDFDict =>
   linkAnnotOf(doc, { S: PDFName.of("URI"), URI: PDFString.of(uri) });
 
-/** A one-page PDF; every annot is registered and referenced like a real producer emits. */
-const buildPdfOf = async (annots: PDFDict[]): Promise<Uint8Array> => {
+/** A one-page PDF; every annot is registered and referenced like a real producer emits. `make` gets the real document — a ref minted on any other context would dangle into whatever object number it happened to reuse. */
+const buildPdfOf = async (make: (doc: PDFDocument) => PDFDict[]): Promise<Uint8Array> => {
   const doc = await PDFDocument.create();
   const page = doc.addPage([600, 400]);
+  const annots = make(doc);
   if (annots.length > 0) {
     const array = doc.context.obj(annots.map((annot) => doc.context.register(annot)));
     page.node.set(PDFName.of("Annots"), array);
@@ -115,19 +116,18 @@ const URI_CASES: readonly (readonly [string, boolean])[] = [
 
 describe("sanitizePdfLinks · /URI allowlist", () => {
   it("should keep only http/https/mailto links off the export host, verbatim", async () => {
-    const doc = await PDFDocument.create();
-    const bytes = await buildPdfOf(URI_CASES.map(([uri]) => uriAnnotOf(doc, uri)));
+    const bytes = await buildPdfOf((doc) => URI_CASES.map(([uri]) => uriAnnotOf(doc, uri)));
     const { uris } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
     expect(uris).toEqual(URI_CASES.filter(([, keep]) => keep).map(([uri]) => uri));
   });
 
   it("should read the /URI through a hex string and an indirect object too", async () => {
-    const doc = await PDFDocument.create();
-    const indirectUri = doc.context.register(PDFString.of("file:///tmp/indirect.png"));
-    const hexUri = PDFHexString.fromText("file:///tmp/hex.png");
-    const bytes = await buildPdfOf([
-      linkAnnotOf(doc, { S: PDFName.of("URI"), URI: hexUri }),
-      linkAnnotOf(doc, { S: PDFName.of("URI"), URI: indirectUri }),
+    const bytes = await buildPdfOf((doc) => [
+      linkAnnotOf(doc, { S: PDFName.of("URI"), URI: PDFHexString.fromText("file:///tmp/hex.png") }),
+      linkAnnotOf(doc, {
+        S: PDFName.of("URI"),
+        URI: doc.context.register(PDFString.of("file:///tmp/indirect.png")),
+      }),
       uriAnnotOf(doc, "https://example.com/keep"),
     ]);
     const { uris } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
@@ -135,9 +135,20 @@ describe("sanitizePdfLinks · /URI allowlist", () => {
   });
 
   it("should drop a /URI action whose value is not a string at all", async () => {
-    const doc = await PDFDocument.create();
-    const bytes = await buildPdfOf([
+    const bytes = await buildPdfOf((doc) => [
       linkAnnotOf(doc, { S: PDFName.of("URI"), URI: PDFName.of("NotAString") }),
+      uriAnnotOf(doc, "https://example.com/keep"),
+    ]);
+    const { uris } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
+    expect(uris).toEqual(["https://example.com/keep"]);
+  });
+
+  it("should resolve the /S action kind through an indirect object", async () => {
+    const bytes = await buildPdfOf((doc) => [
+      linkAnnotOf(doc, {
+        S: doc.context.register(PDFName.of("URI")),
+        URI: PDFString.of("file:///tmp/x.png"),
+      }),
       uriAnnotOf(doc, "https://example.com/keep"),
     ]);
     const { uris } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
@@ -147,8 +158,7 @@ describe("sanitizePdfLinks · /URI allowlist", () => {
 
 describe("sanitizePdfLinks · action and annotation kinds", () => {
   it("should delete Launch/GoToR/JavaScript/SubmitForm actions but keep GoTo and Dest", async () => {
-    const doc = await PDFDocument.create();
-    const bytes = await buildPdfOf([
+    const bytes = await buildPdfOf((doc) => [
       linkAnnotOf(doc, { S: PDFName.of("Launch"), F: PDFString.of("run.exe") }),
       linkAnnotOf(doc, { S: PDFName.of("GoToR"), F: PDFString.of("other.pdf") }),
       linkAnnotOf(doc, { S: PDFName.of("JavaScript"), JS: PDFString.of("app.alert(1)") }),
@@ -161,8 +171,7 @@ describe("sanitizePdfLinks · action and annotation kinds", () => {
   });
 
   it("should leave non-Link annotations alone even when they carry a /URI action", async () => {
-    const doc = await PDFDocument.create();
-    const bytes = await buildPdfOf([
+    const bytes = await buildPdfOf((doc) => [
       doc.context.obj({
         Type: PDFName.of("Annot"),
         Subtype: PDFName.of("Text"),
@@ -175,17 +184,25 @@ describe("sanitizePdfLinks · action and annotation kinds", () => {
   });
 
   it("should keep a Link annotation that has no action to leak", async () => {
-    const doc = await PDFDocument.create();
-    const bytes = await buildPdfOf([linkAnnotOf(doc, {})]);
+    const bytes = await buildPdfOf((doc) => [
+      // An empty /A dict: no /S, nothing classified — nothing leaks.
+      linkAnnotOf(doc, {}),
+      // No /A key at all, only a /Dest — the shape internal links take.
+      doc.context.obj({
+        Type: PDFName.of("Annot"),
+        Subtype: PDFName.of("Link"),
+        Rect: [0, 0, 20, 20],
+        Dest: PDFName.of("sec"),
+      }),
+    ]);
     const { annots } = await linkAnnotsOf(await sanitizePdfLinks(bytes));
-    expect(annots).toBe(1);
+    expect(annots).toBe(2);
   });
 });
 
 describe("sanitizePdfLinks · pass-through and failure contract", () => {
   it("should return the original bytes when nothing needs removing", async () => {
-    const doc = await PDFDocument.create();
-    const bytes = await buildPdfOf([
+    const bytes = await buildPdfOf((doc) => [
       uriAnnotOf(doc, "https://example.com/x.png"),
       uriAnnotOf(doc, "mailto:a@b.c"),
       linkAnnotOf(doc, {}, { Dest: PDFName.of("sec") }),
@@ -196,7 +213,7 @@ describe("sanitizePdfLinks · pass-through and failure contract", () => {
   });
 
   it("should return the original bytes for a page without /Annots", async () => {
-    const bytes = await buildPdfOf([]);
+    const bytes = await buildPdfOf(() => []);
     expect(await sanitizePdfLinks(bytes)).toBe(bytes);
   });
 
