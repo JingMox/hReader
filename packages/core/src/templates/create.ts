@@ -6,6 +6,7 @@
 import { basename, dirname, extname, join, relative } from "node:path";
 
 import { HrError } from "../hr-error";
+import { HR_ID_ATTRIBUTE } from "../html/constants";
 import type { HtmlElementNode, HtmlNode, ParsedHtml, SourceSpan } from "../html/constants";
 import { injectNodeIds } from "../html/inject";
 import { parseHtml } from "../html/parse";
@@ -58,8 +59,16 @@ const firstElement = (root: HtmlNode, tag: string): HtmlElementNode | undefined 
   return undefined;
 };
 
-/** Rewrite the `<title>` and first `<h1>` text at their source spans; absent elements are skipped (free-form HTML does not guarantee them). */
-const retitleHtml = (html: string, title: string | undefined): string => {
+/** The `data-hr-id` attribute inside an open tag (quoted or bare value); removed with its separator space. */
+const HR_ID_ATTR = new RegExp(`\\s+${HR_ID_ATTRIBUTE}=(?:"[^"]*"|'[^']*'|[^\\s>]+)`, "u");
+
+/**
+ * Rewrite the `<title>` and first `<h1>` text at their source spans; absent elements are skipped
+ * (free-form HTML does not guarantee them). When `remintH1Id` (the managed path), the h1's injected
+ * `data-hr-id` is stripped with the text: injectNodeIds re-mints it from the new title, which is what
+ * `hr new --title` produces — keeping the placeholder's id would make every page share `hr-89b847cb`.
+ */
+const retitleHtml = (html: string, title: string | undefined, remintH1Id: boolean): string => {
   if (title === undefined) return html;
   const parsed = parseHtml(html, { locations: true });
   const splices: Splice[] = [];
@@ -68,6 +77,17 @@ const retitleHtml = (html: string, title: string | undefined): string => {
     if (node === undefined) continue;
     const span = spanOrZero(node);
     splices.push({ start: span.innerStart, end: span.innerEnd, text: escapeText(title) });
+    if (tag === "h1" && remintH1Id) {
+      const openTag = html.slice(span.start, span.innerStart);
+      const hit = HR_ID_ATTR.exec(openTag);
+      if (hit !== null) {
+        splices.push({
+          start: span.start + hit.index,
+          end: span.start + hit.index + hit[0].length,
+          text: "",
+        });
+      }
+    }
   }
   return splices
     .sort((left, right) => right.start - left.start)
@@ -174,8 +194,8 @@ const renderTemplate = (
   assetsDirName: string,
   targetDir: string,
 ): RenderedTemplate => {
-  const retitled = retitleHtml(template.entry, title);
   const managed = template.manifest.format === "managed";
+  const retitled = retitleHtml(template.entry, title, managed);
   const rendered =
     managed || members.length > 0 ? renderHtml(retitled, assetsDirName, managed) : retitled;
   const themed = template.style === undefined ? rendered : inlineTheme(rendered, template.style);

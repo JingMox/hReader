@@ -61,7 +61,10 @@ describe("builtin templates · equivalence with newDocumentHtml (F2a compatibili
 
       // Raw bytes, no normalization: `hr new` is replaceTheme(newDocumentHtml) — createFromTemplate must
       // land the identical product, injected h1 id included (it follows the retitled text, not "Untitled").
-      const reference = replaceTheme(newDocumentHtml({ kind, title: "等价标题" }), builtin.style).html;
+      const reference = replaceTheme(
+        newDocumentHtml({ kind, title: "等价标题" }),
+        builtin.style,
+      ).html;
       expect(created).toBe(reference);
     },
   );
