@@ -25,6 +25,7 @@ describe("nodePatchDeps · 默认依赖", () => {
   it("should expose the full port and a real clock and sleep", async () => {
     expect(Object.keys(fsApi).sort()).toEqual([
       "close",
+      "link",
       "lstat",
       "mkdir",
       "open",
@@ -128,6 +129,23 @@ describe("node-fs · 其余端口", () => {
     await withWorkspace(async (dir) => {
       await writeTextAt(join(dir, "a.html"), "x");
       expect(await codeOfAsync(() => fsApi.readFile(join(dir, "missing.html")))).toBe("ENOENT");
+    });
+  });
+});
+
+describe("node-fs · link", () => {
+  it("should hard-link and refuse to overwrite an existing target", async () => {
+    const link = fsApi.link;
+    if (link === undefined) throw new Error("node fs 必须提供 link");
+    await withWorkspace(async (dir) => {
+      const from = join(dir, "a.html");
+      const to = join(dir, "b.html");
+      await writeTextAt(from, "shared");
+
+      await link(from, to);
+      expect(await readTextAt(to)).toBe("shared");
+      expect(statSync(from).ino).toBe(statSync(to).ino);
+      expect(await codeOfAsync(() => link(from, to))).toBe("EEXIST");
     });
   });
 });

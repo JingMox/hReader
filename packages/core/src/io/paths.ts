@@ -1,10 +1,10 @@
 // 这层管：把 (workspace, file) 解析成工作区内的真实路径（词法 + realpath 双重校验）；不读写内容。
 
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { HrError } from "../hr-error";
 import { sha1Hex } from "./digest";
-import { failureOf } from "./errors";
+import { codeOf, failureOf } from "./errors";
 import type { FileStat, FileSystem } from "./ports";
 
 /** hreader 自己的存储根：history / locks 都在里面，且本身不可被 patch。 */
@@ -70,23 +70,9 @@ export const resolveTarget = async (
   input: { readonly workspace: string; readonly file: string },
   fsApi: FileSystem,
 ): Promise<ResolvedTarget> => {
-  if (!isAbsolute(input.workspace)) {
-    throw new HrError("invalid_input", `workspace 必须是绝对路径：${input.workspace}`);
-  }
-  if (input.file.length === 0) throw new HrError("not_a_file", "file 不能为空");
   // NUL 永远过不了任何 fs 调用（ERR_INVALID_ARG_VALUE 不是 HrError，会兜底成 500）：
-  // 在触碰磁盘前按坏输入拒掉。
-  if (input.file.includes("\0")) throw new HrError("invalid_request", "file 不能含 NUL 字节");
-  if (isAbsolute(input.file)) throw outside("不接受绝对路径", input.file);
-  const workspaceAbs = resolve(input.workspace);
-  const lexical = resolve(workspaceAbs, input.file);
-  if (!isInside(workspaceAbs, lexical)) {
-    // 报文给绝对路径与两个可执行退路：输入可以是 `../..` 相对串，读起来看不出自己指到哪去。
-    throw new HrError(
-      "path_outside_workspace",
-      `\`file\` 逃出了 workspace：${lexical}（workspace 是 ${workspaceAbs}；先 cd 到文档所在目录，或用 --workspace <dir>）`,
-    );
-  }
+  // 在触碰磁盘前按坏输入拒掉。词法闸与 `resolveNewTarget` 同一份，见 `lexicalTargetOf`。
+  const { workspaceAbs, lexical } = lexicalTargetOf(input);
   const workspaceReal = await realpathOf(fsApi, workspaceAbs);
   const realPath = await realpathOf(fsApi, lexical);
   if (!isInside(workspaceReal, realPath)) throw outside("真实路径落在 workspace 外", input.file);
@@ -108,3 +94,81 @@ export const resolveTarget = async (
 
 export const historyDirOf = (target: ResolvedTarget): string =>
   join(target.storeDir, "history", sha1Hex(target.relative));
+
+export interface ResolvedNewTarget {
+  /** 落点路径：最近存在祖先的 realpath + 尚不存在的尾段。写入与归属判定都用它。 */
+  readonly absolute: string;
+  /** 相对 workspace 真实路径的正斜杠路径。 */
+  readonly relative: string;
+  /** workspace 的真实路径。 */
+  readonly workspace: string;
+}
+
+/**
+ * 目标可能还不存在：realpath 逐级回退到最近的现存祖先；根总能解析，循环只经 return 结束。
+ * 必须调裸 `fsApi.realpath`：`realpathOf` 的包装已把 ENOENT 翻成 `not_a_file`，
+ * 到这儿就没有"不存在"可判了——原始 code 才是回退信号。
+ */
+const realpathOfAncestor = async (
+  fsApi: FileSystem,
+  candidate: string,
+): Promise<{ readonly real: string; readonly tail: readonly string[] }> => {
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      return { real: await fsApi.realpath(candidate), tail };
+    } catch (error: unknown) {
+      const code = codeOf(error);
+      if (code !== "ENOENT" && code !== "ENOTDIR") {
+        throw failureOf("realpath", candidate, error);
+      }
+      const parent = dirname(candidate);
+      tail.unshift(candidate.slice(parent.length + 1));
+      candidate = parent;
+    }
+  }
+};
+
+const lexicalTargetOf = (input: {
+  readonly workspace: string;
+  readonly file: string;
+}): { readonly workspaceAbs: string; readonly lexical: string } => {
+  if (!isAbsolute(input.workspace)) {
+    throw new HrError("invalid_input", `workspace 必须是绝对路径：${input.workspace}`);
+  }
+  if (input.file.length === 0) throw new HrError("not_a_file", "file 不能为空");
+  if (input.file.includes("\0")) throw new HrError("invalid_request", "file 不能含 NUL 字节");
+  if (isAbsolute(input.file)) throw outside("不接受绝对路径", input.file);
+  const workspaceAbs = resolve(input.workspace);
+  const lexical = resolve(workspaceAbs, input.file);
+  if (!isInside(workspaceAbs, lexical)) {
+    throw new HrError(
+      "path_outside_workspace",
+      `\`file\` 逃出了 workspace：${lexical}（workspace 是 ${workspaceAbs}；先 cd 到文档所在目录，或用 --workspace <dir>）`,
+    );
+  }
+  return { workspaceAbs, lexical };
+};
+
+/**
+ * `resolveTarget` 的新建版：同一套词法闸（相对路径、NUL、`..`、`.hreader/**`），
+ * 但不要求目标已存在——边界判定落在**最近的现存祖先**上：
+ * 目标存在时按自身 realpath 比（必须严格在 workspace 内）；
+ * 不存在时按祖先比（祖先可以就是 workspace 本身），符号链接逃逸照样被拦。
+ */
+export const resolveNewTarget = async (
+  input: { readonly workspace: string; readonly file: string },
+  fsApi: FileSystem,
+): Promise<ResolvedNewTarget> => {
+  const { workspaceAbs, lexical } = lexicalTargetOf(input);
+  const workspaceReal = await realpathOf(fsApi, workspaceAbs);
+  const ancestor = await realpathOfAncestor(fsApi, lexical);
+  if (!isInsideOrSelf(workspaceReal, ancestor.real)) {
+    throw outside("真实路径落在 workspace 外", input.file);
+  }
+  const absolute = join(ancestor.real, ...ancestor.tail);
+  const relativePath = relative(workspaceReal, absolute).split(sep).join("/");
+  const storeError = storeErrorOf(relativePath, input.file);
+  if (storeError !== undefined) throw storeError;
+  return { absolute, relative: relativePath, workspace: workspaceReal };
+};

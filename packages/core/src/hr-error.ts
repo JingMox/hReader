@@ -50,7 +50,10 @@ export type HrErrorCode =
   // 片段内容模型与目标容器不兼容（用户换容器/改 HTML 就能修，故与 `invalid_input` 分开）
   | "content_model_conflict"
   // 文档里两个元素共用同一个 data-hr-id（`normalize` 会把重复的那个改名，但读/写入口必须先拒绝歧义）
-  | "duplicate_id";
+  | "duplicate_id"
+  // 模板：`unknown_template` 指三级来源都没有这个 id；`invalid_template` 指找到了但它损坏/越界
+  | "unknown_template"
+  | "invalid_template";
 
 /**
  * `invalid_selector` 有两种成因（文法不合法 / 选择器命中多个可寻址元素），

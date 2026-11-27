@@ -8,6 +8,7 @@ export type FsMethod =
   | "writeFile"
   | "writeFileAtomic"
   | "rename"
+  | "link"
   | "unlink"
   | "mkdir"
   | "lstat"
@@ -87,26 +88,36 @@ const runHooks = (state: FakeState, method: FsMethod, path: string): void => {
   }
 };
 
+/** 沿链接链解析：每跳取"自身或最深祖先"中的链接项（与内核一致：中间目录的链接照常穿透）。 */
 const resolveLinks = (state: FakeState, path: string): string => {
   let current = path;
   for (let step = 0; step < 10; step += 1) {
-    const target = state.links.get(current);
-    if (target === undefined) return current;
-    current = target;
+    let next: string | undefined;
+    for (let pivot = current; pivot.includes("/"); pivot = pivot.slice(0, pivot.lastIndexOf("/"))) {
+      const target = state.links.get(pivot);
+      if (target !== undefined) {
+        next = target + current.slice(pivot.length);
+        break;
+      }
+    }
+    if (next === undefined || next === current) return current;
+    current = next;
   }
   return current;
 };
 
 const readFileOf = (state: FakeState, path: string): Uint8Array => {
-  const bytes = state.files.get(path);
+  const bytes = state.files.get(resolveLinks(state, path));
   if (bytes === undefined) throw systemError("ENOENT");
   return new Uint8Array(bytes);
 };
 
 const dirEntriesOf = (state: FakeState, dir: string): readonly string[] => {
-  if (!state.dirs.has(dir)) throw systemError("ENOENT");
-  const prefix = `${dir}/`;
-  const names = [...state.files.keys(), ...state.dirs].flatMap((path) => {
+  const resolved = resolveLinks(state, dir);
+  if (!state.dirs.has(resolved)) throw systemError("ENOENT");
+  const prefix = `${resolved}/`;
+  // 链接项也是目录的孩子：逃逸链接只有被列出来，调用方才有机会拒掉它。
+  const names = [...state.files.keys(), ...state.dirs, ...state.links.keys()].flatMap((path) => {
     if (!path.startsWith(prefix)) return [];
     const tail = path.slice(prefix.length);
     return tail.length === 0 || tail.includes("/") ? [] : [tail];
@@ -144,19 +155,21 @@ const readMethodsOf = (
         size: 0,
       });
     }
-    if (state.dirs.has(path))
+    // lstat 不解析最后一环，但中间目录的链接照常穿透（与内核一致）。
+    const resolved = resolveLinks(state, path);
+    if (state.dirs.has(resolved))
       return Promise.resolve({
         isFile: () => false,
         isSymbolicLink: () => false,
         mtimeMs,
         size: 0,
       });
-    if (state.files.has(path))
+    if (state.files.has(resolved))
       return Promise.resolve({
         isFile: () => true,
         isSymbolicLink: () => false,
         mtimeMs,
-        size: state.files.get(path)?.length ?? 0,
+        size: state.files.get(resolved)?.length ?? 0,
       });
     throw systemError("ENOENT");
   },
@@ -180,7 +193,7 @@ const readMethodsOf = (
 
 const writeMethodsOf = (
   state: FakeState,
-): Pick<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "unlink" | "mkdir"> => ({
+): Pick<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "link" | "unlink" | "mkdir"> => ({
   writeFile: (path, data) => {
     guard(state, "writeFile", path);
     state.files.set(path, new Uint8Array(data));
@@ -198,6 +211,12 @@ const writeMethodsOf = (
     guard(state, "rename", from);
     state.files.set(to, new Uint8Array(readFileOf(state, from)));
     state.files.delete(from);
+    return Promise.resolve();
+  },
+  link: (from, to) => {
+    guard(state, "link", from);
+    if (state.files.has(to) || state.dirs.has(to)) throw systemError("EEXIST");
+    state.files.set(to, new Uint8Array(readFileOf(state, from)));
     return Promise.resolve();
   },
   unlink: (path) => {

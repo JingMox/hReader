@@ -2,6 +2,7 @@
 
 import { existsSync } from "node:fs";
 import {
+  link,
   lstat,
   mkdir,
   open,
@@ -49,6 +50,9 @@ const nodeFileSystem: FileSystem = {
   },
   rename: async (from, to) => {
     await rename(from, to);
+  },
+  link: async (from, to) => {
+    await link(from, to);
   },
   unlink: async (path) => {
     await unlink(path);

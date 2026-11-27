@@ -20,6 +20,11 @@ export interface FileSystem {
   readonly readFile: (path: string) => Promise<Uint8Array>;
   readonly writeFile: (path: string, data: Uint8Array) => Promise<void>;
   readonly rename: (from: string, to: string) => Promise<void>;
+  /**
+   * Hard link（`link(2)`）：目标已存在即 `EEXIST`，绝不覆盖——"create only if absent" 的原子门。
+   * 可选：缺省实现会退回 `open` 的独占创建（崩溃窗口内可能留下半成品文件）。
+   */
+  readonly link?: (from: string, to: string) => Promise<void>;
   readonly unlink: (path: string) => Promise<void>;
   readonly mkdir: (path: string) => Promise<void>;
   readonly lstat: (path: string) => Promise<FileStat>;
