@@ -381,12 +381,14 @@ describe("docRelocatorOf · D49 fallback chain levels", () => {
   });
 
   it("should descend to body when the selector resolves inside a skipped subtree", () => {
-    // <noscript> content stays in the parsed tree but contributes no body-text
+    // <template> content stays in the parsed tree but contributes no body-text
     // span: the selector finds the element, the level still yields no region.
-    const relocate = docRelocatorOf("<body><noscript><p>AB</p></noscript><p>先 AB 后</p></body>");
+    // (noscript no longer works here — D54 parses this domain scripting-on, so
+    // its markup is raw text with no element children to resolve.)
+    const relocate = docRelocatorOf("<body><template><p>AB</p></template><p>先 AB 后</p></body>");
     const result = relocate(
       note({
-        selector: "body > noscript:nth-of-type(1) > p:nth-of-type(1)",
+        selector: "body > template:nth-of-type(1) > p:nth-of-type(1)",
         anchor: { exact: "AB", prefix: "先 ", suffix: " 后", start: 0 },
       }),
     );

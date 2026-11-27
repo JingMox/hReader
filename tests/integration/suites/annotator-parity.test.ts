@@ -262,7 +262,10 @@ describe.skipIf(skip !== undefined)("annotator-parity", () => {
     const cases = fc.sample(docArb, { numRuns: 250, seed: 20261201 });
     for (const [index, html] of cases.entries()) {
       const dom = await domSide(page, html);
-      const parsed = parseHtml(`<!doctype html><html><body>${html}</body></html>`);
+      // scriptingEnabled:true — the annotation domain parses like the browser.
+      const parsed = parseHtml(`<!doctype html><html><body>${html}</body></html>`, {
+        scriptingEnabled: true,
+      });
       const core = bodyMapOf(parsed);
       assertEq(
         dom.text,
@@ -348,7 +351,9 @@ describe.skipIf(skip !== undefined)("annotator-parity", () => {
     ];
     for (const [index, html] of targeted.entries()) {
       const dom = await domSide(page, html);
-      const parsed = parseHtml(`<!doctype html><html><body>${html}</body></html>`);
+      const parsed = parseHtml(`<!doctype html><html><body>${html}</body></html>`, {
+        scriptingEnabled: true,
+      });
       const core = bodyMapOf(parsed);
       assertEq(
         dom.text,

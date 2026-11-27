@@ -36,6 +36,7 @@ interface ParseContext {
   readonly diagnostics: Diagnostic[];
   readonly metaScripts: HtmlNode[];
   readonly locations: boolean;
+  readonly scriptingEnabled: boolean;
 }
 
 /** 元素必有 startTag；缺位置时整体退化为零宽区间。 */
@@ -253,7 +254,9 @@ const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Docum
     sourceCodeLocationInfo: context.locations,
     // 浏览器在不跑脚本时的默认口径：`<noscript>` 内容按标记解析（实体解码），不是 raw text。
     // parse5 自己的默认是 true，会把它当 raw text 保留原始实体串，序列化时再被转义一次。
-    scriptingEnabled: false,
+    // 标注体文本域（relocate）反过来要 true：那棵树永远跑在开了脚本的浏览器里，
+    // `<noscript>` 遇第一个 `</noscript>` 就截断——两边的可见文本必须一致。
+    scriptingEnabled: context.scriptingEnabled,
     onParseError: (error) => {
       const code = PARSE5_TO_DIAGNOSTIC[error.code];
       if (code !== undefined) {
@@ -264,10 +267,12 @@ const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Docum
     },
   });
 
-/** `locations` 只在需要按源码区间回写时打开：默认关，关闭时产出的树与诊断不变。 */
+/** `locations` 只在需要按源码区间回写时打开：默认关，关闭时产出的树与诊断不变。
+ *  `scriptingEnabled` 只给标注体文本域（relocate）开：那棵树永远跑在开了脚本的
+ *  浏览器里（`<noscript>` 按 raw text 截断）；其余路径保持「不跑脚本」口径。 */
 export const parseHtml = (
   html: string,
-  options: { readonly locations?: boolean } = {},
+  options: { readonly locations?: boolean; readonly scriptingEnabled?: boolean } = {},
 ): ParsedHtml => {
   if (!isString(html)) {
     throw new HrError("invalid_html", "parseHtml 只接受字符串；类型系统外的输入不可恢复");
@@ -276,6 +281,7 @@ export const parseHtml = (
     diagnostics: [],
     metaScripts: [],
     locations: options.locations === true,
+    scriptingEnabled: options.scriptingEnabled === true,
   };
   if (html.trim().length === 0) {
     context.diagnostics.push(

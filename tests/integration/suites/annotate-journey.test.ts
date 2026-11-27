@@ -321,7 +321,9 @@ describe.skipIf(skip !== undefined)("annotate-journey", () => {
     savedAnchor = anchor as WireAnchor;
     assert(savedAnchor.exact.length > 3, `too little text selected: ${JSON.stringify(anchor)}`);
     // The anchor must index the SAME body text core computes for the file.
-    const bodyText = bodyTextOf(parseHtml(await readFile(docPath(home.ws, DOC), "utf8")));
+    const bodyText = bodyTextOf(
+      parseHtml(await readFile(docPath(home.ws, DOC), "utf8"), { scriptingEnabled: true }),
+    );
     assertEq(
       bodyText.slice(savedAnchor.start, savedAnchor.start + savedAnchor.exact.length),
       savedAnchor.exact,
@@ -378,7 +380,9 @@ describe.skipIf(skip !== undefined)("annotate-journey", () => {
     // selection messages may have advanced the widget's pending anchor past the
     // one test 2 last observed.
     savedAnchor = anchor as WireAnchor;
-    const bodyText = bodyTextOf(parseHtml(await readFile(docPath(home.ws, DOC), "utf8")));
+    const bodyText = bodyTextOf(
+      parseHtml(await readFile(docPath(home.ws, DOC), "utf8"), { scriptingEnabled: true }),
+    );
     const exact: unknown = Reflect.get(anchor, "exact");
     const start: unknown = Reflect.get(anchor, "start");
     assert(typeof exact === "string" && typeof start === "number", "anchor fields malformed");
