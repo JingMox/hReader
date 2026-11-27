@@ -4,6 +4,8 @@
 // Diagnostics land in the envelope under --json and on stderr (via `warn`) in human mode —
 // same convention as `hr template list`: a dirty store never sinks the whole command.
 
+import { relative, sep } from "node:path";
+
 import {
   listDocAnnotations,
   migrateMetaAnnotations,
@@ -62,7 +64,13 @@ export const annotationsMigrateCommand = async (
     nodePatchDeps,
   );
   for (const line of result.diagnostics) input.warn(term(`warning: ${line}\n`));
+  // `historyPath` lands in the --json envelope as workspace-relative like `path` — the receipt
+  // points back at the snapshot without leaking the workspace's host path.
+  const historyPath =
+    result.historyPath === null
+      ? null
+      : relative(input.workspace, result.historyPath).split(sep).join("/");
   return input.json
-    ? jsonOk(dataAnnotationsMigrate(result, input.path))
+    ? jsonOk(dataAnnotationsMigrate({ ...result, historyPath }, input.path))
     : humanAnnotationsMigrate(result, input.displayPath);
 };

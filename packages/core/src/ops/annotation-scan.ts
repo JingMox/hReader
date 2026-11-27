@@ -5,14 +5,15 @@
 // files, walk-truncated docs) still surface. Store records that point at unreachable or
 // mis-keyed paths become diagnostics, never a crash.
 
-import { basename, join, relative, resolve, sep } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { AnnotationStatus } from "../annotations/model";
 import { decodeUtf8 } from "../io/bytes";
 import { sha1Hex } from "../io/digest";
-import { failureOf, isMissing } from "../io/errors";
+import { codeOf, failureOf, isMissing } from "../io/errors";
 import { resolveTarget } from "../io/paths";
 import type { FileStat, PatchDeps } from "../io/ports";
+import { cutAtCodePoint } from "../text/truncate";
 import { listDocAnnotations, type DocAnnotationEntry } from "./sidecar-ops";
 
 /** Bounded by contract: the tool result must stay small enough to hand an agent whole. */
@@ -59,14 +60,32 @@ const posixRelOf = (workspaceReal: string, absolute: string): string => {
   return rel === "" ? "." : rel;
 };
 
-const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
+/**
+ * Diagnostics never carry raw error text: `resolveTarget`'s `` `file` 逃出了 workspace：…``
+ * wording embeds the resolved absolute AND the workspace root, and `scandir`-style messages
+ * embed the dir itself — no fold can reach all of those. The error code (`HrError` code or the
+ * fs errno) plus a workspace-relative name is all the "why" a scan diagnostic gets.
+ */
+const codeNameOf = (error: unknown): string => {
+  const code = codeOf(error);
+  return typeof code === "string" && code !== "" ? code : "internal";
+};
 
 /**
- * Error text from lower layers (`resolveTarget`'s lexical path, `failureOf`'s target) carries
- * workspace-absolute paths — the wire echo of a scan stays relative, the same fold single-doc
- * errors get: a root followed by a separator or end-of-text collapses to nothing. Roots are
- * the lexical workspace plus its realpath (longest first, so one inside the other still folds).
+ * A record's `path` field is attacker data: relative claims echo verbatim (bounded), while an
+ * absolute claim — `/private/etc/passwd` — is host layout and never printed; the record's own
+ * filename already says which record it was.
+ */
+const shownClaimedOf = (claimed: string, roots: readonly string[]): string => {
+  const folded = elidedOf(claimed, roots);
+  return isAbsolute(folded) ? "<绝对路径>" : cutAtCodePoint(folded, 200);
+};
+
+/**
+ * Echoed names inside a diagnostic can still be workspace-absolute (a record claiming
+ * `/ws/doc.html`), so every line goes through the same fold single-doc errors get: a root
+ * followed by a separator or end-of-text collapses to nothing. Roots are the lexical
+ * workspace plus its realpath (longest first, so one inside the other still folds).
  */
 const elidedOf = (message: string, roots: readonly string[]): string =>
   [...roots]
@@ -114,7 +133,7 @@ const collectDoc = async (
   bucket.docsScanned += 1;
   const listed = await listDocAnnotations({ workspace: input.workspace, file }, deps).catch(
     (error: unknown) => {
-      pushDiagnostic(bucket, `文档 ${file}：${messageOf(error)}`);
+      pushDiagnostic(bucket, `文档 ${file}：${codeNameOf(error)}`);
       return undefined;
     },
   );
@@ -147,7 +166,7 @@ const walkHtmlDocs = async (
     } catch (error: unknown) {
       pushDiagnostic(
         bucket,
-        `目录不可读：${posixRelOf(workspaceReal, dir)}（${messageOf(error)}）`,
+        `目录不可读：${posixRelOf(workspaceReal, dir)}（${codeNameOf(error)}）`,
       );
       continue;
     }
@@ -159,7 +178,7 @@ const walkHtmlDocs = async (
       } catch (error: unknown) {
         pushDiagnostic(
           bucket,
-          `条目不可读：${posixRelOf(workspaceReal, absolute)}（${messageOf(error)}）`,
+          `条目不可读：${posixRelOf(workspaceReal, absolute)}（${codeNameOf(error)}）`,
         );
         continue;
       }
@@ -207,7 +226,7 @@ const scanRecords = async (
   } catch (error: unknown) {
     // A missing store is the normal case (nobody annotated yet), not a diagnostic.
     if (!isMissing(error)) {
-      pushDiagnostic(bucket, `批注侧车目录不可读（${messageOf(error)}）`);
+      pushDiagnostic(bucket, `批注侧车目录不可读（${codeNameOf(error)}）`);
     }
     return;
   }
@@ -219,7 +238,7 @@ const scanRecords = async (
     try {
       text = decodeUtf8(await deps.fs.readFile(path), path);
     } catch (error: unknown) {
-      pushDiagnostic(bucket, `批注侧车记录 ${name} 不可读（${messageOf(error)}）`);
+      pushDiagnostic(bucket, `批注侧车记录 ${name} 不可读（${codeNameOf(error)}）`);
       continue;
     }
     const claimed = recordPathOf(text);
@@ -227,6 +246,7 @@ const scanRecords = async (
       pushDiagnostic(bucket, `批注侧车记录 ${name} 缺少可用的 path 字段`);
       continue;
     }
+    const shown = shownClaimedOf(claimed, bucket.roots);
     let relativePath: string;
     try {
       const target = await resolveTarget({ workspace: input.workspace, file: claimed }, deps.fs);
@@ -234,7 +254,7 @@ const scanRecords = async (
     } catch (error: unknown) {
       pushDiagnostic(
         bucket,
-        `批注侧车记录 ${name} 指向不可达文档 ${claimed}（${messageOf(error)}）`,
+        `批注侧车记录 ${name} 指向不可达文档 ${shown}（${codeNameOf(error)}）`,
       );
       continue;
     }
@@ -242,7 +262,7 @@ const scanRecords = async (
     if (sha1Hex(relativePath) !== basename(name, ".json")) {
       pushDiagnostic(
         bucket,
-        `批注侧车记录 ${name} 的 path 与文件名不符（指向 ${claimed}），按孤儿记录处理`,
+        `批注侧车记录 ${name} 的 path 与文件名不符（指向 ${shown}），按孤儿记录处理`,
       );
       continue;
     }
