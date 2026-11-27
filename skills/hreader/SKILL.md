@@ -1,148 +1,153 @@
 ---
 name: hreader
-description: 用 hReader 起稿和读写 HTML 文档（笔记、报告、会议纪要、决策简报、幻灯片）。当用户要写报告、整理纪要、做一份 HTML 汇报、改某个小节、套排版主题、检查排版或禁用词，或要求"把这段内容排成好看的长文"时使用；也用于按大纲分段改写而不动其余部分。
+description: Draft and edit HTML documents with hReader (notes, reports, meeting minutes, decision briefs, slides). Use when the user asks to write a report, organize meeting notes, produce an HTML write-up, revise one section, apply a layout theme, check layout constraints or banned words, or asks to "turn this content into a nicely formatted long read"; also for rewriting section by section along the outline without touching the rest.
 ---
 
-# hReader：按节点读写长文档
+# hReader: read and write long documents node by node
 
-hReader 把一份 HTML 长文档拆成"可按 id 读、可按 id 改"的节点，所有写操作都是**字节级区间替换 + 原子落盘 + 可撤销**。你只需读一段、改一段，永远不用整篇重写。
+hReader splits a long HTML document into nodes you can read by id and patch by id; every write is a **byte-range replacement + atomic save + undoable**. You read one block, change one block — you never rewrite the whole document.
 
-## 什么时候用它
+## When to use it
 
-- 文档 > 300 行，或含多个 section，用户只要改其中一小节。
-- 需要先看结构再决定改哪里（`outline`）。
-- 需要把某一小节原文读出来改写（`read`），再写回去（`patch`）。
-- 需要统一文案口吻（`style --tone`）、统一排版（`style --visual`）、检查禁用词（`style --lint`）。
+- The document is > 300 lines, or has several sections, and the user only wants one of them changed.
+- You need the structure first to decide where to edit (`outline`).
+- You need to read a section verbatim before rewriting it (`read`), then write it back (`patch`).
+- You need a consistent voice (`style --tone`), consistent layout (`style --visual`), or a banned-words check (`style --lint`).
 
-## 命令（全部经 `scripts/hr.mjs`）
+## Commands (all through `scripts/hr.mjs`)
 
 ```bash
-node skills/hreader/scripts/hr.mjs new report.html --kind report --title "Q4 复盘"  # 按形态起稿
-node skills/hreader/scripts/hr.mjs import deck.html --kind slides # 外来 HTML → 托管文档（默认出 <name>.hr.html）
-node skills/hreader/scripts/hr.mjs outline report.html            # 结构树
-node skills/hreader/scripts/hr.mjs read report.html s2-p1 --json   # 读一个节点
+node skills/hreader/scripts/hr.mjs new report.html --kind report --title "Q4 Retro"  # draft by kind
+node skills/hreader/scripts/hr.mjs import deck.html --kind slides # foreign HTML → managed doc (defaults to <name>.hr.html)
+node skills/hreader/scripts/hr.mjs outline report.html            # structure tree
+node skills/hreader/scripts/hr.mjs read report.html s2-p1 --json   # read one node
 node skills/hreader/scripts/hr.mjs patch report.html s2-p1 \
-     --action replace --html-file /tmp/new.html                    # 写回
+     --action replace --html-file /tmp/new.html                    # write back
 node skills/hreader/scripts/hr.mjs style report.html --visual atelier-editorial
 node skills/hreader/scripts/hr.mjs style report.html --tone atelier-editorial
 node skills/hreader/scripts/hr.mjs style report.html --lint
-node skills/hreader/scripts/hr.mjs check report.html               # 排版约束检查
+node skills/hreader/scripts/hr.mjs check report.html               # layout-constraint check
 ```
 
-退出码：`0` 成功、`1` 业务失败（节点不存在/片段非法/被锁）、`2` 用法错误、`3` IO 与路径问题、`70` 内部错误。**非 0 时先读 stderr 的报错原文，不要猜。**
+Exit codes: `0` success, `1` business failure (missing node / invalid fragment / locked), `2` usage error, `3` IO and path problems, `70` internal error. **On any non-zero exit, read the error text on stderr first — do not guess.**
 
-## 从零起稿：先选形态（`new`）
+## Drafting from scratch: pick a kind first (`new`)
 
-不要手写整份 HTML 骨架。`new` 按形态生成一份带齐 id、已套主题、组件占位齐全的起稿，之后逐块 `patch`：
+Do not hand-write a whole HTML skeleton. `new` generates a starter document of the chosen kind — ids filled in, theme applied, component placeholders included — then you `patch` block by block:
 
-| `--kind`  | 用途     | 骨架                                              |
-| --------- | -------- | ------------------------------------------------- |
-| `note`    | 笔记     | 一个小节，自由展开（默认）                        |
-| `report`  | 报告     | 结论 → 关键数据 → 分析 → 方案对比 → 风险 → 下一步 |
-| `minutes` | 会议纪要 | 结论与决定 → 讨论要点 → 待办 → 录音与逐字稿       |
-| `brief`   | 决策简报 | 建议 → 依据 → 代价与风险 → 下一步                 |
-| `slides`  | 幻灯片   | 标题页 + 每个顶层 `<section>` 一页                |
+| `--kind`  | Purpose         | Skeleton sections                                                                                                                           |
+| --------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `note`    | note            | one section `要点` (key points) to expand freely (default)                                                                                  |
+| `report`  | report          | `结论` → `关键数据` → `分析` → `方案对比` → `风险` → `下一步` (conclusion → key data → analysis → option comparison → risks → next steps)   |
+| `minutes` | meeting minutes | `结论与决定` → `讨论要点` → `待办` → `录音与逐字稿` (conclusions & decisions → discussion points → action items → recordings & transcripts) |
+| `brief`   | decision brief  | `建议` → `依据` → `代价与风险` → `下一步` (recommendation → rationale → costs & risks → next steps)                                         |
+| `slides`  | slides          | `（这一页的结论）` → `关键数字` → `方案对比` → `下一步` (this page's conclusion → key numbers → option comparison → next steps)             |
 
-- 占位文字都写在全角括号里（如 `（一句话结论）`）：`outline` 后逐块 `replace` 掉，**交付前不许留括号占位**。
-- 用不上的小节整节 `delete`；要加页 / 加节就对相邻 `<section>` 做 `insert_after`。
-- `slides` 每页只讲一件事：一个 `<h2>` 加一个组件或两三句话。浏览器里滚动即翻页，打印 / 存 PDF 是横版一页一张，不需要任何脚本。
-- `<file>` 已存在时要加 `--force`；标题不给就取文件名。
+- Placeholder text is written inside fullwidth brackets (e.g. `（一句话结论：判断、证据、适用边界。）`, "one-sentence conclusion: judgment, evidence, boundary"): after `outline`, `replace` them block by block — **no bracket placeholders may remain at delivery**.
+- `delete` whole sections you don't need; to add a page/section, `insert_after` a neighboring `<section>`.
+- `slides` says one thing per page: one `<h2>` plus one component or two or three sentences. Scrolling in a browser turns pages; printing / saving to PDF yields one landscape page each — no script needed.
+- When `<file>` already exists you need `--force`; without `--title` the file name is used.
 
-## 五原语工作流
+## The five-primitive workflow
 
-1. **看结构**：`outline`。输出每行 `- <id>  <标题>  (<字数>)`；没 id 的标题会作为 warning 出现在 stderr，先修 id 再谈改写。
-2. **读原文**：`read <id>` 拿到该节点的 HTML 片段（可能被截断，末尾会给 `truncated` 诊断）。改之前必须读，不要凭大纲猜内容。
-   第二个参数先按选择器解析，不命中时把原串当 node id 再试一次——所以 `outline`/`patch` 打印出的 id 可以直接喂回来。**标签优先**：`read div` 读的是 `<div>` 标签；若某节点 id 恰为 `div`，写 `[data-hr-id="div"]`。
-3. **写片段**：把新内容放进一个临时 `.html` 文件，只用 `--html-file`（`--html` 只适合无引号无换行的短片段）。
-4. **落盘**：选 action——
-   - `replace`：整体替换该节点（含它的子节点）。
-   - `insert_after` / `insert_before`：**在该节点同级插入**，不是塞进子节点；插入物必须有且只有一个根元素。
-   - `append`：塞进该节点的子节点末尾（目标可以是空元素）。
-   - `delete`：删除该节点及其子树。
-5. **验成果**：`--json` 返回 `{"ok":true,"data":{...}}`；关注 `changed`（`false` 表示写盘字节与原文完全一致，没产生历史快照）、`newIds`（插入内容里自动分配的 id）、`historyPath`（可撤销锚点）、`warnings`（排版约束问题，见下）。
+1. **See the structure**: `outline`. Prints one line per node, `- <id>  <heading>  (<n>w)`; headings without ids surface as warnings on stderr — fix ids before rewriting anything.
+2. **Read the original**: `read <id>` returns the node's HTML fragment (it may be truncated — a `truncated_output` diagnostic comes at the end). Always read before editing; don't guess content from the outline.
+   The second argument resolves as a selector first, then as a node id if the selector misses — so the ids printed by `outline`/`patch` feed straight back in. When a string is both a matching selector and a real `data-hr-id` it does not guess: it fails with `invalid_selector` (reason: ambiguous); write `#id` or `[data-hr-id="…"]` to be explicit.
+3. **Write the fragment**: put the new content in a temporary `.html` file and use `--html-file` only (`--html` suits only short fragments without quotes or newlines).
+4. **Commit**: pick an action —
+   - `replace`: swap out the node wholesale (including its children).
+   - `insert_after` / `insert_before`: **insert as a sibling of the node**, not inside its children; the inserted fragment must have exactly one root element.
+   - `append`: insert at the end of the node's children (the target may be an empty element).
+   - `delete`: remove the node and its subtree (takes no `--html*` source).
+5. **Verify**: `--json` returns `{"ok":true,"data":{...}}`; watch `changed` (`false` means the written bytes were identical to the original — no history snapshot was created), `newIds` (ids auto-assigned inside inserted content), `replacedIds` (present when `replace` changed the target's id), `historyPath` (the undo anchor), and `warnings` (layout-constraint problems, see below).
 
-## 排版约束：写入时就查
+## Layout constraints: checked at write time
 
-长相归主题管，正文只声明语义。两类问题会被查出来：
+Appearance belongs to the theme; body content only declares semantics. Two kinds of problems get flagged:
 
-- **组件结构不对**（`component_root` / `component_shape`）：根标签不对、子元素个数不对、缺必备子元素。规约表见 `references/components-spec.md`。
-- **内联 `style`**（`inline_style`）：任何元素都不要带 `style` 属性（内联 SVG 内部除外）。
+- **Wrong component structure** (`component_root` / `component_shape`): wrong root tag, wrong child count, missing required child elements. The spec table is in `references/components-spec.md`.
+- **Inline `style`** (`inline_style`): no element may carry a `style` attribute (except inside inline SVG).
 
-`patch` 不会因此拒写——片段照常落盘，问题出现在回执的 `warnings` 里；整篇用 `check <file>` 复查（`--json` 时看 `count`）。**看到 warning 就再 patch 一次改掉，`check` 干净了再说“完成”。**
+`patch` does not refuse the write for these — the fragment lands as usual and the problems appear in the receipt's `warnings`; use `check <file>` to re-check the whole document (under `--json`, watch `count`). **When you see a warning, patch once more to fix it; call it "done" only when `check` is clean.**
 
-要把 `check` 当门禁用就加 `--strict`：有 error 级诊断时退出 1（报告照常先写 stdout）；`--strict=warning` 连 warning 也算失败。
+To use `check` as a gate, add `--strict`: exits 1 when error-level diagnostics exist (the report still goes to stdout first); `--strict=warning` fails on warnings too.
 
-## 安全区内不能做的事
+## What you cannot do inside the sandbox
 
-- 片段里**不允许** `<script>`、`<style>`、`<iframe>`、`<object>`、`<embed>`、`<link>`、`<meta http-equiv=refresh>`、`<form>`，不允许 `on*` 事件属性，不允许 `javascript:` / `data:text/html` 链接。会被 `forbidden_content` 拒绝，文件一个字节都不会变。
-- 片段必须**单根**：多根、纯文本、注释开头都会被 `invalid_fragment` 拒绝。
-- 路径必须在 `--workspace` 内；`../`、绝对路径、指向外部的符号链接都会被 `path_outside_workspace` 拒绝。
+- Fragments **may not** contain `<script>`, `<style>`, `<iframe>`, `<object>`, `<embed>`, `<link>`, `<base>`, or `<meta>` with `http-equiv`/`charset` attributes; no `on*` event attributes; no `javascript:` / `data:text/html` attribute values; no SVG animation elements that could write event handlers or dangerous URLs (`<animate>`/`<set>`). All are rejected with `forbidden_content` and the file does not change by a single byte.
+- Fragments must have a **single root**: multiple roots, bare text, or a comment first are all rejected with `invalid_fragment`.
+- Paths must stay inside `--workspace`; `../`, absolute paths, and symlinks pointing outside are rejected with `path_outside_workspace`.
 
-## 组件速查（复制即用）
+## Component cheat sheet (copy-paste ready)
 
-完整片段见 `references/components-spec.md`。八个组件靠 `data-hr-component` 触发主题样式：
+Full fragments live in `references/components-spec.md`. Eight components trigger theme styling via `data-hr-component`:
 
-| 组件         | 选择器                                | 用途                          |
-| ------------ | ------------------------------------- | ----------------------------- |
-| KPI 卡阵     | `data-hr-component="kpi-bento"`       | 3–6 个关键数字                |
-| 洞察 callout | `data-hr-component="callout-insight"` | 需要读者记住的判断            |
-| 风险 callout | `data-hr-component="callout-warning"` | 代价、坑、边界条件            |
-| 对比分栏     | `data-hr-component="split-compare"`   | 方案 A/B、前后对照            |
-| 深度折叠     | `data-hr-component="deep-dive"`       | 可跳过的推演细节              |
-| 步骤时间线   | `data-hr-component="step-timeline"`   | 流程、roadmap、复盘           |
-| 图表舞台     | `data-hr-component="diagram-stage"`   | 图片/SVG + 图注               |
-| 媒体卡片     | `data-hr-component="media-card"`      | 录音/视频 + 图注 + 折叠逐字稿 |
+| Component          | Selector                              | Purpose                                        |
+| ------------------ | ------------------------------------- | ---------------------------------------------- |
+| KPI card grid      | `data-hr-component="kpi-bento"`       | 3–6 key numbers                                |
+| insight callout    | `data-hr-component="callout-insight"` | a judgment the reader must remember            |
+| risk callout       | `data-hr-component="callout-warning"` | costs, pitfalls, boundary conditions           |
+| comparison columns | `data-hr-component="split-compare"`   | option A/B, before/after                       |
+| collapsible depth  | `data-hr-component="deep-dive"`       | skippable reasoning details                    |
+| step timeline      | `data-hr-component="step-timeline"`   | processes, roadmaps, retrospectives            |
+| diagram stage      | `data-hr-component="diagram-stage"`   | image/SVG + caption                            |
+| media card         | `data-hr-component="media-card"`      | audio/video + caption + collapsible transcript |
 
-## 风格与禁用词
+## Style and banned words
 
-- 写之前先取口吻：`style --tone <id>` 会返回一段 prompt，把其中的规则当作写作约束。
-- 写完跑 `style --lint`：命中禁用词会给出 `offset`（块内字符偏移）和上下文，逐条改掉再说"完成"。
-- 默认风格 `atelier-editorial`：结论先行、每三段转一个视觉结构、每个论断挂数字或来源。自定义风格见 `references/style-authoring.md`。
+- Fetch the voice before writing: `style --tone <id>` returns a prompt — treat its rules as writing constraints.
+- Run `style --lint` when done: each banned-word hit reports an `offset` (character offset within the block) and context; fix them one by one before calling it "done".
+- The default style is `atelier-editorial`: conclusion first, a visual structure every three paragraphs, every claim anchored to a number or a source. See `references/style-authoring.md` for custom styles.
 
-### 从 1..N 篇语料摸出自己的风格（`style extract`）
+### Distilling your own style from 1..N corpus files (`style extract`)
 
 ```bash
-# 离线：不开 key，只跑统计层（开发机 shell 里常有真 key，照抄带 key 的版本会花真调用）
+# offline: run the statistics-only layer without a key (dev shells often hold a
+# real key — copying the keyed version verbatim would spend real calls)
 mkdir -p .hreader
-env -u OPENCODE_API_KEY node skills/hreader/scripts/hr.mjs style extract 文1.md 文2.md \
-  --id my-voice --name "我的口吻" --out .hreader/style.yaml
+env -u OPENCODE_API_KEY node skills/hreader/scripts/hr.mjs style extract voice-1.md voice-2.md \
+  --id my-voice --name "My Voice" --out .hreader/style.yaml
 ```
 
-- **没 key 不报错**：没设 `OPENCODE_API_KEY` 或加了 `--no-llm`，走纯统计版（节奏 + 词表定值），stderr 一行提示“仅用统计结果”——两条路径的 `style.yaml` 都能直接被 `style --tone` 用。
-- **`--out` 必须落在发现路径上**，否则 `style --tone my-voice` 找不到它：项目级 `<workspace>/.hreader/style.yaml`，或用户级 `~/.hreader/styles/my-voice/style.yaml`。写到别处也合法（导出/归档），但 `--tone` 只认 id、没有路径入口——要让 `--tone` 用上它，就得写到上面两条路径之一；写别处时 stderr 会给一行提示。
-- `--out` 指向已存在的文件时必须加 `--force`，否则 `file_exists`；父目录不自动建。
-- 模型/网关可用 `--model`、`--base-url` 覆盖；`--json` 输出 `{ok,data:{path,stats,yaml,dropped}}`（`dropped` 仅 LLM 路径出现），错误也是单行 JSON。
-- fixture 与模型换代（换 `--model` 或改 prompt）后须重录 `fixtures/llm/`，否则回放证明的不再是今天的模型输出。
+- **No key is not an error**: without `OPENCODE_API_KEY` or with `--no-llm`, it runs the statistics-only version (rhythm + fixed vocabulary), printing one stderr line `未设置 OPENCODE_API_KEY，仅用统计结果` ("OPENCODE_API_KEY not set, using statistics only") — the `style.yaml` from either path works directly with `style --tone`.
+- **`--out` must land on a discovery path** or `style --tone my-voice` won't find it: the project-level `<workspace>/.hreader/style.yaml`, or the user-level `~/.hreader/styles/my-voice/style.yaml`. Writing elsewhere is legal too (export/archival), but `--tone` resolves by id only — there is no path entry — so to make `--tone` use it, write to one of those two paths; writing elsewhere earns one stderr hint.
+- `--out` pointing at an existing file needs `--force`, otherwise `file_exists`; the parent directory is not auto-created.
+- Override the model/gateway with `--model` / `--base-url`; `--inherits-visual <id>` picks the inherited theme; `--json` prints `{ok,data:{path,stats,yaml,dropped}}` (`dropped` only appears on the LLM path), and errors are single-line JSON as well.
+- Re-record `fixtures/llm/` whenever the fixtures or the model generation change (a different `--model` or a changed prompt), or the replay no longer proves today's model output.
 
-## 让宿主自己带着风格（不用每次取口吻）
+## Letting the host carry the style itself (no per-round tone fetch)
 
-本仓有两个包把这个"取口吻"的步骤变成了宿主侧的常驻约束，效果和 `style --tone` 完全相同（同一份 `compileTone` 编译器）：
+Two surfaces in this repo turn the "fetch the voice" step into a standing host-side constraint, with the same effect as `style --tone` (the same `compileTone` compiler):
 
-- **DeepSeek Harness (`dsh`)**：`@hreader/dsh-bundle` 把语言规约织进 system prompt，会话一开就生效。装法（`--profile` 必填）：
+- **DeepSeek Harness (`dsh`)**: `@hreader/dsh-bundle` weaves the language spec into the system prompt, effective from session start. Install (`--profile` is required):
   ```bash
   dsh plugin --profile <profile> add "$(pwd)/packages/dsh-bundle"
   ```
-  `config.workspace` 不写就按宿主进程 cwd 找项目风格，并在 stderr 打一行 WARNING 说明用的是哪个目录；未知 `styleId` 会直接报错并列出可用 id。
-- **Pi**：`pi-hreader.ts` 扩展的 `/hr-style` 切换当前会话绑定的风格。
-- **MCP**：prompt `use-hreader-style`，由宿主按需拉取。
+  Without `config.workspace` it resolves the project style by the host process cwd and prints a `WARNING` line on stderr naming the directory used; an unknown `styleId` errors out directly and lists the available ids.
+- **MCP**: the `use-hreader-style` prompt, pulled by the host on demand.
 
-换句话说：**当用户问"怎么让 AI 一直按这个风格写"，先看它跑在哪个宿主里**——`dsh`/Pi/MCP 都有现成通道，不要再让 Agent 每轮手工 `style --tone`。
+A related but different host surface: **Pi**'s `pi-hreader.ts` extension exposes `/hr-style`, which switches the **visual theme** of the currently bound document (it does not carry the language spec).
 
-## 常见错误对照
+In other words: **when the user asks "how do I make the AI always write in this style", first check which host it runs in** — `dsh`/MCP have ready-made channels for the tone; don't make the agent hand-run `style --tone` every round.
 
-| 报错 code                | 含义                     | 正确做法                           |
-| ------------------------ | ------------------------ | ---------------------------------- |
-| `node_not_found`         | id 打错或该标题没有 id   | 先 `outline`，按输出的 id 取       |
-| `invalid_fragment`       | 多根 / 纯文本 / 注释开头 | 包一层根元素，只留一个             |
-| `forbidden_content`      | 命中可执行内容           | 换成 `<pre class="code">` 展示代码 |
-| `path_outside_workspace` | 路径逃出 workspace       | 用 `--workspace` 指向文档所在目录  |
-| `locked`                 | 另一个进程正在写同一文件 | 等 2 秒重试；连续失败就停下问用户  |
-| `not_a_file`             | 路径不存在或不是文件     | 先确认文件路径                     |
+## Error reference
 
-## 不要做的事
+| Error code               | Meaning                                  | Correct move                                      |
+| ------------------------ | ---------------------------------------- | ------------------------------------------------- |
+| `node_not_found`         | id typo, or that heading has no id       | run `outline` first and take ids from its output  |
+| `invalid_selector`       | string is both a selector and a node id  | write `#id` or `[data-hr-id="…"]` explicitly      |
+| `invalid_fragment`       | multi-root / bare text / comment first   | wrap it in a single root element                  |
+| `forbidden_content`      | executable content matched               | show code in `<pre class="code">` instead         |
+| `path_outside_workspace` | path escapes the workspace               | point `--workspace` at the document's directory   |
+| `locked`                 | another process is writing the same file | retry after 2s; if it keeps failing, stop and ask |
+| `not_a_file`             | path doesn't exist or isn't a file       | confirm the file path first                       |
+| `needs_normalize`        | document lacks `data-hr-id`s             | run `hr normalize <file> --write` first           |
+| `file_exists`            | target file already exists               | add `--force`, or pick another path               |
 
-- 不要替用户开外来文档的权限：「脚本」「联网」两个维度只由用户在阅读器界面里开（底栏开关或全局设置）。agent 没有任何写权限的工具或命令；`hr serve` 的 `/api/doc/<file>/info` 里能看到 `permissions` 字段，但那只是只读状态——脚本档 grant 落在 `<workspace>/.hreader/trust.json`（按路径记），全局模式在 `~/.hreader/permissions.json`，两处都不该由你写。
-- 不要 `read` 整篇再整体 `write`：那就绕过了节点机制，也会丢掉未改动的字节。
-- 不要在 `--html` 里塞含换行的长片段：用 `--html-file`。
-- 不要为了绕开 `forbidden_content` 改写 `<script>`：直接告诉用户这段需要人工处理。
-- 不要连续 `undo` 超过历史保留数（默认 10 份）。
+## Don'ts
+
+- Do not grant permissions on foreign documents for the user: the two dimensions 「脚本」 ("scripts") and 「联网」 ("network") are only toggled by the user inside the reader UI (the bottom-bar toggle or global settings). Agents have no tool or command that grants them; `hr serve`'s `/api/doc/<docId>/info` exposes a `permissions` field, but that is read-only state — per-document grants live in `<workspace>/.hreader/trust.json` (keyed by path) and the global mode lives in `~/.hreader/permissions.json`; neither is yours to write.
+- Do not `read` the whole document and `write` it back wholesale: that bypasses the node mechanism and loses the untouched bytes.
+- Do not stuff long fragments with newlines into `--html`: use `--html-file`.
+- Do not rewrite `<script>` to dodge `forbidden_content`: tell the user this part needs manual handling.
+- Do not `undo` more times than the retained history depth (10 snapshots by default).

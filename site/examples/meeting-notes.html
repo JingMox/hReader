@@ -2,16 +2,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>产品周会纪要 · 带录音的笔记</title>
-<style id="hr-theme">/* Atelier Editorial：纸感日间 / 暗夜双模（自动 + 手动覆盖），正文 68ch、侧栏 280px、≤420px 折叠单列。 */
-/* 对比度按 WCAG 2.1 公式（sRGB → 相对亮度 → (L1+0.05)/(L2+0.05)）计算，正文/背景均 ≥ 4.5:1。 */
+<style id="hr-theme">/* Atelier Editorial: paper-textured light / dark dual mode (auto + manual override); body 68ch, sidebar 280px, collapses to a single column at ≤420px. */
+/* Contrast computed per the WCAG 2.1 formula (sRGB → relative luminance → (L1+0.05)/(L2+0.05)); body text/background all ≥ 4.5:1. */
 
 :root,
 :root[data-hr-mode="light"] {
   --hr-bg: #faf8f5;
-  --hr-fg: #1b1a17; /* 正文/背景 = 16.42:1 */
-  --hr-muted: #6a645d; /* 次要文字/背景 = 5.51:1 */
-  --hr-accent: #8a4a22; /* 强调色/背景 = 6.43:1 */
-  --hr-warning: #a3341a; /* 警示色/背景 = 6.47:1 */
+  --hr-fg: #1b1a17; /* body/background = 16.42:1 */
+  --hr-muted: #6a645d; /* muted text/background = 5.51:1 */
+  --hr-accent: #8a4a22; /* accent/background = 6.43:1 */
+  --hr-warning: #a3341a; /* warning/background = 6.47:1 */
   --hr-border: #ddd6cb;
   --hr-code-bg: #f0ece3;
   --hr-measure: 68ch;
@@ -27,18 +27,18 @@
   --hr-mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
 }
 
-/* 手动深色：`data-hr-mode="dark"` 优先于系统偏好（三条路径之一）。 */
+/* Manual dark: `data-hr-mode="dark"` beats the system preference (one of three paths). */
 :root[data-hr-mode="dark"] {
   --hr-bg: #121316;
-  --hr-fg: #e9e6e1; /* 正文/背景 = 14.92:1 */
-  --hr-muted: #9d968c; /* 次要文字/背景 = 6.35:1 */
-  --hr-accent: #e0a97a; /* 强调色/背景 = 8.96:1 */
-  --hr-warning: #ff9b73; /* 警示色/背景 = 9.01:1 */
+  --hr-fg: #e9e6e1; /* body/background = 14.92:1 */
+  --hr-muted: #9d968c; /* muted text/background = 6.35:1 */
+  --hr-accent: #e0a97a; /* accent/background = 8.96:1 */
+  --hr-warning: #ff9b73; /* warning/background = 9.01:1 */
   --hr-border: #2b2d33;
   --hr-code-bg: #1b1d22;
 }
 
-/* 自动深色：`prefers-color-scheme` 只在没有手动声明浅色时生效（第三条路径）。 */
+/* Auto dark: `prefers-color-scheme` applies only when light is not manually declared (the third path). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-hr-mode="light"]) {
     --hr-bg: #121316;
@@ -69,7 +69,7 @@ body {
   padding: var(--hr-space-5) var(--hr-space-3);
 }
 
-/* 没有 min-width: 0，长 token 会把 280px 侧栏撑破 → 320px 视宽必然横滚。 */
+/* Without min-width: 0, long tokens would blow out the 280px sidebar → guaranteed horizontal scroll at 320px viewport. */
 .hr-layout > * {
   min-width: 0;
 }
@@ -82,7 +82,7 @@ body {
 }
 
 article[data-hr-id] {
-  max-width: 68ch; /* = --hr-measure：结构断言要认字面量，令牌留给 grid */
+  max-width: 68ch; /* = --hr-measure: structural assertions expect the literal; the token is left for grid */
   overflow-wrap: anywhere;
 }
 
@@ -213,7 +213,7 @@ article[data-hr-id] blockquote {
   color: var(--hr-muted);
 }
 
-/* 组件细节：KPI 大数字、时间线节点、标题层级、侧栏卡片（只增不改，上面的结构规则保持原样）。 */
+/* Component details: KPI big numbers, timeline nodes, heading levels, sidebar cards (additive only — the structural rules above stay untouched). */
 article[data-hr-id] > h1 {
   font-size: 2.25rem;
   line-height: 1.2;
@@ -325,7 +325,7 @@ article[data-hr-id] > header p {
   text-underline-offset: 0.2em;
 }
 
-/* ≤420px 视宽折叠成单列：结构断言只查这条断点与 grid-template-columns 的单值。 */
+/* ≤420px collapses to a single column: structural assertions only check this breakpoint and the single-value grid-template-columns. */
 @media (max-width: 420px) {
   .hr-layout {
     grid-template-columns: minmax(0, 1fr);
