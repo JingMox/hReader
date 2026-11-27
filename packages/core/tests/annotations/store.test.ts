@@ -199,6 +199,43 @@ describe("readAnnotations · 超限截断", () => {
       `note 长度 ${String(NOTE_LIMIT + 1)} 超过 ${String(NOTE_LIMIT)}，已截断`,
     ]);
   });
+
+  it("should cut at the code-point boundary when an emoji straddles each limit", () => {
+    const pair = "😀";
+    const read = readAnnotations(
+      docWith(
+        payloadOf({
+          nodeId: "hr-b",
+          createdAt: "t",
+          note: `${"n".repeat(NOTE_LIMIT - 1)}${pair}`,
+          anchor: {
+            exact: `${"e".repeat(ANCHOR_LIMITS.exact - 1)}${pair}`,
+            prefix: `${"p".repeat(ANCHOR_LIMITS.prefix - 1)}${pair}`,
+            suffix: `${"s".repeat(ANCHOR_LIMITS.suffix - 1)}${pair}`,
+          },
+        }),
+      ),
+    );
+
+    const [annotation] = read.annotations;
+    // Cutting inside the pair would leave a lone high surrogate; each field must drop it and
+    // land one code unit short of the limit instead.
+    const cuts = [
+      annotation?.anchor.exact,
+      annotation?.anchor.prefix,
+      annotation?.anchor.suffix,
+      annotation?.note,
+    ];
+    expect(cuts).toEqual([
+      "e".repeat(ANCHOR_LIMITS.exact - 1),
+      "p".repeat(ANCHOR_LIMITS.prefix - 1),
+      "s".repeat(ANCHOR_LIMITS.suffix - 1),
+      "n".repeat(NOTE_LIMIT - 1),
+    ]);
+    for (const cut of cuts) {
+      expect(cut).not.toMatch(/[\uD800-\uDFFF]/u);
+    }
+  });
 });
 
 describe("writeAnnotations · 只拼元数据区间", () => {

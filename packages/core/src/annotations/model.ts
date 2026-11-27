@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { sha256Hex } from "../io/digest";
 import { jsonObject, looseString } from "../schema";
+import { cutAtCodePoint } from "../text/truncate";
 
 /** 一段文本锚点：`exact` 是要高亮的原文，`prefix`/`suffix` 用来在多处命中时消歧。 */
 export interface TextAnchor {
@@ -78,8 +79,6 @@ export const annotationIdOf = (input: {
   return `an-${sha256Hex(new TextEncoder().encode(material)).slice(0, 8)}`;
 };
 
-const clipped = (value: string, limit: number): string => value.slice(0, limit);
-
 const truncatedDiagnostic = (field: string, length: number, limit: number): string =>
   `anchor.${field} 长度 ${String(length)} 超过 ${String(limit)}，已截断`;
 
@@ -97,7 +96,7 @@ export const normalizeAnchor = (raw: unknown): AnchorOutcome | undefined => {
   const bound = (field: keyof typeof ANCHOR_LIMITS, value: string): string => {
     if (value.length <= ANCHOR_LIMITS[field]) return value;
     diagnostics.push(truncatedDiagnostic(field, value.length, ANCHOR_LIMITS[field]));
-    return clipped(value, ANCHOR_LIMITS[field]);
+    return cutAtCodePoint(value, ANCHOR_LIMITS[field]);
   };
   // 诊断顺序固定为 exact → prefix → suffix，与字段在界面上的出现顺序一致。
   return {
@@ -121,7 +120,7 @@ const noteOf = (raw: unknown, diagnostics: string[]): string => {
   const value = looseString.parse(raw) ?? "";
   if (value.length <= NOTE_LIMIT) return value;
   diagnostics.push(`note 长度 ${String(value.length)} 超过 ${String(NOTE_LIMIT)}，已截断`);
-  return clipped(value, NOTE_LIMIT);
+  return cutAtCodePoint(value, NOTE_LIMIT);
 };
 
 interface ParseOutcome {
