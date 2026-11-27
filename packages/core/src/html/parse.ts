@@ -15,6 +15,7 @@ import {
   type HtmlAttribute,
   type HtmlNode,
   type HtmlElementNode,
+  type LeafSpan,
   META_SCRIPT_ID,
   type ParsedHtml,
   type SourceSpan,
@@ -142,12 +143,21 @@ const componentDiagnostic = (element: P5Element, context: ParseContext, path: st
 };
 
 /** 只处理叶子：元素先建骨再由调用方填子，深文档下也不会递归爆栈。 */
-const leafNode = (source: P5Leaf): HtmlNode => {
+const leafNode = (source: P5Leaf, context: ParseContext): HtmlNode => {
+  const location = context.locations ? source.sourceCodeLocation : undefined;
+  const span: LeafSpan | undefined =
+    location?.startOffset === undefined
+      ? undefined
+      : { start: location.startOffset, end: location.endOffset };
   if (source.nodeName === "#text") {
-    return { kind: "text", value: source.value };
+    return span === undefined
+      ? { kind: "text", value: source.value }
+      : { kind: "text", value: source.value, span };
   }
   if (source.nodeName === "#comment") {
-    return { kind: "comment", data: source.data };
+    return span === undefined
+      ? { kind: "comment", data: source.data }
+      : { kind: "comment", data: source.data, span };
   }
   return {
     kind: "doctype",
@@ -198,7 +208,7 @@ const pushChildTasks = (
 const openSource = (task: OpenTask, context: ParseContext, stack: OpenTask[]): HtmlNode => {
   const { source, parentPath, index } = task;
   if (isLeaf(source)) {
-    return leafNode(source);
+    return leafNode(source, context);
   }
   if (isElement(source)) {
     const path = joinPath(parentPath, `${source.tagName}[${String(index)}]`);

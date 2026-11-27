@@ -102,10 +102,10 @@ const moved = { ok: false, code: "target_moved" } as const;
  * run: one hit wins outright, several go to the closest path (step edit distance), a tie
  * means the target is gone for good.
  */
-export const locateBlock = (parsed: ParsedHtml, address: string): LocateResult => {
+export const locateBlock = (parsed: ParsedHtml, address: string, html: string): LocateResult => {
   const target = parseAddress(address);
   if (target === undefined) return { ok: false, code: "invalid_selector" };
-  const entries = collectBlocks(parsed.root);
+  const entries = collectBlocks(parsed.root, html);
   const element = elementByPath(parsed.root, target.steps);
   const direct = entries.find((entry) => entry.node === element);
   if (direct !== undefined) {
@@ -134,6 +134,6 @@ export const locateBlock = (parsed: ParsedHtml, address: string): LocateResult =
 
 /** `resolveAddress` answers with a value, never throws: callers branch on `ok`. */
 export const resolveAddress = (html: string, address: string): ResolveResult => {
-  const located = locateBlock(parseHtml(html, { locations: true }), address);
+  const located = locateBlock(parseHtml(html, { locations: true }), address, html);
   return located.ok ? { ok: true, block: infoOf(located.entry) } : located;
 };

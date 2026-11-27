@@ -115,7 +115,10 @@ describe("listBlocks · leaf-block detection", () => {
     "summary",
   ])("should address a leaf <%s> element", (tag) => {
     const wrapper = tag === "div" ? "section" : "div";
-    expect(tagsOf(`<${wrapper}><${tag}>x</${tag}></${wrapper}>`)).toEqual([tag]);
+    // Text inside <table> fosters out to the wrapper, which would leave a foreign leaf
+    // inside the table's range (D58 unlists it) — give the table legal cell content.
+    const inner = tag === "table" ? "<tr><td>x</td></tr>" : "x";
+    expect(tagsOf(`<${wrapper}><${tag}>${inner}</${tag}></${wrapper}>`)).toEqual([tag]);
   });
 
   it("should address an empty section as a leaf block", () => {

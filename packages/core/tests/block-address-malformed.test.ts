@@ -52,7 +52,7 @@ describe("malformed HTML", () => {
 
   it("should patch a block after a BOM byte-for-byte", () => {
     const inner = "<article><p>一</p><p>二</p></article>";
-    const html = `﻿${inner}`;
+    const html = `\uFEFF${inner}`;
     const [first] = listBlocks(html);
     expect(first).toBeDefined();
     if (first === undefined) return;
@@ -62,7 +62,7 @@ describe("malformed HTML", () => {
       action: "replace",
       html: "<p>1</p>",
     });
-    expect(outcome.html).toBe("﻿<article><p>1</p><p>二</p></article>");
+    expect(outcome.html).toBe("\uFEFF<article><p>1</p><p>二</p></article>");
   });
 
   it("should keep CRLF bytes outside the target range untouched", () => {
@@ -109,6 +109,29 @@ describe("source ownership (D58)", () => {
     // The fostered <pre>'s start tag sits inside the table's range: the table goes
     // unlisted, the fostered block itself keeps exactly its own bytes and stays listed.
     ['<html><body><footer><thead>x</thead><table><pre attr="v"></pre></body></html>', ["pre"]],
+    // Fostered text out of the table belongs to body — the table's range is not its own.
+    ["<body><table>abc<tr><td>x</td></tr></table>", []],
+    // Comments/PIs do not foster: they stay inside the element's subtree, so these bytes
+    // are owned and the table keeps them.
+    ["<body><table><!-- c --><tr><td>x</td></tr></table>", ["table"]],
+    ["<body><table><?pi?><tr><td>x</td></tr></table>", ["table"]],
+    // An ignored start tag folded into the text or dropped outright is unowned markup.
+    ["<p>x<body>y", []],
+    ["<p>x<td>y</p>", []],
+    // `</` followed by a non-letter is a bogus comment leaf inside the block, not an
+    // end-tag token — it is owned content, so the block stays listed.
+    ["<p>a</2>b", ["p"]],
+    // `</>` is dropped by the parser entirely — no node, no location, unowned bytes.
+    ["<p></>", []],
+    ["<p>a</>b", []],
+    // A trailing `<` with no following byte is literal text inside an owned leaf — the
+    // block keeps exactly its own bytes.
+    ["<p>x<", ["p"]],
+    // `</`-looking bytes inside owned comments and raw-text/RCDATA children are content:
+    // the ranges are skipped, and the blocks keep exactly their own bytes.
+    ["<div>x<!-- c </p> -->y</div>", ["div"]],
+    ["<div><script>a</b>x</script></div>", ["div"]],
+    ["<div><textarea>a</b>x</textarea></div>", ["div"]],
   ])("should list only owned blocks in %s", (html, tags) => {
     const blocks = listBlocks(html);
     expect(blocks.map((b) => b.tag)).toEqual(tags);

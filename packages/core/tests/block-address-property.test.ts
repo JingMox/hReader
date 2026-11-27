@@ -29,7 +29,7 @@ const patchOrSkip = (html: string, request: BlockPatchRequest): BlockPatchOutcom
   try {
     return applyBlockPatch(html, request);
   } catch (error) {
-    const code = Reflect.get(Object(error), "code");
+    const code: unknown = Reflect.get(Object(error), "code");
     if (
       code === "content_model_conflict" ||
       code === "invalid_fragment" ||
@@ -191,11 +191,9 @@ const tagIndexOf = (html: string): TagIndex => {
       for (const child of children) walk(child, node.tagName);
       return;
     }
-    if (node.sourceCodeLocation !== undefined) {
-      const range: [number, number] = [
-        node.sourceCodeLocation.startOffset,
-        node.sourceCodeLocation.endOffset,
-      ];
+    const location = node.sourceCodeLocation;
+    if (location !== null && location !== undefined) {
+      const range: [number, number] = [location.startOffset, location.endOffset];
       if (
         node.nodeName === "#comment" ||
         (node.nodeName === "#text" &&
@@ -229,11 +227,7 @@ const ownedIndexOf = (html: string, start: number, end: number): OwnedIndex | un
   const find = (node: P5Node): void => {
     if (isP5Element(node)) {
       const location = node.sourceCodeLocation;
-      if (
-        location?.startTag !== undefined &&
-        location.startTag.startOffset === start &&
-        location.endOffset === end
-      ) {
+      if (location?.startTag?.startOffset === start && location.endOffset === end) {
         matches.push(node);
       }
       const children = "content" in node ? node.content.childNodes : p5ChildrenOf(node);
@@ -262,11 +256,9 @@ const ownedIndexOf = (html: string, start: number, end: number): OwnedIndex | un
       for (const child of children) collect(child, node.tagName);
       return;
     }
-    if (node.sourceCodeLocation !== undefined) {
-      const range: [number, number] = [
-        node.sourceCodeLocation.startOffset,
-        node.sourceCodeLocation.endOffset,
-      ];
+    const location = node.sourceCodeLocation;
+    if (location !== null && location !== undefined) {
+      const range: [number, number] = [location.startOffset, location.endOffset];
       if (
         node.nodeName === "#comment" ||
         (node.nodeName === "#text" &&
@@ -454,7 +446,7 @@ describe("property · malformed HTML (D58 ownership)", () => {
             action: "replace",
             html: `<${block.tag}>r</${block.tag}>`,
           });
-          if (outcome === undefined || outcome.address === undefined) continue;
+          if (outcome?.address === undefined) continue;
           // Replace writes the fragment's serialized form, so undo is byte-exact only
           // for canonical slices — `<p>` serializes to `<p></p>`. Skip the rest.
           const slice = html.slice(block.start, block.end);
@@ -463,7 +455,7 @@ describe("property · malformed HTML (D58 ownership)", () => {
             action: "replace",
             html: slice,
           });
-          if (selfReplace === undefined || selfReplace.html !== html) continue;
+          if (selfReplace?.html !== html) continue;
           const back = patchOrSkip(outcome.html, {
             address: outcome.address,
             action: "replace",

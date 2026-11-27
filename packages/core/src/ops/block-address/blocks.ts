@@ -5,7 +5,13 @@
 
 import { TEXT_SKIP_TAGS } from "../../annotations/body-text";
 import { SELECTOR_LIMITS, type SelectorStep } from "../../annotations/relocate";
-import type { HtmlElementNode, HtmlNode, SourceSpan } from "../../html/constants";
+import {
+  RAW_TEXT_TAGS,
+  RCDATA_TAGS,
+  type HtmlElementNode,
+  type HtmlNode,
+  type SourceSpan,
+} from "../../html/constants";
 import { parseHtml } from "../../html/parse";
 import { ZERO_SPAN } from "../../html/span";
 import { drainStack } from "../../html/stack";
@@ -25,7 +31,7 @@ export interface BlockEntry {
   /** The body-text-domain text, whitespace-collapsed and trimmed — basis of both fingerprint and preview. */
   readonly text: string;
   readonly fingerprint: string;
-  /** The byte range a patch may touch — the element's own subtree only (see `patchRangeOf`). */
+  /** The byte range a patch may touch — the element's own subtree only (see `ownedRangeOf`). */
   readonly range: SourceSpan;
 }
 
@@ -175,31 +181,135 @@ const blockTextOf = (node: HtmlElementNode): string => {
   return normalizeWhitespace(parts.join(""));
 };
 
+interface OwnedLeaf {
+  readonly start: number;
+  readonly end: number;
+  readonly node: HtmlNode;
+}
+
 /**
- * The range a patch may write over, `[startTag.start, subtreeEnd)`. parse5 stretches an
- * element with no end tag past `</body>`/`</html>` and trailing content, so `end` is clamped
- * to the `innerEnd` of the nearest tree ancestor that still contains the block's start —
- * a real ancestor's content always ends after the start tag of an element inside it, while
- * synthesized ancestors (no source bytes at all) carry a zero span and must not clamp.
- * `innerEnd === end` marks "no end tag in source" (see spanOfLocation).
- *
- * Returns `undefined` when the element has no start tag of its own in the source: a real
- * tag costs bytes (`start < innerStart`), while synthesized nodes and implicit-close split
- * pieces carry a content range (`start >= innerStart`) or no location at all — patching
- * them would write over bytes that belong to another element.
+ * The doc-wide table `ownedRangeOf` validates a candidate range against: every located
+ * text/comment leaf. Built once per `collectBlocks` pass — fostered leaves arrive out
+ * of source order, so the list is sorted by start for a binary-search entry point.
+ * Tag ownership needs no table: a member's own tag ranges are skipped ranges in the
+ * byte scan, so any tag-shaped byte left over is foreign or ignored — both disqualify.
  */
-const patchRangeOf = (chain: Chain): SourceSpan | undefined => {
-  const span = { ...ZERO_SPAN, ...chain.node.span };
-  if (span.start >= span.innerStart) return undefined;
-  if (span.innerEnd !== span.end) return span;
-  let end = span.end;
-  for (let link: Chain | undefined = chain.up; link !== undefined; link = link.up) {
-    const innerEnd = { ...ZERO_SPAN, ...link.node.span }.innerEnd;
-    // A real ancestor's content always extends past the block's own start, so an innerEnd
-    // at or before it belongs to a synthesized (zero-span) ancestor and must not clamp.
-    if (innerEnd > span.start && innerEnd < end) end = innerEnd;
+const leafIndexOf = (root: HtmlNode): readonly OwnedLeaf[] => {
+  const leaves: OwnedLeaf[] = [];
+  const stack: HtmlNode[] = [root];
+  for (const node of drainStack(stack)) {
+    if (node.kind === "element" || node.kind === "document") {
+      pushReversed(node.children, stack);
+      continue;
+    }
+    if (node.kind === "text" || node.kind === "comment") {
+      /* v8 ignore next — under locations:true every source leaf carries a span */
+      if (node.span !== undefined) {
+        leaves.push({ start: node.span.start, end: node.span.end, node });
+      }
+    }
   }
-  return { ...span, end, innerEnd: end };
+  leaves.sort((a, b) => a.start - b.start);
+  return leaves;
+};
+
+/** First index in `leaves` whose start is `>= at` — the leaves array is sorted by start. */
+const firstLeafAt = (leaves: readonly OwnedLeaf[], at: number): number => {
+  let lo = 0;
+  let hi = leaves.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const leaf = leaves[mid];
+    /* v8 ignore next — `mid < hi <= leaves.length`: an in-bounds index always yields a leaf */
+    if (leaf !== undefined && leaf.start < at) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+};
+
+const isAsciiLetter = (char: string | undefined): boolean =>
+  char !== undefined && ((char >= "a" && char <= "z") || (char >= "A" && char <= "Z"));
+
+/**
+ * The range a patch may write over — only when every byte in `[span.start, span.end)` is
+ * provably the block's own (D58 source-ownership validation: when unsure, do not list).
+ * parse5 stretches unclosed elements past ignored end tags, synthesized ancestors carry
+ * truncated spans, and fostered content lands inside ranges — none of those bytes can be
+ * trusted to a splice, so the candidate range must prove its contents instead:
+ *   - the element needs a real start tag (`start < innerStart`; synthesized nodes and
+ *     implicit-close split pieces carry a content range and are never listed),
+ *   - no tag-shaped byte may appear outside the subtree's own tag ranges — every member
+ *     tag is a skipped range, so a leftover `<`+letter or `</` is a foreign tag, an
+ *     ignored tag (`<body>`, `</>`, stray `</body>`), or dropped bytes with no node,
+ *   - every located text/comment leaf overlapping the range belongs to the subtree —
+ *     fostered-out content and foreign comments (`<!</…`, `</x` bogus comments) fail.
+ * The subtree's own tag ranges, comments and raw-text/RCDATA text are skipped ranges in
+ * the scan: `</` inside an attribute value or a `<script>` body is content, not markup.
+ */
+const ownedRangeOf = (
+  node: HtmlElementNode,
+  leaves: readonly OwnedLeaf[],
+  html: string,
+): SourceSpan | undefined => {
+  const span = { ...ZERO_SPAN, ...node.span };
+  // Template-content elements carry a degenerate span — `end === start` while the start
+  // tag itself sits at `[start, innerStart)` past `end` — so `end > start` and
+  // `innerStart <= end` are checked separately from the content-range gate.
+  if (span.start >= span.innerStart) return undefined;
+  if (span.end <= span.start || span.innerStart > span.end) return undefined;
+  const members = new Set<HtmlNode>();
+  const skips: (readonly [number, number])[] = [];
+  const stack: HtmlNode[] = [node];
+  for (const current of drainStack(stack)) {
+    members.add(current);
+    if (current.kind === "element") {
+      const own = { ...ZERO_SPAN, ...current.span };
+      if (own.start < own.innerStart) skips.push([own.start, own.innerStart]);
+      if (own.innerEnd < own.end) skips.push([own.innerEnd, own.end]);
+      if (RAW_TEXT_TAGS.has(current.tag) || RCDATA_TAGS.has(current.tag)) {
+        for (const child of current.children) {
+          /* v8 ignore next — raw-text/RCDATA children are always located text nodes */
+          if (child.kind === "text" && child.span !== undefined) {
+            skips.push([child.span.start, child.span.end]);
+          }
+        }
+      }
+      pushReversed(current.children, stack);
+      continue;
+    }
+    if (current.kind === "comment") {
+      /* v8 ignore next — under locations:true every source leaf carries a span */
+      if (current.span !== undefined) skips.push([current.span.start, current.span.end]);
+    }
+  }
+  const { start, end } = span;
+  // The tag-byte scan runs before the leaf check: a foreign comment/PI inside the range
+  // surfaces as `<!`/`<?` here (it is also a foreign leaf — either way disqualifies).
+  skips.sort((a, b) => a[0] - b[0]);
+  let skip = 0;
+  for (let at = start; at < end; at += 1) {
+    let covering = skips[skip];
+    while (covering !== undefined && covering[1] <= at) {
+      skip += 1;
+      covering = skips[skip];
+    }
+    if (covering !== undefined && covering[0] <= at) {
+      at = covering[1] - 1;
+      continue;
+    }
+    if (html[at] !== "<") continue;
+    const next = html[at + 1];
+    // `<` + letter starts a tag, `</` an end tag or dropped bytes — either way the byte
+    // is markup no member owns (member tags are skipped above). Other `<?`/`<!` shapes
+    // are comment-leaf bytes; a stray `<` in text is owned content.
+    if (isAsciiLetter(next) || next === "/") return undefined;
+  }
+  for (let at = firstLeafAt(leaves, start); ; at += 1) {
+    const leaf = leaves[at];
+    if (leaf === undefined || leaf.start >= end) break;
+    if (!members.has(leaf.node)) return undefined;
+  }
+  return span;
 };
 
 const entryOf = (chain: Chain, steps: readonly SelectorStep[], range: SourceSpan): BlockEntry => {
@@ -214,12 +324,13 @@ const entryOf = (chain: Chain, steps: readonly SelectorStep[], range: SourceSpan
 };
 
 /**
- * All leaf blocks in document order. Two passes over the tree (post-order "has a block
- * descendant" map, then pre-order chain walk) keep it O(tree) instead of re-scanning each
- * candidate's subtree.
+ * All leaf blocks in document order, ranges validated against `html` (D58 ownership).
+ * Three passes over the tree — the "has a block descendant" map, the ownership index,
+ * then the pre-order chain walk — keep it O(tree + range bytes) per pass.
  */
-export const collectBlocks = (root: HtmlNode): readonly BlockEntry[] => {
+export const collectBlocks = (root: HtmlNode, html: string): readonly BlockEntry[] => {
   const inside = blockInsideOf(root);
+  const leaves = leafIndexOf(root);
   const entries: BlockEntry[] = [];
   const stack: { readonly node: HtmlNode; readonly chain: Chain | undefined }[] = [
     { node: root, chain: undefined },
@@ -232,7 +343,7 @@ export const collectBlocks = (root: HtmlNode): readonly BlockEntry[] => {
     if (node.kind === "element" && BLOCK_ADDRESS_TAGS.has(node.tag) && inside.get(node) !== true) {
       /* v8 ignore next — the element branch just assigned `own` */
       if (own !== undefined) {
-        const range = patchRangeOf(own);
+        const range = ownedRangeOf(own.node, leaves, html);
         const steps = stepsOf(root, own);
         if (range !== undefined && expressibleSteps(steps)) {
           entries.push(entryOf(own, steps, range));
@@ -265,4 +376,4 @@ export const infoOf = (entry: BlockEntry): BlockInfo => ({
 
 /** Document-order list of every addressable leaf block with its source byte range. */
 export const listBlocks = (html: string): readonly BlockInfo[] =>
-  collectBlocks(parseHtml(html, { locations: true }).root).map(infoOf);
+  collectBlocks(parseHtml(html, { locations: true }).root, html).map(infoOf);

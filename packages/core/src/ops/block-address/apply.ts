@@ -60,7 +60,7 @@ const locateError = (address: string, code: "target_moved" | "invalid_selector")
 
 /** The address of the first leaf block fully inside `[from, to)` of `html` — the written range. */
 const firstBlockAddressIn = (html: string, from: number, to: number): string | undefined => {
-  const entries = collectBlocks(parseHtml(html, { locations: true }).root);
+  const entries = collectBlocks(parseHtml(html, { locations: true }).root, html);
   for (const entry of entries) {
     if (entry.range.start >= from && entry.range.end <= to) return formatAddress(entry);
   }
@@ -92,7 +92,7 @@ export const applyBlockPatch = (html: string, request: BlockPatchRequest): Block
   }
   const fragmentRequest = fragmentRequestOf(request);
   const parsed = parseHtml(html, { locations: true });
-  const located = locateBlock(parsed, request.address);
+  const located = locateBlock(parsed, request.address, html);
   if (!located.ok) throw locateError(request.address, located.code);
   const span = located.entry.range;
   if (fragmentRequest.action === "delete") {
