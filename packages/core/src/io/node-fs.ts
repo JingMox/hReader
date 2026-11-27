@@ -2,6 +2,7 @@
 
 import { existsSync } from "node:fs";
 import {
+  link,
   lstat,
   mkdir,
   open,
@@ -9,6 +10,7 @@ import {
   readdir,
   realpath,
   rename,
+  rmdir,
   unlink,
   writeFile,
   type FileHandle,
@@ -50,11 +52,17 @@ const nodeFileSystem: FileSystem = {
   rename: async (from, to) => {
     await rename(from, to);
   },
+  link: async (from, to) => {
+    await link(from, to);
+  },
   unlink: async (path) => {
     await unlink(path);
   },
   mkdir: async (path) => {
     await mkdir(path, { recursive: true });
+  },
+  rmdir: async (path) => {
+    await rmdir(path);
   },
   lstat: async (path) => lstat(path),
   readdir: async (path) => readdir(path),

@@ -78,7 +78,7 @@ export const removeStaleTmp = async (
 };
 
 /** 写 tmp 前与落盘前各复核一次父目录真实路径；父目录中途被换成外链就停手。 */
-const assertParentInside = async (
+export const assertParentInside = async (
   deps: PatchDeps,
   dir: string,
   workspace: string,

@@ -218,3 +218,27 @@ export {
   newDocumentHtml,
 } from "./layout";
 export type { ComponentRule, DocKind, NewDocumentInput } from "./layout";
+
+// ---- Template system: list/read/create over three-tier template sources ----
+export {
+  createFromTemplate,
+  listTemplates,
+  nodeTemplateDeps,
+  readTemplate,
+  TEMPLATE_ID,
+  TEMPLATE_MAX_BYTES,
+  TEMPLATE_MAX_FILES,
+} from "./templates";
+export type {
+  CreateFromTemplateInput,
+  CreateFromTemplateResult,
+  LoadedTemplate,
+  TemplateDeps,
+  TemplateDiagnostic,
+  TemplateFormat,
+  TemplateList,
+  TemplateManifest,
+  TemplateRoots,
+  TemplateSource,
+  TemplateSummary,
+} from "./templates";

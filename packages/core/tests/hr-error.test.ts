@@ -50,6 +50,8 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   content_model_conflict: true,
   // 同一文档里两个元素共用同一个 `data-hr-id`，读/写入口直接 exit 2。
   duplicate_id: true,
+  unknown_template: true,
+  invalid_template: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {

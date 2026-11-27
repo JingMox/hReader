@@ -10,6 +10,7 @@ import { nodePatchDeps } from "../../src/io/node-fs";
 import type { OpenFile } from "../../src/io/ports";
 import {
   codeOfAsync,
+  existsAt,
   readBytesAt,
   readTextAt,
   realDirOf,
@@ -25,6 +26,7 @@ describe("nodePatchDeps · 默认依赖", () => {
   it("should expose the full port and a real clock and sleep", async () => {
     expect(Object.keys(fsApi).sort()).toEqual([
       "close",
+      "link",
       "lstat",
       "mkdir",
       "open",
@@ -32,6 +34,7 @@ describe("nodePatchDeps · 默认依赖", () => {
       "readdir",
       "realpath",
       "rename",
+      "rmdir",
       "unlink",
       "writeFile",
       "writeFileAtomic",
@@ -121,6 +124,13 @@ describe("node-fs · 其余端口", () => {
       await fsApi.unlink(join(nested, "y.html"));
       expect(await codeOfAsync(() => fsApi.unlink(join(nested, "y.html")))).toBe("ENOENT");
       expect(sha1Of(await fsApi.realpath(nested))).toHaveLength(40);
+      // rmdir only takes empty dirs: a populated one is ENOTEMPTY until it is emptied.
+      await fsApi.mkdir(join(dir, "hold"));
+      await writeTextAt(join(dir, "hold", "z.html"), "z");
+      expect(await codeOfAsync(() => fsApi.rmdir(join(dir, "hold")))).toBe("ENOTEMPTY");
+      await fsApi.unlink(join(dir, "hold", "z.html"));
+      await fsApi.rmdir(join(dir, "hold"));
+      expect(await existsAt(join(dir, "hold"))).toBe(false);
     });
   });
 
@@ -128,6 +138,23 @@ describe("node-fs · 其余端口", () => {
     await withWorkspace(async (dir) => {
       await writeTextAt(join(dir, "a.html"), "x");
       expect(await codeOfAsync(() => fsApi.readFile(join(dir, "missing.html")))).toBe("ENOENT");
+    });
+  });
+});
+
+describe("node-fs · link", () => {
+  it("should hard-link and refuse to overwrite an existing target", async () => {
+    const link = fsApi.link;
+    if (link === undefined) throw new Error("node fs must provide link");
+    await withWorkspace(async (dir) => {
+      const from = join(dir, "a.html");
+      const to = join(dir, "b.html");
+      await writeTextAt(from, "shared");
+
+      await link(from, to);
+      expect(await readTextAt(to)).toBe("shared");
+      expect(statSync(from).ino).toBe(statSync(to).ino);
+      expect(await codeOfAsync(() => link(from, to))).toBe("EEXIST");
     });
   });
 });

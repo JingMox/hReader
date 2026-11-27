@@ -8,8 +8,10 @@ export type FsMethod =
   | "writeFile"
   | "writeFileAtomic"
   | "rename"
+  | "link"
   | "unlink"
   | "mkdir"
+  | "rmdir"
   | "lstat"
   | "readdir"
   | "realpath"
@@ -87,26 +89,36 @@ const runHooks = (state: FakeState, method: FsMethod, path: string): void => {
   }
 };
 
+/** Resolve along the link chain: each hop takes the link entry of "self or the deepest linked ancestor" (kernel-consistent: links on intermediate dirs are followed as usual). */
 const resolveLinks = (state: FakeState, path: string): string => {
   let current = path;
   for (let step = 0; step < 10; step += 1) {
-    const target = state.links.get(current);
-    if (target === undefined) return current;
-    current = target;
+    let next: string | undefined;
+    for (let pivot = current; pivot.includes("/"); pivot = pivot.slice(0, pivot.lastIndexOf("/"))) {
+      const target = state.links.get(pivot);
+      if (target !== undefined) {
+        next = target + current.slice(pivot.length);
+        break;
+      }
+    }
+    if (next === undefined || next === current) return current;
+    current = next;
   }
   return current;
 };
 
 const readFileOf = (state: FakeState, path: string): Uint8Array => {
-  const bytes = state.files.get(path);
+  const bytes = state.files.get(resolveLinks(state, path));
   if (bytes === undefined) throw systemError("ENOENT");
   return new Uint8Array(bytes);
 };
 
 const dirEntriesOf = (state: FakeState, dir: string): readonly string[] => {
-  if (!state.dirs.has(dir)) throw systemError("ENOENT");
-  const prefix = `${dir}/`;
-  const names = [...state.files.keys(), ...state.dirs].flatMap((path) => {
+  const resolved = resolveLinks(state, dir);
+  if (!state.dirs.has(resolved)) throw systemError("ENOENT");
+  const prefix = `${resolved}/`;
+  // Link entries are children of the dir too: an escaping link can only be refused by the caller if it gets listed.
+  const names = [...state.files.keys(), ...state.dirs, ...state.links.keys()].flatMap((path) => {
     if (!path.startsWith(prefix)) return [];
     const tail = path.slice(prefix.length);
     return tail.length === 0 || tail.includes("/") ? [] : [tail];
@@ -125,7 +137,7 @@ const handleOf = (state: FakeState, path: string): OpenFile => ({
 
 const readMethodsOf = (
   state: FakeState,
-): Omit<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "unlink" | "mkdir"> => ({
+): Omit<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "unlink" | "mkdir" | "rmdir"> => ({
   readFile: (path) => {
     guard(state, "readFile", path);
     const bytes = readFileOf(state, path);
@@ -144,19 +156,21 @@ const readMethodsOf = (
         size: 0,
       });
     }
-    if (state.dirs.has(path))
+    // lstat does not resolve the final segment, but links on intermediate dirs are still followed (kernel-consistent).
+    const resolved = resolveLinks(state, path);
+    if (state.dirs.has(resolved))
       return Promise.resolve({
         isFile: () => false,
         isSymbolicLink: () => false,
         mtimeMs,
         size: 0,
       });
-    if (state.files.has(path))
+    if (state.files.has(resolved))
       return Promise.resolve({
         isFile: () => true,
         isSymbolicLink: () => false,
         mtimeMs,
-        size: state.files.get(path)?.length ?? 0,
+        size: state.files.get(resolved)?.length ?? 0,
       });
     throw systemError("ENOENT");
   },
@@ -180,7 +194,10 @@ const readMethodsOf = (
 
 const writeMethodsOf = (
   state: FakeState,
-): Pick<FileSystem, "writeFile" | "writeFileAtomic" | "rename" | "unlink" | "mkdir"> => ({
+): Pick<
+  FileSystem,
+  "writeFile" | "writeFileAtomic" | "rename" | "link" | "unlink" | "mkdir" | "rmdir"
+> => ({
   writeFile: (path, data) => {
     guard(state, "writeFile", path);
     state.files.set(path, new Uint8Array(data));
@@ -200,6 +217,12 @@ const writeMethodsOf = (
     state.files.delete(from);
     return Promise.resolve();
   },
+  link: (from, to) => {
+    guard(state, "link", from);
+    if (state.files.has(to) || state.dirs.has(to)) throw systemError("EEXIST");
+    state.files.set(to, new Uint8Array(readFileOf(state, from)));
+    return Promise.resolve();
+  },
   unlink: (path) => {
     guard(state, "unlink", path);
     if (!state.files.delete(path)) throw systemError("ENOENT");
@@ -207,7 +230,20 @@ const writeMethodsOf = (
   },
   mkdir: (path) => {
     guard(state, "mkdir", path);
-    state.dirs.add(path);
+    // `mkdir -p`: the real port passes {recursive:true}, so every missing ancestor segment lands too.
+    let pivot = path;
+    while (pivot.length > 1 && !state.dirs.has(pivot)) {
+      state.dirs.add(pivot);
+      pivot = pivot.slice(0, pivot.lastIndexOf("/")) || "/";
+    }
+    return Promise.resolve();
+  },
+  rmdir: (path) => {
+    guard(state, "rmdir", path);
+    const resolved = resolveLinks(state, path);
+    if (!state.dirs.has(resolved)) throw systemError("ENOENT");
+    if (dirEntriesOf(state, resolved).length > 0) throw systemError("ENOTEMPTY");
+    state.dirs.delete(resolved);
     return Promise.resolve();
   },
 });

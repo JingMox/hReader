@@ -41,6 +41,9 @@ const PUBLIC = [
   "SIDECAR_LIMITS",
   "SIDECAR_VERSION",
   "STYLE_FILE",
+  "TEMPLATE_ID",
+  "TEMPLATE_MAX_BYTES",
+  "TEMPLATE_MAX_FILES",
   "addAnnotation",
   "addSidecarAnnotation",
   "annotationDirOf",
@@ -55,6 +58,7 @@ const PUBLIC = [
   "classifyDocument",
   "compileTone",
   "createCapabilityBook",
+  "createFromTemplate",
   "cutAtCodePoint",
   "decodeParams",
   "deleteSidecarAnnotation",
@@ -81,6 +85,7 @@ const PUBLIC = [
   "lintByStyle",
   "listAnnotations",
   "listDocAnnotations",
+  "listTemplates",
   "loadDocument",
   "loadStyle",
   "loadThemeCss",
@@ -91,6 +96,7 @@ const PUBLIC = [
   "newDocumentHtml",
   "nodePatchDeps",
   "nodeStyleDeps",
+  "nodeTemplateDeps",
   "normalizeFile",
   "paramOf",
   "parseFragment",
@@ -106,6 +112,7 @@ const PUBLIC = [
   "readNode",
   "readSidecarFile",
   "readStyleSource",
+  "readTemplate",
   "reopenAnnotation",
   "reopenSidecarAnnotation",
   "replaceTheme",
@@ -132,7 +139,7 @@ const PUBLIC = [
 ];
 
 describe("core entry · 精确集", () => {
-  it("should not leak internal symbols onto the public surface (104-item exact set)", () => {
+  it(`should not leak internal symbols onto the public surface (${String(PUBLIC.length)}-item exact set)`, () => {
     // 精确集而不是"至少含有"：多一个内部符号也红，报错直接点名多出来的那个。
 
     expect(Object.keys(coreEntry).sort()).toEqual(PUBLIC);

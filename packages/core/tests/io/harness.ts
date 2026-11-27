@@ -47,6 +47,11 @@ export const mkdirAt = async (path: string): Promise<void> => {
   await mkdir(path, { recursive: true });
 };
 
+export const mkdtempAt = (prefix: string): Promise<string> => mkdtemp(join(tmpdir(), prefix));
+export const rmAt = async (path: string): Promise<void> => {
+  await rm(path, { recursive: true, force: true });
+};
+
 export const symlinkAt = (target: string, path: string): Promise<void> => symlink(target, path);
 export const readBytesAt = (path: string): Promise<Buffer> => readFile(path);
 export const readTextAt = async (path: string): Promise<string> => readFile(path, "utf8");

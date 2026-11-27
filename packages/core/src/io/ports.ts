@@ -20,8 +20,15 @@ export interface FileSystem {
   readonly readFile: (path: string) => Promise<Uint8Array>;
   readonly writeFile: (path: string, data: Uint8Array) => Promise<void>;
   readonly rename: (from: string, to: string) => Promise<void>;
+  /**
+   * Hard link (`link(2)`): `EEXIST` when the target exists, never overwrites — the atomic gate for "create only if absent".
+   * Optional: without it, implementations fall back to exclusive `open` create (which can leave a half-written file inside the crash window).
+   */
+  readonly link?: (from: string, to: string) => Promise<void>;
   readonly unlink: (path: string) => Promise<void>;
   readonly mkdir: (path: string) => Promise<void>;
+  /** Remove an empty directory (`ENOTEMPTY` when it still holds entries): rollback pair for `mkdir`. */
+  readonly rmdir: (path: string) => Promise<void>;
   readonly lstat: (path: string) => Promise<FileStat>;
   readonly readdir: (path: string) => Promise<readonly string[]>;
   readonly realpath: (path: string) => Promise<string>;

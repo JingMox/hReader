@@ -54,3 +54,12 @@ export const unlinkQuiet = async (fsApi: FileSystem, path: string): Promise<void
     // tmp 可能压根没建出来；原文件此时未受影响，错误由调用点抛出。
   }
 };
+
+/** Same cleanup contract as `unlinkQuiet`, for the dirs a failed call created: an ENOTEMPTY just means something else put content there — leave it alone. */
+export const rmdirQuiet = async (fsApi: FileSystem, path: string): Promise<void> => {
+  try {
+    await fsApi.rmdir(path);
+  } catch {
+    // The dir may never have been created or may now hold foreign entries: keep the original error.
+  }
+};
