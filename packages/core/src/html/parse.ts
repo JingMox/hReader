@@ -254,8 +254,9 @@ const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Docum
     sourceCodeLocationInfo: context.locations,
     // 浏览器在不跑脚本时的默认口径：`<noscript>` 内容按标记解析（实体解码），不是 raw text。
     // parse5 自己的默认是 true，会把它当 raw text 保留原始实体串，序列化时再被转义一次。
-    // 标注体文本域（relocate）反过来要 true：那棵树永远跑在开了脚本的浏览器里，
-    // `<noscript>` 遇第一个 `</noscript>` 就截断——两边的可见文本必须一致。
+    // The annotation body-text domain (relocate) needs true instead: that tree always
+    // runs in a scripting-enabled browser, where `<noscript>` ends at the first
+    // `</noscript>`, and both sides must agree on the visible text.
     scriptingEnabled: context.scriptingEnabled,
     onParseError: (error) => {
       const code = PARSE5_TO_DIAGNOSTIC[error.code];
@@ -267,9 +268,11 @@ const parseWithErrorDiagnostics = (html: string, context: ParseContext): P5Docum
     },
   });
 
-/** `locations` 只在需要按源码区间回写时打开：默认关，关闭时产出的树与诊断不变。
- *  `scriptingEnabled` 只给标注体文本域（relocate）开：那棵树永远跑在开了脚本的
- *  浏览器里（`<noscript>` 按 raw text 截断）；其余路径保持「不跑脚本」口径。 */
+/** `locations` is enabled only when writing back by source range; off by default, and
+ *  turning it off leaves the tree and diagnostics unchanged. `scriptingEnabled` is
+ *  enabled only for the annotation body-text domain (relocate): that tree always runs
+ *  in a scripting-enabled browser (`<noscript>` is cut as raw text); every other path
+ *  keeps the no-scripting view. */
 export const parseHtml = (
   html: string,
   options: { readonly locations?: boolean; readonly scriptingEnabled?: boolean } = {},
