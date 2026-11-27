@@ -62,6 +62,8 @@ const blockInsideOf = (root: HtmlNode): ReadonlyMap<HtmlElementNode, boolean> =>
     const children = childNodesOf(frame.node);
     if (!frame.childrenDone) {
       pending.push({ node: frame.node, childrenDone: true });
+      // equivalent — an overshooting index reads undefined, which the guard below skips.
+      // Stryker disable next-line ArithmeticOperator
       for (let index = children.length - 1; index >= 0; index -= 1) {
         const child = children[index];
         if (child !== undefined) pending.push({ node: child, childrenDone: false });
@@ -157,6 +159,9 @@ const expressibleSteps = (steps: readonly SelectorStep[]): boolean => {
  */
 const blockTextOf = (node: HtmlElementNode): string => {
   const parts: string[] = [];
+  // A bogus stack entry pops to a non-node whose `kind` is undefined — the kind checks
+  // below skip it identically.
+  // Stryker disable next-line ArrayDeclaration
   const stack: HtmlNode[] = [];
   pushReversed(node.children, stack);
   for (const current of drainStack(stack)) {
@@ -172,11 +177,11 @@ const blockTextOf = (node: HtmlElementNode): string => {
 
 /**
  * The range a patch may write over, `[startTag.start, subtreeEnd)`. parse5 stretches an
- * element with no end tag past `</body>`/`</html>` and fostered content, so `end` is clamped
- * to the first construct outside its subtree: the `innerEnd` of every tree ancestor, or of
- * a tree-sibling whose source span encloses the element's start (a foster container like
- * `<table>`). An unclosed element absorbs every later byte, so no following sibling exists
- * to bound it earlier. `innerEnd === end` marks "no end tag in source" (see spanOfLocation).
+ * element with no end tag past `</body>`/`</html>` and trailing content, so `end` is clamped
+ * to the `innerEnd` of the nearest tree ancestor that still contains the block's start —
+ * a real ancestor's content always ends after the start tag of an element inside it, while
+ * synthesized ancestors (no source bytes at all) carry a zero span and must not clamp.
+ * `innerEnd === end` marks "no end tag in source" (see spanOfLocation).
  *
  * Returns `undefined` when the element has no start tag of its own in the source: a real
  * tag costs bytes (`start < innerStart`), while synthesized nodes and implicit-close split
@@ -188,17 +193,11 @@ const patchRangeOf = (chain: Chain): SourceSpan | undefined => {
   if (span.start >= span.innerStart) return undefined;
   if (span.innerEnd !== span.end) return span;
   let end = span.end;
-  const bound = (candidate: number): void => {
-    if (candidate > span.start && candidate < end) end = candidate;
-  };
   for (let link: Chain | undefined = chain.up; link !== undefined; link = link.up) {
-    const parent = link.node;
-    bound({ ...ZERO_SPAN, ...parent.span }.innerEnd);
-    for (const sibling of parent.children) {
-      if (sibling.kind !== "element") continue;
-      const s = { ...ZERO_SPAN, ...sibling.span };
-      if (s.start < span.start && span.start < s.end) bound(s.innerEnd);
-    }
+    const innerEnd = { ...ZERO_SPAN, ...link.node.span }.innerEnd;
+    // A real ancestor's content always extends past the block's own start, so an innerEnd
+    // at or before it belongs to a synthesized (zero-span) ancestor and must not clamp.
+    if (innerEnd > span.start && innerEnd < end) end = innerEnd;
   }
   return { ...span, end, innerEnd: end };
 };
