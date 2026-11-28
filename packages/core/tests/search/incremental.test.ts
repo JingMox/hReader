@@ -126,7 +126,7 @@ describe("search index incremental updates", () => {
       const healed: unknown = JSON.parse(
         Buffer.from(await nodePatchDeps.fs.readFile(join(dir, INDEX))).toString("utf8"),
       );
-      expect(Reflect.get(healed as object, "version")).toBe(2);
+      expect(Reflect.get(healed as object, "version")).toBe(3);
     });
   });
 
@@ -253,7 +253,7 @@ describe("search index sidecar freshness", () => {
       const rebuilt = await find(dir, "摩托");
       expect(rebuilt.results[0]?.path).toBe("a.html");
       expect(rebuilt.diagnostics.some((line) => line.includes("重建"))).toBe(true);
-      expect(JSON.parse(await readFile(indexPath, "utf8"))).toMatchObject({ version: 2 });
+      expect(JSON.parse(await readFile(indexPath, "utf8"))).toMatchObject({ version: 3 });
       // Second query: no rebuild, no write.
       const mtime = (await stat(indexPath)).mtimeMs;
       const again = await find(dir, "摩托");

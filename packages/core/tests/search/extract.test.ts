@@ -26,4 +26,8 @@ describe("extractDocFields", () => {
     expect(fields.title).toBe("");
     expect(fields.headings).toBe("");
   });
+
+  it("yields an empty body for a body-less document", () => {
+    expect(extractDocFields("").body).toBe("");
+  });
 });

@@ -1,11 +1,12 @@
 // This layer: turning one HTML document into the fields the index stores — `<title>` (else the
-// first `<h1>`), every heading's text, and the visible body text (`bodyTextOf` on the default
+// first `<h1>`), every heading's text, and the visible body text (`searchTextOf` on the default
 // parse). Pure: no IO, no clock; the caller owns reading the bytes.
 
-import { bodyTextOf } from "../annotations/body-text";
+import { TEXT_SKIP_TAGS } from "../annotations/body-text";
 import { elementsOf } from "../annotations/meta-insert";
-import type { HtmlNode } from "../html/constants";
+import type { HtmlNode, ParsedHtml } from "../html/constants";
 import { parseHtml } from "../html/parse";
+import { drainStack } from "../html/stack";
 import { normalizeWhitespace, textContentOf } from "../html/text";
 import { cutAtCodePoint } from "../text/truncate";
 
@@ -22,6 +23,32 @@ export interface ExtractedDocFields {
 }
 
 const HEADING_TAGS: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
+
+/**
+ * The INDEXED body text — not the anchor text. `bodyTextOf` joins text nodes with no
+ * separator because anchors need raw adjacency; that glues `<td>module</td><td>1</td>`
+ * into one token `module1` and kills recall. Here every text node is its own part, so a
+ * space lands at every element boundary (`<b>foo</b>bar`, `a<br>b`, `<li>` rows), then
+ * whitespace collapses to one run. Same visible-text domain, same skip rules.
+ */
+export const searchTextOf = (parsed: ParsedHtml): string => {
+  const body = elementsOf(parsed.root).find((element) => element.tag === "body");
+  if (body === undefined) return "";
+  const parts: string[] = [];
+  const stack: HtmlNode[] = [...body.children].reverse();
+  for (const node of drainStack(stack)) {
+    if (node.kind === "text") {
+      parts.push(node.value);
+      continue;
+    }
+    if (node.kind !== "element" || TEXT_SKIP_TAGS.has(node.tag)) continue;
+    for (let index = node.children.length - 1; index >= 0; index -= 1) {
+      const child = node.children[index];
+      if (child !== undefined) stack.push(child);
+    }
+  }
+  return normalizeWhitespace(parts.join(" "));
+};
 
 const firstTextOf = (root: HtmlNode, tag: string): string | undefined =>
   elementsOf(root)
@@ -40,6 +67,6 @@ export const extractDocFields = (html: string): ExtractedDocFields => {
   return {
     title: firstTextOf(parsed.root, "title") ?? firstTextOf(parsed.root, "h1") ?? "",
     headings,
-    body: cutAtCodePoint(normalizeWhitespace(bodyTextOf(parsed)), BODY_TEXT_CAP),
+    body: cutAtCodePoint(searchTextOf(parsed), BODY_TEXT_CAP),
   };
 };

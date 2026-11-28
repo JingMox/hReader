@@ -33,7 +33,7 @@ describe("search index concurrency", () => {
       // Whatever order the builds ran in, the surviving envelope parses and names both docs.
       const indexPath = join(dir, ".hreader", "index", "search.json");
       const parsed: unknown = JSON.parse(await readFile(indexPath, "utf8"));
-      expect(Reflect.get(parsed as object, "version")).toBe(2);
+      expect(Reflect.get(parsed as object, "version")).toBe(3);
       const docs = Reflect.get(parsed as object, "docs") as Record<string, unknown>;
       expect(Object.keys(docs).sort()).toEqual(["a.html", "b.html"]);
     });

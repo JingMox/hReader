@@ -36,7 +36,7 @@ export const SEARCH_LIMITS = {
 
 /** Index file, relative to the workspace root — the same value feeds the lock-key hash. */
 export const INDEX_REL = ".hreader/index/search.json";
-const INDEX_VERSION = 2;
+const INDEX_VERSION = 3;
 
 /** Same skips as `ops/annotation-scan.ts`: hreader's own store plus the two giant dirs. */
 const SKIP_DIRS: ReadonlySet<string> = new Set([".hreader", ".git", "node_modules"]);

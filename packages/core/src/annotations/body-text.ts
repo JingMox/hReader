@@ -12,7 +12,12 @@ import { elementsOf } from "./meta-insert";
  * `template`/`noscript` children are inert markup that is never read as text.
  * `<script id="hr-meta">` is covered by `script` — its JSON is metadata, not prose.
  */
-const TEXT_SKIP_TAGS: ReadonlySet<string> = new Set(["script", "style", "template", "noscript"]);
+export const TEXT_SKIP_TAGS: ReadonlySet<string> = new Set([
+  "script",
+  "style",
+  "template",
+  "noscript",
+]);
 
 /** A `[start, end)` slice of the body text — the interval one element's visible text covers. */
 export interface BodySpan {

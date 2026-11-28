@@ -129,7 +129,7 @@ describe("search resilience", () => {
       await mkdir(join(dir, ".hreader", "index"), { recursive: true });
       await writeFile(
         join(dir, INDEX),
-        JSON.stringify({ version: 2, docs: {}, index: { bogus: true } }),
+        JSON.stringify({ version: 3, docs: {}, index: { bogus: true } }),
         "utf8",
       );
       const result = await find(dir, "摩托");
@@ -146,7 +146,7 @@ describe("search resilience", () => {
       await writeFile(
         join(dir, INDEX),
         JSON.stringify({
-          version: 2,
+          version: 3,
           docs: {
             "s.html": "garbage",
             "t.html": { mtimeMs: "x", size: 1, sha: "s", sidecar: null },
@@ -384,22 +384,22 @@ describe("search resilience", () => {
       const indexPath = join(dir, INDEX);
       // Missing file: the first run still writes a fresh index.
       await find(dir, "摩托");
-      expect(JSON.parse(await readFile(indexPath, "utf8"))).toMatchObject({ version: 2 });
+      expect(JSON.parse(await readFile(indexPath, "utf8"))).toMatchObject({ version: 3 });
       for (const blob of [
         "{ not the index",
         "null",
-        JSON.stringify({ version: 3, docs: {}, index: {} }),
+        JSON.stringify({ version: 4, docs: {}, index: {} }),
         JSON.stringify({
           version: 1,
           docs: {},
           index: new MiniSearch<{ id: string }>({ fields: ["title"] }).toJSON(),
         }),
-        JSON.stringify({ version: 2, docs: {}, index: { bogus: true } }),
+        JSON.stringify({ version: 3, docs: {}, index: { bogus: true } }),
       ]) {
         await writeFile(indexPath, blob, "utf8");
         await find(dir, "摩托");
         // `rebuilt` is what forces the write — a healed file must carry the envelope again.
-        expect(JSON.parse(await readFile(indexPath, "utf8"))).toMatchObject({ version: 2 });
+        expect(JSON.parse(await readFile(indexPath, "utf8"))).toMatchObject({ version: 3 });
       }
     });
   });
@@ -412,7 +412,7 @@ describe("search resilience", () => {
       for (const docs of [null, 42]) {
         await writeFile(
           join(dir, INDEX),
-          JSON.stringify({ version: 2, docs, index: mini.toJSON() }),
+          JSON.stringify({ version: 3, docs, index: mini.toJSON() }),
           "utf8",
         );
         const result = await find(dir, "摩托");
@@ -507,7 +507,7 @@ describe("search hits from a crafted index", () => {
       await mkdir(join(dir, ".hreader", "index"), { recursive: true });
       await writeFile(
         join(dir, INDEX),
-        JSON.stringify({ version: 2, docs: {}, index: mini.toJSON() }),
+        JSON.stringify({ version: 3, docs: {}, index: mini.toJSON() }),
         "utf8",
       );
 
@@ -575,7 +575,7 @@ describe("search hits from a crafted index", () => {
       await mkdir(join(dir, ".hreader", "index"), { recursive: true });
       await writeFile(
         join(dir, INDEX),
-        JSON.stringify({ version: 2, docs: {}, index: mini.toJSON() }),
+        JSON.stringify({ version: 3, docs: {}, index: mini.toJSON() }),
         "utf8",
       );
 

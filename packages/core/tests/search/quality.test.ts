@@ -326,7 +326,7 @@ describe("search text separates element boundaries", () => {
     });
   });
 
-  it("drops nothing the anchor domain had: every anchor token survives whole or by leading chunk", async () => {
+  it("drops nothing the anchor domain had: every anchor token survives whole or by leading chunk", () => {
     // The anchor model (bodyTextOf) can glue tokens the search model splits apart. Recall
     // safety only needs the token's leading chunk to survive — the segmented half of a
     // glued pair is the search term itself.
