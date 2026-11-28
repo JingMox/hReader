@@ -194,18 +194,57 @@ const attributesOf = (node: DomNodeLike): { name: string; value: string }[] => {
 };
 
 /**
+ * Defensive bounds — a synthetic or hostile container may hand back cyclic,
+ * self-referencing, or infinite `childNodes`; the walk must fail loud instead
+ * of hanging or eating memory.
+ */
+const MAX_VISITED_NODES = 5_000_000;
+const MAX_CHILDREN_READ = 5_000_000;
+
+/**
+ * Reads an iterable of children into an array with a hard bound. `for..of`
+ * terminates a generator cleanly on throw; a spread (`[...iterable]`) would
+ * iterate forever on an infinite source.
+ */
+const readChildren = (iterable: Iterable<DomNodeLike>, owner: string): DomNodeLike[] => {
+  const kids: DomNodeLike[] = [];
+  for (const kid of iterable) {
+    kids.push(kid);
+    if (kids.length > MAX_CHILDREN_READ) {
+      throw new CheckerInternalError(
+        `${owner} lists more than ${String(MAX_CHILDREN_READ)} children — refusing to continue`,
+      );
+    }
+  }
+  return kids;
+};
+
+/**
  * Asserts a rendered container holds no dangerous element and that its text nodes equal
  * `expectedTexts` (document order, exact match — whitespace nodes count too).
  * Throws an Error naming the violation on a judgment, `CheckerInternalError` when
- * the container cannot be inspected or the walk itself crashes.
+ * the container cannot be inspected, the tree is cyclic or oversized, or the walk
+ * itself crashes.
  */
 const walkContainer = (container: DomContainerLike, expectedTexts: readonly string[]): void => {
   const texts: string[] = [];
+  const visited = new Set<DomNodeLike>();
   // An explicit stack, not recursion — corpus payloads nest thousands deep.
-  const stack = [...container.childNodes].reverse();
+  const stack = readChildren(container.childNodes, "the container").reverse();
   while (stack.length > 0) {
     const node = stack.pop();
     if (node === undefined) break;
+    if (visited.has(node)) {
+      throw new CheckerInternalError(
+        "container revisited a node — childNodes is cyclic or aliased",
+      );
+    }
+    visited.add(node);
+    if (visited.size > MAX_VISITED_NODES) {
+      throw new CheckerInternalError(
+        `container exceeds ${String(MAX_VISITED_NODES)} visited nodes — refusing to continue`,
+      );
+    }
     if (node.nodeType === ELEMENT_NODE) {
       const tag = (node.tagName ?? "").toLowerCase();
       if (DANGEROUS_TAGS.has(tag)) {
@@ -245,7 +284,10 @@ const walkContainer = (container: DomContainerLike, expectedTexts: readonly stri
     if (node.childNodes !== undefined) {
       // Loop-push, never a spread into push(): hundreds of thousands of
       // children would exceed the engine's argument-count limit (RangeError).
-      const kids = [...node.childNodes];
+      const kids = readChildren(
+        node.childNodes,
+        `a <${node.tagName?.toLowerCase() ?? "unknown"}> node`,
+      );
       for (let i = kids.length - 1; i >= 0; i -= 1) {
         const kid = kids[i];
         if (kid !== undefined) stack.push(kid);

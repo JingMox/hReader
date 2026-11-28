@@ -122,6 +122,17 @@ describe("assertNoHostPaths", () => {
     }).not.toThrow();
   });
 
+  it("should not treat whitespace inside the scheme as a file URL", () => {
+    // `fi le:` and `file :` do not resolve as file: URLs — like `https://host`,
+    // they are somebody else's scheme and stay unchecked here.
+    expect(() => {
+      assertNoHostPaths("fi le:///Users/x");
+    }).not.toThrow();
+    expect(() => {
+      assertNoHostPaths("file :///tmp/a");
+    }).not.toThrow();
+  });
+
   // NUL and `*` are delimiters — they were caught before and must stay caught.
   it.each(["x\u0000/Users/x", "*/Users/x", "glob *\u0000/tmp/a"])(
     "should flag a host root after a NUL or star delimiter: %s",
@@ -330,8 +341,10 @@ describe("diffStructure", () => {
       "</article></body>";
     const diffs = diffStructure(before, after, byAttribute("data-hr-id", "c"));
     expect(kinds(diffs)).toEqual(["moved"]);
-    expect(diffs[0]?.before).toBe("html/body/article[0]");
-    expect(diffs[0]?.after).toBe("html/body/article[1]");
+    // Positions are full child-index paths from the document down, counting
+    // every node kind: html=0, body=1 (head is 0), article=0, then the <p>.
+    expect(diffs[0]?.before).toBe("0/1/0/0");
+    expect(diffs[0]?.after).toBe("0/1/0/1");
   });
 
   it("should report a move of the edited element to a different parent", () => {
@@ -339,6 +352,37 @@ describe("diffStructure", () => {
     const after = '<body><article></article><footer><p data-hr-id="c">x</p></footer></body>';
     const diffs = diffStructure(before, after, byAttribute("data-hr-id", "c"));
     expect(kinds(diffs)).toEqual(["moved"]);
+    expect(diffs[0]?.before).toBe("0/1/0/0");
+    expect(diffs[0]?.after).toBe("0/1/1/0");
+  });
+
+  it("should report a move between two parents with the same tag chain", () => {
+    // Both divs share the interned ancestor chain — position must come from the
+    // child-index path, not the tag chain.
+    const before = "<body><div id=a><p/></div><div id=b></div></body>";
+    const after = "<body><div id=a></div><div id=b><p/></div></body>";
+    const diffs = diffStructure(before, after, byTag("p"));
+    expect(kinds(diffs)).toEqual(["moved"]);
+    expect(diffs[0]?.before).toBe("0/1/0/0");
+    expect(diffs[0]?.after).toBe("0/1/1/0");
+  });
+
+  it("should report a move between same-tag siblings at different depths", () => {
+    const before = "<body><div><p/></div><div><div></div></div></body>";
+    const after = "<body><div></div><div><div><p/></div></div></body>";
+    const diffs = diffStructure(before, after, byTag("p"));
+    expect(kinds(diffs)).toEqual(["moved"]);
+    expect(diffs[0]?.before).toBe("0/1/0/0");
+    expect(diffs[0]?.after).toBe("0/1/1/0/0");
+  });
+
+  it("should report a move to a cousin with the same tag chain and sibling index", () => {
+    const before = "<body><div><span><p/></span></div><div><span></span></div></body>";
+    const after = "<body><div><span></span></div><div><span><p/></span></div></body>";
+    const diffs = diffStructure(before, after, byTag("p"));
+    expect(kinds(diffs)).toEqual(["moved"]);
+    expect(diffs[0]?.before).toBe("0/1/0/0/0");
+    expect(diffs[0]?.after).toBe("0/1/1/0/0");
   });
 
   it("should suppress the move report when allowMove is set", () => {
@@ -370,6 +414,16 @@ describe("diffStructure", () => {
     const before = "<body><p>x<!--c-->y</p></body>";
     const after = "<body><p>y<!--c-->x</p></body>";
     expect(kinds(diffStructure(before, after))).toContain("own-text");
+  });
+
+  it("should flag text mass shifted across a comment boundary", () => {
+    // Concatenated own-text is "axy" in both; the ordered text-node list differs.
+    const before = "<body><p>ax<!--c-->y</p></body>";
+    const after = "<body><p>a<!--c-->xy</p></body>";
+    const diffs = diffStructure(before, after);
+    expect(kinds(diffs)).toEqual(["own-text"]);
+    expect(diffs[0]?.before).toBe('["ax","y"]');
+    expect(diffs[0]?.after).toBe('["a","xy"]');
   });
 
   it("should not flag a tag swap as a child-order change (order is kind-level)", () => {
@@ -697,6 +751,76 @@ describe("assertNoElementsFromData", () => {
     }
     expect(caught).toBeInstanceOf(CheckerInternalError);
     expect((caught as Error).message).not.toMatch(/data rendered as/u);
+  });
+
+  it("should throw CheckerInternalError on a self-referencing childNodes", () => {
+    const a: DomNodeLike = { nodeType: 1, tagName: "B", attributes: [], childNodes: [] };
+    (a as { childNodes: unknown }).childNodes = [a];
+    expect(() => {
+      assertNoElementsFromData(root([a]), []);
+    }).toThrow(CheckerInternalError);
+  });
+
+  it("should throw CheckerInternalError on a two-node childNodes cycle", () => {
+    const a: DomNodeLike = { nodeType: 1, tagName: "B", attributes: [], childNodes: [] };
+    const b: DomNodeLike = { nodeType: 1, tagName: "I", attributes: [], childNodes: [] };
+    (a as { childNodes: unknown }).childNodes = [b];
+    (b as { childNodes: unknown }).childNodes = [a];
+    expect(() => {
+      assertNoElementsFromData(root([a]), []);
+    }).toThrow(CheckerInternalError);
+  });
+
+  it("should throw CheckerInternalError on an infinite childNodes generator", () => {
+    const forever: DomNodeLike = {
+      nodeType: 1,
+      tagName: "DIV",
+      attributes: [],
+      childNodes: {
+        [Symbol.iterator]: function* () {
+          for (;;) yield el("b", [text("x")]);
+        },
+      },
+    };
+    expect(() => {
+      assertNoElementsFromData(root([forever]), []);
+    }).toThrow(CheckerInternalError);
+  });
+
+  it("should throw CheckerInternalError on a container wider than the node cap", () => {
+    // Six million children exceeds the 5,000,000 bound — structural, no clock.
+    const sixMillion: DomContainerLike = {
+      childNodes: {
+        [Symbol.iterator]: function* () {
+          for (let i = 0; i < 6_000_000; i += 1) yield el("b", [text("x")]);
+        },
+      },
+    };
+    expect(() => {
+      assertNoElementsFromData(sixMillion, []);
+    }).toThrow(CheckerInternalError);
+  });
+
+  it("should throw CheckerInternalError past the visited-node cap", () => {
+    // 3,000 × 2,000 = 6,000,000 visited nodes total, with every single node
+    // under the children bound — only the visited cap can stop the walk.
+    const wide: DomContainerLike = {
+      childNodes: (function* () {
+        for (let i = 0; i < 3_000; i += 1) {
+          yield {
+            nodeType: 1,
+            tagName: "DIV",
+            attributes: [],
+            childNodes: (function* () {
+              for (let j = 0; j < 2_000; j += 1) yield el("b", []);
+            })(),
+          };
+        }
+      })(),
+    };
+    expect(() => {
+      assertNoElementsFromData(wide, []);
+    }).toThrow(CheckerInternalError);
   });
 });
 

@@ -11,6 +11,8 @@
 import { parse } from "parse5";
 import type { DefaultTreeAdapterTypes } from "parse5";
 
+import { CheckerInternalError } from "./no-elements-from-data.ts";
+
 type AnyNode = DefaultTreeAdapterTypes.Node;
 type Element = DefaultTreeAdapterTypes.Element;
 
@@ -118,8 +120,12 @@ interface NodeSummary {
   readonly tag: string;
   /** Canonical `prefix:name="v"` pairs joined by space, sorted — order-insensitive. */
   readonly attrs: string;
-  /** Elements: concatenated own direct text. Comments: the comment data. Doctype: "". */
-  readonly text: string;
+  /**
+   * Elements: the ordered list of the element's direct text-node values — a
+   * shift of text mass across a comment boundary is a real change, which a
+   * single concatenated string cannot see. Comments: `[data]`. Doctype: `[]`.
+   */
+  readonly texts: readonly string[];
   /**
    * Kind letters of the node's children in document order — `E` element, `T`
    * text-ish, `C` comment, `X` other — with the located edited element skipped.
@@ -134,9 +140,13 @@ interface NodeSummary {
 /** Where the located edited element sits — used by the move check. */
 interface MatchPosition {
   readonly tag: string;
-  readonly chain: Chain;
-  /** Index among the element siblings under the same parent. */
-  readonly siblingIndex: number;
+  /**
+   * The element's own frame — its `index` among ALL of its parent's child nodes
+   * and the parent-linked chain of frames above it. The `/`-joined index path
+   * IS the position: two parents sharing a tag chain (and even the same
+   * element-sibling index) still produce different index paths.
+   */
+  readonly frame: Frame;
 }
 
 interface Collected {
@@ -153,11 +163,10 @@ const attrsOf = (element: Element): string =>
     .sort()
     .join(" ");
 
-const directTextOf = (element: Element): string =>
+const directTextsOf = (element: Element): readonly string[] =>
   element.childNodes
     .filter((child): child is DefaultTreeAdapterTypes.TextNode => "value" in child)
-    .map((child) => child.value)
-    .join("");
+    .map((child) => child.value);
 
 /** Children as parse5 exposes them: <template> contents live in `.content`, not `childNodes`. */
 const childrenOf = (node: AnyNode): readonly AnyNode[] => {
@@ -195,40 +204,58 @@ const chainString = (chain: Chain, stats?: DiffStructureStats): string => {
 interface Frame {
   readonly node: AnyNode;
   readonly chain: Chain;
-  /** Index among the element siblings under the same parent (-1 for non-elements). */
-  readonly siblingIndex: number;
+  /** Index among ALL of the parent's child nodes — text and comment count too. */
+  readonly index: number;
+  /** The parent's frame, or null at document level — the position's spine. */
+  readonly parent: Frame | null;
 }
 
 /**
- * Pushes one frame per child in reverse so pops follow document order; element
- * siblings carry their forward index. Never spreads children into a call —
- * a parent with hundreds of thousands of children would hit the engine's
- * argument-count limit (RangeError).
+ * Defensive bounds — parse5 trees cannot cycle, but a hostile or corrupt tree
+ * shape must fail loud instead of hanging or eating memory. Shared constants
+ * with the DOM-walking checker keep the two consistent.
  */
-const pushChildren = (stack: Frame[], parent: AnyNode, chain: Chain): void => {
-  const kids = childrenOf(parent);
-  let elIndex = 0;
-  for (const kid of kids) {
-    if ("tagName" in kid) elIndex += 1;
+const MAX_VISITED_NODES = 5_000_000;
+const MAX_CHILDREN_READ = 5_000_000;
+
+/**
+ * Pushes one frame per child in reverse so pops follow document order. Each
+ * frame carries its index among ALL siblings and a link to the parent frame —
+ * together those are the node's full child-index position path, built O(1) per
+ * node. Never spreads children into a call — a parent with hundreds of
+ * thousands of children would hit the engine's argument-count limit
+ * (RangeError).
+ */
+const pushChildren = (
+  stack: Frame[],
+  kids: readonly AnyNode[],
+  chain: Chain,
+  parent: Frame | null,
+): void => {
+  if (kids.length > MAX_CHILDREN_READ) {
+    throw new CheckerInternalError(
+      `a node lists ${String(kids.length)} children — above the ${String(MAX_CHILDREN_READ)} bound`,
+    );
   }
   for (let i = kids.length - 1; i >= 0; i -= 1) {
     const child = kids[i];
     if (child === undefined) continue;
-    const isElement = "tagName" in child;
-    if (isElement) elIndex -= 1;
-    stack.push({ node: child, chain, siblingIndex: isElement ? elIndex : -1 });
+    stack.push({ node: child, chain, index: i, parent });
   }
 };
 
 /**
- * Kind letters of `node`'s children in order — `E` element, `C` comment
- * (including bogus comments like `<?x>`), `T` text/cdata-ish, `X` anything
- * else. The located edited element is skipped: the edit's own position is
- * judged by the `moved` check, not by its parent's order signature.
+ * Kind letters of `kids` in order — `E` element, `C` comment (including bogus
+ * comments like `<?x>`), `T` text/cdata-ish, `X` anything else. The located
+ * edited element is skipped: the edit's own position is judged by the `moved`
+ * check, not by its parent's order signature.
  */
-const orderSignature = (node: AnyNode, edited: EditedElementLocator | undefined): string => {
+const orderSignature = (
+  kids: readonly AnyNode[],
+  edited: EditedElementLocator | undefined,
+): string => {
   let sig = "";
-  for (const child of childrenOf(node)) {
+  for (const child of kids) {
     if ("tagName" in child) {
       if (edited?.(child) !== true) sig += "E";
     } else if (child.nodeName === "#comment") {
@@ -251,17 +278,29 @@ const collect = (
 ): Collected => {
   const list: NodeSummary[] = [];
   const matches: MatchPosition[] = [];
+  const visited = new Set<AnyNode>();
   // An explicit stack, not recursion — corpus documents nest thousands deep.
   const stack: Frame[] = [];
-  pushChildren(stack, document, rootChain);
+  pushChildren(stack, childrenOf(document), rootChain, null);
   while (stack.length > 0) {
     const frame = stack.pop();
     if (frame === undefined) break;
     if (stats !== undefined) stats.nodesVisited += 1;
-    const { node, chain, siblingIndex } = frame;
+    const { node, chain } = frame;
+    if (visited.has(node)) {
+      throw new CheckerInternalError(
+        "diffStructure revisited a node — the parse5 tree is cyclic or aliased",
+      );
+    }
+    visited.add(node);
+    if (visited.size > MAX_VISITED_NODES) {
+      throw new CheckerInternalError(
+        `diffStructure visited more than ${String(MAX_VISITED_NODES)} nodes — refusing to continue`,
+      );
+    }
     if ("tagName" in node) {
       if (edited?.(node) === true) {
-        matches.push({ tag: node.tagName, chain, siblingIndex });
+        matches.push({ tag: node.tagName, frame });
         if (matches.length > 1) {
           throw new Error(
             `edited locator matched ${String(matches.length)} elements in the ${label} document — it must identify at most one element`,
@@ -269,16 +308,17 @@ const collect = (
         }
         continue;
       }
+      const kids = childrenOf(node);
       list.push({
         node: "element",
         tag: node.tagName,
         attrs: attrsOf(node),
-        text: directTextOf(node),
-        order: orderSignature(node, edited),
+        texts: directTextsOf(node),
+        order: orderSignature(kids, edited),
         chain,
       });
-      if (childrenOf(node).length > 0) {
-        pushChildren(stack, node, childChain(chain, node.tagName, stats));
+      if (kids.length > 0) {
+        pushChildren(stack, kids, childChain(chain, node.tagName, stats), frame);
       }
       continue;
     }
@@ -288,7 +328,7 @@ const collect = (
         node: "comment",
         tag: "#comment",
         attrs: "",
-        text: node.data,
+        texts: [node.data],
         order: "",
         chain,
       });
@@ -299,12 +339,31 @@ const collect = (
         `name=${JSON.stringify(node.name)} ` +
         `publicId=${JSON.stringify(node.publicId)} ` +
         `systemId=${JSON.stringify(node.systemId)}`;
-      list.push({ node: "doctype", tag: "!doctype", attrs, text: "", order: "", chain });
+      list.push({ node: "doctype", tag: "!doctype", attrs, texts: [], order: "", chain });
       continue;
     }
-    pushChildren(stack, node, chain);
+    pushChildren(stack, childrenOf(node), chain, frame);
   }
   return { list, match: matches[0] };
+};
+
+/** Whether two frames sit at the same full child-index position. */
+const sameIndexPath = (a: Frame | null, b: Frame | null): boolean => {
+  let x = a;
+  let y = b;
+  while (x !== null && y !== null) {
+    if (x.index !== y.index) return false;
+    x = x.parent;
+    y = y.parent;
+  }
+  return x === null && y === null;
+};
+
+/** The frame's `/`-joined child-index path from the document down. */
+const indexPathOf = (frame: Frame | null): string => {
+  const parts: number[] = [];
+  for (let at = frame; at !== null; at = at.parent) parts.push(at.index);
+  return parts.reverse().join("/");
 };
 
 const pathOf = (summary: NodeSummary, stats?: DiffStructureStats): string => {
@@ -312,14 +371,23 @@ const pathOf = (summary: NodeSummary, stats?: DiffStructureStats): string => {
   return ancestors === "" ? summary.tag : `${ancestors}/${summary.tag}`;
 };
 
+/** Own-text display: the single text node as itself, several as a JSON list. */
+const textOf = (texts: readonly string[]): string =>
+  texts.length === 1 ? (texts[0] ?? "") : JSON.stringify(texts);
+
+/** Element-wise compare of the ordered direct-text lists. */
+const sameTexts = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((value, i) => value === b[i]);
+
 /**
  * Parses both documents with parse5 (scripting OFF — `<noscript>` stays markup, matching
  * the server-side reading) and compares every node outside `edited`, index-aligned in
  * document order. An empty result means the edit stayed inside its subtree.
  *
  * The edited subtree is excluded wherever it lands — but when the locator matches
- * exactly once in each document, its ancestor chain and element-sibling index are
- * still compared, and a change is reported as `moved` unless `options.allowMove`.
+ * exactly once in each document, its full child-index path (every ancestor's index
+ * among ALL its parent's child nodes, text and comments included) is still
+ * compared, and a change is reported as `moved` unless `options.allowMove`.
  */
 export const diffStructure = (
   beforeHtml: string,
@@ -393,13 +461,13 @@ export const diffStructure = (
         before: b.attrs,
         after: a.attrs,
       });
-    if (b.text !== a.text)
+    if (!sameTexts(b.texts, a.texts))
       diffs.push({
         index: i,
         kind: "own-text",
         path: pathOf(b, stats),
-        before: b.text,
-        after: a.text,
+        before: textOf(b.texts),
+        after: textOf(a.texts),
       });
     if (b.order !== a.order)
       diffs.push({
@@ -424,16 +492,15 @@ export const diffStructure = (
     options?.allowMove !== true &&
     beforeMatch !== undefined &&
     afterMatch !== undefined &&
-    (beforeMatch.chain !== afterMatch.chain || beforeMatch.siblingIndex !== afterMatch.siblingIndex)
+    !sameIndexPath(beforeMatch.frame, afterMatch.frame)
   ) {
-    const beforeAncestors = chainString(beforeMatch.chain, stats);
-    const afterAncestors = chainString(afterMatch.chain, stats);
+    const beforeAncestors = chainString(beforeMatch.frame.chain, stats);
     diffs.push({
       index: -1,
       kind: "moved",
       path: `${beforeAncestors}/${beforeMatch.tag}`,
-      before: `${beforeAncestors}[${String(beforeMatch.siblingIndex)}]`,
-      after: `${afterAncestors}[${String(afterMatch.siblingIndex)}]`,
+      before: indexPathOf(beforeMatch.frame),
+      after: indexPathOf(afterMatch.frame),
     });
   }
   return diffs;

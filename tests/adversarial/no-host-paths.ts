@@ -49,7 +49,9 @@ const isDelimiterAt = (output: string, index: number): boolean =>
  * A `file:` URL prefix ending right before the match — any case, any number of
  * slashes, any (or no) authority: `file:`, `file://`, `file:////`,
  * `file://localhost`, `file://.`. The `file:` must not itself be glued to a
- * longer word, so `profile:` or `myfile:` do not count.
+ * longer word, so `profile:` or `myfile:` do not count. Whitespace inside the
+ * scheme (`fi le:`, `file :`) makes it not a resolvable `file:` URL either —
+ * like `https://host`, it stays unchecked rather than flagged on suspicion.
  */
 const FILE_PREFIX = /(?:^|[^A-Za-z])file:[/\\]*[^/\\\s]*$/iu;
 
