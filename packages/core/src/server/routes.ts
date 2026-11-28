@@ -37,6 +37,8 @@ export type RouteKind =
   | "sidecarReopen"
   | "sidecarReply"
   | "sidecarDelete"
+  | "docMeta"
+  | "docMetaSet"
   | "events"
   | "search";
 
@@ -137,6 +139,10 @@ export const ROUTES: readonly Route[] = Object.freeze([
     "cookie+csrf",
     "sidecarDelete",
   ),
+  // Document metadata (tags + source URL): one read plus one merged write against the
+  // shared `.hreader/meta.json` table — same auth layering as the sidecar routes.
+  route("GET", ["api", "doc", DOC_PARAM, "meta"], "cookie", "docMeta"),
+  route("POST", ["api", "doc", DOC_PARAM, "meta"], "cookie+csrf", "docMetaSet"),
   route("GET", ["api", "events"], "cookie", "events"),
   // Library-wide full-text search: one read route, same cookie layering as the other reads.
   route("GET", ["api", "search"], "cookie", "search"),

@@ -45,6 +45,7 @@ const hitBody = (hit: SearchHit): Record<string, unknown> => ({
   title: cut(hit.title),
   kind: hit.kind,
   ...(hit.annotationId === undefined ? {} : { annotationId: cut(hit.annotationId) }),
+  tags: hit.tags.map(cut),
   score: hit.score,
   snippet: cut(hit.snippet),
   highlights: hit.highlights,

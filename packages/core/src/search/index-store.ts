@@ -1,19 +1,22 @@
 // This layer: the persisted incremental index under `.hreader/index/search.json` —
-// `{ version: 2, docs: { <rel>: { mtimeMs, size, sha, sidecar } }, index: <MiniSearch JSON> }`.
+// `{ version: 4, docs: { <rel>: { mtimeMs, size, sha, sidecar, meta } }, index: <MiniSearch JSON> }`.
 // A query-time update walks the workspace (same pruning as the annotation scan), re-indexes
 // docs whose mtime/size/sha moved plus any doc whose sidecar store fingerprint moved —
-// annotations change without touching their doc — drops deleted docs, and writes through
-// `writeAtomic` under the index's own lock. Diagnostics carry an error code plus a
+// annotations change without touching their doc — and any doc whose metadata fingerprint
+// moved (tags change without touching bytes too). Deleted docs drop out, and writes go
+// through `writeAtomic` under the index's own lock. Diagnostics carry an error code plus a
 // workspace-relative name — never an absolute host path.
 
 import MiniSearch, { type Options } from "minisearch";
 import { join, relative, resolve, sep } from "node:path";
 
 import type { SidecarAnnotation } from "../annotations/sidecar-model";
+import { docMetaRecordJson, type DocMetaRecord } from "../docmeta";
 import { annotationPathOf, readSidecarAt, type SidecarFile } from "../io/annotation-store";
 import { mkdirOrFail, writeAtomic } from "../io/atomic";
 import { decodeUtf8, encodeUtf8 } from "../io/bytes";
 import { sha256Hex } from "../io/digest";
+import { metaPathOf, readDocMetaAt } from "../io/doc-meta-store";
 import { codeOf, isMissing } from "../io/errors";
 import type { FileStat, PatchDeps } from "../io/ports";
 import { listDocAnnotations, type DocAnnotationEntry } from "../ops/sidecar-ops";
@@ -36,7 +39,7 @@ export const SEARCH_LIMITS = {
 
 /** Index file, relative to the workspace root — the same value feeds the lock-key hash. */
 export const INDEX_REL = ".hreader/index/search.json";
-const INDEX_VERSION = 3;
+const INDEX_VERSION = 4;
 
 /** Same skips as `ops/annotation-scan.ts`: hreader's own store plus the two giant dirs. */
 const SKIP_DIRS: ReadonlySet<string> = new Set([".hreader", ".git", "node_modules"]);
@@ -57,16 +60,32 @@ interface IndexEntry {
   readonly annotation?: string;
   /** Which store an annotation entry came from — the sidecar-only refresh drops by it. */
   readonly source?: "meta" | "sidecar";
+  /** The doc's tags joined into the indexed `tags` field (doc entries only). */
+  readonly tags?: string;
+  /** The doc's verbatim tag list — stored so a hit can echo it; never indexed. */
+  readonly tagList?: readonly string[];
 }
 
-const FIELD_BOOSTS = { title: 3, headings: 2, body: 1, annotation: 1 } as const;
+const FIELD_BOOSTS = { title: 3, headings: 2, tags: 2, body: 1, annotation: 1 } as const;
 
 const MINI_OPTIONS: Options<IndexEntry> = {
   // Annotation entries index `annotation` alone — a title query must not echo every
-  // annotation of a matching doc (their doc title rides along as `docTitle` instead).
-  fields: ["title", "headings", "body", "annotation"],
-  // `title` rides along for display; `annotation` is the snippet source for annotation hits.
-  storeFields: ["path", "kind", "title", "docTitle", "annotationId", "annotation", "source"],
+  // annotation of a matching doc (their doc title rides along as `docTitle` instead). The
+  // `tags` field exists only on doc entries: a tag query lands on the doc row itself.
+  fields: ["title", "headings", "body", "annotation", "tags"],
+  // `title` rides along for display; `annotation` is the snippet source for annotation hits;
+  // `tags` is the snippet source for tag hits and `tagList` echoes the list verbatim.
+  storeFields: [
+    "path",
+    "kind",
+    "title",
+    "docTitle",
+    "annotationId",
+    "annotation",
+    "source",
+    "tags",
+    "tagList",
+  ],
   tokenize: tokenizeSearchText,
   searchOptions: {
     // Prefix only on ≥2-code-point terms: 流* would hit every 流水/流式 token and bury
@@ -99,6 +118,7 @@ const entriesOf = (
   rel: string,
   fields: ExtractedDocFields,
   annotations: readonly DocAnnotationEntry[],
+  tags: readonly string[],
 ): readonly IndexEntry[] => [
   {
     id: docEntryIdOf(rel),
@@ -107,6 +127,7 @@ const entriesOf = (
     title: fields.title,
     headings: fields.headings,
     body: fields.body,
+    ...(tags.length === 0 ? {} : { tags: tags.join(" "), tagList: [...tags] }),
   },
   ...annotations.map((entry): IndexEntry => ({
     id: annotationEntryIdOf(rel, entry.annotation.id),
@@ -241,6 +262,11 @@ interface DocRecord {
    * without touching the doc, so this is what makes their adds/resolves/deletes visible.
    */
   readonly sidecar: SidecarFingerprint | null;
+  /**
+   * sha256 of the doc's canonical meta-table record JSON, `null` when it has none: tags
+   * mutate without touching the doc, so this is what makes tag edits visible.
+   */
+  readonly meta: string | null;
 }
 
 interface LoadedIndex {
@@ -273,11 +299,13 @@ const docRecordOf = (value: unknown): DocRecord | undefined => {
   const size: unknown = Reflect.get(value, "size");
   const sha: unknown = Reflect.get(value, "sha");
   const sidecar = sidecarFingerprintOf(Reflect.get(value, "sidecar"));
+  const meta: unknown = Reflect.get(value, "meta");
   if (typeof mtimeMs !== "number" || !Number.isFinite(mtimeMs)) return undefined;
   if (typeof size !== "number" || !Number.isFinite(size)) return undefined;
   if (typeof sha !== "string") return undefined;
   if (sidecar === undefined) return undefined;
-  return { mtimeMs, size, sha, sidecar };
+  if (typeof meta !== "string" && meta !== null) return undefined;
+  return { mtimeMs, size, sha, sidecar, meta };
 };
 
 const REBUILT_DIAGNOSTIC = "搜索索引已损坏或版本不兼容，已全量重建";
@@ -384,6 +412,30 @@ const sameSidecar = (
     ? next === null
     : next !== null && prev.mtimeMs === next.mtimeMs && prev.size === next.size);
 
+/**
+ * The whole `.hreader/meta.json` table, read once per update (one file feeds every doc's
+ * fingerprint). `undefined` means the read itself failed — per-doc fingerprints then keep
+ * their prior values, the same conservative hold a failed sidecar read takes.
+ */
+const liveMetaTable = async (
+  workspaceReal: string,
+  deps: PatchDeps,
+  bucket: SearchBucket,
+): Promise<Readonly<Record<string, DocMetaRecord>> | undefined> => {
+  try {
+    const file = await readDocMetaAt(metaPathOf(join(workspaceReal, ".hreader")), deps);
+    for (const diagnostic of file.diagnostics) pushSearchDiagnostic(bucket, diagnostic);
+    return file.docs;
+  } catch (error: unknown) {
+    pushSearchDiagnostic(bucket, `文档元数据表：${codeNameOf(error)}`);
+    return undefined;
+  }
+};
+
+/** The fingerprint of one doc's meta record: stable bytes of the canonical field order. */
+const metaFingerprintOf = (record: DocMetaRecord | undefined): string | null =>
+  record === undefined ? null : sha256Hex(encodeUtf8(JSON.stringify(docMetaRecordJson(record))));
+
 /** Ids of `rel`'s sidecar-derived annotation entries plus the stored doc title, in one scan. */
 const sidecarIndexStateOf = (
   mini: SearchIndex,
@@ -453,6 +505,7 @@ interface PendingDoc {
   readonly rel: string;
   readonly fields: ExtractedDocFields;
   readonly annotations: readonly DocAnnotationEntry[];
+  readonly tags: readonly string[];
 }
 
 interface UpdatedIndex {
@@ -477,6 +530,7 @@ export const updateIndex = async (
 ): Promise<UpdatedIndex> => {
   const state = await loadIndex(input.indexPath, deps, bucket);
   const walked = await walkSearchDocs(input.workspaceReal, deps, bucket);
+  const metaTable = await liveMetaTable(input.workspaceReal, deps, bucket);
   const records = new Map<string, DocRecord>();
   const drops = new Set<string>();
   const adds: PendingDoc[] = [];
@@ -487,7 +541,12 @@ export const updateIndex = async (
     // The sidecar store fingerprints every doc — annotations mutate without touching it.
     const sidecar = await liveSidecarFingerprint(input.workspaceReal, rel, deps, bucket);
     const storeMoved = !sameSidecar(prev?.sidecar, sidecar);
-    if (prev?.mtimeMs === doc.mtimeMs && prev.size === doc.size) {
+    // Same for the meta table: a tag edit is invisible in mtime/size/sha, so the record
+    // hash is what detects it. A failed table read holds the prior fingerprint.
+    const metaRecord = metaTable?.[rel];
+    const meta = metaTable === undefined ? (prev?.meta ?? null) : metaFingerprintOf(metaRecord);
+    const metaMoved = prev !== undefined && prev.meta !== meta;
+    if (prev?.mtimeMs === doc.mtimeMs && prev.size === doc.size && !metaMoved) {
       if (storeMoved) {
         if (await refreshSidecarEntries(input.workspaceReal, rel, state.mini, deps, bucket)) {
           records.set(rel, { ...prev, sidecar });
@@ -507,18 +566,24 @@ export const updateIndex = async (
       continue;
     }
     const sha = sha256Hex(bytes);
-    if (prev?.sha === sha) {
+    if (prev?.sha === sha && !metaMoved) {
       if (storeMoved) {
         if (await refreshSidecarEntries(input.workspaceReal, rel, state.mini, deps, bucket)) {
-          records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar });
+          records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar, meta });
           changed = true;
           continue;
         }
-        records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar: prev.sidecar });
+        records.set(rel, {
+          mtimeMs: doc.mtimeMs,
+          size: doc.size,
+          sha,
+          sidecar: prev.sidecar,
+          meta,
+        });
         changed = true;
         continue;
       }
-      records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar });
+      records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar, meta });
       changed = true;
       continue;
     }
@@ -540,8 +605,13 @@ export const updateIndex = async (
       for (const diagnostic of listed.diagnostics) pushSearchDiagnostic(bucket, diagnostic);
     }
     drops.add(rel);
-    adds.push({ rel, fields, annotations: listed?.annotations ?? [] });
-    records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar });
+    adds.push({
+      rel,
+      fields,
+      annotations: listed?.annotations ?? [],
+      tags: metaRecord?.tags ?? [],
+    });
+    records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar, meta });
     changed = true;
   }
   // Anything recorded but no longer walked is a deleted doc: its entries leave the index.
@@ -555,7 +625,7 @@ export const updateIndex = async (
     state.mini.discardAll(entryIdsFor(state.mini, drops));
   }
   for (const pending of adds) {
-    state.mini.addAll(entriesOf(pending.rel, pending.fields, pending.annotations));
+    state.mini.addAll(entriesOf(pending.rel, pending.fields, pending.annotations, pending.tags));
   }
   if (!changed) return { mini: state.mini, truncated: bucket.truncated };
   try {

@@ -26,6 +26,8 @@ const REQUIRED_BY_TOOL: Record<string, readonly string[]> = {
   hr_create_from_template: ["target"],
   hr_save_template: ["file", "id"],
   hr_search: ["query"],
+  hr_get_meta: ["filePath"],
+  hr_set_meta: ["filePath"],
 };
 
 interface ListedTool {

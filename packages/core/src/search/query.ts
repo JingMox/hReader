@@ -45,6 +45,8 @@ export interface SearchHit {
   readonly kind: "doc" | "annotation";
   /** Present only on `kind === "annotation"`. */
   readonly annotationId?: string;
+  /** The doc's stored tags (`[]` when it has none — additive; also `[]` on annotation hits). */
+  readonly tags: readonly string[];
   readonly score: number;
   /** ≤ `SEARCH_LIMITS.snippetChars` code units around the first match. */
   readonly snippet: string;
@@ -88,7 +90,7 @@ const limitOf = (limit: number | undefined): number => {
 };
 
 /** Fields in boost order — the snippet comes from the strongest field the hit matched. */
-const FIELD_PRIORITY = ["title", "headings", "body", "annotation"] as const;
+const FIELD_PRIORITY = ["title", "headings", "tags", "body", "annotation"] as const;
 
 type SnippetField = (typeof FIELD_PRIORITY)[number];
 
@@ -99,6 +101,8 @@ interface StoredHit {
   readonly docTitle?: unknown;
   readonly annotationId?: unknown;
   readonly annotation?: unknown;
+  readonly tags?: unknown;
+  readonly tagList?: unknown;
   readonly score: number;
   readonly match: Record<string, string[]>;
 }
@@ -128,6 +132,11 @@ const sourceTextOf = async (
 ): Promise<string> => {
   if (hit.kind === "annotation") {
     return typeof hit.annotation === "string" ? hit.annotation : "";
+  }
+  // A tag hit snippets from the stored `tags` text — tag edits don't touch doc bytes, so the
+  // index copy is the authoritative source (and avoids a re-read the doc can't satisfy).
+  if (field === "tags") {
+    return typeof hit.tags === "string" ? hit.tags : "";
   }
   const path = typeof hit.path === "string" ? hit.path : "";
   try {
@@ -169,11 +178,15 @@ const hitOf = async (
       : typeof hit.docTitle === "string"
         ? hit.docTitle
         : "";
+  const tags = Array.isArray(hit.tagList)
+    ? hit.tagList.filter((tag): tag is string => typeof tag === "string")
+    : [];
   return {
     path: typeof hit.path === "string" ? hit.path : "",
     title,
     kind,
     ...(annotationId === undefined ? {} : { annotationId }),
+    tags,
     score: hit.score,
     snippet: snippet.text,
     highlights: snippet.highlights,

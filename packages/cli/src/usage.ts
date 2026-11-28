@@ -16,6 +16,7 @@ export const COMMAND_NAMES = [
   "serve",
   "template",
   "annotations",
+  "meta",
   "search",
 ] as const;
 
@@ -56,6 +57,7 @@ const SYNOPSIS = [
   "hr template save <file> --id <id> [--global] [--name <名字>] [--description <说明>] [--json]",
   "hr annotations list <file> [--status pending|resolved|all] [--json]",
   "hr annotations migrate <file> [--json]",
+  "hr meta <file> [--tag <t>]... [--untag <t>]... [--source-url <u> | --clear-source-url] [--json]",
   "hr search <query> [--limit <n>] [--json]",
   "hr --help | hr <cmd> --help",
 ];
@@ -259,6 +261,21 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "                   外来文档没有 hr-meta，报 0 条迁移。",
     "",
     "  读取侧车文件损坏时逐条告警到 stderr，不拖垮整个列表。",
+  ],
+  meta: [
+    "用法：hr meta <file> [--tag <t>]... [--untag <t>]... [--source-url <u> | --clear-source-url] [--json]",
+    "",
+    "  读写文档元数据（标签 + 来源 URL）：存在 <workspace>/.hreader/meta.json 一张表里，",
+    "  按工作区相对路径记档——改名/移动文档会丢掉元数据（已知限制）。不带修改旗标时打印当前值。",
+    "",
+    "  --tag <t>           追加标签（可重复；大小写不敏感去重，已有的忽略）",
+    "  --untag <t>         移除标签（可重复；大小写不敏感）",
+    "  --source-url <u>    设置来源 URL（http/https 绝对 URL，≤2048 码点，不接受含凭据）",
+    "  --clear-source-url  清除来源 URL；与 --source-url 不可同传",
+    "",
+    "  标签限 32 个、每个 1..64 码点（trim + NFC，纯空白拒绝）。",
+    "  JSON 时为 { path, tags, sourceUrl, createdBy, savedAt, changed, diagnostics }",
+    "  （sourceUrl/createdBy/savedAt 缺席为 null；changed 表示本次是否写盘）。",
   ],
   search: [
     "用法：hr search <query> [--limit <n>] [--json]",

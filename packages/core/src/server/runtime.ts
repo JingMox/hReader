@@ -15,6 +15,7 @@ import { createCapabilityBook } from "./capability";
 import type { Reply } from "./contracts";
 import { diffNodes } from "./diff-nodes";
 import { annotationDiffReply, annotationsReply } from "./annotation-replies";
+import { docMetaReply } from "./meta-replies";
 import { docAssetReply } from "./doc-assets";
 import {
   docInfoReply,
@@ -198,7 +199,7 @@ const isStaticKind = (kind: Route["kind"]): kind is StaticKind =>
 /** Read-kind routes (document/docInfo/model/outline/annotations/sidecar) share "remember first, then fetch". */
 type ReadKind = Extract<
   Route["kind"],
-  "document" | "docInfo" | "model" | "outline" | "annotations" | "sidecar"
+  "document" | "docInfo" | "model" | "outline" | "annotations" | "sidecar" | "docMeta"
 >;
 
 const isReadKind = (kind: Route["kind"]): kind is ReadKind =>
@@ -207,7 +208,8 @@ const isReadKind = (kind: Route["kind"]): kind is ReadKind =>
   kind === "model" ||
   kind === "outline" ||
   kind === "annotations" ||
-  kind === "sidecar";
+  kind === "sidecar" ||
+  kind === "docMeta";
 
 /** The five sidecar writes: broadcast `doc.annotations` on success (noteWrite stays silent for them). */
 const SIDECAR_WRITE_KINDS: ReadonlySet<Route["kind"]> = new Set([
@@ -230,6 +232,7 @@ const readReplyOf = async (
   if (kind === "docInfo") return docInfoReply(context, docId);
   if (kind === "annotations") return annotationsReply(context, docId);
   if (kind === "sidecar") return sidecarListReply(context, docId);
+  if (kind === "docMeta") return docMetaReply(context, docId);
   return kind === "model" ? modelReply(context, docId) : outlineReply(context, docId);
 };
 
@@ -309,6 +312,11 @@ const dispatchOf =
     // silent); annotation changes ride their own event — success broadcasts, failure says nothing.
     if (SIDECAR_WRITE_KINDS.has(route.kind)) {
       runtime.hub.publish("doc.annotations", { docId: written.target.relative });
+    }
+    // Same contract as doc.annotations: doc.meta fires exactly once per successful write —
+    // a thrown dispatchWrite (validation, lock, IO) never reaches this line.
+    if (route.kind === "docMetaSet") {
+      runtime.hub.publish("doc.meta", { docId: written.target.relative });
     }
     return written.reply;
   };

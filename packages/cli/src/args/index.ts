@@ -64,6 +64,45 @@ const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
   };
 };
 
+const META_FLAGS = [
+  "--json",
+  "--workspace",
+  "--tag",
+  "--untag",
+  "--source-url",
+  "--clear-source-url",
+];
+
+const metaIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
+  const [file = "", ...extra] = rest;
+  let message =
+    extra.length > 0
+      ? `meta 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
+      : file === ""
+        ? "meta 缺少 <file>"
+        : unusedFlag(raw, META_FLAGS);
+  if (
+    message === undefined &&
+    raw.switches.has("--clear-source-url") &&
+    raw.values.has("--source-url")
+  ) {
+    message = "--source-url 与 --clear-source-url 不能同用";
+  }
+  if (message !== undefined) return failure(message, "meta");
+  return {
+    ok: true,
+    intent: {
+      kind: "meta",
+      path: absoluteOf(file, cwd),
+      tags: raw.tags,
+      untags: raw.untags,
+      sourceUrl: raw.values.get("--source-url"),
+      clearSourceUrl: raw.switches.has("--clear-source-url"),
+      ...commonOf(raw, cwd),
+    },
+  };
+};
+
 const SEARCH_FLAGS = ["--json", "--limit", "--workspace"];
 
 /** `SEARCH_LIMITS.limitMax` pinned in the flag's range message: core owns the real bound. */
@@ -108,6 +147,7 @@ const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
   serve: serveIntent,
   template: templateIntent,
   annotations: annotationsIntent,
+  meta: metaIntent,
   search: searchIntent,
 };
 

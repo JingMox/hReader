@@ -297,9 +297,9 @@ describe("annotations output · merged entries and migrate receipts", () => {
 });
 
 describe("usage · single source of truth", () => {
-  it("should name all sixteen commands", () => {
+  it("should name all seventeen commands", () => {
     expect(COMMAND_NAMES.join(" ")).toBe(
-      "new import normalize outline read patch check style undo export pdf png serve template annotations search",
+      "new import normalize outline read patch check style undo export pdf png serve template annotations meta search",
     );
     expect(isCommandName("patch")).toBe(true);
     expect(isCommandName("nope")).toBe(false);
@@ -854,6 +854,7 @@ describe("hr search output", () => {
         path: "a.html",
         title: "维修手册",
         kind: "doc",
+        tags: ["维修"],
         score: 2.5,
         snippet: "摩托车 发动机",
         highlights: [[0, 3]],
@@ -863,6 +864,7 @@ describe("hr search output", () => {
         title: "维修手册",
         kind: "annotation",
         annotationId: "an-123",
+        tags: [],
         score: 1.1,
         snippet: "换\n全合成机油",
         highlights: [[1, 5]],
@@ -889,6 +891,7 @@ describe("hr search output", () => {
           path: "b.html",
           title: "",
           kind: "annotation",
+          tags: [],
           score: 0.5,
           snippet: "note",
           highlights: [],

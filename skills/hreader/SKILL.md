@@ -33,6 +33,8 @@ node skills/hreader/scripts/hr.mjs template new draft.html --template note   # d
 node skills/hreader/scripts/hr.mjs template save report.html --id my-style   # page → reusable template
 node skills/hreader/scripts/hr.mjs annotations list report.html             # merged hr-meta + sidecar annotations
 node skills/hreader/scripts/hr.mjs annotations migrate report.html          # hr-meta annotations → sidecar store
+node skills/hreader/scripts/hr.mjs meta report.html                          # read doc metadata (tags + source URL)
+node skills/hreader/scripts/hr.mjs meta report.html --tag 参考 --source-url https://example.com  # merge-write metadata
 node skills/hreader/scripts/hr.mjs search 摩托车 --limit 20                  # full-text search over docs + annotations
 ```
 

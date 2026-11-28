@@ -6,6 +6,10 @@ export interface Raw {
   readonly values: ReadonlyMap<string, string>;
   readonly switches: ReadonlySet<string>;
   readonly allowHosts: readonly string[];
+  /** Every `--tag` occurrence in order (multi-value option — `values` alone would keep only the last). */
+  readonly tags: readonly string[];
+  /** Every `--untag` occurrence in order. */
+  readonly untags: readonly string[];
   readonly positionals: readonly string[];
 }
 
@@ -33,7 +37,10 @@ const OPTION_SPECS = {
   "page-size": { type: "string" },
   scale: { type: "string" },
   port: { type: "string" },
+  "source-url": { type: "string" },
+  tag: { type: "string", multiple: true },
   template: { type: "string" },
+  untag: { type: "string", multiple: true },
   visual: { type: "string" },
   tone: { type: "string" },
   timeout: { type: "string" },
@@ -54,6 +61,7 @@ const OPTION_SPECS = {
   strict: { type: "boolean" },
   help: { type: "boolean" },
   write: { type: "boolean" },
+  "clear-source-url": { type: "boolean" },
 } satisfies Record<string, ParseArgsOptionDescriptor>;
 
 const SPECS = new Map<string, ParseArgsOptionDescriptor>(Object.entries(OPTION_SPECS));
@@ -86,6 +94,8 @@ export const tokenize = (argv: readonly string[]): Tokenized => {
   const values = new Map<string, string>();
   const switches = new Set<string>();
   const allowHosts: string[] = [];
+  const tags: string[] = [];
+  const untags: string[] = [];
   for (const token of tokens) {
     if (token.kind !== "option") continue;
     const spec = specMap.get(token.name);
@@ -99,6 +109,8 @@ export const tokenize = (argv: readonly string[]): Tokenized => {
       }
       values.set(flag, token.value);
       if (token.name === "allow-host") allowHosts.push(token.value);
+      if (token.name === "tag") tags.push(token.value);
+      if (token.name === "untag") untags.push(token.value);
       continue;
     }
     if (token.value !== undefined) {
@@ -111,7 +123,7 @@ export const tokenize = (argv: readonly string[]): Tokenized => {
     }
     switches.add(flag);
   }
-  return { ok: true, raw: { values, switches, allowHosts, positionals } };
+  return { ok: true, raw: { values, switches, allowHosts, tags, untags, positionals } };
 };
 
 /** `--allow-host` accepts repeats and comma-separated lists: split per item, trim, drop empties; an all-empty result counts as unset. */

@@ -9,6 +9,7 @@ import type {
   ApplyStyleResult,
   DaemonInfo,
   DocAnnotationEntry,
+  DocMetaRecord,
   ExtractStats,
   ExtractStyleLlmResult,
   ExtractStyleResult,
@@ -630,6 +631,40 @@ export const humanAnnotationsMigrate = (result: MigrateResult, path: string): st
         `migrated ${path}（迁移 ${String(result.migrated)} 条、跳过 ${String(result.skipped)} 条）\n`,
       )
     : term(`unchanged ${path}（没有可迁移的 hr-meta 批注）\n`);
+
+// ---- `hr meta` ----
+
+/** The command's settled view: the record after any write, plus whether this run wrote. */
+export interface MetaReport {
+  readonly path: string;
+  readonly meta: DocMetaRecord;
+  readonly changed: boolean;
+  readonly diagnostics: readonly string[];
+}
+
+export const dataMeta = (report: MetaReport): string =>
+  `{"path":${quote(report.path)},"tags":${JSON.stringify(report.meta.tags)},` +
+  `"sourceUrl":${report.meta.sourceUrl === undefined ? "null" : quote(report.meta.sourceUrl)},` +
+  `"createdBy":${report.meta.createdBy === undefined ? "null" : quote(report.meta.createdBy)},` +
+  `"savedAt":${report.meta.savedAt === undefined ? "null" : quote(report.meta.savedAt)},` +
+  `"changed":${bool(report.changed)},"diagnostics":${JSON.stringify(report.diagnostics)}}`;
+
+/** The full tag list can run ~2k chars; the human line caps it and keeps the real count. */
+const tagsCell = (tags: readonly string[]): string => {
+  if (tags.length === 0) return "（无）";
+  const joined = term(tags.join(", "));
+  return Array.from(joined).length > TABLE_CELL_LIMIT * 2
+    ? `${cutAtCodePoint(joined, TABLE_CELL_LIMIT * 2)}…（共 ${String(tags.length)} 个）`
+    : joined;
+};
+
+export const humanMeta = (report: MetaReport): string =>
+  term(
+    `meta ${report.path}（${report.changed ? "已更新" : "未改动"}）\n` +
+      `  标签：${tagsCell(report.meta.tags)}\n` +
+      `  来源：${report.meta.sourceUrl ?? "（无）"}\n` +
+      `  创建者：${report.meta.createdBy ?? "-"} · 保存于 ${report.meta.savedAt ?? "-"}\n`,
+  );
 
 // ---- `hr search` ----
 

@@ -199,6 +199,24 @@ export type {
 } from "./ops/sidecar-ops";
 export { annotationDirOf, annotationFileOf, readSidecarFile, writeSidecarFile } from "./io";
 export type { SidecarFile } from "./io";
+
+// ---- Document metadata: tags + source URL in the shared `.hreader/meta.json` table ----
+export {
+  DOC_META_CREATORS,
+  DOC_META_LIMITS,
+  DOC_META_VERSION,
+  docMetaRecordJson,
+  foldTag,
+  normalizeTag,
+  parseDocMetaFile,
+  serializeDocMetaFile,
+  sourceUrlOf,
+} from "./docmeta";
+export type { DocMetaCreator, DocMetaParse, DocMetaPatch, DocMetaRecord } from "./docmeta";
+export { getDocMeta, setDocMeta } from "./ops/doc-meta-ops";
+export type { GetDocMetaResult, SetDocMetaInput, SetDocMetaResult } from "./ops/doc-meta-ops";
+export { META_REL, metaLockOf, metaPathOf, readDocMetaFile, writeDocMetaFile } from "./io";
+export type { DocMetaFile } from "./io";
 export { listWorkspaceAnnotations, WORKSPACE_SCAN_LIMITS } from "./ops/annotation-scan";
 export type {
   AnnotationStatusFilter,
