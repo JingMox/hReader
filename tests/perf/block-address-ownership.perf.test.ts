@@ -7,20 +7,26 @@
 // coverage instrumentation, with no way to time it reliably (same reason the 10 MB
 // checks live here — vitest.perf.config.ts gives the real wall-clock budget).
 
-import { parse as parse5, type DefaultTreeAdapterTypes } from "parse5";
+import {
+  parse as parse5,
+  parseFragment as parse5Fragment,
+  type DefaultTreeAdapterTypes,
+} from "parse5";
 
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+
+import { malformedHtmlArb } from "../adversarial/html-generator";
+import { MALFORMED_HTML } from "../adversarial/html-malformed";
 
 import {
   applyBlockPatch,
   listBlocks,
   parseFragment,
-  parseHtml,
   resolveAddress,
+  serializeHtml,
   type BlockPatchOutcome,
   type BlockPatchRequest,
-  type HtmlNode,
 } from "@hreader/core";
 
 /**
@@ -40,6 +46,9 @@ const patchOrSkip = (html: string, request: BlockPatchRequest): BlockPatchOutcom
       code === "content_model_conflict" ||
       code === "invalid_fragment" ||
       code === "invalid_input" ||
+      // The fragment gates refuse executable/external containers (`<style>` inside a
+      // block's own slice, `<noscript>` markup, …) — a legal outcome, not a defect.
+      code === "forbidden_content" ||
       // The D60 oracle refuses a listed block whose byte-splice is not reparse-exact —
       // a legal outcome, never a corrupting write.
       code === "target_moved"
@@ -89,8 +98,11 @@ const render = (node: GenNode): string => {
 
 type P5Node = DefaultTreeAdapterTypes.Node;
 type P5Element = DefaultTreeAdapterTypes.Element;
+type P5Document = DefaultTreeAdapterTypes.Document;
 
 const isP5Element = (node: P5Node): node is P5Element => "tagName" in node;
+
+const nameOf = (node: P5Node): string => (node as { nodeName: string }).nodeName;
 
 const p5ChildrenOf = (node: P5Node): readonly P5Node[] => {
   if ("childNodes" in node) return node.childNodes;
@@ -118,7 +130,12 @@ const tagIndexOf = (html: string): TagIndex => {
   const ends = new Set<number>();
   const skips: [number, number][] = [];
   const elements: [string, number][] = [];
-  const walk = (node: P5Node, parentTag: string | undefined): void => {
+  // Iterative: the corpus's depth-stress documents overflow a recursive walk.
+  const pending: [P5Node, string | undefined][] = [[document, undefined]];
+  for (;;) {
+    const frame = pending.pop();
+    if (frame === undefined) break;
+    const [node, parentTag] = frame;
     if (isP5Element(node)) {
       const location = node.sourceCodeLocation;
       if (location?.startTag !== undefined) {
@@ -127,8 +144,8 @@ const tagIndexOf = (html: string): TagIndex => {
       }
       if (location?.endTag !== undefined) ends.add(location.endTag.startOffset);
       const children = "content" in node ? node.content.childNodes : p5ChildrenOf(node);
-      for (const child of children) walk(child, node.tagName);
-      return;
+      for (const child of [...children].reverse()) pending.push([child, node.tagName]);
+      continue;
     }
     const location = node.sourceCodeLocation;
     if (location !== null && location !== undefined) {
@@ -142,9 +159,8 @@ const tagIndexOf = (html: string): TagIndex => {
         skips.push(range);
       }
     }
-    for (const child of p5ChildrenOf(node)) walk(child, undefined);
-  };
-  walk(document, undefined);
+    for (const child of [...p5ChildrenOf(node)].reverse()) pending.push([child, undefined]);
+  }
   return { starts, ends, skips, elements };
 };
 
@@ -163,24 +179,31 @@ interface OwnedIndex {
 const ownedIndexOf = (html: string, start: number, end: number): OwnedIndex | undefined => {
   const document = parse5(html, { sourceCodeLocationInfo: true, scriptingEnabled: false });
   const matches: P5Element[] = [];
-  const find = (node: P5Node): void => {
+  // Iterative, like `tagIndexOf` — corpus depth stress overflows recursion.
+  const toFind: P5Node[] = [document];
+  for (;;) {
+    const node = toFind.pop();
+    if (node === undefined) break;
     if (isP5Element(node)) {
       const location = node.sourceCodeLocation;
       if (location?.startTag?.startOffset === start && location.endOffset === end) {
         matches.push(node);
       }
       const children = "content" in node ? node.content.childNodes : p5ChildrenOf(node);
-      for (const child of children) find(child);
-      return;
+      toFind.push(...children);
+      continue;
     }
-    for (const child of p5ChildrenOf(node)) find(child);
-  };
-  find(document);
+    toFind.push(...p5ChildrenOf(node));
+  }
   if (matches.length === 0) return undefined;
   const starts = new Set<number>();
   const ends = new Set<number>();
   const skips: [number, number][] = [];
-  const collect = (node: P5Node, parentTag: string | undefined): void => {
+  const pending: [P5Node, string | undefined][] = matches.map((match) => [match, undefined]);
+  for (;;) {
+    const frame = pending.pop();
+    if (frame === undefined) break;
+    const [node, parentTag] = frame;
     if (isP5Element(node)) {
       const location = node.sourceCodeLocation;
       if (location?.startTag !== undefined) {
@@ -192,8 +215,8 @@ const ownedIndexOf = (html: string, start: number, end: number): OwnedIndex | un
         skips.push([location.endTag.startOffset, location.endTag.endOffset]);
       }
       const children = "content" in node ? node.content.childNodes : p5ChildrenOf(node);
-      for (const child of children) collect(child, node.tagName);
-      return;
+      for (const child of children) pending.push([child, node.tagName]);
+      continue;
     }
     const location = node.sourceCodeLocation;
     if (location !== null && location !== undefined) {
@@ -207,9 +230,8 @@ const ownedIndexOf = (html: string, start: number, end: number): OwnedIndex | un
         skips.push(range);
       }
     }
-    for (const child of p5ChildrenOf(node)) collect(child, undefined);
-  };
-  for (const match of matches) collect(match, undefined);
+    for (const child of p5ChildrenOf(node)) pending.push([child, undefined]);
+  }
   return { starts, ends, skips };
 };
 
@@ -328,51 +350,92 @@ const badDocArb: fc.Arbitrary<string> = fc
       `${bom ? "\uFEFF" : ""}${head}${tokens.join(joiner)}${tail}`,
   );
 
-const MALFORMED_RUNS = { numRuns: 2000 };
-
-type DocNode = HtmlNode;
+/** The string-carrying entries of the shared adversarial corpus (`bytes` entries are encodings a JS string cannot hold). */
+const corpusDocs: readonly string[] = MALFORMED_HTML.flatMap((entry) =>
+  "html" in entry ? [entry.html] : [],
+);
 
 /**
- * The independent checkers below re-derive what the oracles guarantee, test-side:
- * `spliceTree` builds the expected tree (block cut, or fragment spliced in at the
- * block's position), and `sameDoc` compares two trees node-by-node — kind, tag,
- * ordered attributes, text/comment/doctype payloads, children — after normalizing
- * the implicit `html/head/body` scaffold both parses produce (or don't, for "").
+ * Documents under test: the generator plus every shared-corpus document and the
+ * corpus's own seeded generator — one arbitrary, all three sources.
  */
-const spliceTree = (
-  root: DocNode,
-  start: number,
-  end: number,
-  insert: readonly DocNode[],
-  mode: "cut" | "replace" | "insertBefore" | "insertAfter",
-): DocNode => {
-  if (root.kind !== "element" && root.kind !== "document") return root;
-  const children: DocNode[] = [];
-  for (const child of root.children) {
-    if (child.kind === "element" && child.span?.start === start && child.span.end === end) {
-      if (mode === "cut") continue;
-      if (mode === "insertBefore") children.push(...insert, child);
-      else if (mode === "insertAfter") children.push(child, ...insert);
-      else children.push(...insert);
-    } else children.push(spliceTree(child, start, end, insert, mode));
-  }
-  return { ...root, children };
+const docArb: fc.Arbitrary<string> = fc.oneof(
+  { weight: 4, arbitrary: badDocArb },
+  { weight: 2, arbitrary: malformedHtmlArb },
+  { weight: 1, arbitrary: fc.constantFrom(...corpusDocs) },
+);
+
+const MALFORMED_RUNS = { numRuns: 2000, seed: 0xd58 };
+
+/**
+ * The independent raw-parse5 checkers below judge what the D68 oracles must
+ * guarantee, on the DOM the bytes actually build: `parse5.parse` /
+ * `parse5.parseFragment` output — no hReader normalization — in BOTH scripting
+ * modes. `p5Children` treats `<template>` content as the element's children.
+ */
+const p5Children = (node: P5Node): readonly P5Node[] =>
+  isP5Element(node) && "content" in node
+    ? (node as unknown as { content: { childNodes: P5Node[] } }).content.childNodes
+    : "childNodes" in node
+      ? (node as unknown as { childNodes: P5Node[] }).childNodes
+      : [];
+
+/** Slot on raw parse5 output — the node whose source extent is exactly `[start, end)`. */
+interface P5Slot {
+  readonly node: P5Node;
+  readonly parent: P5Node;
+  readonly index: number;
+}
+
+const rawLocationOf = (node: P5Node): { startOffset: number; endOffset: number } | undefined => {
+  const location = (
+    node as unknown as { sourceCodeLocation?: { startOffset: number; endOffset: number } | null }
+  ).sourceCodeLocation;
+  return location == null
+    ? undefined
+    : { startOffset: location.startOffset, endOffset: location.endOffset };
 };
 
-const attrsEq = (
-  left: readonly (readonly [string, string])[],
-  right: readonly (readonly [string, string])[],
-): boolean =>
-  left.map((attr) => `${attr[0]}\0${attr[1]}`).join("\0") ===
-  right.map((attr) => `${attr[0]}\0${attr[1]}`).join("\0");
+const findP5Slot = (root: P5Node, start: number, end: number): P5Slot | undefined => {
+  const queue: [P5Node, P5Node][] = [[root, root]];
+  for (;;) {
+    const pair = queue.shift();
+    if (pair === undefined) break;
+    const [node, parent] = pair;
+    const location = rawLocationOf(node);
+    if (
+      isP5Element(node) &&
+      location !== undefined &&
+      (node as unknown as { sourceCodeLocation?: { startTag?: unknown } }).sourceCodeLocation
+        ?.startTag !== undefined &&
+      location.startOffset === start &&
+      location.endOffset === end &&
+      p5Children(parent).includes(node)
+    ) {
+      return { node, parent, index: p5Children(parent).indexOf(node) };
+    }
+    for (const child of p5Children(node)) queue.push([child, node]);
+  }
+  return undefined;
+};
 
-/** Adjacent text siblings folded into one run — re-parse merges what surgery split. */
-const textMerged = (children: readonly DocNode[]): readonly DocNode[] => {
-  const merged: DocNode[] = [];
+const p5AttrsEq = (left: P5Element, right: P5Element): boolean =>
+  left.attrs.map((attr) => `${attr.name}\0${attr.value}\0${attr.namespace ?? ""}`).join("\0") ===
+  right.attrs.map((attr) => `${attr.name}\0${attr.value}\0${attr.namespace ?? ""}`).join("\0");
+
+const p5Merged = (children: readonly P5Node[]): readonly P5Node[] => {
+  const merged: P5Node[] = [];
   for (const child of children) {
     const last = merged[merged.length - 1];
-    if (child.kind === "text" && last?.kind === "text") {
-      merged[merged.length - 1] = { ...last, value: last.value + child.value };
+    if (
+      (child as { nodeName: string }).nodeName === "#text" &&
+      (last as { nodeName?: string } | undefined)?.nodeName === "#text"
+    ) {
+      const mergedText = {
+        ...(last as object),
+        value: (last as { value: string }).value + (child as { value: string }).value,
+      };
+      merged[merged.length - 1] = mergedText as unknown as P5Node;
     } else {
       merged.push(child);
     }
@@ -380,70 +443,126 @@ const textMerged = (children: readonly DocNode[]): readonly DocNode[] => {
   return merged;
 };
 
-const nodesEq = (left: readonly DocNode[], right: readonly DocNode[]): boolean => {
-  const a = textMerged(left);
-  const b = textMerged(right);
-  return (
-    a.length === b.length &&
-    a.every((node, index) => {
-      const other = b[index];
-      return other !== undefined && shapeEq(node, other);
-    })
+/** One node's own payload — kind, tag, namespace, attrs, leaf data. Children pair up in the walk below. */
+const p5PayloadEq = (left: P5Node, right: P5Node): boolean => {
+  if (nameOf(left) !== nameOf(right)) return false;
+  if (isP5Element(left) && isP5Element(right)) {
+    return (
+      left.tagName === right.tagName &&
+      left.namespaceURI === right.namespaceURI &&
+      p5AttrsEq(left, right)
+    );
+  }
+  if (nameOf(left) === "#text")
+    return (left as { value: string }).value === (right as { value: string }).value;
+  if (nameOf(left) === "#comment")
+    return (left as { data: string }).data === (right as { data: string }).data;
+  if (nameOf(left) === "#documentType")
+    return (
+      (left as { name: string }).name === (right as { name: string }).name &&
+      (left as { publicId: string }).publicId === (right as { publicId: string }).publicId &&
+      (left as { systemId: string }).systemId === (right as { systemId: string }).systemId
+    );
+  return nameOf(left) === "#document";
+};
+
+const rawParse = (html: string, scripting: boolean): P5Document =>
+  parse5(html, { sourceCodeLocationInfo: true, scriptingEnabled: scripting });
+
+const rawFragmentNodes = (text: string, scripting: boolean): readonly P5Node[] =>
+  p5Children(
+    parse5Fragment(text, {
+      sourceCodeLocationInfo: true,
+      scriptingEnabled: scripting,
+    }),
   );
-};
 
-const shapeEq = (left: DocNode, right: DocNode): boolean =>
-  left.kind === right.kind &&
-  ((left.kind === "element" &&
-    right.kind === "element" &&
-    left.tag === right.tag &&
-    attrsEq(left.attrs, right.attrs) &&
-    nodesEq(left.children, right.children)) ||
-    (left.kind === "text" && right.kind === "text" && left.value === right.value) ||
-    (left.kind === "comment" && right.kind === "comment" && left.data === right.data) ||
-    (left.kind === "doctype" &&
-      right.kind === "doctype" &&
-      left.name === right.name &&
-      left.publicId === right.publicId &&
-      left.systemId === right.systemId) ||
-    (left.kind === "document" &&
-      right.kind === "document" &&
-      nodesEq(left.children, right.children)));
-
-/** The implicit html/head/body scaffold — merged so a bare `document` equals one. */
-const scaffoldParts = (root: DocNode): { head: DocNode[]; body: DocNode[]; rest: DocNode[] } => {
-  const kids = root.kind === "document" ? root.children : [root];
-  const head: DocNode[] = [];
-  const body: DocNode[] = [];
-  const rest: DocNode[] = [];
-  for (const child of kids) {
-    if (child.kind === "element" && child.tag === "html") {
-      for (const inner of child.children) {
-        if (inner.kind === "element" && inner.tag === "head") head.push(...inner.children);
-        else if (inner.kind === "element" && inner.tag === "body") body.push(...inner.children);
-        else rest.push(inner);
-      }
-    } else rest.push(child);
+/**
+ * Whole-tree equality between the expected tree (`left`, built from the original
+ * raw nodes) and the parsed result (`right`) — except at `woundParent`, where
+ * `right`'s child list must equal `expectedAtWound`, with text-run merging
+ * applied at that level only (the splice can leave adjacent text siblings a
+ * re-parse folds together).
+ */
+const p5SameExceptWound = (
+  left: P5Node,
+  right: P5Node,
+  woundParent: P5Node,
+  expectedAtWound: readonly P5Node[],
+): boolean => {
+  // Iterative pairwise walk — the corpus's depth-stress documents overflow recursion.
+  const pending: [P5Node, P5Node][] = [[left, right]];
+  for (;;) {
+    const pair = pending.pop();
+    if (pair === undefined) break;
+    const [a, b] = pair;
+    if (!p5PayloadEq(a, b)) return false;
+    const atWound = a === woundParent;
+    const aKids = atWound ? p5Merged(expectedAtWound) : p5Children(a);
+    const bKids = atWound ? p5Merged(p5Children(b)) : p5Children(b);
+    if (aKids.length !== bKids.length) return false;
+    for (let index = 0; index < aKids.length; index += 1) {
+      const childA = aKids[index];
+      const childB = bKids[index];
+      if (childA === undefined || childB === undefined) return false;
+      pending.push([childA, childB]);
+    }
   }
-  return { head, body, rest };
+  return true;
 };
 
-const sameDoc = (left: DocNode, right: DocNode): boolean => {
-  const a = scaffoldParts(left);
-  const b = scaffoldParts(right);
-  return nodesEq(a.head, b.head) && nodesEq(a.body, b.body) && nodesEq(a.rest, b.rest);
+/**
+ * Independent write-oracle check, both scripting modes: bytes outside the splice
+ * stay verbatim, and the result's raw tree equals the original's except at the
+ * wound — where the child list must be exactly what the action dictates.
+ */
+const rawWriteJudged = (
+  html: string,
+  result: string,
+  start: number,
+  end: number,
+  action: "replace" | "insertBefore" | "insertAfter",
+  text: string,
+): boolean => {
+  const from = action === "insertAfter" ? end : start;
+  const to = action === "insertBefore" ? start : end;
+  const tail = result.slice(result.length - (html.length - to));
+  if (result.slice(0, from) !== html.slice(0, from) || tail !== html.slice(to)) return false;
+  return [false, true].every((scripting) => {
+    const original = rawParse(html, scripting);
+    const slot = findP5Slot(original, start, end);
+    if (slot === undefined || !isP5Element(slot.node)) return false;
+    const children = p5Children(slot.parent);
+    const fragment = rawFragmentNodes(text, scripting);
+    let expected: readonly P5Node[];
+    if (action === "replace") {
+      expected = children.flatMap((child) => (child === slot.node ? fragment : [child]));
+    } else if (action === "insertBefore") {
+      expected = children.flatMap((child) =>
+        child === slot.node ? [...fragment, child] : [child],
+      );
+    } else {
+      expected = children.flatMap((child) =>
+        child === slot.node ? [child, ...fragment] : [child],
+      );
+    }
+    return p5SameExceptWound(original, rawParse(result, scripting), slot.parent, expected);
+  });
 };
 
-/** A fragment source the parser accepts — `parseFragment` is input parsing, not the oracle. */
-const fragmentOrSkip = (source: string): DocNode | undefined => {
-  try {
-    return parseFragment(source);
-  } catch {
-    return undefined;
-  }
+/** Independent delete-oracle check: the result is the original raw tree minus the block's subtree, both modes. */
+const rawDeleteJudged = (html: string, result: string, start: number, end: number): boolean => {
+  if (result !== `${html.slice(0, start)}${html.slice(end)}`) return false;
+  return [false, true].every((scripting) => {
+    const original = rawParse(html, scripting);
+    const slot = findP5Slot(original, start, end);
+    if (slot === undefined || !isP5Element(slot.node)) return false;
+    const expected = p5Children(slot.parent).filter((child) => child !== slot.node);
+    return p5SameExceptWound(original, rawParse(result, scripting), slot.parent, expected);
+  });
 };
 
-/** Fragments that exercise scope-close, AAA, nested-form and foreign-content breakouts. */
+/** Fragments that exercise scope-close, AAA, nested-form, raw-text and foreign-content breakouts. */
 const FRAGMENTS = [
   "<p>f</p>",
   "<li>f</li>",
@@ -453,10 +572,22 @@ const FRAGMENTS = [
   "<nobr>f</nobr>",
   "<form><p>f</p></form>",
   "<table><tr><td>f</td></tr></table>",
+  "<td>f</td>",
+  "<tr><td>f</td></tr>",
+  "<tbody><tr><td>f</td></tr></tbody>",
+  "<caption>f</caption>",
+  "<option>f</option>",
+  "<select><option>f</option></select>",
+  "<button><div>f</div></button>",
+  "<object><p>f</p></object>",
+  "<marquee>f</marquee>",
+  "<template><p>f</p></template>",
+  "<noscript><p>f</p></noscript>",
   "<blockquote><p>f</p></blockquote>",
   "<div>f</div>",
   "<span>f</span>",
   "<svg><p>f</p></svg>",
+  "<math><p>f</p></math>",
   "<button>f</button>",
 ] as const;
 
@@ -465,7 +596,7 @@ const fragArb = fc.constantFrom(...FRAGMENTS);
 describe("property · malformed HTML (D58 ownership)", () => {
   it("should list only blocks whose slice carries no foreign tag tokens", () => {
     fc.assert(
-      fc.property(badDocArb, (html) => {
+      fc.property(docArb, (html) => {
         for (const block of listBlocks(html)) {
           const slice = html.slice(block.start, block.end);
           // The slice starts at the block's own start tag (tag names compare
@@ -488,24 +619,21 @@ describe("property · malformed HTML (D58 ownership)", () => {
 
   it("should refuse or exactly-own every listed block on delete (D60 oracle)", () => {
     fc.assert(
-      fc.property(badDocArb, (html) => {
+      fc.property(docArb, (html) => {
         const index = tagIndexOf(html);
-        const parsed = parseHtml(html, { locations: true }).root;
         for (const block of listBlocks(html)) {
           const stripped = `${html.slice(0, block.start)}${html.slice(block.end)}`;
           const outcome = patchOrSkip(html, { address: block.address, action: "delete" });
           // The oracle refused: no write happened, which is always a legal outcome.
           if (outcome === undefined) continue;
-          // Accepted: only the block's own bytes went, and the splice re-parses to
-          // exactly the original tree minus the block's subtree — the independent
-          // check, modulo the implicit scaffold (`""` re-parses to a bare document).
+          // Accepted: only the block's own bytes went, and the splice's RAW parse5
+          // tree — the DOM the bytes actually build — is exactly the original minus
+          // the block's subtree, in both scripting modes (independent check).
           const removed = html.length - outcome.html.length;
           expect(outcome.html).toBe(stripped);
           expect(
-            sameDoc(
-              parseHtml(outcome.html).root,
-              spliceTree(parsed, block.start, block.end, [], "cut"),
-            ),
+            rawDeleteJudged(html, outcome.html, block.start, block.end),
+            `delete at ${block.address} in ${html}`,
           ).toBe(true);
           // Every element start tag outside the deleted range keeps its bytes (shifted).
           for (const [tag, offset] of outsideTagBytes(index, block.start, block.end)) {
@@ -523,10 +651,17 @@ describe("property · malformed HTML (D58 ownership)", () => {
 
   it("should refuse or land in-context every listed block on write (D64 oracle)", () => {
     fc.assert(
-      fc.property(badDocArb, fragArb, (html, fragmentSource) => {
-        const fragment = fragmentOrSkip(fragmentSource);
-        if (fragment === undefined) return;
-        const parsed = parseHtml(html, { locations: true }).root;
+      fc.property(docArb, fragArb, (html, fragmentSource) => {
+        let text: string;
+        try {
+          // The bytes the impl splices in: the parsed fragment, serialized.
+          text = serializeHtml({
+            root: { kind: "document", children: [parseFragment(fragmentSource)] },
+            diagnostics: [],
+          });
+        } catch {
+          return;
+        }
         for (const block of listBlocks(html)) {
           for (const action of ["replace", "insertBefore", "insertAfter"] as const) {
             const outcome = patchOrSkip(html, {
@@ -536,14 +671,13 @@ describe("property · malformed HTML (D58 ownership)", () => {
             });
             // Refused (oracle, content model, fragment gates): nothing was written.
             if (outcome === undefined) continue;
-            // Accepted: the result re-parses to the original tree with the fragment
-            // spliced at the block's position — spec (a): every element outside the
-            // block keeps tag/attrs/own direct text/ancestor chain; spec (b): the
-            // fragment's top-level nodes are children of the block's original parent,
-            // replacing it or adjacent to it. Verified by an independent tree splice.
-            const expected = spliceTree(parsed, block.start, block.end, [fragment], action);
+            // Accepted, verified on the raw parse5 trees in both scripting modes:
+            // (a) bytes outside the splice stay verbatim; (b) every element outside
+            // the block's wound keeps tag/attrs/children; (c) the fragment's
+            // top-level raw nodes sit exactly where the action puts them among the
+            // wound parent's children — nowhere else.
             expect(
-              sameDoc(parseHtml(outcome.html).root, expected),
+              rawWriteJudged(html, outcome.html, block.start, block.end, action, text),
               `${action} ${fragmentSource} at ${block.address} in ${html}`,
             ).toBe(true);
           }
@@ -555,7 +689,7 @@ describe("property · malformed HTML (D58 ownership)", () => {
 
   it("should round-trip a replace back to the original bytes", () => {
     fc.assert(
-      fc.property(badDocArb, (html) => {
+      fc.property(docArb, (html) => {
         for (const block of listBlocks(html)) {
           const outcome = patchOrSkip(html, {
             address: block.address,

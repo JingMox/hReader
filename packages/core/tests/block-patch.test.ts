@@ -54,18 +54,22 @@ describe("applyBlockPatch · byte precision", () => {
     expect(block).toBeDefined();
   });
 
-  it("should patch a <p> inside <noscript> byte-precisely (scripting-off tree)", () => {
-    // Scripting off keeps <noscript> children as markup with real source offsets; the
-    // scripting-on annotation tree (D54) would read them as raw text and lose the range.
+  it("should refuse a <p> inside <noscript> — no element exists in the scripting-on DOM", () => {
+    // Scripting off keeps <noscript> children as markup, so the p is listed; but the
+    // scripting-on DOM has raw text there and no such element. A write that only
+    // exists in one of the two real DOMs cannot be verified — target_moved (D68).
     const html = "<article><noscript><p>x</p></noscript>tail</article>";
     const [block] = listBlocks(html);
-    const outcome = applyBlockPatch(html, {
-      address: block?.address ?? "",
-      action: "replace",
-      html: "<p>y</p>",
-    });
-    expect(outcome.changed).toBe(true);
-    expect(outcome.html).toBe("<article><noscript><p>y</p></noscript>tail</article>");
+    try {
+      applyBlockPatch(html, {
+        address: block?.address ?? "",
+        action: "replace",
+        html: "<p>y</p>",
+      });
+      expect.unreachable("the write must refuse");
+    } catch (error) {
+      expect(Reflect.get(Object(error), "code")).toBe("target_moved");
+    }
   });
 
   it("should mark an equivalent replacement as changed:false with the same address", () => {

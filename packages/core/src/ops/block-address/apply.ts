@@ -15,12 +15,19 @@
 //   are children of the block's original parent at its position (replacing it, or
 //   adjacent to it).
 //
-// Both compare trees node-by-node modulo the implicit html/head/body scaffold, so an
-// empty splice is an empty body — and on any divergence nothing is written. No IO, no
-// id injection: foreign files never grow `data-hr-id`s.
+// D68: both oracles judge the RAW parse5 tree — the DOM the bytes actually build — not
+// the normalized model (`closeImplicitParagraphs` hoists block content out of elements
+// the real parser never closes: quirks-mode `<p>`+`<table>`, `button`/`select`/`object`/
+// `marquee` scope boundaries, fostered content). A listed block maps to its raw twin
+// through its source extent `[start, end)` — normalization only powers listing and
+// fragment gates, never the judgment. Every oracle runs twice, once per scripting
+// mode: a `<noscript>`-borne element does not exist when scripting is on, so a patch
+// touching it cannot be verified and refuses. No IO, no id injection.
 
-import type { HtmlAttribute, HtmlElementNode, HtmlNode, SourceSpan } from "../../html/constants";
-import { parseHtml } from "../../html/parse";
+import type { DefaultTreeAdapterTypes } from "parse5";
+
+import type { HtmlNode, SourceSpan } from "../../html/constants";
+import { parseHtml, parseRawFragmentNodes, parseRawHtml } from "../../html/parse";
 import { serializeHtml } from "../../html/serialize";
 import { HrError } from "../../hr-error";
 import { assertFragmentFits } from "../patch-node/content";
@@ -73,25 +80,58 @@ const locateError = (address: string, code: "target_moved" | "invalid_selector")
         `块地址已失效：${JSON.stringify(address)} —— 路径命中的块指纹已变（原块被原地编辑），或路径未命中块且全文找不到唯一的同指纹候选（被移动、删除或重复）；重新 list 取新地址`,
       );
 
-/**
- * Ordered attribute-pair equality — the parser keeps source attr order on both sides.
- * `\0` can never appear in a parsed name or value, so the joined encoding is exact.
- */
-const sameAttrs = (left: readonly HtmlAttribute[], right: readonly HtmlAttribute[]): boolean =>
-  left.map((attr) => `${attr[0]}\0${attr[1]}`).join("\0") ===
-  right.map((attr) => `${attr[0]}\0${attr[1]}`).join("\0");
+type P5Node = DefaultTreeAdapterTypes.Node;
+type P5Element = DefaultTreeAdapterTypes.Element;
+type P5Document = DefaultTreeAdapterTypes.Document;
+
+const isP5Element = (node: P5Node): node is P5Element => "tagName" in node;
 
 /**
- * Adjacent text siblings folded into one run — a tree surgery can leave two text nodes
- * side by side where re-parsing produces a single merged one (an element's "own direct
- * text" is the concatenation either way). Comments still break runs.
+ * Children under the real parent-child relation: an HTML-namespace `template`
+ * keeps its children on `content`, not `childNodes` (same rule `buildTree`
+ * applies — only real template elements carry `content`; foreign `<template>`
+ * is an ordinary element). Leaves answer an empty list.
  */
-const textMerged = (children: readonly HtmlNode[]): readonly HtmlNode[] => {
-  const merged: HtmlNode[] = [];
+const childrenOf = (node: P5Node): readonly P5Node[] => {
+  if (isP5Element(node) && "content" in node) return node.content.childNodes;
+  if ("childNodes" in node) return (node as { childNodes: P5Node[] }).childNodes;
+  return [];
+};
+
+/**
+ * Ordered attribute equality on parse5 attributes — name, value, prefix and
+ * namespace (foreign-content adjustment rewrites `xlink:href` & friends). The
+ * parser keeps source order on both sides; `\0` can never appear in a parsed
+ * name or value, so the joined encoding is exact.
+ */
+const sameAttrs = (
+  left: DefaultTreeAdapterTypes.Element["attrs"],
+  right: DefaultTreeAdapterTypes.Element["attrs"],
+): boolean =>
+  left
+    .map((attr) => `${attr.name}\0${attr.value}\0${attr.prefix ?? ""}\0${attr.namespace ?? ""}`)
+    .join("\0") ===
+  right
+    .map((attr) => `${attr.name}\0${attr.value}\0${attr.prefix ?? ""}\0${attr.namespace ?? ""}`)
+    .join("\0");
+
+/**
+ * Adjacent text siblings folded into one run — a tree surgery can leave two text
+ * nodes side by side where re-parsing produces a single merged one (an element's
+ * "own direct text" is the concatenation either way). Comments still break runs.
+ */
+const textMerged = (children: readonly P5Node[]): readonly P5Node[] => {
+  const merged: P5Node[] = [];
   for (const child of children) {
     const last = merged[merged.length - 1];
-    if (child.kind === "text" && last?.kind === "text") {
-      merged[merged.length - 1] = { ...last, value: last.value + child.value };
+    if (child.nodeName === "#text" && last?.nodeName === "#text") {
+      const combined = {
+        ...(last as object),
+        value:
+          (last as DefaultTreeAdapterTypes.TextNode).value +
+          (child as DefaultTreeAdapterTypes.TextNode).value,
+      };
+      merged[merged.length - 1] = combined as P5Node;
     } else {
       merged.push(child);
     }
@@ -99,159 +139,175 @@ const textMerged = (children: readonly HtmlNode[]): readonly HtmlNode[] => {
   return merged;
 };
 
-const sameNodeList = (left: readonly HtmlNode[], right: readonly HtmlNode[]): boolean => {
-  const a = textMerged(left);
-  const b = textMerged(right);
-  return (
-    a.length === b.length &&
-    a.every((node, index) => {
-      const other = b[index];
-      return other !== undefined && sameShape(node, other);
-    })
-  );
-};
-
 /**
- * Node-by-node tree equality — kind, tag, attrs, payloads, children. Spans are ignored.
- * The `as` casts narrow `right` to `left`'s kind, which the first guard proved equal.
+ * The block's slot in a raw parse5 tree: its element, its real parent, and its
+ * index in that parent's children. Normalization can reparent a block but never
+ * changes its source extent — the same bytes give the same element location in
+ * the raw parse.
  */
-const sameShape = (left: HtmlNode, right: HtmlNode): boolean => {
-  if (left.kind !== right.kind) return false;
-  if (left.kind === "element") {
-    const other = right as HtmlElementNode;
-    return (
-      left.tag === other.tag &&
-      sameAttrs(left.attrs, other.attrs) &&
-      sameNodeList(left.children, other.children)
-    );
-  }
-  // Documents only ever compare through `sameDocument`, which peels them first — this
-  // arm keeps the kind union total and is unreachable in practice.
-  /* v8 ignore next */
-  if (left.kind === "document") return sameNodeList(left.children, (right as typeof left).children);
-  if (left.kind === "text") return left.value === (right as typeof left).value;
-  // A reached comment is an atomic node from the same bytes on both sides — provably equal.
-  /* v8 ignore next */
-  if (left.kind === "comment") return left.data === (right as typeof left).data;
-  const other = right as typeof left;
-  // A reached doctype comes from the same bytes on both sides — the fields are provably equal.
-  /* v8 ignore start */
-  return (
-    left.name === other.name && left.publicId === other.publicId && left.systemId === other.systemId
-  );
-  /* v8 ignore stop */
-};
-
-/**
- * `root` split into comparable parts by peeling the implicit `html/head/body` scaffold:
- * a splice can legitimately re-parse to a bare `document` (`""`) or to a tree carrying
- * the scaffold the parser synthesized — the scaffold itself is not content. `rest`
- * keeps every document child outside `<html>` (doctype, stray nodes) for a strict check.
- */
-interface ScaffoldParts {
-  readonly head: readonly HtmlNode[];
-  readonly body: readonly HtmlNode[];
-  readonly rest: readonly HtmlNode[];
+interface RawSlot {
+  readonly node: P5Element;
+  readonly parent: P5Node;
+  readonly index: number;
 }
 
-const scaffoldPartsOf = (root: HtmlNode): ScaffoldParts => {
-  // The oracles only ever compare whole documents; the fallback would matter only for
-  // a root that is not a document.
-  /* v8 ignore start */
-  const children = root.kind === "document" ? root.children : [root];
-  /* v8 ignore stop */
-  const head: HtmlNode[] = [];
-  const body: HtmlNode[] = [];
-  const rest: HtmlNode[] = [];
-  for (const child of children) {
-    if (child.kind === "element" && child.tag === "html") {
-      for (const inner of child.children) {
-        // parse5 wraps stray nodes into body; html keeps only head/body children.
-        /* v8 ignore start */
-        if (inner.kind !== "element" || (inner.tag !== "head" && inner.tag !== "body")) {
-          rest.push(inner);
-          continue;
-        }
-        /* v8 ignore stop */
-        if (inner.tag === "head") head.push(...inner.children);
-        else body.push(...inner.children);
+/**
+ * The raw twin of a listed block: the element whose source extent is exactly
+ * `[start, end)` — start tag included, so implicit scaffold elements (which
+ * carry no `startTag` location) can never match. No twin means the "block" does
+ * not exist in this scripting mode's real DOM (e.g. a `<noscript>`-borne
+ * element when scripting is on), and the patch cannot be verified.
+ */
+const findRawSlot = (root: P5Document, range: SourceSpan): RawSlot | undefined => {
+  const pending: { node: P5Node; parent: P5Node; index: number }[] = childrenOf(root).map(
+    (node, index) => ({ node, parent: root, index }),
+  );
+  // The queue grows while it is walked — for-of still visits pushed entries.
+  for (const candidate of pending) {
+    if (isP5Element(candidate.node)) {
+      const location = candidate.node.sourceCodeLocation;
+      if (
+        location?.startTag !== undefined &&
+        location.startOffset === range.start &&
+        location.endOffset === range.end
+      ) {
+        return { node: candidate.node, parent: candidate.parent, index: candidate.index };
       }
-    } else {
-      rest.push(child);
+      for (const [index, child] of childrenOf(candidate.node).entries()) {
+        pending.push({ node: child, parent: candidate.node, index });
+      }
     }
   }
-  return { head, body, rest };
-};
-
-/** Whole-document comparison modulo the implicit scaffold — what both oracles share. */
-const sameDocument = (left: HtmlNode, right: HtmlNode): boolean => {
-  const a = scaffoldPartsOf(left);
-  const b = scaffoldPartsOf(right);
-  return (
-    sameNodeList(a.head, b.head) && sameNodeList(a.body, b.body) && sameNodeList(a.rest, b.rest)
-  );
+  return undefined;
 };
 
 /**
- * `root` with `insert` spliced at `cut`'s slot per `action` — replacing `cut`, or before /
- * after it — the spine is rebuilt, the rest shared. Deleting `cut` is `insert: []`.
+ * One licensed difference in an otherwise identical tree: at `wound.parent`, the
+ * child list must be exactly `wound.children` — everything else must match
+ * node-by-node (nodeName, tag, namespace, attrs, payload, children). This is
+ * what both oracles share: the delete oracle wounds the block's cut, the write
+ * oracle wounds the fragment's splice.
  */
-const treeSpliced = (
-  root: HtmlNode,
-  cut: HtmlNode,
-  insert: readonly HtmlNode[],
-  action: "replace" | "insertBefore" | "insertAfter",
-): HtmlNode => {
-  if (root.kind !== "element" && root.kind !== "document") return root;
+interface RawWound {
+  readonly parent: P5Node;
+  readonly children: readonly P5Node[];
+}
+
+/**
+ * One node's own payload — nodeName plus whatever the kind carries (tag,
+ * namespace, attrs for elements; text/comment data; doctype ids). Child lists
+ * are the caller's concern: pair-wise comparison happens in the outer walk.
+ * An unrecognized kind refuses the pair — a node the comparator does not know
+ * cannot be verified.
+ */
+const payloadEq = (left: P5Node, right: P5Node): boolean => {
+  if (left.nodeName !== right.nodeName) return false;
+  if (isP5Element(left)) {
+    const other = right as P5Element;
+    return (
+      left.tagName === other.tagName &&
+      left.namespaceURI === other.namespaceURI &&
+      sameAttrs(left.attrs, other.attrs)
+    );
+  }
+  if (left.nodeName === "#text") {
+    return left.value === (right as DefaultTreeAdapterTypes.TextNode).value;
+  }
+  if (left.nodeName === "#comment") {
+    return left.data === (right as DefaultTreeAdapterTypes.CommentNode).data;
+  }
+  if (left.nodeName === "#documentType") {
+    const other = right as DefaultTreeAdapterTypes.DocumentType;
+    return (
+      left.name === other.name &&
+      left.publicId === other.publicId &&
+      left.systemId === other.systemId
+    );
+  }
+  return left.nodeName === "#document";
+};
+
+/**
+ * Node-by-node equality between the expected tree (the original raw tree, whose
+ * nodes carry `wound`) and the result tree. Iterative — depth-stress documents
+ * overflow recursion: a listed block is address-bounded but its sibling
+ * subtrees are not. Only at the wound's parent is the child list taken from
+ * `wound.children` — merged, since a splice stitches boundary texts; every
+ * other level compares the parse's own child list, strict.
+ */
+const sameTreeExceptWound = (left: P5Node, right: P5Node, wound: RawWound): boolean => {
+  const pending: [P5Node, P5Node][] = [[left, right]];
+  for (;;) {
+    const pair = pending.pop();
+    if (pair === undefined) break;
+    const [a, b] = pair;
+    if (!payloadEq(a, b)) return false;
+    const atWound = a === wound.parent;
+    const aKids = atWound ? textMerged(wound.children) : childrenOf(a);
+    const bKids = atWound ? textMerged(childrenOf(b)) : childrenOf(b);
+    if (aKids.length !== bKids.length) return false;
+    for (const [index, childA] of aKids.entries()) {
+      const childB = bKids[index];
+      // The length check above puts `index` in bounds on both sides.
+      /* v8 ignore next */
+      if (childB === undefined) return false;
+      pending.push([childA, childB]);
+    }
+  }
+  return true;
+};
+
+/** The wound of a delete: the block's parent holds its children minus the block. */
+const deleteWound = (slot: RawSlot): RawWound => {
+  const kids = childrenOf(slot.parent);
   return {
-    ...root,
-    children: root.children.flatMap((child) => {
-      if (child !== cut) return [treeSpliced(child, cut, insert, action)];
-      if (action === "insertBefore") return [...insert, child];
-      if (action === "insertAfter") return [child, ...insert];
-      return [...insert];
-    }),
+    parent: slot.parent,
+    children: [...kids.slice(0, slot.index), ...kids.slice(slot.index + 1)],
   };
 };
 
-/** `root` with `cut` spliced out of its parent's children — a `replace` with nothing. */
-const treeWithout = (root: HtmlNode, cut: HtmlNode): HtmlNode =>
-  treeSpliced(root, cut, [], "replace");
+/** The wound of a write: the fragment's top-level raw nodes spliced at the block's slot. */
+const writeWound = (
+  slot: RawSlot,
+  fragment: readonly P5Node[],
+  action: "replace" | "insertBefore" | "insertAfter",
+): RawWound => {
+  const kids = childrenOf(slot.parent);
+  const children =
+    action === "replace"
+      ? [...kids.slice(0, slot.index), ...fragment, ...kids.slice(slot.index + 1)]
+      : action === "insertBefore"
+        ? [...kids.slice(0, slot.index), ...fragment, slot.node, ...kids.slice(slot.index + 1)]
+        : [...kids.slice(0, slot.index + 1), ...fragment, ...kids.slice(slot.index + 1)];
+  return { parent: slot.parent, children };
+};
 
 /**
- * The D60 pre-write oracle — what the splice REMOVES is guaranteed by it. Removing the
- * block's node from the parse tree and re-parsing the byte-splice must produce the same
- * document (modulo the implicit scaffold): a leftover foreign byte (an ignored tag,
- * fostered content, dropped markup) makes the two sides diverge, so the range is not
- * exactly owned and nothing is written.
+ * The D60 pre-write oracle on the raw tree — what the splice REMOVES is guaranteed by
+ * it. `result` is a raw re-parse of the byte-splice: it must be the original tree
+ * minus the block's raw subtree, nothing else. A leftover foreign byte (an ignored
+ * tag, fostered content, dropped markup) diverges the trees → not owned.
  */
-const rangeIsExactlyOwned = (
-  html: string,
-  root: HtmlNode,
-  node: HtmlNode,
-  range: SourceSpan,
-): boolean =>
-  sameDocument(
-    parseHtml(`${html.slice(0, range.start)}${html.slice(range.end)}`).root,
-    treeWithout(root, node),
-  );
+const rangeIsExactlyOwned = (original: P5Document, result: P5Document, slot: RawSlot): boolean =>
+  sameTreeExceptWound(original, result, deleteWound(slot));
 
 /**
- * The D64 post-write oracle — what the splice ADDS is guaranteed by it. The written
- * result is re-parsed and compared node-by-node against the expected tree, which is the
- * original tree with the fragment spliced at the block's slot under its original parent:
- * replacing the block, or immediately before/after it. Scope-close (li/dd/dt/button),
- * adoption-agency (a/nobr), nested-form and foreign-content (svg/math) breakouts all
- * reparent or drop nodes, and unclosed raw text swallows the fragment — any such
- * divergence means the write would land outside its promised context → nothing written.
+ * The D64 post-write oracle on the raw tree — what the splice ADDS is guaranteed by it.
+ * `result` is a raw re-parse of the written bytes: it must be the original tree with
+ * the fragment's top-level raw nodes at the block's slot — replacing it, or adjacent —
+ * and nothing else changed. Scope-close, adoption-agency, foster parenting and
+ * still-open elements (quirks `<p>`, `button`/`select`/`object`/`marquee` boundaries,
+ * raw text) all reparent or drop nodes → divergence → nothing written. Namespace is
+ * compared too: a fragment spliced into foreign content lands as e.g. `svg:select`,
+ * which is not the HTML element the fragment's own parse produced.
  */
 const writeKeepsContext = (
-  original: HtmlNode,
-  result: string,
-  node: HtmlNode,
-  fragment: HtmlNode,
+  original: P5Document,
+  result: P5Document,
+  slot: RawSlot,
+  fragment: readonly P5Node[],
   action: "replace" | "insertBefore" | "insertAfter",
-): boolean => sameDocument(treeSpliced(original, node, [fragment], action), parseHtml(result).root);
+): boolean => sameTreeExceptWound(original, result, writeWound(slot, fragment, action));
 
 /** The address of the first leaf block fully inside `[from, to)` of `html` — the written range. */
 const firstBlockAddressIn = (html: string, from: number, to: number): string | undefined => {
@@ -290,17 +346,32 @@ export const applyBlockPatch = (html: string, request: BlockPatchRequest): Block
   const located = locateBlock(parsed, request.address, html);
   if (!located.ok) throw locateError(request.address, located.code);
   const span = located.entry.range;
+  // D68: both oracles judge the raw parse5 tree — the DOM the bytes actually build —
+  // once per scripting mode. The block's raw twin shares its source extent; a listed
+  // block with no raw twin in either mode cannot be verified against the real DOM.
+  const rawOff = parseRawHtml(html, false);
+  const rawOn = parseRawHtml(html, true);
+  const slotOff = findRawSlot(rawOff, span);
+  const slotOn = findRawSlot(rawOn, span);
+  if (slotOff === undefined || slotOn === undefined) {
+    // Stryker disable next-line StringLiteral: locateError narrows any non-"invalid_selector"
+    // argument to the same target_moved error — the call-site literal is contract-pinned.
+    throw locateError(request.address, "target_moved");
+  }
   // D60: listing stays heuristic — the oracle is the construction-level guarantee.
   // The write may proceed only when removing the block's node is exactly what
-  // re-parsing the byte-splice produces; anything else means the range hid unowned
-  // bytes, and nothing is written.
-  if (!rangeIsExactlyOwned(html, parsed.root, located.entry.node, span)) {
+  // re-parsing the byte-splice produces, in BOTH scripting modes.
+  const stripped = `${html.slice(0, span.start)}${html.slice(span.end)}`;
+  if (
+    !rangeIsExactlyOwned(rawOff, parseRawHtml(stripped, false), slotOff) ||
+    !rangeIsExactlyOwned(rawOn, parseRawHtml(stripped, true), slotOn)
+  ) {
     // Stryker disable next-line StringLiteral: locateError narrows any non-"invalid_selector"
     // argument to the same target_moved error — the call-site literal is contract-pinned.
     throw locateError(request.address, "target_moved");
   }
   if (fragmentRequest.action === "delete") {
-    const next = `${html.slice(0, span.start)}${html.slice(span.end)}`;
+    const next = stripped;
     return {
       html: next,
       newIds: [],
@@ -333,8 +404,24 @@ export const applyBlockPatch = (html: string, request: BlockPatchRequest): Block
   }
   const next = `${html.slice(0, from)}${text}${html.slice(to)}`;
   // D64: the splice oracle covers only what the write REMOVES — the result must also
-  // re-parse into the block's context or nothing is written.
-  if (!writeKeepsContext(parsed.root, next, located.entry.node, fragment, fragmentRequest.action)) {
+  // re-parse into the block's context or nothing is written. Judged on the raw trees
+  // of both scripting modes, with the fragment's top-level raw nodes at the slot.
+  if (
+    !writeKeepsContext(
+      rawOff,
+      parseRawHtml(next, false),
+      slotOff,
+      parseRawFragmentNodes(text, false),
+      fragmentRequest.action,
+    ) ||
+    !writeKeepsContext(
+      rawOn,
+      parseRawHtml(next, true),
+      slotOn,
+      parseRawFragmentNodes(text, true),
+      fragmentRequest.action,
+    )
+  ) {
     // Stryker disable next-line StringLiteral: locateError narrows any non-"invalid_selector"
     // argument to the same target_moved error — the call-site literal is contract-pinned.
     throw locateError(request.address, "target_moved");

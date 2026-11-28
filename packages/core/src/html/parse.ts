@@ -1,6 +1,6 @@
 // 这层管：容错解析 HTML 成纯数据树 + 收集诊断；不管语义校验、不碰 IO。
 
-import { ErrorCodes, parse as parse5 } from "parse5";
+import { ErrorCodes, parse as parse5, parseFragment as parse5Fragment } from "parse5";
 import type { DefaultTreeAdapterTypes } from "parse5";
 
 import { HrError } from "../hr-error";
@@ -222,7 +222,10 @@ const openSource = (task: OpenTask, context: ParseContext, stack: OpenTask[]): H
   return { kind: "document", children };
 };
 
-const buildTree = (document: P5Document, context: ParseContext): HtmlNode => {
+const buildTree = (
+  document: P5Document | DefaultTreeAdapterTypes.DocumentFragment,
+  context: ParseContext,
+): HtmlNode => {
   const stack: OpenTask[] = [];
   const root = openSource(
     { source: document, sink: [], parentPath: "", index: -1 },
@@ -309,3 +312,23 @@ export const parseHtml = (
   // 解析器的 quirks 文档会把 `<table>` 留在 `<p>` 里（HTML5 只在 no-quirks 下补隐式结束）：树建完再统一补。
   return closeImplicitParagraphs({ root, diagnostics: context.diagnostics });
 };
+
+/**
+ * The tree the bytes actually build: raw parse5 output with NO hReader
+ * normalization — no `closeImplicitParagraphs`, no `buildTree` projection, no
+ * diagnostics, no meta collection. The patch oracles judge this tree (a
+ * normalized model verifies a DOM the bytes never produce, and a projected one
+ * drops namespace), and locations are always on so a listed block maps by its
+ * source extent. `scriptingEnabled` must be the caller's chosen mode —
+ * `<noscript>` content differs between the two real DOMs.
+ */
+export const parseRawHtml = (html: string, scriptingEnabled: boolean): P5Document =>
+  parse5(html, { sourceCodeLocationInfo: true, scriptingEnabled });
+
+/**
+ * The fragment source's top-level nodes on a raw parse — same contract as
+ * `parseRawHtml`. The block-patch post-write oracle splices these at the block's
+ * raw slot: this is the DOM parse5 builds for the fragment in place.
+ */
+export const parseRawFragmentNodes = (html: string, scriptingEnabled: boolean): readonly P5Node[] =>
+  parse5Fragment(html, { sourceCodeLocationInfo: true, scriptingEnabled }).childNodes;
