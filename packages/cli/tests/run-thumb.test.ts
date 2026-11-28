@@ -3,13 +3,23 @@
 // pipeline failure (exit 3 with the warn line out and nothing on disk), and
 // the binary-vs-text stdout split.
 
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
 import { run, type CliIo } from "../src/run";
+import { pngOf } from "./chrome-png";
 
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "hr-run-thumb-")));
 afterAll(() => {
@@ -91,5 +101,23 @@ describe("run · thumb stdout binary", () => {
     // The render died before producing bytes: neither channel carries output.
     expect(out.join("")).toBe("");
     expect(bytes).toEqual([]);
+  });
+
+  it("should serve a seeded cache hit through the default byte sink when no stdoutBytes channel is injected", async () => {
+    // A caller that never wires a byte channel still runs `hr thumb` to a pipe:
+    // resolvedIoOf's `() => undefined` sink must swallow the PNG, Chrome-free.
+    // Own workspace: sibling cases assert `.hreader` stays absent under `dir`.
+    const ws = join(dir, "seeded-hit");
+    mkdirSync(join(ws, ".hreader", "thumbs"), { recursive: true });
+    const doc = join(ws, "img.html");
+    writeFileSync(doc, '<article data-hr-id="hr-i"><p data-hr-id="hr-j">x</p></article>');
+    const hash = createHash("sha256").update(readFileSync(doc)).digest("hex");
+    writeFileSync(join(ws, ".hreader", "thumbs", `${hash}.png`), pngOf(600, 400));
+    const { io, out, err } = capture({ ...noChrome });
+
+    expect(await run(["thumb", doc, "--workspace", ws], io)).toBe(0);
+    // A cache hit returns the empty receipt; the PNG left through the byte sink.
+    expect(out.join("")).toBe("");
+    expect(err.join("")).toBe("");
   });
 });
