@@ -34,7 +34,7 @@ pnpm -C packages/mcp-server build
 | `hr_apply_style`        | Apply visual theme CSS or check tone / forbidden words      |
 | `hr_resolve_annotation` | Mark reader annotations resolved / replied (hr-meta first, sidecar fallback; the reply carries `source`) |
 | `hr_list_annotations`   | List merged hr-meta + sidecar annotations: `filePath` for one doc, omitted for a bounded workspace scan (≤500 docs / ≤1000 entries, `truncated` flag); `status` filters `pending` / `resolved` / `all` |
-| `hr_search`             | Full-text search over the whole workspace (doc title/headings/body + annotations): `{ query, limit? }` → `{ results: [{path, title, kind, annotationId?, score, snippet, highlights}], total, truncated, diagnostics }` |
+| `hr_search`             | Full-text search over the whole workspace (doc title/headings/body + annotations): `{ query, limit? }` → `{ results: [{path, title, kind, annotationId?, score, snippet, highlights}], total, combine, truncated, diagnostics }` |
 | `hr_list_templates`     | List templates merged across the three tiers (builtin < `~/.hreader/templates` < `<workspace>/.hreader/templates`); broken entries land in `diagnostics` |
 | `hr_get_template`       | Read one template's manifest plus bounded `entry` / `style` / `guide` texts and the asset list |
 | `hr_create_from_template` | Draft a document from a template id (default `blank-html`); assets land under `<stem>_files/` |

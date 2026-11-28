@@ -269,10 +269,11 @@ const SECTIONS: Readonly<Record<CommandName, readonly string[]>> = {
     "",
     "  --limit <n>   返回条数上限 1..100（默认 20）",
     "",
-    "  查询词 1..200 码点；拉丁词给 0.2 的模糊容错与前缀匹配，CJK 词精确匹配。",
+    "  查询词 1..200 码点；≥2 码点的词带前缀匹配，拉丁词另有 0.2 模糊容错，CJK 词精确。",
+    "  多个查询词先按 AND 合并，无交集再按 OR 回退（结果 combine 字段标明）。",
     "  人读输出每条一行：<path> [文档|批注 <id>] 摘录；",
     "  JSON 时为 { results: [{path, title, kind, annotationId, score, snippet, highlights}],",
-    "  total, truncated, diagnostics }（annotationId 只在批注命中时给出）。",
+    "  total, combine, truncated, diagnostics }（annotationId 只在批注命中时给出）。",
   ],
 };
 
