@@ -12,7 +12,7 @@ import type { DocumentLoad } from "../model/load";
 import type { StyleDeps } from "../style";
 import { createAnnotateTokenBook } from "./annotate";
 import { createCapabilityBook } from "./capability";
-import type { Reply } from "./contracts";
+import type { Reply, ThumbRender } from "./contracts";
 import { diffNodes } from "./diff-nodes";
 import { annotationDiffReply, annotationsReply } from "./annotation-replies";
 import { docMetaReply } from "./meta-replies";
@@ -31,12 +31,13 @@ import {
 import { dispatchWrite } from "./write-replies";
 import { searchReply } from "./search-reply";
 import { sidecarListReply } from "./sidecar-replies";
-import { bodyRecordOf, jsonOf } from "./http-io";
+import { bodyRecordOf, headerOf, jsonOf } from "./http-io";
 import type { Hub } from "./hub";
 import { revisionOf } from "./revision";
 import { paramOf, type Route } from "./routes";
 import { assetReply, indexReply, themesReply, themeReply } from "./static";
 import { createWatcher, isLibraryPath, type WatchFn, type Watcher } from "./watcher";
+import { thumbReply } from "./thumb";
 
 interface RuntimeDeps {
   readonly patch: PatchDeps;
@@ -239,7 +240,10 @@ const readReplyOf = async (
 const dispatchOf =
   (
     context: HandlerContext,
-    options: { readonly docId: string },
+    options: {
+      readonly docId: string;
+      readonly thumb?: ThumbRender | undefined;
+    },
     runtime: {
       readonly remember: Runtime["remember"];
       readonly noteWrite: Runtime["noteWrite"];
@@ -300,6 +304,17 @@ const dispatchOf =
         docId: paramOf(params, "docId", options.docId),
         anId: paramOf(params, "anId", ""),
       });
+    }
+    // Thumbnails are docId-scoped but not a read-kind: `remember` would load the
+    // model (foreign docs can't) and seize the watcher for a request that only
+    // needs the file's bytes + hash.
+    if (route.kind === "thumb") {
+      return thumbReply(
+        context,
+        paramOf(params, "docId", options.docId),
+        headerOf(req, "if-none-match"),
+        options.thumb,
+      );
     }
     if (isReadKind(route.kind)) {
       const docId = paramOf(params, "docId", options.docId);
@@ -407,6 +422,8 @@ export const createRuntime = (
      * 测试只起 runtime 不起 server 时不碰真实 HOME。
      */
     readonly home?: string;
+    /** The thumbnail renderer (`ServerOptions.thumb` passed through verbatim): unset = the thumb route answers the no-Chrome error body. */
+    readonly thumb?: ThumbRender;
   },
   deps: RuntimeDeps,
   hub: Hub,

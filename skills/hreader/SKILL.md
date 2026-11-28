@@ -36,6 +36,7 @@ node skills/hreader/scripts/hr.mjs annotations migrate report.html          # hr
 node skills/hreader/scripts/hr.mjs meta report.html                          # read doc metadata (tags + source URL)
 node skills/hreader/scripts/hr.mjs meta report.html --tag 参考 --source-url https://example.com  # merge-write metadata
 node skills/hreader/scripts/hr.mjs search 摩托车 --limit 20                  # full-text search over docs + annotations
+node skills/hreader/scripts/hr.mjs thumb report.html --out thumb.png        # 600×400 first-screen thumbnail (needs Chrome; PNG to stdout when piped)
 ```
 
 Exit codes: `0` success, `1` business failure (missing node / invalid fragment / locked), `2` usage error, `3` IO and path problems, `70` internal error. **On any non-zero exit, read the error text on stderr first — do not guess.**

@@ -11,6 +11,20 @@ export interface Timeouts {
   readonly idleMs: number;
 }
 
+/**
+ * One thumbnail generation request: the route resolves the target and hashes
+ * the bytes; the renderer owns source building, the queue and the cache.
+ */
+export interface ThumbRequest {
+  /** The document's resolved absolute path (inside the workspace). */
+  readonly path: string;
+  /** `sha256` of the document's current bytes — the cache key and the etag. */
+  readonly hash: string;
+}
+
+/** Produces the PNG bytes for one request; throws the pipeline's `HrError`s (`chrome_missing`, `render_timeout`, …). */
+export type ThumbRender = (request: ThumbRequest) => Promise<Uint8Array>;
+
 export interface ServerOptions {
   /** workspace 的真实路径：所有 docId 相对它解析，越界一律 403。 */
   readonly workspace: string;
@@ -28,6 +42,13 @@ export interface ServerOptions {
   readonly diagnose?: (message: string) => void;
   /** 头部/体/空闲三档超时；缺省 10 s / 10 s / 30 s。 */
   readonly timeouts?: Partial<Timeouts>;
+  /**
+   * Injected thumbnail generator (`GET /api/doc/<docId>/thumb`): the CLI wires
+   * the Chrome export pipeline — core never imports cli. `undefined` = no
+   * renderer on this server; the route answers the export pipeline's
+   * no-Chrome code instead of producing pixels.
+   */
+  readonly thumb?: ThumbRender;
 }
 
 export interface SseEvent {

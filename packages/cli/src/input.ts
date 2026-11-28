@@ -40,6 +40,9 @@ const readFileOr = async (path: string): Promise<Uint8Array> => {
 export const readTextFile = async (path: string): Promise<string> =>
   decodeStrict(await readFileOr(path), path);
 
+/** Raw document bytes (same `not_a_file`/`io_failure` mapping as `readTextFile`): content hashing wants the true bytes, not a UTF-8 round-trip. */
+export const readFileBytes = readFileOr;
+
 const notRegularFileOf = (path: string, stats: Stats): HrError => {
   const what = stats.isDirectory() ? "目录" : "非普通文件";
   return new HrError("invalid_input", `语料只能是普通文件：${path} 是${what}`);

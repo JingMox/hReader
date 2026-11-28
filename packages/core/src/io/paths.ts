@@ -112,7 +112,7 @@ export interface ResolvedNewTarget {
  * Must call bare `fsApi.realpath`: `realpathOf`'s wrapper already translates ENOENT into `not_a_file`,
  * leaving no "missing" signal to walk on — the raw code is the fallback trigger.
  */
-const realpathOfAncestor = async (
+export const realpathOfAncestor = async (
   fsApi: FileSystem,
   candidate: string,
 ): Promise<{ readonly real: string; readonly tail: readonly string[] }> => {

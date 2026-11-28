@@ -27,6 +27,7 @@ export {
   patchFile,
   readDocGrant,
   readGlobalModes,
+  realpathOfAncestor,
   resolveTarget,
   undoPatch,
   writeAtomic,
@@ -50,6 +51,8 @@ export type {
   RunningServer,
   ServerDeps,
   ServerOptions,
+  ThumbRender,
+  ThumbRequest,
 } from "./server";
 export {
   applyStyle,

@@ -54,6 +54,7 @@ describe("门面导出面", () => {
       "readDocMetaFile",
       "readGlobalModes",
       "readSidecarFile",
+      "realpathOfAncestor",
       "resolveTarget",
       "settingsPathOf",
       "undoPatch",

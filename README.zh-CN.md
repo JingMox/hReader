@@ -99,7 +99,7 @@ v1.0 刚刚开源，还很早期：组件目前 8 个、主题 1 套；排版约
 ### 运行前提与首次启动说明
 
 - **Node.js `>= 22`**：需要安装在 `PATH`（或 nvm / fnm / Volta / Homebrew / Program Files 默认路径）中，用于运行内置本地服务与 CLI（`cli.mjs`）。
-- **Google Chrome / Microsoft Edge / Chromium**（可选）：仅在使用 **导出 PDF**（`hr pdf`）与 **导出 PNG**（`hr png`）时需要。
+- **Google Chrome / Microsoft Edge / Chromium**（可选）：仅在使用 **导出 PDF**（`hr pdf`）、**导出 PNG**（`hr png`）与 **缩略图**（`hr thumb`，以及 `hr serve` 的 `GET /api/doc/<docId>/thumb`）时需要。
 - **未签名安装包首次打开方式**（`v1.1.0` 暂未购买 Apple / EV 签名证书）：
   - **macOS**：右键 `hReader.app` -> **打开**，或在终端运行 `xattr -dr com.apple.quarantine /Applications/hReader.app`。
   - **Windows**：在 SmartScreen 提示中点击 **更多信息 -> 仍要运行**。
@@ -207,6 +207,7 @@ hr undo report.html [--json]
 hr export report.html --visual atelier-editorial --out print.html [--force]
 hr pdf report.html --out report.pdf [--page-size a4|letter|a5] [--visual <id>] [--force]
 hr png report.html --out report.png [--width 256..4096] [--scale 1..3] [--visual <id>]
+hr thumb report.html [--out thumb.png] [--visual <id>]   # 首屏 600×400 缩略图；管道输出时 PNG 写到 stdout
 
 # 启动支持 SSE 热刷新的本地阅读服务
 hr serve report.html [--workspace <dir>] [--port <n>]

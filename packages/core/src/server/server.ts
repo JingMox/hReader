@@ -238,6 +238,7 @@ const assemble = (options: ServerOptions, deps: ServerDeps): Assembled => {
       bodyMs: timeoutsOf(options).bodyMs,
       appDir: options.appDir ?? "",
       home: options.home,
+      ...(options.thumb === undefined ? {} : { thumb: options.thumb }),
     },
     {
       patch: deps.patch,

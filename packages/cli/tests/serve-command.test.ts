@@ -17,7 +17,7 @@ import {
 } from "./serve-helpers";
 import { parseArgs } from "../src/args";
 import type { Intent } from "../src/args";
-import { serveCommandOf } from "../src/run-serve";
+import { serveCommandOf, thumbWarnOf } from "../src/run-serve";
 
 describe("serveCommand", () => {
   it("should print the json envelope", async () => {
@@ -387,5 +387,17 @@ describe("serveCommandOf · --app-dir defensive branch", () => {
     } finally {
       dir.drop();
     }
+  });
+});
+
+describe("thumbWarnOf · the thumbnail notice adapter", () => {
+  it("should strip the pipeline notice's trailing newline before handing it to diagnose", () => {
+    const rows: string[] = [];
+    const warn = thumbWarnOf((row) => rows.push(row));
+
+    warn("外部图片已丢弃\n");
+    warn("另一条提示");
+
+    expect(rows).toEqual(["外部图片已丢弃", "另一条提示"]);
   });
 });

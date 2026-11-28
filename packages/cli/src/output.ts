@@ -224,6 +224,23 @@ export const humanPng = (report: PngReport, path: string = report.out): string =
     `exported ${path} (${String(report.bytes)} bytes, ${String(report.width)}×${String(report.height)}${report.clipped ? ", clipped" : ""})\n`,
   );
 
+/** `thumb` mirrors `png`'s `--json` trade-off, minus `clipped` (a thumbnail is one fixed 600×400 frame — clipping is impossible). */
+export interface ThumbReport {
+  readonly base64: string;
+  readonly bytes: number;
+  readonly width: number;
+  readonly height: number;
+  readonly out: string | null;
+}
+
+export const dataThumb = (report: ThumbReport): string =>
+  `{"png":${quote(report.base64)},"bytes":${String(report.bytes)},"width":${String(report.width)},"height":${String(report.height)},"out":${report.out === null ? "null" : quote(report.out)}}`;
+
+export const humanThumb = (report: ThumbReport, path: string): string =>
+  term(
+    `exported ${path} (${String(report.bytes)} bytes, ${String(report.width)}×${String(report.height)})\n`,
+  );
+
 const outlineLines = (nodes: readonly OutlineNode[], depth: number): readonly string[] =>
   nodes.flatMap((node) => [
     `${"  ".repeat(depth)}- ${term(node.id)}  ${term(node.text)}  (${String(node.wordCount)}w)`,

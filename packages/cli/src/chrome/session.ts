@@ -18,7 +18,12 @@ import {
   type ChromeDeps,
   type ChromeRun,
 } from "./process";
-import { renderPdfOnBrowserOf, renderPngOnBrowserOf, type RequestAudit } from "./render";
+import {
+  renderPdfOnBrowserOf,
+  renderPngOnBrowserOf,
+  renderThumbOnBrowserOf,
+  type RequestAudit,
+} from "./render";
 import type { LongImage, PdfPageSize, RenderSource } from "./types";
 
 const KILL_GRACE_MS = 2000;
@@ -88,6 +93,14 @@ const sessionPngOf = async (input: RenderPngInput, run: ChromeRun): Promise<Long
     audit: input.audit,
   });
 
+const sessionThumbOf = async (input: ChromeRenderInput, run: ChromeRun): Promise<LongImage> =>
+  renderThumbOnBrowserOf({
+    browser: await connectBrowserOf(input.deps, run),
+    source: input.source,
+    dir: run.dir,
+    audit: input.audit,
+  });
+
 /** `stop` only resolves: turning it into a "stop here" rejection lets `Promise.race` abandon a still-running render. */
 const interruptOf = (stop: Promise<void>): Promise<never> =>
   stop.then((): never => {
@@ -117,3 +130,7 @@ export const renderPdfOf = async (input: RenderPdfInput): Promise<{ bytes: Uint8
 
 export const renderPngOf = (input: RenderPngInput): Promise<LongImage> =>
   overChromeOf(input, (run) => sessionPngOf(input, run));
+
+/** Thumbnails take the plain `ChromeRenderInput` (no page-size/viewport knobs): the geometry is fixed at 1200×800 → 600×400 in the render layer. */
+export const renderThumbOf = (input: ChromeRenderInput): Promise<LongImage> =>
+  overChromeOf(input, (run) => sessionThumbOf(input, run));

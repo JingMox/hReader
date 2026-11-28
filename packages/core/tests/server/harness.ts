@@ -53,6 +53,7 @@ export const withServer = async (
   run: (ctx: TestServer) => Promise<void>,
   tuning?: ServerOptions["timeouts"] | ((workspace: string) => void),
   deps?: Partial<ServerDeps>,
+  extra?: Partial<ServerOptions>,
 ): Promise<void> => {
   const seed = typeof tuning === "function" ? tuning : defaultSeed;
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "hr-srv-ws-")));
@@ -64,6 +65,7 @@ export const withServer = async (
     home,
     docId: "doc.html",
     ...(typeof tuning === "object" ? { timeouts: tuning } : {}),
+    ...extra,
   };
   const server = await startServer(options, {
     patch: nodePatchDeps,

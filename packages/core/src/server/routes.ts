@@ -31,6 +31,7 @@ export type RouteKind =
   | "permissionsGet"
   | "permissionsSet"
   | "docNormalize"
+  | "thumb"
   | "sidecar"
   | "sidecarAdd"
   | "sidecarResolve"
@@ -110,6 +111,8 @@ export const ROUTES: readonly Route[] = Object.freeze([
   route("GET", ["api", "permissions"], "cookie", "permissionsGet"),
   route("POST", ["api", "permissions"], "cookie+csrf", "permissionsSet"),
   route("POST", ["api", "doc", DOC_PARAM, "normalize"], "cookie+csrf", "docNormalize"),
+  // First-screen thumbnails: cookie auth like the other reads; the renderer is injected (cli's Chrome pipeline).
+  route("GET", ["api", "doc", DOC_PARAM, "thumb"], "cookie", "thumb"),
   // Sidecar annotations: a merged meta/sidecar read view plus five write commands.
   // Reads take the cookie, writes cookie+csrf — the same auth layering as the
   // existing annotation routes. Add-only: these six entries are the whole delta.

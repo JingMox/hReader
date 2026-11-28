@@ -130,6 +130,7 @@ const PUBLIC = [
   "readSidecarFile",
   "readStyleSource",
   "readTemplate",
+  "realpathOfAncestor",
   "reopenAnnotation",
   "reopenSidecarAnnotation",
   "replaceTheme",

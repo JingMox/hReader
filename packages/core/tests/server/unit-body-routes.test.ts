@@ -172,8 +172,8 @@ describe("matchRoute · 批注与撤销", () => {
     });
   });
 
-  it("should freeze the table at 34 entries (26 + the six sidecar routes + the two meta routes)", () => {
-    expect(ROUTES).toHaveLength(34);
+  it("should freeze the table at 35 entries (26 + the six sidecar routes + the two meta routes + the thumb route)", () => {
+    expect(ROUTES).toHaveLength(35);
     expect(matchRoute("GET", "/api/doc/a.html/meta")).toMatchObject({
       kind: "route",
       params: { docId: "a.html" },
@@ -198,6 +198,11 @@ describe("matchRoute · 批注与撤销", () => {
       kind: "route",
       params: { docId: "a.html" },
       route: { kind: "docInfo", auth: "cookie" },
+    });
+    expect(matchRoute("GET", "/api/doc/a.html/thumb")).toMatchObject({
+      kind: "route",
+      params: { docId: "a.html" },
+      route: { kind: "thumb", auth: "cookie" },
     });
     expect(matchRoute("GET", "/f/cap-value/sub/dir.css")).toMatchObject({
       kind: "route",

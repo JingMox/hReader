@@ -1,6 +1,12 @@
 // This layer: thin adapter for `hr serve` (start core's local server -> print the port/token line; shutdown is signal-driven).
 
-import { HrError, nodePatchDeps, nodeStyleDeps, startServer } from "@hreader/core";
+import {
+  HrError,
+  nodePatchDeps,
+  nodeStyleDeps,
+  startServer,
+  type ThumbRender,
+} from "@hreader/core";
 
 import { withNormalizeAdvice } from "../document-normalize";
 import { dataServe, humanServe, jsonOk } from "../output";
@@ -24,6 +30,8 @@ export interface ServeInput {
   readonly appDir?: string;
   /** `--allow-host`: wholesale replacement of the default loopback Host set. */
   readonly allowHosts?: readonly string[] | undefined;
+  /** Thumbnail renderer for `GET /api/doc/<docId>/thumb` (composed in `run-serve.ts`); `undefined` = the route answers the no-Chrome error body. */
+  readonly thumb?: ThumbRender | undefined;
   /** Shutdown signal resolved from SIGTERM/SIGINT by `main.ts`. */
   readonly stop: Promise<void>;
   /** `--exit-with-parent`: shut down when the parent (shell) disappears; `false` = do not watch the parent (default, for user-started daemons). */
@@ -54,6 +62,7 @@ export const serveCommand = async (input: ServeInput): Promise<string> => {
       ...(appDir === undefined ? {} : { appDir }),
       ...(input.diagnose === undefined ? {} : { diagnose: input.diagnose }),
       ...(input.allowHosts === undefined ? {} : { allowHosts: input.allowHosts }),
+      ...(input.thumb === undefined ? {} : { thumb: input.thumb }),
     },
     { patch: nodePatchDeps, style: nodeStyleDeps(input.workspace), now: Date.now },
   ).catch((error: unknown): never => {

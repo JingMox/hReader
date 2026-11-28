@@ -8,11 +8,14 @@ import { HrError } from "@hreader/core";
 import type { Intent } from "./args";
 import { serveCommand } from "./commands/serve";
 import { displayedPathOf } from "./output";
+import { THUMB_TIMEOUT_MS, createThumbRender } from "./thumbs/service";
 
 /** The three things the dispatch layer already normalized: `--home`'s location, the stop handle, and the single "capture parent pid once" capture. */
 interface ServeWiring {
   /** Where `--home` lands when omitted (`run` already normalized `homedir()` into this). */
   readonly home: string;
+  /** env snapshot: `HREADER_CHROME` discovery for the thumbnail renderer (commands never read `process.env`); absent = empty. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
   /** Current working directory: error paths echo from the user's view (relative to cwd), same convention as receipts. Defaults to the process cwd. */
   readonly cwd?: string | undefined;
   readonly stop: Promise<void>;
@@ -23,6 +26,14 @@ interface ServeWiring {
   /** Document path printed in the receipt (user's view, converted by `run.ts` against cwd); unset = print the workspace-relative name. */
   readonly displayPath?: string | undefined;
 }
+
+/** Print-sheet notices become server diagnostics: one stderr line, like core's `diagnose`.
+ * The render pipeline's notices may carry a trailing newline; `diagnose` adds it itself, so strip first. */
+export const thumbWarnOf =
+  (diagnose: (message: string) => void): ((message: string) => void) =>
+  (message) => {
+    diagnose(message.replace(/\n$/u, ""));
+  };
 
 export const serveCommandOf = (
   intent: Extract<Intent, { kind: "serve" }>,
@@ -48,6 +59,15 @@ export const serveCommandOf = (
     ...(intent.appDir === undefined ? {} : { appDir: intent.appDir }),
     json: intent.json,
     allowHosts: intent.allowHosts,
+    // The thumbnail renderer is composed here, not in core: core exposes the `thumb` option, cli injects the Chrome pipeline.
+    thumb: createThumbRender({
+      workspace: paths.workspace,
+      home: wiring.home,
+      env: wiring.env ?? {},
+      stop: wiring.stop,
+      timeoutMs: THUMB_TIMEOUT_MS,
+      warn: thumbWarnOf(diagnose),
+    }),
     stop: wiring.stop,
     exitWithParent: intent.exitWithParent,
     launchParentPid: wiring.launchParentPid,

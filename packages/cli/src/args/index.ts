@@ -14,7 +14,7 @@ import {
   plainIntent,
   readIntent,
 } from "./authoring";
-import { exportIntent, pdfIntent, pngIntent } from "./export";
+import { exportIntent, pdfIntent, pngIntent, thumbIntent } from "./export";
 import { commonOf, failure, intInRange, unusedFlag, absoluteOf, type ParsedArgs } from "./intent";
 import { allowHostsOf, tokenize, type Raw } from "./raw";
 import { styleIntent } from "./style";
@@ -144,6 +144,7 @@ const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
   export: exportIntent,
   pdf: pdfIntent,
   png: pngIntent,
+  thumb: thumbIntent,
   serve: serveIntent,
   template: templateIntent,
   annotations: annotationsIntent,

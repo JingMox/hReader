@@ -8,7 +8,7 @@ export type {
   UndoResult,
 } from "./contracts";
 export { writeAtomic } from "./atomic";
-export { isInside, isInsideOrSelf, resolveTarget } from "./paths";
+export { isInside, isInsideOrSelf, realpathOfAncestor, resolveTarget } from "./paths";
 export type { ResolvedTarget } from "./paths";
 export { nodePatchDeps } from "./node-fs";
 export { patchFile } from "./patch-file";

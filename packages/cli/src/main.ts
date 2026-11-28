@@ -42,6 +42,11 @@ const code = await run(process.argv.slice(2), {
   stdout: (text) => {
     process.stdout.write(text);
   },
+  // `hr thumb`'s binary channel: PNG bytes must reach the pipe untouched — the string `stdout` would re-encode them.
+  stdoutBytes: (bytes) => {
+    process.stdout.write(bytes);
+  },
+  isStdoutTty: process.stdout.isTTY,
   stderr: (text) => {
     process.stderr.write(text);
   },
