@@ -3,10 +3,11 @@
 // The judgment only goes as far as "the bytes written re-parse to the same tree": `ul`/`table`/`select` child
 // restrictions live elsewhere, so no cases for those containers here. Assertions always land on **disk** (sha256 / bytes) — "did it throw" does not count.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { assertNoHostPaths } from "../../../tests/adversarial/no-host-paths.ts";
 import { checked, sha } from "./cli-support";
 import { runCli, withTempDir, type CliResult } from "./harness";
 
@@ -174,6 +175,8 @@ describe("paths in the receipt", () => {
       // Negative: an absolute path (macOS `realpathSync` expands `/var` to `/private/var`) must not appear in the receipt.
       expect(result.stdout).not.toContain("/private/");
       expect(result.stdout).not.toContain(dir);
+      // Shared checker: no host root and neither spelling of the workspace path may leak.
+      assertNoHostPaths(result.stdout, [dir, realpathSync(dir)]);
     });
   });
 });

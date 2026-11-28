@@ -5,6 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
+import {
+  byAttribute,
+  diffStructure,
+  type EditedElementLocator,
+  type StructureDiff,
+} from "../../../tests/adversarial/structure-diff.ts";
 import { patchCommand } from "../src/commands/patch";
 
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "hr-cmd-patch-")));
@@ -59,6 +65,7 @@ describe("patchCommand · human lines", () => {
 describe("patchCommand · human lines for replace (ids no longer change)", () => {
   it("should keep the target id and print only the deeper new ids when replace adds nested blocks", async () => {
     fileOf("p7.html", DOC);
+    const before = readFileSync(join(dir, "p7.html"), "utf8");
     const text = await patchCommand({
       path: "p7.html",
       nodeId: "hr-c",
@@ -71,7 +78,12 @@ describe("patchCommand · human lines for replace (ids no longer change)", () =>
     // The new root inherits `hr-c` (not a new allocation); the three deeper blocks in the fragment are the new ids — they too must be addressable by later patches.
     expect(text).toMatch(/^patched .*p7\.html \(\d+ bytes, \+3 ids: [\w-]+, [\w-]+, [\w-]+\)\n$/u);
     expect(text).not.toContain("id 变更");
-    expect(readFileSync(join(dir, "p7.html"), "utf8")).toContain('<section data-hr-id="hr-c">');
+    const after = readFileSync(join(dir, "p7.html"), "utf8");
+    expect(after).toContain('<section data-hr-id="hr-c">');
+    // Independent oracle: re-parsed with parse5, every element outside the hr-c subtree must be untouched.
+    const edited: EditedElementLocator = byAttribute("data-hr-id", "hr-c");
+    const diffs: StructureDiff[] = diffStructure(before, after, edited);
+    expect(diffs).toEqual([]);
   });
 });
 
