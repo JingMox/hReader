@@ -189,7 +189,7 @@ export interface HtmlElementNode {
   readonly span?: SourceSpan;
 }
 
-/** 叶子节点（text/comment）在原始输入中的区间；叶子没有 inner 边界，只有外边界。 */
+/** Source range of a leaf node (text/comment); leaves have only outer bounds, no inner bounds. */
 export interface LeafSpan {
   readonly start: number;
   readonly end: number;
@@ -198,14 +198,14 @@ export interface LeafSpan {
 interface HtmlTextNode {
   readonly kind: "text";
   readonly value: string;
-  /** `locations: true` 时填充；块寻址的所有权校验靠它识别寄生在块区间里的外来文本。 */
+  /** Set when `locations: true`; block-address ownership checks use it to spot foreign text lodged inside a block's range. */
   readonly span?: LeafSpan;
 }
 
 interface HtmlCommentNode {
   readonly kind: "comment";
   readonly data: string;
-  /** 同 `HtmlTextNode.span`：注释区间用于跳过块内 `</` 扫描 + 外来注释识别。 */
+  /** Like `HtmlTextNode.span`: comment ranges let the in-block `</` scan skip comments and identify foreign comments. */
   readonly span?: LeafSpan;
 }
 
