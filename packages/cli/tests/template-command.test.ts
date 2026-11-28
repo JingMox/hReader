@@ -1,13 +1,14 @@
 // This layer covers `hr template <list|show|new|save>` end to end — both output modes, the
 // three-tier merge, save → create round-trips, write rules and locale/exit-code behavior.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { templateNewCommand } from "../src/commands/template";
-import { fieldOf, keysOf, parseJsonLine, withTempDir } from "./harness";
+import { fieldOf, keysOf, parseJsonLine, runCli, withTempDir } from "./harness";
 import { runIn, type Captured } from "./support/capture";
 
 const BUILTIN_IDS = ["blank-html", "brief", "minutes", "note", "report", "slides"];
@@ -24,6 +25,34 @@ const managedPage = (title: string): string =>
   `<body><article data-hr-id="a1"><h1 data-hr-id="h1">${title}</h1>` +
   '<section data-hr-id="s1"><p>正文</p>' +
   '<img src="page_files/chart.png" alt=""></section></article></body></html>';
+
+/** The real `~/.hreader` recursive listing (read-only): `null` when the dir or the passwd entry is absent. */
+const realHreaderSnapshot = (): readonly string[] | null => {
+  try {
+    const root = join(userInfo().homedir, ".hreader");
+    return readdirSync(root, { recursive: true, withFileTypes: true })
+      .map((entry) => `${entry.isDirectory() ? "d" : "f"} ${join(entry.parentPath, entry.name)}`)
+      .sort();
+  } catch {
+    return null;
+  }
+};
+
+// File-level proof of issue #58's contract: nothing in this file — a test, or a mutant
+// reaching past `--home` — may add, rename or remove anything under the account's real
+// `~/.hreader`. The snapshot is read-only and tolerates the dir being absent.
+let realHreaderBefore: readonly string[] | null = null;
+beforeAll(() => {
+  realHreaderBefore = realHreaderSnapshot();
+});
+afterEach(() => {
+  // The worker home is shared across files: env stubs that redirect writes must be
+  // undone per test, or a shuffled sibling sees the leftovers (issue #58's CI failure).
+  vi.unstubAllEnvs();
+});
+afterAll(() => {
+  expect(realHreaderSnapshot()).toEqual(realHreaderBefore);
+});
 
 describe("hr template list", () => {
   it("should print a table of the builtin templates", async () => {
@@ -461,6 +490,57 @@ describe("hr template save", () => {
       );
       expect(viaEnv.code).toBe(0);
       expect(existsSync(join(home, ".hreader", "templates", "via-env", "index.html"))).toBe(true);
+    });
+  });
+
+  it("should land under os.homedir(), never the real home, when --global is given without --home", async () => {
+    await withTempDir(async (dir) => {
+      writeFileSync(join(dir, "page.html"), managedPage("P"));
+      // A per-test home: the worker home is shared across files, so landing there would leak
+      // into other tests' user-tier listings in the same worker (a real CI failure, issue #58).
+      const osHome = join(dir, "os-home");
+      mkdirSync(osHome);
+      vi.stubEnv("HOME", osHome);
+      vi.stubEnv("USERPROFILE", osHome);
+
+      const result = await runIn(dir, [
+        "template",
+        "save",
+        "page.html",
+        "--id",
+        "isolated-home",
+        "--global",
+      ]);
+
+      expect(result.code).toBe(0);
+      // No --home and no io injection: homedir() — reading the stubbed HOME — is the only net.
+      const userTier = join(homedir(), ".hreader", "templates", "isolated-home");
+      expect(existsSync(join(userTier, "index.html"))).toBe(true);
+      expect(existsSync(join(userInfo().homedir, ".hreader", "templates", "isolated-home"))).toBe(
+        false,
+      );
+    });
+  });
+
+  it("should land under the injected home for a real subprocess too (env inheritance)", async () => {
+    await withTempDir(async (dir) => {
+      writeFileSync(join(dir, "page.html"), managedPage("P"));
+      const subHome = join(dir, "sub-home");
+      mkdirSync(subHome);
+
+      const result = await runCli(
+        ["template", "save", "page.html", "--id", "isolated-sub", "--global", "--json"],
+        { cwd: dir, env: { HOME: subHome, USERPROFILE: subHome, HREADER_HOME: subHome } },
+      );
+
+      expect(result.code).toBe(0);
+      // The child inherits these env values: its config root and homedir() both land under them.
+      expect(existsSync(join(subHome, ".hreader", "templates", "isolated-sub", "index.html"))).toBe(
+        true,
+      );
+      expect(existsSync(join(userInfo().homedir, ".hreader", "templates", "isolated-sub"))).toBe(
+        false,
+      );
     });
   });
 

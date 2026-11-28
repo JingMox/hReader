@@ -4,7 +4,7 @@
 
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -235,6 +235,28 @@ describe("hr_save_template", () => {
     expect(payloadOf(result)["dir"]).toBe("~/.hreader/templates/global-t");
     expect(existsSync(join(home, ".hreader", "templates", "global-t", "index.html"))).toBe(true);
     expect(existsSync(join(workspace, ".hreader", "templates", "global-t"))).toBe(false);
+  });
+
+  it("should fall back to os.homedir() for the user tier when HREADER_HOME is unset or empty", async () => {
+    seedPage();
+    // The worker home is shared across files: writing into it would leak into other tests'
+    // user-tier listings in the same worker. HOME/USERPROFILE get a per-test dir instead.
+    const osHome = join(workspace, "os-home");
+    mkdirSync(osHome);
+    vi.stubEnv("HOME", osHome);
+    vi.stubEnv("USERPROFILE", osHome);
+    expect(homedir()).toBe(osHome);
+    for (const [stub, id] of [
+      [undefined, "unset-home"],
+      ["", "empty-home"],
+    ] as const) {
+      vi.stubEnv("HREADER_HOME", stub);
+
+      const result = await call("hr_save_template", { file: "p.html", id, global: true });
+
+      expect(isErrorResultOf(result)).toBe(false);
+      expect(existsSync(join(homedir(), ".hreader", "templates", id, "index.html"))).toBe(true);
+    }
   });
 
   it("should refuse a second save under the same id", async () => {

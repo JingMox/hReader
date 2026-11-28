@@ -1,9 +1,9 @@
 // 这层管：默认依赖装配（HOME/项目根/内置主题根）与错误文本兜底；不碰真盘。
 
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { nodeStyleDeps, resolveStylesRoot } from "../../src/style/node";
 import { messageOf } from "../../src/style/text";
@@ -13,14 +13,23 @@ import { loadThemeCss } from "../../src/style/theme";
 import { codeOfAsync, systemError } from "../io/harness";
 
 describe("nodeStyleDeps", () => {
-  it("should point stylesRoot at the repo themes directory and use the real HOME", () => {
-    const deps = nodeStyleDeps("/project");
-
-    expect(deps.home).toBe(homedir());
-    expect(deps.projectRoot).toBe("/project");
-    expect(deps.stylesRoot.endsWith("/themes/")).toBe(true);
-    expect(typeof deps.fs.readFile).toBe("function");
-    expect(typeof deps.sleep).toBe("function");
+  it("should point stylesRoot at the repo themes directory and follow the env home", () => {
+    // HOME on POSIX, USERPROFILE on Windows: both drive os.homedir() at call time, so
+    // stubbing either layer proves deps.home follows the process env rather than a baked path.
+    const sentinel = join(tmpdir(), "hr-deps-sentinel-home");
+    vi.stubEnv("HOME", sentinel);
+    vi.stubEnv("USERPROFILE", sentinel);
+    try {
+      const deps = nodeStyleDeps("/project");
+      expect(deps.home).toBe(sentinel);
+      expect(deps.home).toBe(homedir());
+      expect(deps.projectRoot).toBe("/project");
+      expect(deps.stylesRoot.endsWith("/themes/")).toBe(true);
+      expect(typeof deps.fs.readFile).toBe("function");
+      expect(typeof deps.sleep).toBe("function");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("should pick the first bundled candidate that carries atelier-editorial/theme.css and fall back cleanly", () => {

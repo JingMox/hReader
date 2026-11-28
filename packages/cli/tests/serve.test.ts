@@ -62,7 +62,10 @@ const spawnServe = (): ReturnType<typeof spawn> => {
     ],
     {
       cwd: workspace,
-      env: { ...process.env, HOME: home, HR_DEBUG: "" },
+      // `HREADER_HOME` is now ambient in every test worker (isolated home); the empty
+      // value is the documented "unset" so the child falls back to `homedir()` → `home`,
+      // the same resolution path this file exercised before the isolation existed.
+      env: { ...process.env, HOME: home, HREADER_HOME: "", HR_DEBUG: "" },
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 20_000,
       detached: process.platform !== "win32",
@@ -174,7 +177,8 @@ describe("hr serve · lifecycle (continued)", () => {
       ],
       {
         cwd: workspace,
-        env: { ...process.env, HOME: home },
+        // Same `HREADER_HOME` neutralization as spawnServe: `HOME` must own the resolution.
+        env: { ...process.env, HOME: home, HREADER_HOME: "" },
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 20_000,
       },
