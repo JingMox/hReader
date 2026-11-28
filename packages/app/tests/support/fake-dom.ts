@@ -10,6 +10,14 @@ export interface FakeElement {
   value?: string;
   parentElement: FakeElement | null;
   nextElementSibling: ElementLike | null;
+  /** `node.isConnected`: a detached `fakeElement()` reports false, a `doc.element()` one true (tests may rewrite it to model removal). */
+  isConnected: boolean;
+  /** The `contenteditable` equivalent: `keys.ts`'s editable-target guard reads only this boolean. */
+  isContentEditable: boolean;
+  /** Focus-scope member (`doc.element()` only): `focus()` claims `doc.activeElement` (a detached element's focus is a no-op). */
+  focus?: () => void;
+  /** Releases the focus this element holds: Chrome semantics put `activeElement` back on body. */
+  blur?: () => void;
   calls: string[];
   listeners: string[];
   attrs: Map<string, string>;
@@ -34,11 +42,15 @@ export interface FakeElement {
 }
 
 export interface FakeDocument {
-  readonly body: { getAttribute: (name: string) => string | null };
+  readonly body: FakeElement;
   readonly created: FakeElement[];
   readonly bySelector: Map<string, FakeElement>;
   /** `querySelectorAll` 的命中表（`Host.all` 的输入）。 */
   readonly bySelectorAll: Map<string, readonly FakeElement[]>;
+  /** Minimal `document.activeElement`: starts on body, `element().focus()` moves it, `blur()` returns it to body. */
+  readonly activeElement: FakeElement;
+  /** Build an element that lives in this document: `isConnected` is true and `focus`/`blur` exist (a detached `fakeElement()` has neither). */
+  readonly element: (tag: string) => FakeElement;
   readonly querySelector: (selector: string) => FakeElement | null;
   readonly querySelectorAll: (selector: string) => readonly ElementLike[];
   createElement: (tag: string) => FakeElement;
@@ -136,6 +148,8 @@ export const fakeElement = (tag: string, withHandles = true): FakeElement => {
     tagName: tag.toUpperCase(),
     parentElement: null,
     nextElementSibling: null,
+    isConnected: false,
+    isContentEditable: false,
     calls: [],
     listeners: [],
     attrs: new Map(),
@@ -164,16 +178,39 @@ export const fakeElement = (tag: string, withHandles = true): FakeElement => {
   return element;
 };
 
-/** 假 document：`bySelector` 就是"页面上有哪些元素"的全部真相。 */
+/** Fake document: `bySelector` is the whole truth of "which elements exist"; `activeElement` is the focus scope's single truth. */
 export const createFakeDocument = (): FakeDocument => {
   const bySelector = new Map<string, FakeElement>();
   const bySelectorAll = new Map<string, readonly FakeElement[]>();
   const created: FakeElement[] = [];
+  // The focus scope: `bind` attaches an element to the document — `focus` logs the call
+  // and claims `activeElement` (a Chrome-faithful no-op while detached), `blur` only
+  // hands focus back to body while the element still holds it. Removing an element is
+  // `isConnected = false`, which turns its focus() back into a no-op.
+  const scope: { active: FakeElement | null } = { active: null };
+  const bind = (element: FakeElement): FakeElement => {
+    element.isConnected = true;
+    element.focus = () => {
+      element.calls.push("focus");
+      if (element.isConnected) scope.active = element;
+    };
+    element.blur = () => {
+      element.calls.push("blur");
+      if (scope.active === element) scope.active = body;
+    };
+    return element;
+  };
+  const body = bind(fakeElement("body"));
+  scope.active = body;
   const doc: FakeDocument = {
-    body: { getAttribute: () => null },
+    body,
     created,
     bySelector,
     bySelectorAll,
+    get activeElement() {
+      return scope.active ?? body;
+    },
+    element: (tag) => bind(fakeElement(tag)),
     querySelector: (selector) => bySelector.get(selector) ?? null,
     querySelectorAll: (selector) => bySelectorAll.get(selector) ?? [],
     createElement: (tag) => {
