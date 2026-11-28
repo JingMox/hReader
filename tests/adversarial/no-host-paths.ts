@@ -7,11 +7,17 @@
 //
 // How it scans:
 // - a host root must start an absolute path — at the string start, after a non-path
-//   delimiter (whitespace, quotes, brackets, `=`, `,`, `:`, `<`, `>`, `;`, `|`, `&`),
-//   or right after `file://`. This keeps substring hits like `out/tmp/x.html` or
-//   `docs/home/p.html` from misfiring while every true leak stays caught;
+//   delimiter (whitespace, quotes, brackets, `=`, `,`, `:`, `<`, `>`, `;`, `|`, `&`,
+//   `*`, NUL), or right after a `file:` URL prefix — `file:`, `file://`,
+//   `file:////`, `file://localhost`, `file://.`, any case. This keeps substring
+//   hits like `out/tmp/x.html` or `docs/home/p.html` from misfiring while every
+//   true leak stays caught;
+// - the roots match case-insensitively (`/users/x`, `/TMP/x`), like the macOS
+//   filesystems they name;
 // - Windows drive paths (`C:\x`, `c:/x`) and UNC shares (`\\s\s`, `//s/s` — the `//`
-//   form only when it is not the `//` of a URL scheme like `https://`) count too;
+//   form only when it is not the `//` of a URL scheme like `https://`) count too.
+//   A bare `//host/path` is flagged as UNC even though it could be a
+//   protocol-relative URL — flagging is the safe direction, documented below;
 // - the same scan runs over decoded copies — JSON slash/backslash escapes (`\/`, `\\`)
 //   and percent escapes (`%2F`) — so an encoding can't launder a leak.
 //
@@ -30,15 +36,26 @@ const UNC = /\\\\|\/\//gu;
 /**
  * A character that can precede a real path — whitespace, quotes, brackets and the
  * usual separators. Anything else (letters, `/`, `\`, `.`, `-`, `_`, `~`, `%`, `+`)
- * means the match sits inside a longer path, not at its root.
+ * means the match sits inside a longer path, not at its root. NUL is checked
+ * char-wise (a literal in the regex class would trip no-control-regex).
  */
-const PATH_DELIMITER = /[\s"'`(){}[\]<>=,:;|&]/u;
+const PATH_DELIMITER = /[\s"'`(){}[\]<>=,:;|&*]/u;
 
-/** Whether `index` begins an absolute path: start, a delimiter, or a `file://` prefix. */
+/** Whether the char AT `index` is a delimiter (NUL included, OOB is not). */
+const isDelimiterAt = (output: string, index: number): boolean =>
+  PATH_DELIMITER.test(output.charAt(index)) || output.charCodeAt(index) === 0;
+
+/**
+ * A `file:` URL prefix ending right before the match — any case, any number of
+ * slashes, any (or no) authority: `file:`, `file://`, `file:////`,
+ * `file://localhost`, `file://.`. The `file:` must not itself be glued to a
+ * longer word, so `profile:` or `myfile:` do not count.
+ */
+const FILE_PREFIX = /(?:^|[^A-Za-z])file:[/\\]*[^/\\\s]*$/iu;
+
+/** Whether `index` begins an absolute path: start, a delimiter, or a `file:` prefix. */
 const atBoundary = (output: string, index: number): boolean =>
-  index === 0 ||
-  PATH_DELIMITER.test(output.charAt(index - 1)) ||
-  output.slice(0, index).endsWith("file://");
+  index === 0 || isDelimiterAt(output, index - 1) || FILE_PREFIX.test(output.slice(0, index));
 
 /**
  * Decodes `%XX` escapes byte-wise (Latin-1 is enough for the ASCII roots). Never
@@ -74,12 +91,20 @@ const fail = (what: string, output: string, index: number): never => {
   );
 };
 
+/** Escapes a literal for regex use — extra roots can contain any characters. */
+const escapeRegExp = (literal: string): string => literal.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+/**
+ * Case-insensitive root lookup — `/TMP/x` leaks exactly like `/tmp/x` on the
+ * case-insensitive filesystems this checker defends. Regex indices are UTF-16
+ * like the string's own indexing, so no lowercase-copy offset skew.
+ */
+const rootPattern = (root: string): RegExp => new RegExp(escapeRegExp(root), "giu");
+
 const scan = (output: string, label: string, extra: readonly string[]): void => {
   for (const root of HOST_ROOTS) {
-    let at = output.indexOf(root);
-    while (at !== -1) {
-      if (atBoundary(output, at)) fail(`${root}${label}`, output, at);
-      at = output.indexOf(root, at + 1);
+    for (const match of output.matchAll(rootPattern(root))) {
+      if (atBoundary(output, match.index)) fail(`${match[0]}${label}`, output, match.index);
     }
   }
   for (const match of output.matchAll(DRIVE)) {
@@ -87,20 +112,17 @@ const scan = (output: string, label: string, extra: readonly string[]): void => 
   }
   for (const match of output.matchAll(UNC)) {
     const at = match.index;
-    const prev = output.charAt(at - 1);
     // `https://host` is a scheme, not a share — only the `//` form defers to it.
-    if (match[0] === "//" && prev === ":") continue;
-    if (at !== 0 && !PATH_DELIMITER.test(prev)) continue;
+    if (match[0] === "//" && output.charAt(at - 1) === ":") continue;
+    if (at !== 0 && !isDelimiterAt(output, at - 1)) continue;
     const after = output.charAt(at + 2);
-    if (after === "" || PATH_DELIMITER.test(after)) continue;
+    if (after === "" || isDelimiterAt(output, at + 2)) continue;
     fail(`UNC share ${match[0]}…${label}`, output, at);
   }
   for (const root of extra) {
     if (root === "") continue;
-    let at = output.indexOf(root);
-    while (at !== -1) {
-      if (atBoundary(output, at)) fail(`${root}${label}`, output, at);
-      at = output.indexOf(root, at + 1);
+    for (const match of output.matchAll(rootPattern(root))) {
+      if (atBoundary(output, match.index)) fail(`${match[0]}${label}`, output, match.index);
     }
   }
 };

@@ -9,6 +9,14 @@
 //      do — is javascript:, vbscript: or data:;
 //   2. the text nodes equal exactly the given data, in order.
 // It answers "did the payload stay text" end to end, not "was some pattern filtered".
+//
+// Failure taxonomy: a judgment throws an Error whose message names the violation
+// ("data rendered as …" or a text mismatch). A checker defect throws
+// `CheckerInternalError` — e.g. an element that exposes neither `attributes` nor
+// parse5 `attrs` (a getAttribute-only node cannot be enumerated for `on*`
+// handlers, so silence would pass `<b onmouseover=x>`), or any unexpected
+// exception inside the walk. An internal crash can therefore never be mistaken
+// for a detected violation — and a violation can never hide inside a crash.
 
 /** One attribute as the checker needs it — DOM Attr, NamedNodeMap entries and parse5 attrs fit. */
 export interface DomAttrLike {
@@ -38,6 +46,27 @@ export interface DomContainerLike {
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
+
+/**
+ * The checker itself failed — not a violation. Thrown when a container cannot be
+ * inspected (an element without an enumerable attribute list) and wrapping any
+ * unexpected exception inside the walk, so a crash is never confused with a
+ * caught payload.
+ */
+export class CheckerInternalError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "CheckerInternalError";
+  }
+}
+
+/** A deliberate judgment — kept distinct so the catch can tell violations from crashes. */
+class ViolationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ViolationError";
+  }
+}
 
 /** Tags whose mere presence under rendered data means the payload executed structural control. */
 const DANGEROUS_TAGS: ReadonlySet<string> = new Set([
@@ -137,8 +166,14 @@ const attributesOf = (node: DomNodeLike): { name: string; value: string }[] => {
   const out: { name: string; value: string }[] = [];
   const seen = new Set<string>();
   const add = (name: string, value: string, prefix?: string): void => {
+    const lowerName = name.toLowerCase();
+    const lowerPrefix = (prefix ?? "").toLowerCase();
+    // An Attr whose name already carries the prefix (name="xlink:href",
+    // prefix="xlink") must not double it into "xlink:xlink:href".
     const qualified =
-      `${prefix === undefined || prefix === "" ? "" : `${prefix}:`}${name}`.toLowerCase();
+      lowerPrefix === "" || lowerName.startsWith(`${lowerPrefix}:`)
+        ? lowerName
+        : `${lowerPrefix}:${lowerName}`;
     if (seen.has(qualified)) return;
     seen.add(qualified);
     out.push({ name: qualified, value });
@@ -161,12 +196,10 @@ const attributesOf = (node: DomNodeLike): { name: string; value: string }[] => {
 /**
  * Asserts a rendered container holds no dangerous element and that its text nodes equal
  * `expectedTexts` (document order, exact match — whitespace nodes count too).
- * Throws `Error` with the offending tag/attribute or the first text mismatch.
+ * Throws an Error naming the violation on a judgment, `CheckerInternalError` when
+ * the container cannot be inspected or the walk itself crashes.
  */
-export const assertNoElementsFromData = (
-  container: DomContainerLike,
-  expectedTexts: readonly string[],
-): void => {
+const walkContainer = (container: DomContainerLike, expectedTexts: readonly string[]): void => {
   const texts: string[] = [];
   // An explicit stack, not recursion — corpus payloads nest thousands deep.
   const stack = [...container.childNodes].reverse();
@@ -176,22 +209,30 @@ export const assertNoElementsFromData = (
     if (node.nodeType === ELEMENT_NODE) {
       const tag = (node.tagName ?? "").toLowerCase();
       if (DANGEROUS_TAGS.has(tag)) {
-        throw new Error(`data rendered as a dangerous <${tag}> element`);
+        throw new ViolationError(`data rendered as a dangerous <${tag}> element`);
+      }
+      if (node.attributes === undefined && node.attrs === undefined) {
+        // Only getAttribute remains — fine for the fixed URL/srcdoc names, but
+        // on* handlers are open-ended and cannot be enumerated. Failing closed
+        // is the only honest answer.
+        throw new CheckerInternalError(
+          `cannot inspect <${tag}>: the container exposes neither 'attributes' nor parse5 'attrs', so on* handlers would go unchecked`,
+        );
       }
       for (const attr of attributesOf(node)) {
         if (attr.name.startsWith("on")) {
-          throw new Error(
+          throw new ViolationError(
             `data rendered as <${tag}> with a handler attribute ${JSON.stringify(attr.name)}`,
           );
         }
         if (attr.name === "srcdoc") {
-          throw new Error(`data rendered as <${tag}> with a srcdoc attribute`);
+          throw new ViolationError(`data rendered as <${tag}> with a srcdoc attribute`);
         }
         if (URL_ATTRS.has(attr.name)) {
           const scheme = normalizeScheme(decodeCharRefs(attr.value));
           for (const bad of DANGEROUS_SCHEMES) {
             if (scheme.startsWith(bad)) {
-              throw new Error(
+              throw new ViolationError(
                 `data rendered as <${tag}> with a dangerous-scheme ${attr.name}: ${JSON.stringify(attr.value)}`,
               );
             }
@@ -202,19 +243,39 @@ export const assertNoElementsFromData = (
       texts.push(node.nodeValue ?? "");
     }
     if (node.childNodes !== undefined) {
-      stack.push(...[...node.childNodes].reverse());
+      // Loop-push, never a spread into push(): hundreds of thousands of
+      // children would exceed the engine's argument-count limit (RangeError).
+      const kids = [...node.childNodes];
+      for (let i = kids.length - 1; i >= 0; i -= 1) {
+        const kid = kids[i];
+        if (kid !== undefined) stack.push(kid);
+      }
     }
   }
   if (texts.length !== expectedTexts.length) {
-    throw new Error(
+    throw new ViolationError(
       `rendered text node count ${String(texts.length)} != expected ${String(expectedTexts.length)} (got ${JSON.stringify(texts)})`,
     );
   }
   for (let i = 0; i < texts.length; i += 1) {
     if (texts[i] !== expectedTexts[i]) {
-      throw new Error(
+      throw new ViolationError(
         `text node ${String(i)} mismatch: rendered ${JSON.stringify(texts[i])}, expected ${JSON.stringify(expectedTexts[i])}`,
       );
     }
+  }
+};
+
+export const assertNoElementsFromData = (
+  container: DomContainerLike,
+  expectedTexts: readonly string[],
+): void => {
+  try {
+    walkContainer(container, expectedTexts);
+  } catch (error) {
+    if (error instanceof ViolationError || error instanceof CheckerInternalError) throw error;
+    throw new CheckerInternalError("assertNoElementsFromData crashed internally", {
+      cause: error,
+    });
   }
 };

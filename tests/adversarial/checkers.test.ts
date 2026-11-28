@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertNoElementsFromData,
+  CheckerInternalError,
   type DomContainerLike,
   type DomNodeLike,
 } from "./no-elements-from-data.ts";
@@ -17,8 +18,10 @@ import {
   byTag,
   diffStructure,
   type DiffStructureOptions,
+  type DiffStructureStats,
   type StructureDiff,
 } from "./structure-diff.ts";
+import { nestedTagHtml } from "./html-malformed.ts";
 import { XSS_PAYLOADS } from "./xss.ts";
 
 const kinds = (diffs: readonly StructureDiff[]): StructureDiff["kind"][] =>
@@ -81,6 +84,53 @@ describe("assertNoHostPaths", () => {
       assertNoHostPaths(output);
     }).not.toThrow();
   });
+
+  // Host roots are case-insensitive like the macOS filesystem they name.
+  it.each(["/users/x", "/TMP/x", "/Private/var/y", "/HOME/u", "/Var/folders/x"])(
+    "should flag a host root regardless of case: %s",
+    (output) => {
+      expect(() => {
+        assertNoHostPaths(output);
+      }).toThrow(/host path leaked/u);
+    },
+  );
+
+  // Every real spelling of a file: URL that ends in a host path counts.
+  it.each([
+    "FILE:///Users/x",
+    "File:///tmp/a",
+    "file://localhost/Users/x",
+    "file://host/Users/x",
+    "file:////Users/x",
+    "file://./Users/x",
+    "file:/Users/x",
+    "url=file:\\\\/\\\\/localhost\\\\/Users\\\\/x",
+    "file:%2F%2Flocalhost%2FUsers%2Fx",
+    "%66ile:///%55sers/x",
+  ])("should flag a host root behind a file: URL prefix: %s", (output) => {
+    expect(() => {
+      assertNoHostPaths(output);
+    }).toThrow(/host path leaked/u);
+  });
+
+  it("should not treat a non-file scheme prefix as a file URL", () => {
+    expect(() => {
+      assertNoHostPaths("profile:///Users/x is not a file URL");
+    }).not.toThrow();
+    expect(() => {
+      assertNoHostPaths("myfile:///Users/x is not a file URL");
+    }).not.toThrow();
+  });
+
+  // NUL and `*` are delimiters — they were caught before and must stay caught.
+  it.each(["x\u0000/Users/x", "*/Users/x", "glob *\u0000/tmp/a"])(
+    "should flag a host root after a NUL or star delimiter: %s",
+    (output) => {
+      expect(() => {
+        assertNoHostPaths(output);
+      }).toThrow(/host path leaked/u);
+    },
+  );
 
   it.each(["wrote %2FUsers%2Fx", "file:%2F%2F%2FUsers", "path=%2fvar%2ffolders%2fx"])(
     "should decode percent-encoded host paths: %s",
@@ -303,6 +353,62 @@ describe("diffStructure", () => {
     const options: DiffStructureOptions = { allowMove: true };
     expect(diffStructure(before, after, byAttribute("data-hr-id", "c"), options)).toEqual([]);
   });
+
+  it("should flag a text/comment reorder inside one element", () => {
+    const before = "<body><p>x<!--c--></p></body>";
+    const after = "<body><p><!--c-->x</p></body>";
+    expect(kinds(diffStructure(before, after))).toEqual(["child-order"]);
+  });
+
+  it("should flag a comment/element reorder inside one element", () => {
+    const before = "<body><p><!--c--><b>i</b></p></body>";
+    const after = "<body><p><b>i</b><!--c--></p></body>";
+    expect(kinds(diffStructure(before, after))).toContain("child-order");
+  });
+
+  it("should flag two text runs swapped around a comment", () => {
+    const before = "<body><p>x<!--c-->y</p></body>";
+    const after = "<body><p>y<!--c-->x</p></body>";
+    expect(kinds(diffStructure(before, after))).toContain("own-text");
+  });
+
+  it("should not flag a tag swap as a child-order change (order is kind-level)", () => {
+    const before = "<body><p><b>1</b><i>2</i></p></body>";
+    const after = "<body><p><i>2</i><b>1</b></p></body>";
+    // Kind order is E,E in both — the swap still shows as aligned tag diffs.
+    expect(kinds(diffStructure(before, after))).not.toContain("child-order");
+    expect(kinds(diffStructure(before, after))).toContain("tag");
+  });
+
+  it("should not count the edited element in its parent's child order", () => {
+    const before = "<body><article><p>x</p></article><footer></footer></body>";
+    const after = "<body><article></article><footer><p>x</p></footer></body>";
+    // The <p> moved — but if it is the located edit, the parent's order signal
+    // must skip it, so the only report is `moved`.
+    const diffs = diffStructure(before, after, byTag("p"));
+    expect(kinds(diffs)).toEqual(["moved"]);
+  });
+
+  it("should not crash on a wide flat document (children are never spread into a call)", () => {
+    const html = `<body>${"<b>x</b>".repeat(200_000)}</body>`;
+    const stats: DiffStructureStats = { nodesVisited: 0, chainsCreated: 0, chainStringsBuilt: 0 };
+    expect(diffStructure(html, html, undefined, { stats })).toEqual([]);
+    expect(stats.nodesVisited).toBeGreaterThan(200_000);
+    // 200k sibling <b> elements share ONE interned ancestor chain.
+    expect(stats.chainsCreated).toBeLessThan(20);
+    // Identical documents report no diffs, so no ancestor string is ever built.
+    expect(stats.chainStringsBuilt).toBe(0);
+  });
+
+  it("should not copy ancestor chains per node on a deep document", () => {
+    const deep = nestedTagHtml("div", 20_000);
+    const stats: DiffStructureStats = { nodesVisited: 0, chainsCreated: 0, chainStringsBuilt: 0 };
+    expect(diffStructure(deep, deep, undefined, { stats })).toEqual([]);
+    expect(stats.nodesVisited).toBeGreaterThanOrEqual(20_000);
+    // Each level interns at most one chain object — never an O(depth) copy per node.
+    expect(stats.chainsCreated).toBeLessThanOrEqual(stats.nodesVisited);
+    expect(stats.chainStringsBuilt).toBe(0);
+  });
 });
 
 // A minimal structural fake — the same shape happy-dom and real DOM nodes satisfy.
@@ -346,7 +452,11 @@ const domOf = (rootNode: DefaultTreeAdapterTypes.Node): DomNodeLike => {
     const node = stack.pop();
     if (node === undefined) break;
     order.push(node);
-    stack.push(...[...p5Children(node)].reverse());
+    const kids = p5Children(node);
+    for (let i = kids.length - 1; i >= 0; i -= 1) {
+      const kid = kids[i];
+      if (kid !== undefined) stack.push(kid);
+    }
   }
   for (const node of order) {
     const wrap: MutableDom =
@@ -382,7 +492,13 @@ const textsIn = (container: DomContainerLike): string[] => {
     const node = stack.pop();
     if (node === undefined) break;
     if (node.nodeType === 3) out.push(node.nodeValue ?? "");
-    if (node.childNodes !== undefined) stack.push(...[...node.childNodes].reverse());
+    if (node.childNodes !== undefined) {
+      const kids = [...node.childNodes];
+      for (let i = kids.length - 1; i >= 0; i -= 1) {
+        const kid = kids[i];
+        if (kid !== undefined) stack.push(kid);
+      }
+    }
   }
   return out;
 };
@@ -525,6 +641,62 @@ describe("assertNoElementsFromData", () => {
     expect(() => {
       assertNoElementsFromData(container, ["x"]);
     }).toThrow(/count/u);
+  });
+
+  it("should not crash on an element with hundreds of thousands of children", () => {
+    const children = Array.from({ length: 500_000 }, () => el("b", [text("x")]));
+    const container = root([el("div", children)]);
+    expect(() => {
+      assertNoElementsFromData(
+        container,
+        children.map(() => "x"),
+      );
+    }).not.toThrow();
+  });
+
+  it("should flag a doubled attr prefix (name='xlink:href', prefix='xlink')", () => {
+    const node: DomNodeLike = {
+      nodeType: 1,
+      tagName: "A",
+      attributes: [{ name: "xlink:href", value: "javascript:alert(1)", prefix: "xlink" }],
+      childNodes: [text("x")],
+    };
+    expect(() => {
+      assertNoElementsFromData(root([node]), ["x"]);
+    }).toThrow(/dangerous-scheme/u);
+  });
+
+  it("should throw CheckerInternalError when an element hides its attribute list", () => {
+    // A container exposing only getAttribute cannot be checked for on* handlers —
+    // silence would pass payloads like <b onmouseover=x>.
+    const node: DomNodeLike = {
+      nodeType: 1,
+      tagName: "B",
+      getAttribute: () => null,
+      childNodes: [text("x")],
+    };
+    expect(() => {
+      assertNoElementsFromData(root([node]), ["x"]);
+    }).toThrow(CheckerInternalError);
+  });
+
+  it("should rethrow internal crashes as CheckerInternalError, never as a violation", () => {
+    // A structurally broken container (childNodes that is not iterable) must surface
+    // as an internal error — a generic throw could be mistaken for a caught violation.
+    const broken: DomNodeLike = {
+      nodeType: 1,
+      tagName: "DIV",
+      attributes: [],
+      childNodes: 42 as unknown as DomNodeLike[],
+    };
+    let caught: unknown;
+    try {
+      assertNoElementsFromData(root([broken]), []);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CheckerInternalError);
+    expect((caught as Error).message).not.toMatch(/data rendered as/u);
   });
 });
 
