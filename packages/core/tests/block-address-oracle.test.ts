@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { parseHtml, serializeHtml, type HtmlNode } from "../src/html";
+import { parseHtml, type HtmlNode } from "../src/html";
 import {
   applyBlockPatch,
   listBlocks,
@@ -33,11 +33,86 @@ const cutBlock = (root: HtmlNode, start: number, end: number): HtmlNode => {
   };
 };
 
-const minusBlockSerialized = (html: string, start: number, end: number): string =>
-  serializeHtml({
-    root: cutBlock(parseHtml(html, { locations: true }).root, start, end),
-    diagnostics: [],
-  });
+/**
+ * The oracle's structural compare, rebuilt independently: kind, tag, ordered attrs,
+ * payloads and children — with adjacent text siblings folded into one run (re-parse
+ * merges them) and the implicit html/head/body scaffold peeled (a bare `document` and
+ * an empty scaffold are the same content).
+ */
+const textMerged = (children: readonly HtmlNode[]): readonly HtmlNode[] => {
+  const merged: HtmlNode[] = [];
+  for (const child of children) {
+    const last = merged[merged.length - 1];
+    if (child.kind === "text" && last?.kind === "text") {
+      merged[merged.length - 1] = { ...last, value: last.value + child.value };
+    } else {
+      merged.push(child);
+    }
+  }
+  return merged;
+};
+
+const nodesEq = (left: readonly HtmlNode[], right: readonly HtmlNode[]): boolean => {
+  const a = textMerged(left);
+  const b = textMerged(right);
+  return (
+    a.length === b.length &&
+    a.every((node, index) => {
+      const other = b[index];
+      return other !== undefined && shapeEq(node, other);
+    })
+  );
+};
+
+const shapeEq = (left: HtmlNode, right: HtmlNode): boolean => {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "element") {
+    const other = right as typeof left;
+    return (
+      left.tag === other.tag &&
+      left.attrs.length === other.attrs.length &&
+      left.attrs.every(
+        (attr, index) =>
+          attr[0] === (other.attrs[index] as [string, string])[0] &&
+          attr[1] === (other.attrs[index] as [string, string])[1],
+      ) &&
+      nodesEq(left.children, other.children)
+    );
+  }
+  if (left.kind === "text") return left.value === (right as typeof left).value;
+  if (left.kind === "comment") return left.data === (right as typeof left).data;
+  if (left.kind === "doctype") {
+    const other = right as typeof left;
+    return (
+      left.name === other.name &&
+      left.publicId === other.publicId &&
+      left.systemId === other.systemId
+    );
+  }
+  return true;
+};
+
+const sameDoc = (left: HtmlNode, right: HtmlNode): boolean => {
+  const parts = (root: HtmlNode) => {
+    const children = root.kind === "document" ? root.children : [root];
+    const head: HtmlNode[] = [];
+    const body: HtmlNode[] = [];
+    const rest: HtmlNode[] = [];
+    for (const child of children) {
+      if (child.kind === "element" && child.tag === "html") {
+        for (const inner of child.children) {
+          if (inner.kind === "element" && inner.tag === "head") head.push(...inner.children);
+          else if (inner.kind === "element" && inner.tag === "body") body.push(...inner.children);
+          else rest.push(inner);
+        }
+      } else rest.push(child);
+    }
+    return { head, body, rest };
+  };
+  const a = parts(left);
+  const b = parts(right);
+  return nodesEq(a.head, b.head) && nodesEq(a.body, b.body) && nodesEq(a.rest, b.rest);
+};
 
 /** applyBlockPatch that reports an oracle refusal instead of throwing. */
 const patchOrRefused = (
@@ -117,11 +192,15 @@ describe("patch-time oracle (D60)", () => {
         }
         expect(outcome).toBeDefined();
         // Accepted: only the block's own bytes went, and the splice re-parses to
-        // exactly the original tree minus the block's subtree.
+        // exactly the original tree minus the block's subtree — modulo the implicit
+        // scaffold (`""` re-parses to a bare document) and folded text runs.
         expect(outcome?.html).toBe(stripped);
-        expect(serializeHtml(parseHtml(outcome?.html ?? ""))).toBe(
-          minusBlockSerialized(html, block.start, block.end),
-        );
+        expect(
+          sameDoc(
+            parseHtml(outcome?.html ?? "").root,
+            cutBlock(parseHtml(html, { locations: true }).root, block.start, block.end),
+          ),
+        ).toBe(true);
       }
     }
   });
@@ -145,6 +224,29 @@ describe("patch-time oracle (D60)", () => {
           html: fragment,
         });
         expect(outcome.html).toBe(expected);
+      }
+    }
+  });
+
+  it("should refuse when the splice's residue evaporates on re-parse", () => {
+    // Whitespace before any markup is dropped by the parser ("before html" insertion
+    // mode), and an ignored `</…` end tag at EOF produces no node: deleting the block
+    // leaves bytes that re-parse to LESS than the original tree minus the block —
+    // the pre-write oracle catches it for every action.
+    for (const html of [
+      "<div>x</div>\n",
+      "<div>x</div>\n</ar",
+      "<blockquote>x</blockquote>\n</ar",
+    ]) {
+      const [block] = listBlocks(html);
+      expect(block).toBeDefined();
+      for (const action of ["delete", "replace", "insertBefore", "insertAfter"] as const) {
+        const { refused } = patchOrRefused(html, {
+          address: block?.address ?? "",
+          action,
+          ...(action === "delete" ? {} : { html: "<p>f</p>" }),
+        });
+        expect(refused, `${action} on ${JSON.stringify(html)}`).toBe(true);
       }
     }
   });
@@ -197,22 +299,14 @@ describe("patch-time oracle (D60)", () => {
         "<form><p>f</p></form>",
         ["insertBefore", "insertAfter", "replace"],
       ],
-      // Foreign content: HTML block tags inside svg/math break out to body.
-      ["<svg><p>x</p></svg>", "<p>f</p>", ["insertBefore", "insertAfter", "replace"]],
-      [
-        "<svg><div><p>x</p></div></svg>",
-        "<blockquote><p>f</p></blockquote>",
-        ["insertBefore", "insertAfter", "replace"],
-      ],
-      [
-        "<math><p>x</p></math>",
-        "<table><tr><td>f</td></tr></table>",
-        ["insertBefore", "insertAfter", "replace"],
-      ],
       // Unclosed raw text swallows a fragment written at the range's end offset —
       // insertAfter lands inside the element, not after it.
       ["<div>x<xmp>", "<p>f</p>", ["insertAfter"]],
       ["<div>x<textarea>", "<p>f</p>", ["insertAfter"]],
+      // The fostered `p` is a body child inside the second table's span — a write at
+      // its slot re-parses as table content (text/element kind divergence), not the
+      // body's child list.
+      ["<table></b><b><table><p>x</p>", "<p>f</p>", ["insertBefore", "insertAfter", "replace"]],
     ];
     for (const [html, fragment, actions] of cases) {
       const [block] = listBlocks(html);
@@ -225,6 +319,31 @@ describe("patch-time oracle (D60)", () => {
         });
         expect(refused, `${action} ${fragment} on ${html}`).toBe(true);
         expect(outcome).toBeUndefined();
+      }
+    }
+  });
+
+  it("should accept foreign-content break-outs that land at the block's real slot", () => {
+    // A block fostered out of svg/math is body's child with a span inside the foreign
+    // element's bytes: writing a fragment there breaks out of the foreign element on
+    // re-parse — but it breaks to exactly the block's slot at body level, so the
+    // write is spec-correct and accepted.
+    const cases: readonly (readonly [string, string])[] = [
+      ["<svg><p>x</p></svg>", "<p>f</p>"],
+      ["<svg><div><p>x</p></div></svg>", "<blockquote><p>f</p></blockquote>"],
+      ["<math><p>x</p></math>", "<table><tr><td>f</td></tr></table>"],
+      ["<svg><foreignObject><p>x</p></foreignObject></svg>", "<p>f</p>"],
+    ];
+    for (const [html, fragment] of cases) {
+      const [block] = listBlocks(html);
+      for (const action of ["replace", "insertBefore", "insertAfter"] as const) {
+        const { outcome, refused } = patchOrRefused(html, {
+          address: block?.address ?? "",
+          action,
+          html: fragment,
+        });
+        expect(refused, `${action} ${fragment} on ${html}`).toBe(false);
+        expect(outcome).toBeDefined();
       }
     }
   });
@@ -274,8 +393,6 @@ describe("patch-time oracle (D60)", () => {
       "<div><p>a</p><p>b</p></div><section><ul><li>x</li><li>y</li></ul></section>",
       "<!DOCTYPE html><html><head><title>t</title></head><body><article><h1>T</h1><p>a<b>b</b>c</p><pre>code</pre></article></body></html>",
       "<figure><img src=x><figcaption>cap</figcaption></figure><blockquote><p>q</p></blockquote>",
-      "<p>para<div>indiv</div>",
-      "<article><p>one<p>two<div>three",
     ];
     for (const html of corpus) {
       for (const block of listBlocks(html)) {

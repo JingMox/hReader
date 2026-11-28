@@ -591,4 +591,36 @@ describe("resolveAddress · relocation", () => {
       expect(doc.slice(resolved.block.start, resolved.block.end)).toBe("<p>dup</p>");
     }
   });
+
+  it("should keep a deep-selector winner unique against a shallow deletion-path rival", () => {
+    // The 5-step address path resolves to nothing, so the fingerprint search ranks
+    // the surviving `x` block inside div>ul>li (distance 1) against the bare `<p>`
+    // at body level (distance 3 — two deletions). A distance table whose
+    // deletion-direction cell read drifts off the `i*cols` row collapses the
+    // rival's 3 to a 1, ties the winner, and wrongly reports target_moved.
+    const minted = blocksOf("<div><ul><li><p>x</p></li><li><p>x</p></li></ul></div>")[1];
+    const doc = "<p>x</p><div><ul><li><p>x</p></li></ul></div>";
+    const resolved = resolveAddress(doc, minted?.address ?? "");
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) {
+      expect(resolved.block.address).toContain("css:body > div > ul > li > p");
+      expect(doc.slice(resolved.block.start, resolved.block.end)).toBe("<p>x</p>");
+    }
+  });
+
+  it("should keep an insertion-path winner ahead of a pure-substitution rival", () => {
+    // The 3-step address path resolves to nothing, so the fingerprint search ranks
+    // `a > div > p` (distance 1 — one insertion) against `section > article`
+    // (distance 2 — two substitutions). A distance table whose insertion-direction
+    // cell read drifts off the `row*cols` grid inflates the winner's 1 to a 3 and
+    // hands the patch to the wrong block.
+    const [minted] = blocksOf("<a><p>x</p></a>");
+    const doc = "<a><div><p>x</p></div></a><section><article>x</article></section>";
+    const resolved = resolveAddress(doc, minted?.address ?? "");
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) {
+      expect(resolved.block.address).toContain("css:body > a > div > p");
+      expect(doc.slice(resolved.block.start, resolved.block.end)).toBe("<p>x</p>");
+    }
+  });
 });

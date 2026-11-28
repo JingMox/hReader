@@ -137,16 +137,25 @@ const stepsOf = (root: HtmlNode, chain: Chain): readonly SelectorStep[] => {
 };
 
 /**
+ * The selector grammar's tag name — `NAME_START` then `NAME_CHAR`s from relocate.ts.
+ * parse5 accepts almost anything as a tag name (`d[i`, `d"i`, `d<i`, `x:y`), but a
+ * step text outside the grammar can never parse back — the minted address would be
+ * unresolvable, so the block must not be listed (D64).
+ */
+const EXPRESSIBLE_TAG = /^[A-Za-z][A-Za-z0-9-]*$/;
+
+/**
  * Whether `steps` can ever be written as a parseable selector path. `parseSelectorPath`
- * rejects nth-of-type > `SELECTOR_LIMITS.nth`, more than `steps` steps and over-`chars`
- * paths — a block whose canonical path overflows any bound would mint an address that
- * resolves to nothing, so it is not a block (same family as non-leaf containers).
+ * rejects nth-of-type > `SELECTOR_LIMITS.nth`, more than `steps` steps, over-`chars`
+ * paths and names outside its grammar — a block whose canonical path hits any of those
+ * would mint an address that resolves to nothing, so it is not a block (same family as
+ * non-leaf containers).
  */
 const expressibleSteps = (steps: readonly SelectorStep[]): boolean => {
   if (steps.length > SELECTOR_LIMITS.steps) return false;
   let chars = 0;
   for (const step of steps) {
-    if (step.nth > SELECTOR_LIMITS.nth) return false;
+    if (!EXPRESSIBLE_TAG.test(step.tag) || step.nth > SELECTOR_LIMITS.nth) return false;
     chars += stepText(step).length + 3; // " > " separator budget (exact join cost ≤ this)
   }
   return chars - 3 <= SELECTOR_LIMITS.chars;

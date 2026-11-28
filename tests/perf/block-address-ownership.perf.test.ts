@@ -363,15 +363,34 @@ const attrsEq = (
   left: readonly (readonly [string, string])[],
   right: readonly (readonly [string, string])[],
 ): boolean =>
-  left.length === right.length &&
-  left.every((attr, index) => attr[0] === right[index][0] && attr[1] === right[index][1]);
+  left.map((attr) => `${attr[0]}\0${attr[1]}`).join("\0") ===
+  right.map((attr) => `${attr[0]}\0${attr[1]}`).join("\0");
 
-const nodesEq = (left: readonly DocNode[], right: readonly DocNode[]): boolean =>
-  left.length === right.length &&
-  left.every((node, index) => {
-    const other = right[index];
-    return other !== undefined && shapeEq(node, other);
-  });
+/** Adjacent text siblings folded into one run — re-parse merges what surgery split. */
+const textMerged = (children: readonly DocNode[]): readonly DocNode[] => {
+  const merged: DocNode[] = [];
+  for (const child of children) {
+    const last = merged[merged.length - 1];
+    if (child.kind === "text" && last?.kind === "text") {
+      merged[merged.length - 1] = { ...last, value: last.value + child.value };
+    } else {
+      merged.push(child);
+    }
+  }
+  return merged;
+};
+
+const nodesEq = (left: readonly DocNode[], right: readonly DocNode[]): boolean => {
+  const a = textMerged(left);
+  const b = textMerged(right);
+  return (
+    a.length === b.length &&
+    a.every((node, index) => {
+      const other = b[index];
+      return other !== undefined && shapeEq(node, other);
+    })
+  );
+};
 
 const shapeEq = (left: DocNode, right: DocNode): boolean =>
   left.kind === right.kind &&
