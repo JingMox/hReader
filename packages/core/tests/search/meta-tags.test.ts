@@ -41,6 +41,20 @@ const countingDeps = (seen: string[]): PatchDeps => ({
 const docReadsOf = (seen: readonly string[], workspace: string): readonly string[] =>
   seen.filter((path) => path.startsWith(workspace) && path.endsWith(".html"));
 
+/** `meta.json` reads as EACCES — the whole table is invisible, docs and index stay readable. */
+const metaBlindDeps: PatchDeps = {
+  ...nodePatchDeps,
+  fs: {
+    ...nodePatchDeps.fs,
+    readFile: async (path: string) => {
+      if (path.endsWith(join("meta.json"))) {
+        throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+      }
+      return await nodePatchDeps.fs.readFile(path);
+    },
+  },
+};
+
 describe("search · doc tags", () => {
   it("finds a doc by one of its tags and echoes the stored list", async () => {
     await withWorkspace(async (dir) => {
@@ -173,22 +187,76 @@ describe("search · meta freshness", () => {
       await writeTextAt(join(dir, "a.html"), DOC("a", "苹果 种植"));
       await find(dir, "苹果");
       await tag(dir, "a.html", ["园艺"]);
-      const deps: PatchDeps = {
-        ...nodePatchDeps,
-        fs: {
-          ...nodePatchDeps.fs,
-          readFile: async (path: string) => {
-            if (path.endsWith(join("meta.json"))) {
-              throw Object.assign(new Error("EACCES"), { code: "EACCES" });
-            }
-            return await nodePatchDeps.fs.readFile(path);
-          },
-        },
-      };
-      const result = await find(dir, "苹果", deps);
+      const result = await find(dir, "苹果", metaBlindDeps);
       expect(result.results[0]?.path).toBe("a.html");
       // The stale meta entry stayed; the healthy retry picks the tag up.
       expect((await find(dir, "园艺")).results[0]?.path).toBe("a.html");
+    });
+  });
+
+  it("keeps indexed tags when the doc re-indexes inside a meta-table outage", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("a", "苹果 种植"));
+      await tag(dir, "a.html", ["园艺"]);
+      await find(dir, "园艺");
+      const indexPath = join(dir, INDEX);
+      const metaBefore = (
+        JSON.parse(await readFile(indexPath, "utf8")) as { docs: Record<string, { meta: string }> }
+      ).docs["a.html"]?.meta;
+
+      // The table goes unreadable while the doc bytes move — this re-index lands inside
+      // the outage and must not drop the tag field.
+      await writeTextAt(join(dir, "a.html"), DOC("a", "水稻 收割"));
+      const blind = await find(dir, "水稻", metaBlindDeps);
+      expect(blind.results[0]?.path).toBe("a.html");
+      expect(blind.results[0]?.tags).toEqual(["园艺"]);
+
+      // The held fingerprint is still the stored one, so recovery needs no doc rewrite and
+      // the tags answer again.
+      const metaAfter = (
+        JSON.parse(await readFile(indexPath, "utf8")) as { docs: Record<string, { meta: string }> }
+      ).docs["a.html"]?.meta;
+      expect(metaAfter).toBe(metaBefore);
+      const healed = await find(dir, "园艺");
+      expect(healed.results[0]?.path).toBe("a.html");
+      expect(healed.results[0]?.tags).toEqual(["园艺"]);
+    });
+  });
+
+  it("indexes the rewritten tags when the table changed during the outage", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("a", "苹果 种植"));
+      await tag(dir, "a.html", ["园艺"]);
+      await find(dir, "园艺");
+
+      await writeTextAt(join(dir, "a.html"), DOC("a", "水稻 收割"));
+      const blind = await find(dir, "水稻", metaBlindDeps);
+      expect(blind.results[0]?.path).toBe("a.html");
+      expect(blind.results[0]?.tags).toEqual(["园艺"]);
+
+      // The tag list moved while the index was blind: the held fingerprint differs, so the
+      // healthy read re-indexes once more and the NEW tags answer.
+      await tag(dir, "a.html", ["冶金"]);
+      const healed = await find(dir, "冶金");
+      expect(healed.results[0]?.path).toBe("a.html");
+      expect(healed.results[0]?.tags).toEqual(["冶金"]);
+      expect((await find(dir, "园艺")).results).toEqual([]);
+    });
+  });
+
+  it("indexes a doc first seen during a meta-table outage once the table reads", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("a", "苹果 种植"));
+      await tag(dir, "a.html", ["园艺"]);
+
+      // No prior record: there is no indexed tag list to hold, so the doc indexes bare.
+      const blind = await find(dir, "苹果", metaBlindDeps);
+      expect(blind.results[0]?.path).toBe("a.html");
+      expect(blind.results[0]?.tags).toEqual([]);
+
+      const healed = await find(dir, "园艺");
+      expect(healed.results[0]?.path).toBe("a.html");
+      expect(healed.results[0]?.tags).toEqual(["园艺"]);
     });
   });
 
