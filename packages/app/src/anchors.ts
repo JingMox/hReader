@@ -47,6 +47,16 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-ann-resolved-title",
   "#hr-ann-lost-title",
   "#hr-ann-empty",
+  // 书库搜索面板：输入框 / 状态提示 / 文档与批注两组（组标题也由 copy 驱动）
+  "#hr-search-panel",
+  "#hr-search-input",
+  "#hr-search-hint",
+  "#hr-search-docs",
+  "#hr-search-docs-title",
+  "#hr-search-docs-list",
+  "#hr-search-anns",
+  "#hr-search-anns-title",
+  "#hr-search-anns-list",
   // 演示模式：入口按钮 / 覆盖层容器 / 页码 / 退出
   "#hr-present-btn",
   "#hr-present",

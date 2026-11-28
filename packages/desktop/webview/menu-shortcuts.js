@@ -73,6 +73,9 @@ function isEditableFocus() {
 
 const MOD_SHORTCUTS = {
   o: () => hrd.openFileSwitcherModal(),
+  // ⌘K opens the library search panel hosted by the reader page (D61). ⌘⇧K stays
+  // on components — the shift table wins when shift is held (see handleModShortcut).
+  k: () => hrd.openLibrarySearch(),
   n: () => hrd.openNewDocModal(),
   ",": () => hrd.openSettingsModal(),
   s: () => window.__hrMenuAction("save-doc"),
@@ -98,7 +101,9 @@ function handlePlainKeydown(e, editable) {
 
 function handleModShortcut(e, editable) {
   const k = e.key.toLowerCase();
-  const handler = MOD_SHORTCUTS[k] || (e.shiftKey ? SHIFT_MOD_SHORTCUTS[k] : undefined);
+  // Shift 专属表优先：⌘K 与 ⌘⇧K 都是有效绑定，谁按下谁赢（⌘⇧O 这类
+  // shift 表里没有的键照旧落回 MOD_SHORTCUTS）。
+  const handler = (e.shiftKey ? SHIFT_MOD_SHORTCUTS[k] : undefined) || MOD_SHORTCUTS[k];
   if (handler) {
     e.preventDefault();
     handler();

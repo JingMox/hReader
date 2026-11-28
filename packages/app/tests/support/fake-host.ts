@@ -31,7 +31,7 @@ export interface FakeHost {
 const textOpsOf = (
   calls: HostCall[],
   all: Map<string, readonly ElementLike[]>,
-): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "all"> => {
+): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "focus" | "all"> => {
   const record = (op: string, args: readonly string[]): void => {
     calls.push({ op, args });
   };
@@ -50,6 +50,9 @@ const textOpsOf = (
     },
     scrollTo: (selector) => {
       record("scrollTo", [selector]);
+    },
+    focus: (selector) => {
+      record("focus", [selector]);
     },
     all: (selector) => {
       record("all", [selector]);

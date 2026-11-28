@@ -16,7 +16,9 @@
       <aside id="hr-library" class="library">
         <h2 id="hr-lib-title"></h2>
         <label id="hr-search-label" for="hr-search">搜索</label>
-        <input id="hr-search" type="search" disabled title="搜索将在后续卡片启用" />
+        <!-- 侧栏搜索框仍是占位：真正的输入在 `#hr-search-panel`（`/` 打开）。
+             disabled 宣告"它不能用"；桌面端 workbench 会摘掉 disabled 复用它做文件过滤。 -->
+        <input id="hr-search" type="search" disabled title="按 / 打开书库搜索" />
         <h3 id="hr-toc-title"></h3>
         <ul id="hr-toc"></ul>
       </aside>
@@ -120,6 +122,38 @@
         </section>
         <p id="hr-ann-empty" class="ann-empty"></p>
       </aside>
+      <!-- 书库搜索面板（`/` 或桌面端 ⌘K 打开）：`hidden` 兜底，search widget 按
+           `searchOpen` 摘/挂；标题/路径/snippet 一律走 textContent（`mark` 高亮
+           也是文本节点），绝不进 innerHTML。 -->
+      <div id="hr-search-panel" class="search-panel" role="dialog" hidden>
+        <input
+          id="hr-search-input"
+          type="search"
+          autocomplete="off"
+          spellcheck="false"
+          role="combobox"
+          aria-expanded="true"
+        />
+        <p id="hr-search-hint" class="search-hint" role="status"></p>
+        <section
+          id="hr-search-docs"
+          class="search-group"
+          aria-labelledby="hr-search-docs-title"
+          hidden
+        >
+          <h4 id="hr-search-docs-title"></h4>
+          <ul id="hr-search-docs-list" class="search-list" role="listbox"></ul>
+        </section>
+        <section
+          id="hr-search-anns"
+          class="search-group"
+          aria-labelledby="hr-search-anns-title"
+          hidden
+        >
+          <h4 id="hr-search-anns-title"></h4>
+          <ul id="hr-search-anns-list" class="search-list" role="listbox"></ul>
+        </section>
+      </div>
       <footer id="hr-statusbar" class="statusbar">
         <span id="hr-conn"></span>
         <span id="hr-version"></span>

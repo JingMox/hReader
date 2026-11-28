@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { boot, settleTheme } from "../src/boot.ts";
 import { intentOf } from "../src/keys.ts";
 import { COPY } from "../src/widgets/copy.ts";
+import { notesOf } from "./support/notes-harness.ts";
 
 const ROOT = "#hr-root";
 import type { BootDeps, Harness, ReaderIntent } from "./support/boot-harness.ts";
@@ -91,31 +92,67 @@ describe("boot · widget intent → store", () => {
 });
 
 describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）", () => {
-  it("should press / and write the deferred hint instead of focusing the disabled search box", () => {
+  it("should press / and open the search panel (D61) — unhide + focus + idle hint", () => {
     const h = harnessOf(true);
     boot(h.deps);
 
     h.keyHandlers[0]?.({ key: "/" });
 
-    // `searchOpened` 的唯一副作用：把"搜索还没接线"写进状态栏提示（`boot.ts:272`）。
-    // 搜索框在模板里是 `disabled`——聚焦一个点不动的控件比没有更糟，所以按键路径不能聚焦它。
-    const hints = h.fake.calls
-      .filter((call) => call.op === "text" && call.args[0] === `${ROOT} #hr-hint`)
-      .map((call) => call.args[1]);
-    expect(hints.at(-1)).toBe(COPY.searchDeferred);
-    // 空串写进去等于没提示：文案本身必须非空。
-    expect(COPY.searchDeferred.length).toBeGreaterThan(0);
-    // “没聚焦”由上面两条（写进 `#hr-hint` 的文案 + 非空）证明：`focus` op 已移除
-    // 从 `Host` 上删除，`ops()` 结构上再也不可能含 `"focus"`，留着那条断言只会恒真。
-    // 同一个 if 链的 false 臂：`/` 不是 scrollTo。
-    expect(h.fake.ops()).not.toContain("scrollTo");
-    // 同一句文案也挂在 `title` 上（`boot.ts:276`），鼠标悬停时同样能读到延期原因。
+    // `/` → `searchOpened` 意图 → `searchOpen` 状态 → widget.update 展开面板。
+    expect(h.store.get().searchOpen).toBe(true);
+    // 面板摘除 hidden、输入框聚焦、提示行落位——三步都是真写点，缺一不可。
+    expect(
+      h.fake.calls.filter(
+        (call) =>
+          call.op === "attr" &&
+          call.args[0] === `${ROOT} #hr-search-panel` &&
+          call.args[1] === "hidden",
+      ),
+    ).toEqual([{ op: "attr", args: [`${ROOT} #hr-search-panel`, "hidden", "<removed>"] }]);
+    expect(h.fake.calls.filter((call) => call.op === "focus")).toEqual([
+      { op: "focus", args: [`${ROOT} #hr-search-input`] },
+    ]);
+    expect(
+      h.fake.calls
+        .filter((call) => call.op === "text" && call.args[0] === `${ROOT} #hr-search-hint`)
+        .map((call) => call.args[1])
+        .at(-1),
+    ).toBe(COPY.searchIdle);
+    // 聚焦的是面板里的真输入框，不是侧栏那个仍 disabled 的占位框（`/` 键不碰它）。
+    expect(
+      h.fake.calls.filter(
+        (call) => call.op === "focus" && call.args[0] !== `${ROOT} #hr-search-input`,
+      ),
+    ).toEqual([]);
+    // 侧栏占位框的悬停文案换成指路文案（`boot.ts` 挂载时写）。
     expect(
       h.fake.calls.filter(
         (call) =>
           call.op === "attr" && call.args[0] === `${ROOT} #hr-search` && call.args[1] === "title",
       ),
-    ).toEqual([{ op: "attr", args: [`${ROOT} #hr-search`, "title", COPY.searchDeferred] }]);
+    ).toEqual([{ op: "attr", args: [`${ROOT} #hr-search`, "title", COPY.searchBox] }]);
+  });
+
+  it("should write the unavailable hint on / when deps.search is absent", () => {
+    const h = harnessOf(true);
+    boot({ ...h.deps, search: undefined });
+
+    h.keyHandlers[0]?.({ key: "/" });
+
+    const hints = h.fake.calls
+      .filter((call) => call.op === "text" && call.args[0] === `${ROOT} #hr-hint`)
+      .map((call) => call.args[1]);
+    expect(hints.at(-1)).toBe(COPY.searchUnavailable);
+    expect(COPY.searchUnavailable.length).toBeGreaterThan(0);
+    // 没有 widget 就没有面板摘除：hidden 从不被写。
+    expect(
+      h.fake.calls.filter(
+        (call) =>
+          call.op === "attr" &&
+          call.args[0] === `${ROOT} #hr-search-panel` &&
+          call.args[1] === "hidden",
+      ),
+    ).toEqual([]);
   });
 
   it("should press j and not scroll", () => {
@@ -322,5 +359,124 @@ describe("boot · 沉浸模式", () => {
       .filter((call) => call.op === "text" && call.args[0] === `${ROOT} #hr-immersive-exit`)
       .map((call) => call.args[1]);
     expect(texts).toEqual([COPY.immersiveExit]);
+  });
+});
+
+const SEARCH_INPUT = `${ROOT} #hr-search-input`;
+
+describe("boot · 搜索命中出口（openHit 的四种组合）", () => {
+  const hits = [
+    {
+      path: "other.html",
+      title: "他文档",
+      kind: "doc" as const,
+      score: 1,
+      snippet: "s",
+      highlights: [],
+    },
+    {
+      path: "doc.html",
+      title: "同文档",
+      kind: "doc" as const,
+      score: 1,
+      snippet: "s",
+      highlights: [],
+    },
+    {
+      path: "doc.html",
+      title: "同文档批注",
+      kind: "annotation" as const,
+      annotationId: "an-1",
+      score: 1,
+      snippet: "s",
+      highlights: [],
+    },
+    {
+      path: "else.html",
+      title: "跨文档批注",
+      kind: "annotation" as const,
+      annotationId: "an-2",
+      score: 1,
+      snippet: "s",
+      highlights: [],
+    },
+  ];
+
+  interface Rig {
+    readonly timers: (() => void)[];
+    readonly intents: ReaderIntent[];
+  }
+
+  /** `/` → input → 手动钟走 150ms 防抖 → fetch resolve → Enter 落在 `index` 那条命中上（命中后面板关，每次重开）。 */
+  const enterAt = async (h: Harness, rig: Rig, index: number): Promise<void> => {
+    h.keyHandlers[0]?.({ key: "/" });
+    h.fake.fire(SEARCH_INPUT, "input", { value: "词" });
+    rig.timers.at(-1)?.();
+    await flush();
+    for (let i = 0; i < index; i += 1) h.fake.fire(SEARCH_INPUT, "keydown", { key: "ArrowDown" });
+    h.fake.fire(SEARCH_INPUT, "keydown", { key: "Enter" });
+  };
+
+  const bootSearch = (h: Harness): Rig => {
+    const rig: Rig = { timers: [], intents: [] };
+    h.store.dispatch({
+      kind: "annotationsLoaded",
+      list: [{ id: "an-1", nodeId: "hr-a", note: "n", status: "pending" }],
+    });
+    boot({
+      ...h.deps,
+      store: recordingStore(h.store, rig.intents),
+      schedule: (_ms, run) => {
+        rig.timers.push(run);
+        return () => undefined;
+      },
+      search: {
+        fetch: () =>
+          Promise.resolve({
+            results: hits,
+            total: hits.length,
+            combine: "and" as const,
+            truncated: false,
+          }),
+        navigate: h.deps.search?.navigate ?? (() => undefined),
+      },
+    });
+    return rig;
+  };
+
+  it("should navigate cross-doc hits, focus same-doc annotations, and no-op same-doc doc hits", async () => {
+    const h = harnessOf(true);
+    const rig = bootSearch(h);
+
+    // 扁平序 = 文档组在前：0 other-doc、1 same-doc、2 same-ann、3 other-ann。
+    await enterAt(h, rig, 0);
+    await enterAt(h, rig, 1);
+    await enterAt(h, rig, 2);
+    await enterAt(h, rig, 3);
+
+    expect(h.navigated).toEqual([
+      { path: "other.html" },
+      { path: "else.html", annotationId: "an-2" },
+    ]);
+    // 同文档批注走 focusAnnotationCard：annotationOpened 意图是唯一断言面（卡查找 + 滚块在 notes-wire 已覆盖）。
+    expect(rig.intents.filter((i) => i.kind === "annotationOpened")).toEqual([
+      { kind: "annotationOpened", id: "an-1" },
+    ]);
+  });
+});
+
+describe("boot · 启动即聚焦的批注（focusAnnotation dep）", () => {
+  it("should dispatch annotationOpened after the notes list loads", async () => {
+    const h = harnessOf(true);
+    const intents: ReaderIntent[] = [];
+    boot({
+      ...h.deps,
+      store: recordingStore(h.store, intents),
+      notes: notesOf().notes,
+      focusAnnotation: "an-1111aaaa",
+    });
+    await flush();
+
+    expect(intents).toContainEqual({ kind: "annotationOpened", id: "an-1111aaaa" });
   });
 });

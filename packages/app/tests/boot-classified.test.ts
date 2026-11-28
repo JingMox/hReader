@@ -810,3 +810,148 @@ describe("bootDocument · 外来主题（补充分支）", () => {
     expect(attrsOf(h, FRAME, "src").at(-1)).toBe("about:blank");
   });
 });
+
+const SEARCH_INPUT = `${ROOT} #hr-search-input`;
+
+/** 外来壳的 annotate 夹具：`mint` 记数用来断言 `focusAnnotation` 真走到了 enter()。 */
+const annotateOf = (mints: string[]): ClassifiedBootDeps["annotate"] => ({
+  io: {
+    mint: () => {
+      mints.push("mint");
+      return Promise.resolve("/f/cap/frame?at=t1");
+    },
+    list: () => Promise.resolve([]),
+    add: () => Promise.resolve(),
+  },
+  env: {
+    onMessage: () => () => undefined,
+    frameWindow: () => ({}),
+    postToFrame: () => undefined,
+    frameRect: () => undefined,
+    viewport: () => ({ width: 1024, height: 768 }),
+  },
+});
+
+const SEARCH_HITS = [
+  {
+    path: "other.html",
+    title: "他文档",
+    kind: "doc" as const,
+    score: 1,
+    snippet: "s",
+    highlights: [],
+  },
+  {
+    path: "doc.html",
+    title: "同文档",
+    kind: "doc" as const,
+    score: 1,
+    snippet: "s",
+    highlights: [],
+  },
+  {
+    path: "doc.html",
+    title: "同文档批注",
+    kind: "annotation" as const,
+    annotationId: "a1",
+    score: 1,
+    snippet: "s",
+    highlights: [],
+  },
+];
+
+interface SearchRig {
+  readonly timers: (() => void)[];
+  readonly mints: string[];
+}
+
+/** 外来壳里走一次真 `/` → input → 手动钟 → Enter：命中后面板关，每次重开。 */
+const enterHitAt = async (h: Harness, rig: SearchRig, index: number): Promise<void> => {
+  h.type("/");
+  h.fake.fire(SEARCH_INPUT, "input", { value: "词" });
+  rig.timers.at(-1)?.();
+  await flush();
+  for (let i = 0; i < index; i += 1) h.fake.fire(SEARCH_INPUT, "keydown", { key: "ArrowDown" });
+  h.fake.fire(SEARCH_INPUT, "keydown", { key: "Enter" });
+};
+
+const foreignSearchDeps = (h: Harness, rig: SearchRig): Partial<ClassifiedBootDeps> => ({
+  schedule: (_ms, run) => {
+    rig.timers.push(run);
+    return () => undefined;
+  },
+  search: {
+    fetch: () =>
+      Promise.resolve({
+        results: SEARCH_HITS,
+        total: SEARCH_HITS.length,
+        combine: "and" as const,
+        truncated: false,
+      }),
+    navigate: h.deps.search?.navigate ?? (() => undefined),
+  },
+});
+
+describe("bootDocument · 搜索面板 (D61)", () => {
+  it("should write the unavailable hint on / when deps.search is absent", async () => {
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, { search: undefined });
+    await bootDocument(deps);
+
+    h.type("/");
+
+    expect(lastText(h, `${ROOT} #hr-hint`)).toBe(COPY.searchUnavailable);
+  });
+
+  it("should open the panel on / and navigate cross-doc hits in the foreign shell", async () => {
+    const rig: SearchRig = { timers: [], mints: [] };
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, foreignSearchDeps(h, rig));
+    await bootDocument(deps);
+
+    // 扁平序 = 文档组在前：0 跨文档、1 同文档（no-op）、2 同文档批注。
+    await enterHitAt(h, rig, 0);
+    await enterHitAt(h, rig, 1);
+
+    expect(h.navigated).toEqual([{ path: "other.html" }]);
+    expect(h.store.get().searchOpen).toBe(false);
+  });
+
+  it("should route a same-doc annotation hit into foreign.focusAnnotation (enters annotate mode)", async () => {
+    const rig: SearchRig = { timers: [], mints: [] };
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, {
+      ...foreignSearchDeps(h, rig),
+      annotate: annotateOf(rig.mints),
+    });
+    await bootDocument(deps);
+
+    await enterHitAt(h, rig, 2);
+
+    // annotate.focusAnnotation → enter() → mint 一次（面板后续选中走 pendingSelect）。
+    expect(rig.mints).toHaveLength(1);
+  });
+
+  it("should apply deps.focusAnnotation through foreign.focusAnnotation", async () => {
+    const mints: string[] = [];
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, {
+      annotate: annotateOf(mints),
+      focusAnnotation: "a1",
+    });
+    await bootDocument(deps);
+
+    expect(mints).toHaveLength(1);
+  });
+
+  it("should tolerate deps.focusAnnotation without an annotate dep (delegate is absent)", async () => {
+    const h = harnessOf(true);
+    const { deps } = classifiedOf(h, () => foreignInfo, { focusAnnotation: "a1" });
+    const booted = await bootDocument(deps);
+
+    // 没有 annotate 能力时 focusAnnotation 是空转：壳照常工作。
+    expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html"]);
+    booted.destroy();
+    expect(h.closed()).toBe(true);
+  });
+});

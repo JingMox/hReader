@@ -75,6 +75,23 @@ describe("cls/scrollTo · 可选元素不炸", () => {
     expect(seen.calls).toEqual(["scroll:start"]);
     expect(bare.calls).toEqual([]);
   });
+
+  it("should focus only when the element has a focus method", () => {
+    const focus = vi.fn();
+    const seen = { ...fakeElement("input"), focus };
+    const bare = fakeElement("input");
+    const host = createDomHost(
+      docWith([
+        ["#f", seen],
+        ["#b", bare],
+      ]),
+    );
+    host.focus?.("#f");
+    host.focus?.("#b");
+    host.focus?.("#missing");
+    // 有 `focus` → 记一次；没有/找不到 → 静默不炸。
+    expect(focus.mock.calls).toHaveLength(1);
+  });
 });
 
 const SPECS: readonly NodeSpec[] = [

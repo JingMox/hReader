@@ -101,6 +101,8 @@ export interface ForeignHandle {
   readonly syncInfo: (next: ForeignInput) => void;
   /** `doc.annotations` (SSE, this doc): repaint highlights in annotate mode; a no-op otherwise. */
   readonly annotationsChanged: () => void;
+  /** D61 search hit → enter annotate mode (when needed) and select this sidecar entry. */
+  readonly focusAnnotation: (id: string) => void;
   readonly destroy: () => void;
 }
 
@@ -417,6 +419,9 @@ export const mountForeign = (deps: ForeignDeps): ForeignHandle => {
     },
     annotationsChanged: () => {
       annotate?.annotationsChanged();
+    },
+    focusAnnotation: (id) => {
+      annotate?.focusAnnotation(id);
     },
     destroy: () => {
       dead = true;

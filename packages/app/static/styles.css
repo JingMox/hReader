@@ -67,6 +67,91 @@ body {
   margin: 4px 0 12px;
 }
 
+/* 书库搜索面板：居中浮层。条目文本全部由 search widget 走 textContent；
+   `mark` 只是高亮文本节点（snippet 的命中区间）。 */
+#hr-search-panel {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 90vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--hr-gap);
+  background: var(--hr-paper, #fff);
+  border: 1px solid var(--hr-rule);
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 18%);
+  z-index: 40;
+}
+
+#hr-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--hr-rule);
+  border-radius: 4px;
+  font: inherit;
+}
+
+#hr-search-hint {
+  margin: 6px 0 0;
+  min-height: 1em;
+  font-size: 12px;
+  color: var(--hr-dim, #777);
+}
+
+.search-group > h4 {
+  margin: 10px 0 2px;
+  font-size: 12px;
+  color: var(--hr-dim, #777);
+}
+
+.search-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.search__item {
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.search__item--on {
+  background: #efe7d6;
+}
+
+.search__item .search__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.search__kind {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--hr-rule);
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--hr-dim, #777);
+}
+
+.search__item .search__snippet {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--hr-dim, #777);
+  overflow-wrap: anywhere;
+}
+
+.search__item mark {
+  background: #f5d76e;
+  color: inherit;
+}
+
 #hr-statusbar {
   grid-row: 2;
   grid-column: 1 / -1;

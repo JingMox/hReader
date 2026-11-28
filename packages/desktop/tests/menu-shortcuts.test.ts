@@ -113,6 +113,50 @@ describe("普通 ⌘ 快捷键", () => {
     s.dispose();
   });
 
+  it("⌘K opens the reader's library-search panel; ⌘⇧K stays on components", () => {
+    const s = make();
+    s.hrd.openLibrarySearch = vi.fn();
+    keydown(s.window, { key: "k", metaKey: true });
+    expect(s.hrd.openLibrarySearch).toHaveBeenCalledTimes(1);
+    // Shift 表先解析：⌘⇧K 仍是组件插入，不能落到书库搜索。
+    keydown(s.window, { key: "k", metaKey: true, shiftKey: true });
+    expect(s.hrd.openLibrarySearch).toHaveBeenCalledTimes(1);
+    expect(s.hrd.openComponentModal).toHaveBeenCalledTimes(1);
+    // 可编辑焦点不拦 mod 快捷键（与 ⌘O 同一约定）。
+    const input = s.document.createElement("input");
+    s.document.body.appendChild(input);
+    input.focus();
+    keydown(s.window, { key: "k", metaKey: true });
+    expect(s.hrd.openLibrarySearch).toHaveBeenCalledTimes(2);
+    s.dispose();
+  });
+
+  it("openLibrarySearch dispatches hr-search-open only when the reader mounted the capability", () => {
+    const s = make();
+    const root = mustGet(s.document, "#hr-root");
+    root.setAttribute("data-hr-search", "");
+    let seen = 0;
+    root.addEventListener("hr-search-open", () => {
+      seen += 1;
+    });
+    keydown(s.window, { key: "k", metaKey: true });
+    expect(seen).toBe(1);
+    expect(s.hrd.showToast).not.toHaveBeenCalled();
+    s.dispose();
+
+    // 能力标记缺席（空工作台/旧页面）：降级成一条可见提示，事件不发。
+    const s2 = make();
+    const root2 = mustGet(s2.document, "#hr-root");
+    let seen2 = 0;
+    root2.addEventListener("hr-search-open", () => {
+      seen2 += 1;
+    });
+    keydown(s2.window, { key: "k", metaKey: true });
+    expect(seen2).toBe(0);
+    expect(s2.hrd.showToast).toHaveBeenCalledWith("搜索面板不可用：请先打开一篇文档", true);
+    s2.dispose();
+  });
+
   it("⌘Z 撤销；⌘⇧Z 也是撤销（当前没有 redo 映射）", () => {
     const s = make();
     keydown(s.window, { key: "z", metaKey: true });

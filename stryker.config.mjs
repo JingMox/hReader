@@ -79,6 +79,8 @@ const config = {
     "packages/app/src/widgets/annotate.ts",
     // D55 foreign-annotation panel: textContent-only rendering + write-action dispatch
     "packages/app/src/widgets/ann-panel.ts",
+    // D61 library-search panel: highlight-offset clamping + textContent-only marks
+    "packages/app/src/widgets/search.ts",
   ],
   testRunner: "vitest",
   // pnpm's .pnpm realpath layout hides the runner from the default "@stryker-mutator/*" glob, so declare it explicitly.

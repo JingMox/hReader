@@ -57,6 +57,54 @@ export const isAnnotationList = (
   (value["lost"] === undefined || isStringArray(value["lost"])) &&
   (value["diagnostics"] === undefined || isStringArray(value["diagnostics"]));
 
+/** `GET /api/search` 的单条命中（与 `@hreader/core` 的 `SearchHit` 同构；app 不依赖 core）。 */
+export interface SearchHit {
+  readonly path: string;
+  readonly title: string;
+  readonly kind: "doc" | "annotation";
+  readonly annotationId?: string;
+  readonly score: number;
+  readonly snippet: string;
+  readonly highlights: readonly (readonly [number, number])[];
+}
+
+/** `GET /api/search` 应答（`LibrarySearchResult` 的结构镜像）。 */
+export interface SearchReply {
+  readonly results: readonly SearchHit[];
+  readonly total: number;
+  readonly combine: "and" | "or";
+  readonly truncated: boolean;
+  readonly diagnostics?: readonly string[];
+}
+
+/** 高亮对必须是 `[start, end)` 两个数；越界/反向是否成立由渲染层钳制，守卫只管形状。 */
+const isHighlightPair = (value: unknown): value is readonly [number, number] =>
+  Array.isArray(value) &&
+  value.length === 2 &&
+  typeof value[0] === "number" &&
+  typeof value[1] === "number";
+
+const isSearchHit = (value: unknown): value is SearchHit =>
+  isRecord(value) &&
+  typeof value["path"] === "string" &&
+  typeof value["title"] === "string" &&
+  (value["kind"] === "doc" || value["kind"] === "annotation") &&
+  isOptionalString(value["annotationId"]) &&
+  typeof value["score"] === "number" &&
+  typeof value["snippet"] === "string" &&
+  Array.isArray(value["highlights"]) &&
+  (value["highlights"] as readonly unknown[]).every(isHighlightPair);
+
+/** `GET /api/search`：结果集的每条命中都给了就要对（path/title/snippet 是渲染与导航的前提）。 */
+export const isSearchReply = (value: unknown): value is SearchReply =>
+  isRecord(value) &&
+  Array.isArray(value["results"]) &&
+  (value["results"] as readonly unknown[]).every(isSearchHit) &&
+  typeof value["total"] === "number" &&
+  (value["combine"] === "and" || value["combine"] === "or") &&
+  typeof value["truncated"] === "boolean" &&
+  (value["diagnostics"] === undefined || isStringArray(value["diagnostics"]));
+
 /** `GET /api/doc/<id>/notes/<anId>/diff` → 服务端算好的 chunk。 */
 export const isDiffResponse = (
   value: unknown,

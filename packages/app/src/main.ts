@@ -12,7 +12,7 @@ import {
 import type { AppIo } from "./io.ts";
 export type { AppIo, RevisionResponse } from "./io.ts";
 import { createDomHost, type DocumentLike, type Host } from "./dom.ts";
-import { isAnnotationList, isDiffResponse } from "./guard.ts";
+import { isAnnotationList, isDiffResponse, isSearchReply } from "./guard.ts";
 import { rawSelectionOf, type BlockElementLike } from "./widgets/selection.ts";
 import { textOfBlocks } from "./widgets/blocks-text.ts";
 import { createSse, type SseHandlers, type SourceLike } from "./sse.ts";
@@ -42,6 +42,16 @@ declare const window: {
     readonly hash?: string;
     readonly pathname?: string;
     readonly search?: string;
+    /** 搜索命中的文档跳转（`/?doc=` 或桌面 `/open` 桥）；测试壳可省。 */
+    readonly assign?: (url: string) => void;
+  };
+  /** 桌面壳注入的桥上下文：有 `bridgeToken` 就证明身在桌面端。 */
+  readonly __HR_DESKTOP_CTX__?: { readonly bridgeToken?: string };
+  /** 跨文档批注命中的暂存（同源 sessionStorage 在页面跳转后仍可读）；隐私模式下可能缺席。 */
+  readonly sessionStorage?: {
+    readonly getItem: (key: string) => string | null;
+    readonly setItem: (key: string, value: string) => void;
+    readonly removeItem: (key: string) => void;
   };
   /** `replaceState` 写 hash 不堆历史记录；缺省表示环境不支持（hash 退化为只读）。 */
   readonly history?: {
@@ -313,6 +323,50 @@ const bindOf =
   async () =>
     await io.json(path, guard);
 
+/** 批注命中的跨页暂存键：跳转前 `{doc, ann}` 写入，新页 boot 时取出并立刻清掉。 */
+const SEARCH_FOCUS_KEY = "hr-search-focus";
+
+const stashSearchFocus = (doc: string, ann: string): void => {
+  try {
+    window.sessionStorage?.setItem(SEARCH_FOCUS_KEY, JSON.stringify({ doc, ann }));
+  } catch {
+    // 存储不可用时降级为"只开文档"（聚焦丢，导航不丢）。
+  }
+};
+
+/** 取出并消费跨页暂存：总是先删（陈旧暂存不许留到下一次跳转），doc 匹配才返回 ann。 */
+const takeSearchFocus = (docId: string): string | undefined => {
+  try {
+    const raw = window.sessionStorage?.getItem(SEARCH_FOCUS_KEY);
+    if (raw === undefined || raw === null) return undefined;
+    window.sessionStorage?.removeItem(SEARCH_FOCUS_KEY);
+    const parsed: unknown = JSON.parse(raw);
+    return isRecord(parsed) && parsed["doc"] === docId && typeof parsed["ann"] === "string"
+      ? parsed["ann"]
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * 搜索命中的文档跳转：桌面壳走 `hr-desktop.local/open` 桥（壳在 on_navigation 里
+ * 换成受控 open），浏览器直接 `/?doc=`。`annotationId` 只进 sessionStorage——
+ * 不入 URL：`/open` 桥只转发 `doc` 参数，哈希/参数会丢。
+ */
+const navigateToDoc = (path: string, annotationId?: string): void => {
+  if (annotationId !== undefined) stashSearchFocus(path, annotationId);
+  const token = window.__HR_DESKTOP_CTX__?.bridgeToken;
+  const doc = encodeURIComponent(path);
+  if (typeof token === "string" && token !== "") {
+    window.location.assign?.(
+      `http://hr-desktop.local/open?doc=${doc}&t=${encodeURIComponent(token)}`,
+    );
+    return;
+  }
+  window.location.assign?.(`/?doc=${doc}`);
+};
+
 /** 两条 boot 路径共用的依赖装配（store 由调用方给：managed 与 iframe 的初始主题不同）。 */
 const depsCoreOf = (core: {
   readonly docId: string;
@@ -325,6 +379,13 @@ const depsCoreOf = (core: {
   const encoded = encodeURIComponent(docId);
   const bind = bindOf(io);
   return {
+    /** D61 搜索面板：`q` 原文透传（服务端按码点限长），limit 固定走默认 20。 */
+    search: {
+      fetch: async (query: string) =>
+        await io.json(`/api/search?q=${encodeURIComponent(query)}&limit=20`, isSearchReply),
+      navigate: navigateToDoc,
+    },
+    focusAnnotation: takeSearchFocus(docId),
     host,
     store,
     openSse,

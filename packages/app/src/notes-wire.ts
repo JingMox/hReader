@@ -109,6 +109,26 @@ const submitFlow =
     });
   };
 
+/** 聚焦一张批注卡：先派 `annotationOpened`（意图出口唯一），再把锚点块滚进视野并标记。
+ *  卡片点击与「搜索命中 → 同文档批注」共用这一条路径（D61 搜索面板也调它）。 */
+export const focusAnnotationCard = (
+  scope: {
+    readonly host: Host;
+    readonly store: Store;
+    readonly dispatch: (intent: ReaderIntent) => void;
+  },
+  id: string,
+): void => {
+  const { host, store, dispatch } = scope;
+  dispatch({ kind: "annotationOpened", id });
+  const card = store.get().annotations.find((item) => item.id === id);
+  if (card === undefined || card.lost !== undefined) return;
+  const target = foundNodeOf(host, card.nodeId);
+  if (target === undefined) return;
+  host.scrollTo(`${ROOT} [data-hr-id="${escapeAttr(target)}"]`);
+  host.cls(`${ROOT} [data-hr-id="${escapeAttr(target)}"]`, "hr-note-target", true);
+};
+
 const wireNotesDom = (host: Host, store: Store, dispatch: (intent: ReaderIntent) => void): void => {
   host.on(`${ROOT} #hr-note-btn`, "click", () => {
     dispatch({ kind: "annotateButton" });
@@ -122,13 +142,7 @@ const wireNotesDom = (host: Host, store: Store, dispatch: (intent: ReaderIntent)
   const onCardClick = (event: TargetLike): void => {
     const id = event.closest?.("[data-hr-annotation]")?.getAttribute("data-hr-annotation");
     if (id === null || id === undefined) return;
-    dispatch({ kind: "annotationOpened", id });
-    const card = store.get().annotations.find((item) => item.id === id);
-    if (card === undefined || card.lost !== undefined) return;
-    const target = foundNodeOf(host, card.nodeId);
-    if (target === undefined) return;
-    host.scrollTo(`${ROOT} [data-hr-id="${escapeAttr(target)}"]`);
-    host.cls(`${ROOT} [data-hr-id="${escapeAttr(target)}"]`, "hr-note-target", true);
+    focusAnnotationCard({ host, store, dispatch }, id);
   };
   host.on(`${ROOT} #hr-notes-body`, "click", onCardClick);
   host.on(`${ROOT} #hr-notes-pending`, "click", onCardClick);

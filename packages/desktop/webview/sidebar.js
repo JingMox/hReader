@@ -73,6 +73,18 @@ function toggleSearchBox(force) {
   }
 }
 
+// ⌘K (D61): the search panel lives inside the reader page (search widget mounts
+// `data-hr-search` on #hr-root when ready). We only dispatch the open event —
+// the panel itself is the reader's own component, so no rendering happens here.
+function openLibrarySearch() {
+  const root = document.getElementById("hr-root");
+  if (root && root.hasAttribute("data-hr-search")) {
+    root.dispatchEvent(new Event("hr-search-open", { bubbles: true }));
+    return;
+  }
+  hrd.showToast("搜索面板不可用：请先打开一篇文档", true);
+}
+
 function wireDragSurface(el) {
   if (!el) return;
   el.setAttribute("data-tauri-drag-region", "deep");
@@ -307,6 +319,7 @@ Object.assign(hrd, {
   renderSidebarHeader,
   setSidebarMode,
   toggleSearchBox,
+  openLibrarySearch,
   ensureFallbackDragStrip,
   ensureOverlayTitlebar,
   buildSidebarEnhancements,

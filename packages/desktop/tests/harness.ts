@@ -167,6 +167,7 @@ export interface Hrd {
   openNotesDrawer: (open?: boolean) => void;
   toggleLeftSidebar: (force?: boolean) => void;
   toggleSearchBox: (force?: boolean) => void;
+  openLibrarySearch: () => void;
   renderSidebarHeader: () => void;
   setSidebarMode: (mode: string) => void;
   renderEmptyState: () => void;
