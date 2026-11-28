@@ -9,7 +9,11 @@ export default defineConfig({
   resolve: { alias: packageAliases },
   test: {
     ...packageTest,
-    include: ["packages/*/tests/**/*.test.ts", "tests/leak-guard/**/*.test.ts"],
+    include: [
+      "packages/*/tests/**/*.test.ts",
+      "tests/leak-guard/**/*.test.ts",
+      "tests/adversarial/**/*.test.ts",
+    ],
     coverage: {
       provider: "v8",
       // `pi-hreader.ts` is a single-file extension (at package root, not under `src/`), so it must be listed explicitly in coverage.
