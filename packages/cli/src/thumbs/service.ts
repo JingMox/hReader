@@ -59,7 +59,12 @@ export const createThumbRender = (input: ThumbServiceInput): ThumbRender => {
   const deps = input.deps ?? nodePatchDeps;
   const queue = input.queue ?? createRenderQueue();
   const cache =
-    input.cache ?? createThumbCache({ dir: join(input.workspace, THUMB_CACHE_DIR), deps });
+    input.cache ??
+    createThumbCache({
+      dir: join(input.workspace, THUMB_CACHE_DIR),
+      workspace: input.workspace,
+      deps,
+    });
   const render: ThumbSession =
     input.render ??
     (async (source) =>

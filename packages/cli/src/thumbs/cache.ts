@@ -7,7 +7,7 @@
 
 import { join } from "node:path";
 
-import { HrError, type PatchDeps } from "@hreader/core";
+import { HrError, isInsideOrSelf, type PatchDeps, realpathOfAncestor } from "@hreader/core";
 
 import { assertPngOf } from "../chrome/png";
 import { ioFailureOf } from "../commands/export-print";
@@ -92,6 +92,9 @@ export interface ThumbCache {
 
 export const createThumbCache = (input: {
   readonly dir: string;
+  /** The workspace the cache serves: every fs op must land inside it — same
+   *  containment rule `atomic.ts` applies to the other `.hreader` stores. */
+  readonly workspace: string;
   readonly deps: PatchDeps;
   /** Default {@link THUMB_CACHE_LIMIT_BYTES}; injectable for tests (500 MiB fixtures are not). */
   readonly limitBytes?: number;
@@ -101,16 +104,83 @@ export const createThumbCache = (input: {
   const indexPath = join(dir, INDEX_FILE);
 
   /**
+   * Containment: same guard set `writeAtomic`/`resolveNewTarget` apply to every
+   * `.hreader` store — a path is allowed iff the realpath of it (or of its
+   * nearest existing ancestor, for not-yet-created dirs) stays inside the
+   * workspace's realpath, and a leaf that is itself a symlink is refused
+   * outright (a link must never be followed, overwritten through, or have its
+   * target deleted). Messages name workspace-relative paths only, so stderr,
+   * `--json` and the HTTP boundary never leak a host path.
+   */
+  const outsideOf = (display: string, cause?: unknown): HrError =>
+    new HrError("path_outside_workspace", `缩略图缓存跑出 workspace，拒绝访问：${display}`, {
+      cause,
+    });
+
+  /**
+   * The path as it would land on disk: realpath of the nearest existing
+   * ancestor plus the not-yet-created tail — `resolveNewTarget`'s `absolute`.
+   * A not-yet-existing workspace/cache dir is judged by where `mkdir` would
+   * put it, which is the only answer that also catches a symlinked ancestor.
+   */
+  const resolvedOf = async (path: string, display: string): Promise<string> => {
+    try {
+      const ancestor = await realpathOfAncestor(deps.fs, path);
+      return join(ancestor.real, ...ancestor.tail);
+    } catch (error: unknown) {
+      // Fail closed like assertParentInside: an unresolvable landing proves nothing.
+      throw outsideOf(display, error);
+    }
+  };
+
+  const assertContained = async (path: string, display: string): Promise<void> => {
+    const [workspace, landing] = await Promise.all([
+      resolvedOf(input.workspace, DISPLAY_DIR),
+      resolvedOf(path, display),
+    ]);
+    if (!isInsideOrSelf(workspace, landing)) throw outsideOf(display);
+  };
+
+  const assertNotLink = async (path: string, display: string): Promise<void> => {
+    let stat: Awaited<ReturnType<PatchDeps["fs"]["lstat"]>>;
+    try {
+      stat = await deps.fs.lstat(path);
+    } catch (error: unknown) {
+      // ENOENT/ENOTDIR both mean the leaf can't exist — let the real op
+      // (read/write/unlink) surface the failure with its own message.
+      const code: unknown = Reflect.get(Object(error), "code");
+      if (code === "ENOENT" || code === "ENOTDIR") return;
+      throw ioFailureOf(error, "检查缩略图缓存", display);
+    }
+    if (stat.isSymbolicLink()) throw outsideOf(display);
+  };
+
+  /** Same shape as `unlinkQuiet`, but refuse before removing: a symlinked entry keeps its target. */
+  const unlinkContained = async (path: string, display: string): Promise<void> => {
+    await assertContained(path, display);
+    await assertNotLink(path, display);
+    try {
+      await deps.fs.unlink(path);
+    } catch (error: unknown) {
+      if (isMissing(error)) return;
+      throw ioFailureOf(error, "删缩略图缓存", display);
+    }
+  };
+
+  /**
    * The index is a cache, not a ledger: it is rebuilt from the directory on
    * every load — index entries whose PNG vanished drop out, and stray PNGs
    * (another process's write, a restored backup) join with their mtime as `at`.
    */
   const loadIndex = async (): Promise<CacheIndex> => {
+    const indexDisplay = displayPathOf(INDEX_FILE);
+    await assertContained(indexPath, indexDisplay);
+    await assertNotLink(indexPath, indexDisplay);
     let index: CacheIndex = {};
     try {
       index = parseIndex(new TextDecoder().decode(await deps.fs.readFile(indexPath))) ?? {};
     } catch (error: unknown) {
-      if (!isMissing(error)) throw ioFailureOf(error, "读取缩略图索引", displayPathOf(INDEX_FILE));
+      if (!isMissing(error)) throw ioFailureOf(error, "读取缩略图索引", indexDisplay);
     }
     let names: readonly string[];
     try {
@@ -137,13 +207,16 @@ export const createThumbCache = (input: {
   };
 
   const saveIndex = async (index: CacheIndex): Promise<void> => {
+    const indexDisplay = displayPathOf(INDEX_FILE);
+    await assertContained(indexPath, indexDisplay);
+    await assertNotLink(indexPath, indexDisplay);
     const data = new TextEncoder().encode(
       JSON.stringify({ version: INDEX_VERSION, entries: index }),
     );
     try {
       await deps.fs.writeFileAtomic(indexPath, data);
     } catch (error: unknown) {
-      throw ioFailureOf(error, "写缩略图索引", displayPathOf(INDEX_FILE));
+      throw ioFailureOf(error, "写缩略图索引", indexDisplay);
     }
   };
 
@@ -167,7 +240,7 @@ export const createThumbCache = (input: {
       if (total <= limit) break;
       total -= entry.size;
       dropped.add(hash);
-      await unlinkQuiet(deps.fs, join(dir, pngNameOf(hash)));
+      await unlinkContained(join(dir, pngNameOf(hash)), displayPathOf(pngNameOf(hash)));
     }
     return Object.fromEntries(Object.entries(index).filter(([hash]) => !dropped.has(hash)));
   };
@@ -176,12 +249,15 @@ export const createThumbCache = (input: {
     get: async (hash) => {
       assertHash(hash);
       const path = join(dir, pngNameOf(hash));
+      const display = displayPathOf(pngNameOf(hash));
+      await assertContained(path, display);
+      await assertNotLink(path, display);
       let bytes: Uint8Array;
       try {
         bytes = await deps.fs.readFile(path);
       } catch (error: unknown) {
         if (isMissing(error)) return undefined;
-        throw ioFailureOf(error, "读取缩略图缓存", displayPathOf(pngNameOf(hash)));
+        throw ioFailureOf(error, "读取缩略图缓存", display);
       }
       try {
         assertPngOf(bytes);
@@ -198,16 +274,22 @@ export const createThumbCache = (input: {
     },
     put: async (hash, bytes) => {
       assertHash(hash);
+      // Judge where the dir *would* land before creating it: a symlinked
+      // `.hreader` would otherwise make `mkdir -p` build the tree outside.
+      await assertContained(dir, DISPLAY_DIR);
       try {
         await deps.fs.mkdir(dir);
       } catch (error: unknown) {
         throw ioFailureOf(error, "建缩略图目录", DISPLAY_DIR);
       }
       const path = join(dir, pngNameOf(hash));
+      const display = displayPathOf(pngNameOf(hash));
+      await assertContained(path, display);
+      await assertNotLink(path, display);
       try {
         await deps.fs.writeFileAtomic(path, bytes);
       } catch (error: unknown) {
-        throw ioFailureOf(error, "写缩略图缓存", displayPathOf(pngNameOf(hash)));
+        throw ioFailureOf(error, "写缩略图缓存", display);
       }
       const index = await loadIndex();
       index[hash] = { at: deps.clock.now().getTime(), size: bytes.length };

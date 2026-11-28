@@ -4,7 +4,7 @@
 // regeneration, PNG-signature rejection, and least-recently-hit eviction.
 
 import { Buffer } from "node:buffer";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,6 +12,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { nodePatchDeps, type PatchDeps } from "@hreader/core";
 
+import { assertNoHostPaths } from "../../../tests/adversarial/no-host-paths";
 import { createThumbCache, type ThumbCache } from "../src/thumbs/cache";
 import { pngOf } from "./chrome-png";
 
@@ -43,6 +44,7 @@ const depsOf = (): PatchDeps => ({ ...nodePatchDeps, clock: clockOf() });
 const cacheOf = (sub: string, limitBytes?: number): ThumbCache =>
   createThumbCache({
     dir: join(dir, sub, ".hreader", "thumbs"),
+    workspace: join(dir, sub),
     deps: depsOf(),
     ...(limitBytes === undefined ? {} : { limitBytes }),
   });
@@ -430,8 +432,17 @@ const failingDeps = (fs: Partial<PatchDeps["fs"]>): PatchDeps => ({
   fs: { ...nodePatchDeps.fs, ...fs },
 });
 
-const failingCacheOf = (sub: string, fs: Partial<PatchDeps["fs"]>): ThumbCache =>
-  createThumbCache({ dir: join(dir, sub, ".hreader", "thumbs"), deps: failingDeps(fs) });
+const failingCacheOf = (
+  sub: string,
+  fs: Partial<PatchDeps["fs"]>,
+  limitBytes?: number,
+): ThumbCache =>
+  createThumbCache({
+    dir: join(dir, sub, ".hreader", "thumbs"),
+    workspace: join(dir, sub),
+    deps: failingDeps(fs),
+    ...(limitBytes === undefined ? {} : { limitBytes }),
+  });
 
 /** io_failure messages may name only the workspace-relative path — an absolute host path must never reach stderr, --json, or an HTTP body. */
 const HOST_PATH_FRAGMENTS = ["/Users", "/private", "/tmp", "/var", "/home"] as const;
@@ -562,5 +573,228 @@ describe("thumbs/cache · io failures", () => {
     const cache = failingCacheOf("unlink-fail", { unlink: () => Promise.reject(eacces()) });
 
     expect(await cache.get(HASH_A)).toBeUndefined();
+  });
+
+  it("should surface an entry lstat failure as io_failure with the workspace-relative path", async () => {
+    const cacheDir = join(dir, "io-lstat", ".hreader", "thumbs");
+    storeFile(cacheDir, HASH_A, pngOf(1, 1));
+    const cache = failingCacheOf("io-lstat", { lstat: () => Promise.reject(eacces()) });
+
+    const error = await ioErrorOf(() => cache.get(HASH_A));
+    expectCleanPath(error, "检查缩略图缓存", `.hreader/thumbs/${HASH_A}.png`);
+  });
+
+  it("should surface an eviction delete failure as io_failure with the workspace-relative path", async () => {
+    const entry = pngOf(1, 1);
+    const cacheDir = join(dir, "io-evict-unlink", ".hreader", "thumbs");
+    storeFile(cacheDir, HASH_A, entry);
+    const cache = failingCacheOf(
+      "io-evict-unlink",
+      { unlink: () => Promise.reject(eacces()) },
+      entry.length,
+    );
+
+    // Limit holds one entry: B's put must evict A — and the delete fails.
+    const error = await ioErrorOf(() => cache.put(HASH_B, entry));
+    expectCleanPath(error, "删缩略图缓存", `.hreader/thumbs/${HASH_A}.png`);
+  });
+
+  it("should treat an eviction delete that hits ENOENT as already gone", async () => {
+    const entry = pngOf(1, 1);
+    const cacheDir = join(dir, "evict-vanished", ".hreader", "thumbs");
+    storeFile(cacheDir, HASH_A, entry);
+    const cache = failingCacheOf(
+      "evict-vanished",
+      { unlink: () => Promise.reject(enoent()) },
+      entry.length,
+    );
+
+    // Another process deleted A first — the eviction still drops its index row.
+    await cache.put(HASH_B, entry);
+    expect(indexEntriesOf(cacheDir)).toEqual([HASH_B]);
+  });
+
+  it("should refuse with path_outside_workspace when the landing cannot be resolved", async () => {
+    // Fail closed like assertParentInside: an unresolvable path proves nothing.
+    const cache = failingCacheOf("io-realpath", { realpath: () => Promise.reject(eacces()) });
+
+    const error = await cache.get(HASH_A).then(
+      () => {
+        throw new Error("expected path_outside_workspace but the call succeeded");
+      },
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({ code: "path_outside_workspace" });
+    expect((error as Error).message).toContain(".hreader");
+    assertNoHostPaths((error as Error).message, []);
+  });
+});
+
+describe("thumbs/cache · symlink containment", () => {
+  // Real fs + real symlinks (no chmod needed): every cache op must refuse when
+  // any component of `.hreader/thumbs` escapes the workspace — the same
+  // containment rule atomic.ts applies to the other `.hreader` stores. The
+  // asserts that matter: outside bytes byte-identical before and after, the
+  // error is path_outside_workspace, and the message never leaks a host path.
+
+  interface EscapeDirs {
+    readonly ws: string;
+    readonly outside: string;
+    readonly cacheDir: string;
+  }
+
+  const escapeDirs = (name: string): EscapeDirs => {
+    const ws = join(dir, name, "ws");
+    const outside = join(dir, name, "outside");
+    mkdirSync(ws, { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    return { ws, outside, cacheDir: join(ws, ".hreader", "thumbs") };
+  };
+
+  const escapedCacheOf = (ws: string, limitBytes?: number): ThumbCache =>
+    createThumbCache({
+      dir: join(ws, ".hreader", "thumbs"),
+      workspace: ws,
+      deps: depsOf(),
+      ...(limitBytes === undefined ? {} : { limitBytes }),
+    });
+
+  const bytesOf = (path: string): string => readFileSync(path, "utf8");
+
+  const expectContained = async (work: () => Promise<unknown>, roots: readonly string[]) => {
+    const error = await work().then(
+      () => {
+        throw new Error("expected path_outside_workspace but the call succeeded");
+      },
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({ code: "path_outside_workspace" });
+    // The message must name the workspace-relative path (an empty or absolute one fails the contract).
+    expect((error as Error).message).toContain(".hreader");
+    assertNoHostPaths((error as Error).message, roots);
+  };
+
+  it.each([
+    {
+      name: ".hreader/thumbs",
+      // The link IS the cache dir → ops land directly under `outside`.
+      resolvedCacheDir: (outside: string) => outside,
+      link: (ws: string, outside: string) => {
+        mkdirSync(join(ws, ".hreader"));
+        symlinkSync(outside, join(ws, ".hreader", "thumbs"));
+      },
+    },
+    {
+      name: ".hreader",
+      // `.hreader` is the link → `<ws>/.hreader/thumbs/x` resolves to `outside/thumbs/x`.
+      resolvedCacheDir: (outside: string) => join(outside, "thumbs"),
+      link: (ws: string, outside: string) => {
+        symlinkSync(outside, join(ws, ".hreader"));
+      },
+    },
+  ])(
+    "should refuse get and put when $name symlinks outside the workspace",
+    async ({ name, resolvedCacheDir, link }) => {
+      const { ws, outside, cacheDir } = escapeDirs(`link-${name.replaceAll("/", "-")}`);
+      const victimDir = resolvedCacheDir(outside);
+      mkdirSync(victimDir, { recursive: true });
+      const victimPng = join(victimDir, `${HASH_A}.png`);
+      const victimIndex = join(victimDir, "index.json");
+      writeFileSync(victimPng, "outside victim bytes");
+      writeFileSync(victimIndex, `{"version":1,"entries":{"${HASH_A}":{"at":1,"size":999999999}}}`);
+      link(ws, outside);
+      const cache = escapedCacheOf(ws);
+
+      await expectContained(() => cache.get(HASH_A), [ws, outside]);
+      await expectContained(() => cache.put(HASH_A, pngOf(1, 1)), [ws, outside]);
+      // Nothing outside was read into a result, written over, or deleted through the link.
+      expect(bytesOf(victimPng)).toBe("outside victim bytes");
+      expect(bytesOf(victimIndex)).toContain("999999999");
+      // The workspace side never gained a real cache dir through the operation either.
+      expect(cacheDir.endsWith(join(".hreader", "thumbs"))).toBe(true);
+    },
+  );
+
+  it("should refuse a symlinked <hash>.png entry — never follow it, never delete its target", async () => {
+    const { ws, outside, cacheDir } = escapeDirs("link-png");
+    mkdirSync(cacheDir, { recursive: true });
+    const victim = join(outside, "victim.png");
+    writeFileSync(victim, "outside victim bytes");
+    symlinkSync(victim, join(cacheDir, `${HASH_A}.png`));
+    const cache = escapedCacheOf(ws, pngOf(1, 1).length * 2);
+    const roots = [ws, outside] as const;
+
+    // Read-through is refused.
+    await expectContained(() => cache.get(HASH_A), roots);
+    // Overwrite-through is refused too (put at that hash).
+    await expectContained(() => cache.put(HASH_A, pngOf(1, 1)), roots);
+    expect(bytesOf(victim)).toBe("outside victim bytes");
+  });
+
+  it("should refuse a symlinked entry even when the link's target is inside the workspace", async () => {
+    // A link is refused on principle — contained checks the *target*, but the
+    // link itself must never be followed, overwritten through, or deleted.
+    const { ws, cacheDir } = escapeDirs("link-png-inside");
+    mkdirSync(cacheDir, { recursive: true });
+    const victim = join(ws, "victim.png");
+    writeFileSync(victim, "inside-victim bytes");
+    symlinkSync(victim, join(cacheDir, `${HASH_A}.png`));
+    const cache = escapedCacheOf(ws);
+
+    await expectContained(() => cache.get(HASH_A), [ws]);
+    await expectContained(() => cache.put(HASH_A, pngOf(1, 1)), [ws]);
+    expect(bytesOf(victim)).toBe("inside-victim bytes");
+  });
+
+  it("should refuse to evict through a symlinked entry — put fails, the victim keeps its bytes", async () => {
+    const { ws, outside, cacheDir } = escapeDirs("link-evict");
+    mkdirSync(cacheDir, { recursive: true });
+    const victim = join(outside, `${HASH_A}.png`);
+    writeFileSync(victim, "outside victim bytes");
+    symlinkSync(victim, join(cacheDir, `${HASH_A}.png`));
+    storeFile(cacheDir, HASH_B, pngOf(1, 1));
+    const entry = pngOf(1, 1);
+    writeFileSync(
+      join(cacheDir, "index.json"),
+      `{"version":1,"entries":{"${HASH_A}":{"at":1,"size":${String(entry.length)}},"${HASH_B}":{"at":2,"size":${String(entry.length)}}}}`,
+    );
+    const cache = escapedCacheOf(ws, entry.length * 2);
+
+    // A is oldest → the evicting put must try to delete it, hit the refusal, and fail the whole put.
+    await expectContained(() => cache.put(HASH_C, entry), [ws, outside]);
+    expect(bytesOf(victim)).toBe("outside victim bytes");
+  });
+
+  it("should refuse a symlinked index.json — never read rows from it or write through it", async () => {
+    const { ws, outside, cacheDir } = escapeDirs("link-index");
+    mkdirSync(cacheDir, { recursive: true });
+    const victim = join(outside, "index.json");
+    writeFileSync(
+      victim,
+      `{"version":1,"entries":{"${HASH_A}":{"at":1,"size":${String(pngOf(1, 1).length)}}}}`,
+    );
+    symlinkSync(victim, join(cacheDir, "index.json"));
+    storeFile(cacheDir, HASH_A, pngOf(1, 1));
+    const cache = escapedCacheOf(ws);
+    const roots = [ws, outside] as const;
+
+    // A hit reaches loadIndex; a miss-path put reaches it too. Both must refuse.
+    await expectContained(() => cache.get(HASH_A), roots);
+    await expectContained(() => cache.put(HASH_B, pngOf(2, 2)), roots);
+    expect(bytesOf(victim)).toContain('"entries"');
+    expect(bytesOf(victim)).toContain(HASH_A);
+  });
+
+  it("should serve normally again once the link is gone", async () => {
+    const { ws, outside, cacheDir } = escapeDirs("link-heal");
+    mkdirSync(join(ws, ".hreader"));
+    symlinkSync(outside, join(ws, ".hreader", "thumbs"));
+    const cache = escapedCacheOf(ws);
+    await expectContained(() => cache.put(HASH_A, pngOf(1, 1)), [ws, outside]);
+
+    rmSync(join(ws, ".hreader", "thumbs"));
+    await cache.put(HASH_A, pngOf(1, 1));
+    expect(await cache.get(HASH_A)).toEqual(Buffer.from(pngOf(1, 1)));
+    expect(readFileSync(join(cacheDir, `${HASH_A}.png`))).toEqual(Buffer.from(pngOf(1, 1)));
   });
 });

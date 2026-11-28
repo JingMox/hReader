@@ -27,6 +27,7 @@ export {
   patchFile,
   readDocGrant,
   readGlobalModes,
+  realpathOfAncestor,
   resolveTarget,
   undoPatch,
   writeAtomic,

@@ -4,14 +4,15 @@
 // capability plan), and render failures propagate without poisoning the cache.
 // All seams are fakes — no Chrome, no queue timing, no disk beyond fixture docs.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import { HrError, nodePatchDeps, type PatchDeps } from "@hreader/core";
+import { HrError, nodePatchDeps, nodeStyleDeps, type PatchDeps, startServer } from "@hreader/core";
 
+import { assertNoHostPaths } from "../../../tests/adversarial/no-host-paths";
 import type { RenderSource } from "../src/chrome/types";
 import type { ThumbCache } from "../src/thumbs/cache";
 import { createRenderQueue } from "../src/thumbs/queue";
@@ -285,6 +286,83 @@ describe("thumbs/service · io_failure propagation", () => {
         expect(message).not.toContain(fragment);
       }
     }
+  });
+});
+
+describe("thumbs/service · symlink containment", () => {
+  // Same setup as thumbs/cache's describe, exercised through the service and the
+  // real HTTP route: `.hreader` symlinks outside the workspace and every request
+  // must fail closed — nothing outside is read, written or deleted.
+
+  const escapedWorkspace = (name: string): { ws: string; outside: string; doc: string } => {
+    const ws = join(dir, `${name}-ws`);
+    const outside = join(dir, `${name}-outside`);
+    mkdirSync(join(outside, "thumbs"), { recursive: true });
+    mkdirSync(ws, { recursive: true });
+    writeFileSync(join(outside, "thumbs", "index.json"), '{"version":1,"entries":{}}');
+    writeFileSync(join(outside, "thumbs", `${HASH}.png`), "outside victim bytes");
+    const doc = join(ws, "doc.html");
+    writeFileSync(doc, MANAGED);
+    symlinkSync(outside, join(ws, ".hreader"));
+    return { ws, outside, doc };
+  };
+
+  const thumbOf = (ws: string) =>
+    createThumbRender({
+      workspace: ws,
+      home: join(dir, "home"),
+      env: {},
+      stop: NEVER,
+      timeoutMs: 1000,
+      warn: () => undefined,
+      render: () => Promise.resolve(pngOf(600, 400)),
+    });
+
+  it("should refuse through the service when .hreader escapes the workspace", async () => {
+    const { ws, outside, doc } = escapedWorkspace("svc");
+
+    try {
+      await thumbOf(ws)({ path: doc, hash: HASH });
+      expect.unreachable("the cache must refuse a symlinked .hreader");
+    } catch (error: unknown) {
+      expect(error).toMatchObject({ code: "path_outside_workspace" });
+      assertNoHostPaths((error as Error).message, [ws, outside]);
+    }
+    expect(readFileSync(join(outside, "thumbs", `${HASH}.png`), "utf8")).toBe(
+      "outside victim bytes",
+    );
+    expect(readFileSync(join(outside, "thumbs", "index.json"), "utf8")).toContain('"entries"');
+  });
+
+  it("should answer path_outside_workspace at the HTTP boundary with no host path in the body", async () => {
+    const { ws, outside } = escapedWorkspace("http");
+    const server = await startServer(
+      {
+        workspace: ws,
+        port: 0,
+        home: join(dir, "home"),
+        docId: "doc.html",
+        thumb: thumbOf(ws),
+      },
+      { patch: nodePatchDeps, style: nodeStyleDeps(ws), now: Date.now },
+    );
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${String(server.port)}/api/doc/doc.html/thumb`,
+        {
+          headers: { cookie: `hr=${server.token}` },
+        },
+      );
+      expect(response.status).toBe(403);
+      const body: unknown = await response.json();
+      expect(body).toMatchObject({ code: "path_outside_workspace" });
+      assertNoHostPaths(JSON.stringify(body), [ws, outside]);
+    } finally {
+      await server.close();
+    }
+    expect(readFileSync(join(outside, "thumbs", `${HASH}.png`), "utf8")).toBe(
+      "outside victim bytes",
+    );
   });
 });
 
