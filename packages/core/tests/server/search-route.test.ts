@@ -85,6 +85,8 @@ describe("GET /api/search", () => {
         "/api/search?q=a&limit=0x10",
         "/api/search?q=a&limit=%205%20",
         "/api/search?q=a&limit=5.0",
+        // Digits but past the safe-integer range.
+        `/api/search?q=a&limit=${"9".repeat(30)}`,
       ]) {
         const response = await httpCall(ctx.port, { path, headers: { cookie } });
         const body = jsonBodyOf(response) as SearchBody;
