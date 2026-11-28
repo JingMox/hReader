@@ -80,6 +80,11 @@ describe("GET /api/search", () => {
         "/api/search?q=a&limit=0",
         "/api/search?q=a&limit=101",
         "/api/search?q=a&limit=1.5",
+        // Decimal digits only — Number() spellings must all die at the route.
+        "/api/search?q=a&limit=1e2",
+        "/api/search?q=a&limit=0x10",
+        "/api/search?q=a&limit=%205%20",
+        "/api/search?q=a&limit=5.0",
       ]) {
         const response = await httpCall(ctx.port, { path, headers: { cookie } });
         const body = jsonBodyOf(response) as SearchBody;

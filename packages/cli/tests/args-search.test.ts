@@ -30,7 +30,8 @@ describe("parseArgs · search", () => {
   });
 
   it("should reject out-of-range and malformed --limit as a usage error", () => {
-    for (const value of ["0", "101", "-3", "abc", "1.5"]) {
+    // Decimal digits only — Number() spellings (1e2, 0x10, " 5 ", 5.0) die at the CLI too.
+    for (const value of ["0", "101", "-3", "abc", "1.5", "1e2", "0x10", " 5 ", "5.0"]) {
       expectFailure(["search", "摩托", "--limit", value], "--limit 必须是 1..100 的整数", "search");
     }
   });
