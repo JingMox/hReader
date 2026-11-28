@@ -111,6 +111,11 @@ describe("source ownership (D58)", () => {
     ['<html><body><footer><thead>x</thead><table><pre attr="v"></pre></body></html>', ["pre"]],
     // Fostered text out of the table belongs to body — the table's range is not its own.
     ["<body><table>abc<tr><td>x</td></tr></table>", []],
+    // Same with text fostered from AFTER the rows: parse5 inserts it into body before the
+    // table, so it is pushed into the leaf index before the table's own leaves while
+    // carrying a LATER byte offset — the index is unsorted by DFS alone and relies on the
+    // sort to find foreign leaves.
+    ["<body><table><tr><td>x</td></tr>tail</table>", []],
     // Comments/PIs do not foster: they stay inside the element's subtree, so these bytes
     // are owned and the table keeps them.
     ["<body><table><!-- c --><tr><td>x</td></tr></table>", ["table"]],

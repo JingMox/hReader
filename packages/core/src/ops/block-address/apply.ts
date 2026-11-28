@@ -1,8 +1,11 @@
 // This layer: the pure byte splice behind `patchBlock`. It resolves the address on the exact
 // bytes it rewrites, validates the fragment through the managed-document pipeline
 // (`fragment.ts` checks + the content-model gate), then replaces only the block's outerHTML
-// range — every other byte is untouched. No IO, no id injection: foreign files never grow
-// `data-hr-id`s.
+// range — every other byte is untouched. Block listing is heuristic, so a listed range may
+// still hide unowned bytes: the D60 oracle (`rangeIsExactlyOwned`) re-parses the byte-splice
+// and writes only when it is provably the original tree minus the block — patching is
+// guaranteed by construction, listing is not. No IO, no id injection: foreign files never
+// grow `data-hr-id`s.
 
 import type { HtmlNode, SourceSpan } from "../../html/constants";
 import { parseHtml } from "../../html/parse";
@@ -58,6 +61,35 @@ const locateError = (address: string, code: "target_moved" | "invalid_selector")
         `块地址已失效：${JSON.stringify(address)} —— 路径命中的块指纹已变（原块被原地编辑），或路径未命中块且全文找不到唯一的同指纹候选（被移动、删除或重复）；重新 list 取新地址`,
       );
 
+/** `root` with `cut` spliced out of its parent's children — the spine is rebuilt, the rest shared. */
+const treeWithout = (root: HtmlNode, cut: HtmlNode): HtmlNode => {
+  if (root.kind !== "element" && root.kind !== "document") return root;
+  return {
+    ...root,
+    children: root.children
+      .filter((child) => child !== cut)
+      .map((child) => treeWithout(child, cut)),
+  };
+};
+
+/**
+ * The D60 patch-time oracle — listing is heuristic; this is the guarantee. Removing the
+ * block's node from the parse tree and re-parsing the byte-splice must produce the same
+ * document: a leftover foreign byte (an ignored tag, fostered content, dropped markup)
+ * makes the two sides diverge, so the range is not exactly owned and nothing is written.
+ * `insertBefore`/`insertAfter` splice at the range boundaries, so the same check
+ * validates all four actions.
+ */
+const rangeIsExactlyOwned = (
+  html: string,
+  root: HtmlNode,
+  node: HtmlNode,
+  range: SourceSpan,
+): boolean =>
+  serializeHtml(parseHtml(`${html.slice(0, range.start)}${html.slice(range.end)}`)) ===
+  // Stryker disable next-line ArrayDeclaration: serializeHtml reads only `root`.
+  serializeHtml({ root: treeWithout(root, node), diagnostics: [] });
+
 /** The address of the first leaf block fully inside `[from, to)` of `html` — the written range. */
 const firstBlockAddressIn = (html: string, from: number, to: number): string | undefined => {
   const entries = collectBlocks(parseHtml(html, { locations: true }).root, html);
@@ -95,6 +127,15 @@ export const applyBlockPatch = (html: string, request: BlockPatchRequest): Block
   const located = locateBlock(parsed, request.address, html);
   if (!located.ok) throw locateError(request.address, located.code);
   const span = located.entry.range;
+  // D60: listing stays heuristic — the oracle is the construction-level guarantee.
+  // The write may proceed only when removing the block's node is exactly what
+  // re-parsing the byte-splice produces; anything else means the range hid unowned
+  // bytes, and nothing is written.
+  if (!rangeIsExactlyOwned(html, parsed.root, located.entry.node, span)) {
+    // Stryker disable next-line StringLiteral: locateError narrows any non-"invalid_selector"
+    // argument to the same target_moved error — the call-site literal is contract-pinned.
+    throw locateError(request.address, "target_moved");
+  }
   if (fragmentRequest.action === "delete") {
     const next = `${html.slice(0, span.start)}${html.slice(span.end)}`;
     return {

@@ -239,10 +239,13 @@ const isAsciiLetter = (char: string | undefined): boolean =>
  *   - the element needs a real start tag (`start < innerStart`; synthesized nodes and
  *     implicit-close split pieces carry a content range and are never listed),
  *   - no tag-shaped byte may appear outside the subtree's own tag ranges — every member
- *     tag is a skipped range, so a leftover `<`+letter or `</` is a foreign tag, an
- *     ignored tag (`<body>`, `</>`, stray `</body>`), or dropped bytes with no node,
+ *     tag is a skipped range, so a leftover `<`+letter, `</` or `<!` is a foreign tag,
+ *     an ignored tag (`<body>`, `</>`, stray `</body>`), or dropped bytes with no node
+ *     (an ignored `<!DOCTYPE` folds into a leaf's span without ever creating one),
  *   - every located text/comment leaf overlapping the range belongs to the subtree —
  *     fostered-out content and foreign comments (`<!</…`, `</x` bogus comments) fail.
+ *     Leaf spans are disjoint, so a leaf straddling `start` is always the predecessor
+ *     of the first in-range leaf — fostered text merges into that earlier leaf.
  * The subtree's own tag ranges, comments and raw-text/RCDATA text are skipped ranges in
  * the scan: `</` inside an attribute value or a `<script>` body is content, not markup.
  */
@@ -264,8 +267,9 @@ const ownedRangeOf = (
     members.add(current);
     if (current.kind === "element") {
       const own = { ...ZERO_SPAN, ...current.span };
-      if (own.start < own.innerStart) skips.push([own.start, own.innerStart]);
-      if (own.innerEnd < own.end) skips.push([own.innerEnd, own.end]);
+      // A member without source tags pushes a zero-width `[s, s)` range — a no-op the
+      // scan's advance loop drops immediately; pushing it unconditionally is identical.
+      skips.push([own.start, own.innerStart], [own.innerEnd, own.end]);
       if (RAW_TEXT_TAGS.has(current.tag) || RCDATA_TAGS.has(current.tag)) {
         for (const child of current.children) {
           /* v8 ignore next — raw-text/RCDATA children are always located text nodes */
@@ -283,8 +287,8 @@ const ownedRangeOf = (
     }
   }
   const { start, end } = span;
-  // The tag-byte scan runs before the leaf check: a foreign comment/PI inside the range
-  // surfaces as `<!`/`<?` here (it is also a foreign leaf — either way disqualifies).
+  // The tag-byte scan runs before the leaf check: a foreign comment inside the range
+  // surfaces as `<!` here and as a foreign leaf there — either way disqualifies.
   skips.sort((a, b) => a[0] - b[0]);
   let skip = 0;
   for (let at = start; at < end; at += 1) {
@@ -299,14 +303,21 @@ const ownedRangeOf = (
     }
     if (html[at] !== "<") continue;
     const next = html[at + 1];
-    // `<` + letter starts a tag, `</` an end tag or dropped bytes — either way the byte
-    // is markup no member owns (member tags are skipped above). Other `<?`/`<!` shapes
-    // are comment-leaf bytes; a stray `<` in text is owned content.
-    if (isAsciiLetter(next) || next === "/") return undefined;
+    // `<` + letter starts a tag, `</` an end tag or dropped bytes, `<!` a doctype or
+    // markup declaration — an ignored `<!` produces no node at all, so its bytes are
+    // markup no member owns (member tags are skipped above, member comments are skip
+    // ranges). `<?` bytes are always a comment leaf, covered by the leaf check; a
+    // stray `<` in text is owned content.
+    if (isAsciiLetter(next) || next === "/" || next === "!") return undefined;
   }
-  for (let at = firstLeafAt(leaves, start); ; at += 1) {
+  // The first leaf at-or-after `start` misses a leaf that began earlier and straddles
+  // into the range: fostered text merges into the preceding leaf, whose span then
+  // covers the block's start tag. Leaf spans are disjoint, so the predecessor index
+  // is the only earlier leaf that can overlap.
+  for (let at = Math.max(0, firstLeafAt(leaves, start) - 1); ; at += 1) {
     const leaf = leaves[at];
     if (leaf === undefined || leaf.start >= end) break;
+    if (leaf.end <= start) continue;
     if (!members.has(leaf.node)) return undefined;
   }
   return span;
