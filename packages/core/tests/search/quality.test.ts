@@ -353,8 +353,7 @@ describe("search text separates element boundaries", () => {
 });
 
 describe("query combination semantics", () => {
-  const combineOf = (result: LibrarySearchResult): string | undefined =>
-    (result as { combine?: string }).combine;
+  const combineOf = (result: LibrarySearchResult): "and" | "or" => result.combine;
 
   it("ANDs multi-term queries first and reports combine and", async () => {
     await withWorkspace(async (dir) => {
@@ -380,10 +379,10 @@ describe("query combination semantics", () => {
 
   it("never prefix-expands a single-character term: 流 must not hit 流水-only docs", async () => {
     await withWorkspace(async (dir) => {
-      await writeTextAt(join(dir, "flow.html"), DOC("心流", "心流状态 流水账 日记"));
+      // 流水账 segments to 流水|账 — nothing here is a standalone 流 token, so an exact
+      // single-character query must miss; only the unbounded 流* prefix would have hit.
+      await writeTextAt(join(dir, "flow.html"), DOC("账本", "流水账 日记"));
       await writeTextAt(join(dir, "lone.html"), DOC("流记", "流 单独成词"));
-      // With an unbounded prefix, 流* hits 流水账 inside flow.html — a one-code-point
-      // term must stay exact.
       expect(pathsOf((await find(dir, "流")).results)).toEqual(["lone.html"]);
     });
   });

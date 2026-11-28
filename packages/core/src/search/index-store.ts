@@ -69,7 +69,9 @@ const MINI_OPTIONS: Options<IndexEntry> = {
   storeFields: ["path", "kind", "title", "docTitle", "annotationId", "annotation", "source"],
   tokenize: tokenizeSearchText,
   searchOptions: {
-    prefix: true,
+    // Prefix only on ≥2-code-point terms: 流* would hit every 流水/流式 token and bury
+    // exact recall under noise; a single character must match a token exactly.
+    prefix: (term) => Array.from(term).length >= 2,
     // Latin terms tolerate a 0.2 edit distance; CJK terms never go fuzzy (see tokenize.ts).
     fuzzy: (term) => (isCjkTerm(term) ? false : 0.2),
     boost: FIELD_BOOSTS,

@@ -869,6 +869,7 @@ describe("hr search output", () => {
       },
     ],
     total: 2,
+    combine: "and",
     truncated: false,
     diagnostics: [],
   };
@@ -894,6 +895,7 @@ describe("hr search output", () => {
         },
       ],
       total: 1,
+      combine: "or",
       truncated: true,
       diagnostics: [],
     };

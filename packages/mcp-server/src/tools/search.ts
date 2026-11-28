@@ -25,7 +25,7 @@ export const searchShape = {
       message: `查询词最多 ${String(SEARCH_LIMITS.queryChars)} 个码点`,
     })
     .describe(
-      `查询词（1..${String(SEARCH_LIMITS.queryChars)} 码点）；拉丁词带前缀与 0.2 模糊匹配，CJK 词精确匹配`,
+      `查询词（1..${String(SEARCH_LIMITS.queryChars)} 码点）；≥2 码点的词带前缀匹配，拉丁词另有 0.2 模糊，CJK 词精确；多词先按 AND 合并、落空再按 OR`,
     ),
   limit: z
     .number()
@@ -66,6 +66,7 @@ export const searchCall = (args: SearchArgs): Promise<CallToolResult> =>
     return okResult({
       results: result.results.map(hitBody),
       total: result.total,
+      combine: result.combine,
       truncated: result.truncated,
       diagnostics: result.diagnostics.slice(0, SEARCH_LIMITS.diagnostics),
     });

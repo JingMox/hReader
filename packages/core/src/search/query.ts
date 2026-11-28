@@ -56,6 +56,11 @@ export interface LibrarySearchResult {
   readonly results: readonly SearchHit[];
   /** All hits the query produced, before `limit` cut the visible list down. */
   readonly total: number;
+  /**
+   * How the terms combined: `"and"` when the intersection answered, `"or"` when it came
+   * back empty and the union produced the list (single-term queries always read `"and"`).
+   */
+  readonly combine: "and" | "or";
   /** The index is a bounded prefix of the library (doc cap or dropped diagnostics). */
   readonly truncated: boolean;
   readonly diagnostics: readonly string[];
@@ -201,7 +206,16 @@ export const searchLibrary = async (
       deps,
       bucket,
     );
-    const found = mini.search(input.query) as readonly MiniSearchResult[];
+    // Multi-term queries intersect first; only an empty AND falls back to the union so a
+    // partially-matching doc still answers (combine reports which side produced the list).
+    let found = mini.search(input.query, {
+      combineWith: "AND",
+    }) as readonly MiniSearchResult[];
+    let combine: "and" | "or" = "and";
+    if (found.length === 0) {
+      found = mini.search(input.query);
+      combine = "or";
+    }
     const results: SearchHit[] = [];
     for (const result of found.slice(0, limit)) {
       results.push(await hitOf(input, result, deps, bucket));
@@ -212,6 +226,7 @@ export const searchLibrary = async (
     return {
       results,
       total: found.length,
+      combine,
       truncated,
       diagnostics: bucket.diagnostics,
     };
