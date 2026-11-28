@@ -31,7 +31,7 @@ const HEADING_TAGS: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5",
  * space lands at every element boundary (`<b>foo</b>bar`, `a<br>b`, `<li>` rows), then
  * whitespace collapses to one run. Same visible-text domain, same skip rules.
  */
-export const searchTextOf = (parsed: ParsedHtml): string => {
+const searchTextOf = (parsed: ParsedHtml): string => {
   const body = elementsOf(parsed.root).find((element) => element.tag === "body");
   if (body === undefined) return "";
   const parts: string[] = [];
