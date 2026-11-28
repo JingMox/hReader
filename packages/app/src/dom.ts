@@ -61,6 +61,12 @@ export interface Host {
   readonly scrollTo: (selector: string) => void;
   /** Focus a control (the search input when the panel opens); optional — fake hosts may omit it. */
   readonly focus?: (selector: string) => void;
+  /** `document.activeElement`: a transient UI (the search panel) snapshots it on open and hands focus back on close. Optional — fake hosts may omit it. */
+  readonly activeElement?: () => ElementLike | null;
+  /** Whether the element at `selector` currently holds DOM focus (a hidden control must never keep it). Optional — fake hosts may omit it. */
+  readonly focused?: (selector: string) => boolean;
+  /** Release the DOM focus the element at `selector` holds (a no-op when it isn't focused). Optional — fake hosts may omit it. */
+  readonly blur?: (selector: string) => void;
   /** 文档序取全部命中元素（演示模式的步进元素枚举）；**必选**，缺实现就是步进永远不出现。 */
   readonly all: (selector: string) => readonly ElementLike[];
   /** 锚点是否存在：模板缺锚点必须**可见地失败**，不能静默跳过。可选：假 host 可省。 */
@@ -71,6 +77,8 @@ export interface Host {
 /** `document` 的最小结构：查询、建元素、拿到 `<style>`/`<select>` 的那几个成员。 */
 export interface DocumentLike {
   readonly body: { readonly getAttribute: (name: string) => string | null };
+  /** `document.activeElement`: read fresh on every call; absent means the environment does not expose focus (restore/blur degrade to no-ops). */
+  readonly activeElement?: ElementLike | null;
   readonly querySelector: (selector: string) => ElementLike | null;
   /** `Host.all` 的唯一来源；缺省表示环境不支持枚举（`all` 返回空）。 */
   readonly querySelectorAll?: (selector: string) => readonly ElementLike[];
@@ -116,6 +124,10 @@ export interface ElementLike {
   readonly remove?: () => void;
   readonly scrollIntoView?: (options: { block: "start" }) => void;
   readonly focus?: () => void;
+  /** Release the DOM focus this element holds (a no-op when it isn't focused). */
+  readonly blur?: () => void;
+  /** `node.isConnected`: absent means the environment cannot report attachment (treated as connected). */
+  readonly isConnected?: boolean;
 }
 
 const found = (root: DocumentLike, selector: string): ElementLike | undefined =>
@@ -235,10 +247,23 @@ const paintOps = (
   },
 });
 
-/** 只碰文本/属性/类名的那些。 */
+/** The ops that only touch text/attributes/classes/focus. */
 const textOps = (
   root: DocumentLike,
-): Pick<Host, "text" | "attr" | "html" | "cls" | "scrollTo" | "focus" | "all" | "has"> => ({
+): Pick<
+  Host,
+  | "text"
+  | "attr"
+  | "html"
+  | "cls"
+  | "scrollTo"
+  | "focus"
+  | "activeElement"
+  | "focused"
+  | "blur"
+  | "all"
+  | "has"
+> => ({
   text: (selector, value) => {
     const element = found(root, selector);
     if (element === undefined) return;
@@ -265,6 +290,14 @@ const textOps = (
   },
   focus: (selector) => {
     found(root, selector)?.focus?.();
+  },
+  activeElement: () => root.activeElement ?? null,
+  focused: (selector) => {
+    const element = found(root, selector);
+    return element !== undefined && element === root.activeElement;
+  },
+  blur: (selector) => {
+    found(root, selector)?.blur?.();
   },
   all: (selector) => root.querySelectorAll?.(selector) ?? [],
   has: (selector) => found(root, selector) !== undefined,

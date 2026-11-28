@@ -245,9 +245,12 @@ describe("main-search · takeSearchFocus (consuming the stash)", () => {
   it("should focus the stashed annotation's anchor block after boot", async () => {
     installGlobals("doc.html", "http://x/?doc=doc.html");
     const map = new Map([[FOCUS_KEY, JSON.stringify({ doc: "doc.html", ann: "an-9" })]]);
-    winOf().sessionStorage = storageOf(map);
     const { host, scrolls, classes } = recordingHostOf(() => true);
+    // Import before installing the stash: the first import in this file runs `main()`
+    // against the current globals, and `takeSearchFocus` inside it would drain the
+    // stash before `bootWith` ever sees it (order-dependent under --sequence.shuffle).
     const { bootWith } = await import("../src/main.ts");
+    winOf().sessionStorage = storageOf(map);
 
     bootWith({
       docId: "doc.html",
@@ -266,9 +269,9 @@ describe("main-search · takeSearchFocus (consuming the stash)", () => {
   it("should consume but not focus a stash written for another doc", async () => {
     installGlobals("doc.html", "http://x/?doc=doc.html");
     const map = new Map([[FOCUS_KEY, JSON.stringify({ doc: "other.html", ann: "an-9" })]]);
-    winOf().sessionStorage = storageOf(map);
     const { host, classes } = recordingHostOf(() => true);
     const { bootWith } = await import("../src/main.ts");
+    winOf().sessionStorage = storageOf(map);
 
     bootWith({
       docId: "doc.html",
@@ -286,9 +289,9 @@ describe("main-search · takeSearchFocus (consuming the stash)", () => {
   it("should ignore malformed or wrongly-shaped stashes", async () => {
     installGlobals("doc.html", "http://x/?doc=doc.html");
     const map = new Map([[FOCUS_KEY, "not-json"]]);
-    winOf().sessionStorage = storageOf(map);
     const { host, classes } = recordingHostOf(() => true);
     const { bootWith } = await import("../src/main.ts");
+    winOf().sessionStorage = storageOf(map);
 
     bootWith({
       docId: "doc.html",
@@ -320,6 +323,8 @@ describe("main-search · takeSearchFocus (consuming the stash)", () => {
   it("should return undefined on an explicit null read without removing anything", async () => {
     installGlobals("doc.html", "http://x/?doc=doc.html");
     let removed = 0;
+    const { host } = recordingHostOf(() => true);
+    const { bootWith } = await import("../src/main.ts");
     winOf().sessionStorage = {
       getItem: () => null,
       setItem: () => undefined,
@@ -327,8 +332,6 @@ describe("main-search · takeSearchFocus (consuming the stash)", () => {
         removed += 1;
       },
     };
-    const { host } = recordingHostOf(() => true);
-    const { bootWith } = await import("../src/main.ts");
 
     bootWith({
       docId: "doc.html",

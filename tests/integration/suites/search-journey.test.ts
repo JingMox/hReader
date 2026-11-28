@@ -3,8 +3,11 @@
 // (real input pipeline, 150ms debounce) renders hits → Enter on a doc hit
 // navigates the reader to that doc → an annotation hit on another doc navigates
 // back *and* focuses the card (sessionStorage stash → bootForeign → annotate
-// mode → `data-hr-selected`). The same-debounced-input path also pins Esc close.
+// mode → `data-hr-selected`). Esc → `/` must reopen the panel — a hidden input
+// that keeps DOM focus swallows the keydown through the editable guard (#54).
 // API shapes live in search.test.ts; this suite only pins the browser journey.
+// Every test navigates to its own doc through a full reload, so no case depends
+// on the panel/focus/stash state a previous test left behind.
 
 import { writeFile } from "node:fs/promises";
 
@@ -28,6 +31,15 @@ const BODY_B = `<!doctype html><html><head><title>账本</title></head><body><p>
 const PANEL_OPEN = `(() => {
   const p = document.querySelector('#hr-search-panel');
   return p && !p.hidden && document.activeElement === document.querySelector('#hr-search-input');
+})()`;
+const PANEL_CLOSED = `(() => {
+  const p = document.querySelector('#hr-search-panel');
+  return p && p.hidden;
+})()`;
+const PANEL_OPEN_EMPTY = `(() => {
+  const p = document.querySelector('#hr-search-panel');
+  const i = document.querySelector('#hr-search-input');
+  return p && !p.hidden && i && i.value === '' && document.activeElement === i;
 })()`;
 const CAPABILITY = `document.querySelector('#hr-root') && document.querySelector('#hr-root').hasAttribute('data-hr-search')`;
 const DOC_ITEMS = `document.querySelectorAll('#hr-search-docs-list li').length`;
@@ -56,10 +68,6 @@ describe.skipIf(skip !== undefined)("search-ui-journey", () => {
     assert(typeof added["id"] === "string", `sidecar add failed: ${JSON.stringify(added)}`);
     browser = await launchBrowser();
     page = await browser.open(daemon.url);
-    // The widget stamps the capability once it mounts — gating the first key on
-    // it keeps the journey free of fixed sleeps.
-    const ready = await page.wait(CAPABILITY, 25_000);
-    assert(ready === true, "search capability never mounted (data-hr-search absent)");
   });
 
   afterAll(async () => {
@@ -69,23 +77,43 @@ describe.skipIf(skip !== undefined)("search-ui-journey", () => {
     home.cleanup();
   });
 
-  test("should open the panel on /, focus the input and close on Esc", async () => {
+  /** Per-test starting state: a full reload onto `doc` leaves the panel closed and DOM focus on the body. */
+  const startOn = async (docId: string): Promise<void> => {
+    // daemon.url carries ?token=… — appending ?doc= would corrupt the query;
+    // the bare origin + ?doc= is the multi-doc address form (cookie keeps auth).
+    await page.navigate(
+      `http://127.0.0.1:${String(daemon.port)}/?doc=${encodeURIComponent(docId)}`,
+    );
+    const ready = await page.wait(`(${CAPABILITY}) && (${PANEL_CLOSED})`, 25_000);
+    assert(ready === true, `the reader shell never came up closed on ${docId}`);
+  };
+
+  test("should open the panel on /, close on Esc and reopen with an empty input", async () => {
+    await startOn(DOC_A);
     await page.key("/", "Slash", 191);
     const opened = await page.wait(PANEL_OPEN);
     assert(opened === true, "/ did not open the search panel with a focused input");
 
+    await page.type("#hr-search-input", "账");
     await page.key("Escape", "Escape", 27);
-    const closed = await page.wait(
-      `(() => { const p = document.querySelector('#hr-search-panel'); return p && p.hidden; })()`,
-    );
+    const closed = await page.wait(PANEL_CLOSED);
     assert(closed === true, "Esc did not close the search panel");
+
+    // The #54 regression: this / must reopen the panel even though the previous
+    // one just hid — the hidden input must not still hold DOM focus, or the
+    // keydown targets it and the editable guard swallows the shortcut.
+    await page.key("/", "Slash", 191);
+    const reopened = await page.wait(PANEL_OPEN_EMPTY);
+    assert(reopened === true, "the panel did not reopen with a focused empty input");
+
     // ERR_ABORTED is the subframe load cancelled by a full-page navigation —
     // expected on this journey; anything else is a real failure.
     const errors = page.consoleErrors().filter((line) => !line.includes("ERR_ABORTED"));
-    assert(errors.length === 0, `page errors during open/close: ${JSON.stringify(errors)}`);
+    assert(errors.length === 0, `page errors during open/close/reopen: ${JSON.stringify(errors)}`);
   });
 
   test("should render a doc hit and navigate the reader to it on Enter", async () => {
+    await startOn(DOC_A);
     await page.key("/", "Slash", 191);
     assert((await page.wait(PANEL_OPEN)) === true, "panel did not reopen");
     await page.type("#hr-search-input", "账本");
@@ -109,8 +137,9 @@ describe.skipIf(skip !== undefined)("search-ui-journey", () => {
   });
 
   test("should open an annotation hit on another doc and focus its card", async () => {
-    // Still on DOC_B: the annotation lives on DOC_A — opening the hit must
-    // navigate AND land the card focused (the stash survives the reload).
+    // The annotation lives on DOC_A — opening the hit from DOC_B must navigate
+    // AND land the card focused (the stash survives the reload).
+    await startOn(DOC_B);
     await page.key("/", "Slash", 191);
     assert((await page.wait(PANEL_OPEN)) === true, "panel did not reopen on DOC_B");
     await page.type("#hr-search-input", "全合成机油");

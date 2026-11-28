@@ -4,7 +4,7 @@
 // dropped before runs are cut into `mark` text; `path` is used for navigation only, never
 // interpolated into HTML or a selector.
 
-import type { Host, NodeSpec, TargetLike } from "../dom.ts";
+import type { ElementLike, Host, NodeSpec, TargetLike } from "../dom.ts";
 import type { Schedule } from "../flash.ts";
 import type { SearchHit, SearchReply } from "../guard.ts";
 import type { ReaderIntent, ReaderState } from "../state.ts";
@@ -86,6 +86,8 @@ export const mountSearch = (deps: SearchDeps): Widget => {
   let cancelPending: (() => void) | undefined;
   /** The current input text (input events update it; query() reads it when firing). */
   let pendingQuery = "";
+  /** The element that held DOM focus when the panel opened — restored on close (dialog semantics). */
+  let restoreFocus: ElementLike | undefined;
 
   const hint = (text: string): void => {
     host.text(SP_HINT, text);
@@ -221,6 +223,8 @@ export const mountSearch = (deps: SearchDeps): Widget => {
   };
 
   const show = (): void => {
+    // Snapshot before focus moves: close() hands focus back to this element.
+    restoreFocus = host.activeElement?.() ?? undefined;
     seq += 1;
     cancelPending?.();
     cancelPending = undefined;
@@ -239,6 +243,19 @@ export const mountSearch = (deps: SearchDeps): Widget => {
     clearLists();
     host.attr(SP_PANEL, "hidden", "");
     hint("");
+    const target = restoreFocus;
+    restoreFocus = undefined;
+    // Chrome keeps a now-hidden focused element as activeElement until the next
+    // rendering step; a `/` keydown landing in that window still targets the
+    // input and the editable-target guard swallows it, so the panel never
+    // reopens (issue #54). Hand focus back only while the panel holds it —
+    // focus that moved elsewhere during the session belongs to the user.
+    if (host.focused?.(SP_INPUT) !== true) return;
+    if (target !== undefined && target.isConnected !== false) target.focus?.();
+    // The restore above silently does nothing when the target can no longer
+    // take focus; blur runs unconditionally because it only releases the input
+    // while the input still holds focus.
+    host.blur?.(SP_INPUT);
   };
 
   // `data-hr-search` is the capability marker: the desktop ⌘K handler probes it before

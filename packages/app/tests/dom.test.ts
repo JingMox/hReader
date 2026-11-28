@@ -92,6 +92,39 @@ describe("cls/scrollTo · 可选元素不炸", () => {
     // With `focus` → one recorded call; absent/not found → silently no-op.
     expect(focus.mock.calls).toHaveLength(1);
   });
+
+  it("should report the focused element and release it on blur", () => {
+    const doc = createFakeDocument();
+    const input = doc.element("input");
+    const other = doc.element("input");
+    doc.bySelector.set("#i", input);
+    doc.bySelector.set("#o", other);
+    const host = createDomHost(doc);
+
+    expect(host.activeElement?.()).toBe(doc.body);
+    expect(host.focused?.("#i")).toBe(false);
+    input.focus?.();
+    expect(host.activeElement?.()).toBe(input);
+    expect(host.focused?.("#i")).toBe(true);
+    expect(host.focused?.("#o")).toBe(false);
+    expect(host.focused?.("#missing")).toBe(false);
+
+    host.blur?.("#o");
+    expect(doc.activeElement).toBe(input);
+    host.blur?.("#i");
+    expect(doc.activeElement).toBe(doc.body);
+    expect(host.focused?.("#i")).toBe(false);
+  });
+
+  it("should report null when the document cannot expose an activeElement", () => {
+    const host = createDomHost({
+      body: { getAttribute: () => null },
+      querySelector: () => null,
+      createElement: () => fakeElement("div"),
+    });
+    expect(host.activeElement?.()).toBeNull();
+    expect(host.focused?.("#i")).toBe(false);
+  });
 });
 
 const SPECS: readonly NodeSpec[] = [
