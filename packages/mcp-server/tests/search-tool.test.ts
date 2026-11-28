@@ -83,6 +83,7 @@ describe("hr_search", () => {
     expect(Array.isArray(hit?.["highlights"])).toBe(true);
     expect(payload["total"]).toBe(1);
     expect(payload["truncated"]).toBe(false);
+    expect(payload["combine"]).toBe("and");
     // No absolute host path anywhere in the payload.
     expect(textOf(result).includes(workspace)).toBe(false);
   });

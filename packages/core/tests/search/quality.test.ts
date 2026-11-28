@@ -10,7 +10,7 @@ import { bodyTextOf } from "../../src/annotations/body-text";
 import { parseHtml } from "../../src/html/parse";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import { addSidecarAnnotation } from "../../src/ops/sidecar-ops";
-import { searchLibrary, type SearchHit } from "../../src/search";
+import { searchLibrary, type LibrarySearchResult, type SearchHit } from "../../src/search";
 import { extractDocFields } from "../../src/search/extract";
 import { searchTokensOf } from "../../src/search/tokenize";
 import { withWorkspace, writeTextAt } from "../io/harness";
@@ -349,5 +349,58 @@ describe("search text separates element boundaries", () => {
         ).toBe(true);
       }
     }
+  });
+});
+
+describe("query combination semantics", () => {
+  const combineOf = (result: LibrarySearchResult): string | undefined =>
+    (result as { combine?: string }).combine;
+
+  it("ANDs multi-term queries first and reports combine and", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "both.html"), DOC("双词", "苹果 香蕉 同盘"));
+      await writeTextAt(join(dir, "one.html"), DOC("单词", "苹果 单独放"));
+      const result = await find(dir, "苹果 香蕉");
+      expect(pathsOf(result.results)).toEqual(["both.html"]);
+      expect(combineOf(result)).toBe("and");
+    });
+  });
+
+  it("falls back to OR when AND is empty and reports combine or", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("甲", "苹果 单独放"));
+      await writeTextAt(join(dir, "b.html"), DOC("乙", "葡萄 架上挂"));
+      const result = await find(dir, "苹果 葡萄");
+      // No doc holds both terms — AND empties, OR still answers with the partial hits.
+      expect(pathsOf(result.results)).toEqual(expect.arrayContaining(["a.html", "b.html"]));
+      expect(result.results).toHaveLength(2);
+      expect(combineOf(result)).toBe("or");
+    });
+  });
+
+  it("never prefix-expands a single-character term: 流 must not hit 流水-only docs", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "flow.html"), DOC("心流", "心流状态 流水账 日记"));
+      await writeTextAt(join(dir, "lone.html"), DOC("流记", "流 单独成词"));
+      // With an unbounded prefix, 流* hits 流水账 inside flow.html — a one-code-point
+      // term must stay exact.
+      expect(pathsOf((await find(dir, "流")).results)).toEqual(["lone.html"]);
+    });
+  });
+
+  it("never prefix-expands a one-letter latin term either", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("手册", "the motorcycle engine guide"));
+      expect((await find(dir, "m")).results).toEqual([]);
+    });
+  });
+
+  it("still finds a latin typo when every term resolves under AND", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("手册", "the motorcycle engine guide"));
+      const result = await find(dir, "motocycle engin");
+      expect(pathsOf(result.results)).toEqual(["a.html"]);
+      expect(combineOf(result)).toBe("and");
+    });
   });
 });

@@ -13,6 +13,7 @@ interface SearchBody {
   readonly results?: readonly Record<string, unknown>[];
   readonly total?: number;
   readonly truncated?: boolean;
+  readonly combine?: string;
   readonly diagnostics?: readonly string[];
   readonly code?: string;
   readonly message?: string;
@@ -61,6 +62,7 @@ describe("GET /api/search", () => {
       expect(body.results?.[0]?.["kind"]).toBe("doc");
       expect(body.total).toBe(1);
       expect(body.truncated).toBe(false);
+      expect(body.combine).toBe("and");
       expect(JSON.stringify(body).includes(ctx.workspace)).toBe(false);
       // The index lock lives under .hreader/locks — the search ran through it.
       expect(existsSync(join(ctx.workspace, ".hreader", "locks"))).toBe(true);

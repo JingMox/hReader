@@ -77,9 +77,21 @@ describe("hr search", () => {
       expect(fieldOf(results[0], "kind")).toBe("doc");
       expect(fieldOf(body, "total")).toBe(1);
       expect(fieldOf(body, "truncated")).toBe(false);
+      expect(fieldOf(body, "combine")).toBe("and");
       expect(result.stdout.trim().split("\n")).toHaveLength(1);
       // No absolute host path on the wire.
       expect(result.stdout).not.toContain(dir);
+    });
+  });
+
+  it("reports combine or under --json when AND found nothing", async () => {
+    await withTempDir(async (dir) => {
+      writeFileSync(join(dir, "a.html"), DOC("维修", "摩托车 发动机"));
+      const result = await runIn(dir, ["search", "摩托车 电瓶", "--json"]);
+      expect(result.code).toBe(0);
+      const body = data(result);
+      expect(fieldOf(body, "combine")).toBe("or");
+      expect(listOf(body["results"]).length).toBe(1);
     });
   });
 
