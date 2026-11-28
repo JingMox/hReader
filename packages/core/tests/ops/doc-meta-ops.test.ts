@@ -244,9 +244,9 @@ describe("setDocMeta · tag normalization and limits", () => {
     await withWorkspace(async (dir) => {
       await seed(dir);
       // `as` on purpose: the non-string case feeds a type violation through the ts boundary.
-      expect(
-        await codeOfAsync(() => setTags(dir, { tags: tags as readonly string[] })),
-      ).toBe("invalid_payload");
+      expect(await codeOfAsync(() => setTags(dir, { tags: tags as readonly string[] }))).toBe(
+        "invalid_payload",
+      );
     });
   });
 
@@ -312,11 +312,9 @@ describe("setDocMeta · sourceUrl validation", () => {
     await withWorkspace(async (dir) => {
       await seed(dir);
       // Ops get real input from untyped layers too — a number must fail, not crash.
-      expect(
-        await codeOfAsync(() =>
-          setTags(dir, { sourceUrl: 42 as unknown as string }),
-        ),
-      ).toBe("invalid_payload");
+      expect(await codeOfAsync(() => setTags(dir, { sourceUrl: 42 as unknown as string }))).toBe(
+        "invalid_payload",
+      );
       expect(await storedRecord(dir)).toBeUndefined();
     });
   });
