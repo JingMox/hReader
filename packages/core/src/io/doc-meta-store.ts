@@ -37,22 +37,22 @@ export interface DocMetaFile {
   readonly exists: boolean;
   /** `true` = read as empty but the on-disk bytes are unusable: the next write must rename them aside first. */
   readonly corrupt: boolean;
-  /** Records keyed by workspace-relative POSIX path (prototype-free). */
-  readonly docs: Readonly<Record<string, DocMetaRecord>>;
+  /** Records keyed by workspace-relative POSIX path — a Map, so `__proto__` is just a doc name. */
+  readonly docs: ReadonlyMap<string, DocMetaRecord>;
   readonly diagnostics: readonly string[];
 }
 
 const EMPTY: DocMetaFile = {
   exists: false,
   corrupt: false,
-  docs: Object.create(null) as Record<string, DocMetaRecord>,
+  docs: new Map(),
   diagnostics: [],
 };
 
 const corruptRead = (diagnostic: string): DocMetaFile => ({
   exists: true,
   corrupt: true,
-  docs: Object.create(null) as Record<string, DocMetaRecord>,
+  docs: new Map(),
   diagnostics: [diagnostic],
 });
 
@@ -152,7 +152,7 @@ export const writeDocMetaFile = async (
   target: ResolvedTarget,
   deps: PatchDeps,
   prior: DocMetaFile,
-  docs: Readonly<Record<string, DocMetaRecord>>,
+  docs: ReadonlyMap<string, DocMetaRecord>,
 ): Promise<void> => {
   const path = metaPathOf(target.storeDir);
   const data = encodeUtf8(serializeDocMetaFile(docs));

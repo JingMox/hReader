@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { DOC_META_LIMITS, serializeDocMetaFile } from "../../src/docmeta";
+import { DOC_META_LIMITS, serializeDocMetaFile, type DocMetaRecord } from "../../src/docmeta";
 import {
   META_REL,
   metaLockOf,
@@ -39,6 +39,11 @@ const RECORD = { tags: ["维修"], sourceUrl: "https://example.com/x" };
 const tableJson = (docs: Readonly<Record<string, unknown>>): string =>
   JSON.stringify({ version: 1, docs });
 
+/** The store's internal representation is a Map — doc names may be `__proto__`-shaped. */
+const tableOf = (
+  docs: Readonly<Record<string, DocMetaRecord>>,
+): ReadonlyMap<string, DocMetaRecord> => new Map(Object.entries(docs));
+
 /** Pad a valid table with trailing JSON whitespace to an exact byte count. */
 const tableJsonAtBytes = (bytes: number): string => {
   const base = tableJson({ "doc.html": { tags: [] } });
@@ -64,7 +69,12 @@ describe("readDocMetaFile · read outcomes", () => {
     const fs = fakeFs(seed);
     const read = await readDocMetaFile(await targetOf(fs.port), deps(fs.port));
 
-    expect(read).toEqual({ exists: false, corrupt: false, docs: {}, diagnostics: [] });
+    expect(read).toEqual({
+      exists: false,
+      corrupt: false,
+      docs: new Map(),
+      diagnostics: [],
+    });
   });
 
   it("should map a non-ENOENT read failure to io_failure", async () => {
@@ -81,7 +91,7 @@ describe("readDocMetaFile · read outcomes", () => {
 
     expect(read.exists).toBe(true);
     expect(read.corrupt).toBe(false);
-    expect(read.docs["doc.html"]).toEqual(RECORD);
+    expect(read.docs.get("doc.html")).toEqual(RECORD);
     expect(read.diagnostics).toEqual([]);
   });
 
@@ -93,7 +103,7 @@ describe("readDocMetaFile · read outcomes", () => {
     const read = await readDocMetaFile(await targetOf(fs.port), deps(fs.port));
 
     expect(read.corrupt).toBe(false);
-    expect(read.docs["doc.html"]).toEqual({ tags: [] });
+    expect(read.docs.get("doc.html")).toEqual({ tags: [] });
   });
 
   it("should read a file one byte over the cap as empty and corrupt", async () => {
@@ -105,7 +115,7 @@ describe("readDocMetaFile · read outcomes", () => {
 
     expect(read.exists).toBe(true);
     expect(read.corrupt).toBe(true);
-    expect(read.docs).toEqual({});
+    expect(read.docs).toEqual(new Map());
     expect(read.diagnostics).toEqual(["doc_meta_corrupt:too_large"]);
   });
 
@@ -133,19 +143,34 @@ describe("readDocMetaFile · read outcomes", () => {
     const read = await readDocMetaFile(await targetOf(fs.port), deps(fs.port));
 
     expect(read.corrupt).toBe(true);
-    expect(read.docs).toEqual({});
+    expect(read.docs).toEqual(new Map());
     expect(read.diagnostics).toEqual([`doc_meta_corrupt:${reason}`]);
   });
 
-  it.each(["__proto__", "constructor", "prototype"])(
-    "should read a table with a %s doc key as corrupt",
+  it.each(["__proto__", "constructor", "prototype", "hasOwnProperty", "toString"])(
+    "should read a table with a %s doc key as a normal entry, without pollution",
     async (key) => {
       const text = `{"version":1,"docs":{${JSON.stringify(key)}:{"tags":["x"]}}}`;
       const fs = fakeFs({ ...seed, [storePath]: text });
       const read = await readDocMetaFile(await targetOf(fs.port), deps(fs.port));
 
+      expect(read.corrupt).toBe(false);
+      expect(read.docs.get(key)).toEqual({ tags: ["x"] });
+      expect(read.diagnostics).toEqual([]);
+      // The table's keyspace must never reach the prototype chain.
+      expect(Object.getPrototypeOf({})).toBe(Object.prototype);
+      expect(Reflect.get(Object.prototype, "x")).toBeUndefined();
+    },
+  );
+
+  it.each(["__proto__", "constructor", "prototype"])(
+    "should read a table with a %s top-level key as corrupt",
+    async (key) => {
+      const text = `{"version":1,${JSON.stringify(key)}:{},"docs":{}}`;
+      const fs = fakeFs({ ...seed, [storePath]: text });
+      const read = await readDocMetaFile(await targetOf(fs.port), deps(fs.port));
+
       expect(read.corrupt).toBe(true);
-      expect(read.docs).toEqual({});
       expect(read.diagnostics).toEqual(["doc_meta_corrupt:dangerous_key"]);
     },
   );
@@ -170,7 +195,7 @@ describe("readDocMetaFile · read outcomes", () => {
     const read = await readDocMetaFile(await targetOf(fs.port), deps(fs.port));
 
     expect(read.corrupt).toBe(false);
-    expect(read.docs["doc.html"]).toEqual({ tags: ["x"] });
+    expect(read.docs.get("doc.html")).toEqual({ tags: ["x"] });
     expect(read.diagnostics).toEqual(["doc_meta_unknown_fields"]);
   });
 });
@@ -181,20 +206,20 @@ describe("writeDocMetaFile · landing", () => {
     const target = await targetOf(fs.port);
     const prior = await readDocMetaFile(target, deps(fs.port));
 
-    await writeDocMetaFile(target, deps(fs.port), prior, {
+    await writeDocMetaFile(target, deps(fs.port), prior, tableOf({
       "b.html": { tags: ["b"] },
       "doc.html": RECORD,
-    });
+    }));
 
     expect(fs.textAt(storePath)).toBe(
-      serializeDocMetaFile({ "b.html": { tags: ["b"] }, "doc.html": RECORD }),
+      serializeDocMetaFile(tableOf({ "b.html": { tags: ["b"] }, "doc.html": RECORD })),
     );
     // Insertion order must not leak into the bytes: both spellings sort to the same table.
-    expect(serializeDocMetaFile({ "doc.html": RECORD, "b.html": { tags: ["b"] } })).toBe(
+    expect(serializeDocMetaFile(tableOf({ "doc.html": RECORD, "b.html": { tags: ["b"] } }))).toBe(
       fs.textAt(storePath),
     );
     const read = await readDocMetaFile(target, deps(fs.port));
-    expect(read.docs["doc.html"]).toEqual(RECORD);
+    expect(read.docs.get("doc.html")).toEqual(RECORD);
     expect(read.corrupt).toBe(false);
   });
 
@@ -205,9 +230,9 @@ describe("writeDocMetaFile · landing", () => {
     const prior = await readDocMetaFile(target, deps(fs.port));
 
     const code = await codeOfAsync(() =>
-      writeDocMetaFile(target, deps(fs.port), prior, {
+      writeDocMetaFile(target, deps(fs.port), prior, tableOf({
         "doc.html": { tags: ["x".repeat(DOC_META_LIMITS.fileBytes)] },
-      }),
+      })),
     );
 
     expect(code).toBe("invalid_payload");
@@ -223,7 +248,7 @@ describe("writeDocMetaFile · landing", () => {
     const prior = await readDocMetaFile(target, deps(fs.port));
     expect(prior).toMatchObject({ exists: true, corrupt: true });
 
-    await writeDocMetaFile(target, deps(fs.port), prior, { "doc.html": RECORD });
+    await writeDocMetaFile(target, deps(fs.port), prior, tableOf({ "doc.html": RECORD }));
 
     const backups = corruptBackups(fs);
     expect(backups.map(([name]) => name)).toHaveLength(1);
@@ -236,7 +261,7 @@ describe("writeDocMetaFile · landing", () => {
     const target = await targetOf(fs.port);
     const prior = await readDocMetaFile(target, deps(fs.port));
 
-    await writeDocMetaFile(target, deps(fs.port), prior, { "doc.html": { tags: ["y"] } });
+    await writeDocMetaFile(target, deps(fs.port), prior, tableOf({ "doc.html": { tags: ["y"] } }));
 
     expect(corruptBackups(fs)).toEqual([]);
     expect(fs.textAt(storePath)).toContain('"y"');
@@ -254,9 +279,9 @@ describe("writeDocMetaFile · landing", () => {
     it("should name the backup with a filename-safe stamp", async () => {
       const fs = fakeFs({ ...seed, [storePath]: "{broken" });
       const prior = await corruptReadAt(fs, "{broken");
-      await writeDocMetaFile(await targetOf(fs.port), deps(fs.port), prior, {
+      await writeDocMetaFile(await targetOf(fs.port), deps(fs.port), prior, tableOf({
         "doc.html": RECORD,
-      });
+      }));
 
       expect(corruptBackups(fs).map(([name]) => name)).toEqual([`${stem}.json`]);
     });
@@ -266,9 +291,9 @@ describe("writeDocMetaFile · landing", () => {
       const target = await targetOf(fs.port);
 
       const first = await corruptReadAt(fs, "{broken one");
-      await writeDocMetaFile(target, deps(fs.port), first, { "doc.html": RECORD });
+      await writeDocMetaFile(target, deps(fs.port), first, tableOf({ "doc.html": RECORD }));
       const second = await corruptReadAt(fs, "{broken two");
-      await writeDocMetaFile(target, deps(fs.port), second, { "doc.html": RECORD });
+      await writeDocMetaFile(target, deps(fs.port), second, tableOf({ "doc.html": RECORD }));
 
       const names = corruptBackups(fs).map(([name]) => name);
       expect(names).toEqual(expect.arrayContaining([`${stem}.json`, `${stem}-1.json`]));
@@ -288,7 +313,7 @@ describe("writeDocMetaFile · landing", () => {
       const prior = await readDocMetaFile(target, deps(fs.port));
 
       const code = await codeOfAsync(() =>
-        writeDocMetaFile(target, deps(fs.port), prior, { "doc.html": RECORD }),
+        writeDocMetaFile(target, deps(fs.port), prior, tableOf({ "doc.html": RECORD })),
       );
 
       expect(code).toBe("io_failure");
@@ -304,7 +329,7 @@ describe("writeDocMetaFile · landing", () => {
       const target = await targetOf(fs.port);
       const prior = await readDocMetaFile(target, deps(fs.port));
 
-      await writeDocMetaFile(target, deps(fs.port), prior, { "doc.html": RECORD });
+      await writeDocMetaFile(target, deps(fs.port), prior, tableOf({ "doc.html": RECORD }));
 
       expect(corruptBackups(fs).map(([name]) => name)).toEqual([`${stem}-1.json`]);
       expect(fs.textAt(`${stem}-1.json`)).toBe("{broken");
@@ -318,7 +343,7 @@ describe("writeDocMetaFile · landing", () => {
       const prior = await readDocMetaFile(target, deps(fs.port));
 
       const code = await codeOfAsync(() =>
-        writeDocMetaFile(target, deps(fs.port), prior, { "doc.html": RECORD }),
+        writeDocMetaFile(target, deps(fs.port), prior, tableOf({ "doc.html": RECORD })),
       );
 
       expect(code).toBe("io_failure");
@@ -332,7 +357,7 @@ describe("writeDocMetaFile · landing", () => {
     const prior = await readDocMetaFile(target, deps(fs.port));
     fs.state.files.delete(storePath);
 
-    await writeDocMetaFile(target, deps(fs.port), prior, { "doc.html": RECORD });
+    await writeDocMetaFile(target, deps(fs.port), prior, tableOf({ "doc.html": RECORD }));
 
     expect(fs.textAt(storePath)).toContain('"tags"');
   });
@@ -344,7 +369,7 @@ describe("writeDocMetaFile · landing", () => {
     const prior = await readDocMetaFile(target, deps(fs.port));
 
     const code = await codeOfAsync(() =>
-      writeDocMetaFile(target, deps(fs.port), prior, { "doc.html": RECORD }),
+      writeDocMetaFile(target, deps(fs.port), prior, tableOf({ "doc.html": RECORD })),
     );
 
     expect(code).toBe("io_failure");

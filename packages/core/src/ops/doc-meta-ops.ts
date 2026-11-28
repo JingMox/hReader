@@ -150,7 +150,7 @@ export const getDocMeta = async (
   const target = await resolveTarget(input, deps.fs);
   const file = await readDocMetaFile(target, deps);
   return {
-    meta: file.docs[target.relative] ?? EMPTY_META,
+    meta: file.docs.get(target.relative) ?? EMPTY_META,
     diagnostics: file.diagnostics,
   };
 };
@@ -177,13 +177,15 @@ export const setDocMeta = async (
   const target = await resolveTarget(input, deps.fs);
   return await runLocked({ lockPath: metaLockOf(target.storeDir) }, deps, options, async () => {
     const file = await readDocMetaFile(target, deps);
-    const current = file.docs[target.relative];
+    const current = file.docs.get(target.relative);
     const merged = mergedOf(current, input.patch, by, deps.clock.now().toISOString());
     if (merged === undefined || sameMeta(current, merged)) {
       return { meta: current ?? EMPTY_META, changed: false, diagnostics: file.diagnostics };
     }
-    const docs: Record<string, DocMetaRecord> = { ...file.docs };
-    docs[target.relative] = merged;
+    // A Map, never an object literal: `target.relative` may be `__proto__`/`constructor`,
+    // and only Map.set keeps such a key as data instead of hitting the prototype chain.
+    const docs = new Map(file.docs);
+    docs.set(target.relative, merged);
     await writeDocMetaFile(target, deps, file, docs);
     return { meta: merged, changed: true, diagnostics: file.diagnostics };
   });

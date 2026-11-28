@@ -83,13 +83,17 @@ export const sourceUrlOf = (raw: string): string | undefined => {
 // ---- dirty read ----
 
 /**
- * Prototype-shaped keys anywhere in the payload are file-level corruption, not per-record
- * dirt: a `__proto__` own property flowing into a merge would silently retarget the prototype
- * instead of landing as data. Explicit worklist (never recursion), same scan as the sidecar.
+ * Prototype-shaped keys are file-level corruption everywhere EXCEPT the docs table's own
+ * keyspace: a doc named `__proto__` or `constructor` is a legal workspace file and its meta
+ * must land like any other record. Everywhere else (top level, inside a record) such a key
+ * is hand-edited dirt — a `__proto__` own property flowing into a merge would silently
+ * retarget a prototype instead of landing as data. Explicit worklist (never recursion),
+ * same scan as the sidecar; `docKeys` is the docs object itself, checked by identity so
+ * only its own key names are exempt — its values (the records) are still scanned.
  */
 const DANGEROUS_KEYS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
 
-const dangerousKeyOf = (payload: unknown): string | undefined => {
+const dangerousKeyOf = (payload: unknown, docKeys: unknown): string | undefined => {
   const pending: unknown[] = [payload];
   for (const node of pending) {
     if (Array.isArray(node)) {
@@ -97,8 +101,10 @@ const dangerousKeyOf = (payload: unknown): string | undefined => {
       continue;
     }
     if (typeof node !== "object" || node === null) continue;
-    for (const key of Object.keys(node)) {
-      if (DANGEROUS_KEYS.has(key)) return key;
+    if (node !== docKeys) {
+      for (const key of Object.keys(node)) {
+        if (DANGEROUS_KEYS.has(key)) return key;
+      }
     }
     for (const value of Object.values(node) as readonly unknown[]) pending.push(value);
   }
@@ -106,8 +112,12 @@ const dangerousKeyOf = (payload: unknown): string | undefined => {
 };
 
 export interface DocMetaParse {
-  /** Keyed by workspace-relative POSIX path; prototype-free by construction. */
-  readonly docs: Readonly<Record<string, DocMetaRecord>>;
+  /**
+   * Keyed by workspace-relative POSIX path, held as a Map: `__proto__`/`constructor`/
+   * `prototype` are legal doc names, so the table never goes through an object's
+   * property bag where those names would hit the prototype chain.
+   */
+  readonly docs: ReadonlyMap<string, DocMetaRecord>;
   /** Code-only diagnostics (`doc_meta_corrupt:<reason>` / `doc_meta_unknown_fields`). */
   readonly diagnostics: readonly string[];
   /** `true` = the whole table is unusable: the next write must back it up before overwriting. */
@@ -115,7 +125,7 @@ export interface DocMetaParse {
 }
 
 const corruptOf = (reason: string): DocMetaParse => ({
-  docs: Object.create(null) as Record<string, DocMetaRecord>,
+  docs: new Map(),
   corrupt: true,
   diagnostics: [`doc_meta_corrupt:${reason}`],
 });
@@ -167,19 +177,21 @@ const recordOf = (
 export const parseDocMetaFile = (text: string): DocMetaParse => {
   const payload = jsonObject.safeParse(parseJson(text));
   if (!payload.success) return corruptOf("not_object");
-  const danger = dangerousKeyOf(payload.data);
+  const danger = dangerousKeyOf(payload.data, payload.data["docs"]);
   if (danger !== undefined) return corruptOf("dangerous_key");
   if (payload.data["version"] !== DOC_META_VERSION) return corruptOf("bad_version");
   const rawDocs = jsonObject.safeParse(payload.data["docs"]);
   if (!rawDocs.success) return corruptOf("bad_docs");
-  const docs: Record<string, DocMetaRecord> = Object.create(null) as Record<string, DocMetaRecord>;
+  // A Map, not an object: `docs.__proto__`/`docs.constructor` are doc names, and only a
+  // Map keeps them as data on both the read and the write side.
+  const docs = new Map<string, DocMetaRecord>();
   const unknown = new Set<string>();
   for (const [rel, value] of Object.entries(rawDocs.data)) {
     const raw = jsonObject.safeParse(value);
     if (!raw.success) return corruptOf("bad_record");
     const { record, unknown: extra } = recordOf(raw.data);
     if (record === undefined) return corruptOf("bad_record");
-    docs[rel] = record;
+    docs.set(rel, record);
     for (const key of extra) unknown.add(key);
   }
   return {
@@ -199,12 +211,16 @@ export const docMetaRecordJson = (record: DocMetaRecord): Record<string, unknown
   ...(record.savedAt === undefined ? {} : { savedAt: record.savedAt }),
 });
 
-/** Sorted keys + fixed field order + unescaped CJK: the same table produces the same bytes twice. */
-export const serializeDocMetaFile = (docs: Readonly<Record<string, DocMetaRecord>>): string =>
+/**
+ * Sorted keys + fixed field order + unescaped CJK: the same table produces the same bytes
+ * twice. `Object.fromEntries` is the only safe object construction here — it lands a
+ * `__proto__` doc name as a real own property where `obj[key] = value` would hit the setter.
+ */
+export const serializeDocMetaFile = (docs: ReadonlyMap<string, DocMetaRecord>): string =>
   JSON.stringify({
     version: DOC_META_VERSION,
     docs: Object.fromEntries(
-      Object.entries(docs)
+      [...docs.entries()]
         .sort(([left], [right]) => (left < right ? -1 : 1))
         .map(([rel, record]) => [rel, docMetaRecordJson(record)]),
     ),

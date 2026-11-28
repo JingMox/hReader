@@ -421,7 +421,7 @@ const liveMetaTable = async (
   workspaceReal: string,
   deps: PatchDeps,
   bucket: SearchBucket,
-): Promise<Readonly<Record<string, DocMetaRecord>> | undefined> => {
+): Promise<ReadonlyMap<string, DocMetaRecord> | undefined> => {
   try {
     const file = await readDocMetaAt(metaPathOf(join(workspaceReal, ".hreader")), deps);
     for (const diagnostic of file.diagnostics) pushSearchDiagnostic(bucket, diagnostic);
@@ -543,7 +543,7 @@ export const updateIndex = async (
     const storeMoved = !sameSidecar(prev?.sidecar, sidecar);
     // Same for the meta table: a tag edit is invisible in mtime/size/sha, so the record
     // hash is what detects it. A failed table read holds the prior fingerprint.
-    const metaRecord = metaTable?.[rel];
+    const metaRecord = metaTable?.get(rel);
     const meta = metaTable === undefined ? (prev?.meta ?? null) : metaFingerprintOf(metaRecord);
     const metaMoved = prev !== undefined && prev.meta !== meta;
     if (prev?.mtimeMs === doc.mtimeMs && prev.size === doc.size && !metaMoved) {

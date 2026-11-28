@@ -47,7 +47,7 @@ const tableAt = async (dir: string): Promise<string> =>
 
 const storedRecord = async (dir: string, rel = FILE) => {
   const file = await readDocMetaAt(await tableAt(dir), nodePatchDeps);
-  return file.docs[rel];
+  return file.docs.get(rel);
 };
 
 const setTags = (dir: string, patch: DocMetaPatch, by: DocMetaCreator = "user") =>
@@ -368,7 +368,7 @@ describe("setDocMeta · path-keyed records", () => {
       );
 
       const file = await readDocMetaAt(await tableAt(dir), nodePatchDeps);
-      expect(Object.keys(file.docs)).toEqual(["报告 一.html"]);
+      expect([...file.docs.keys()]).toEqual(["报告 一.html"]);
     });
   });
 
@@ -401,14 +401,14 @@ describe("setDocMeta · path-keyed records", () => {
       const file = await readDocMetaAt(await tableAt(dir), nodePatchDeps);
       if (await isCaseInsensitiveFs(dir)) {
         // APFS-style folding: both spellings land on the canonical "Doc.html" key.
-        expect(Object.keys(file.docs)).toEqual(["Doc.html"]);
-        expect(file.docs["Doc.html"]?.tags).toEqual(["大写", "小写"]);
+        expect([...file.docs.keys()]).toEqual(["Doc.html"]);
+        expect(file.docs.get("Doc.html")?.tags).toEqual(["大写", "小写"]);
         const got = await getDocMeta({ workspace: dir, file: "doc.html" }, depsAt());
         expect(got.meta.tags).toEqual(["大写", "小写"]);
       } else {
-        expect(Object.keys(file.docs).sort()).toEqual(["Doc.html", "doc.html"]);
-        expect(file.docs["Doc.html"]?.tags).toEqual(["大写"]);
-        expect(file.docs["doc.html"]?.tags).toEqual(["小写"]);
+        expect([...file.docs.keys()].sort()).toEqual(["Doc.html", "doc.html"]);
+        expect(file.docs.get("Doc.html")?.tags).toEqual(["大写"]);
+        expect(file.docs.get("doc.html")?.tags).toEqual(["小写"]);
       }
     });
   });
@@ -578,7 +578,7 @@ describe("doc-meta concurrency: eight child processes tag the same document", ()
       for (const report of reports) expect(fieldOf(report, "ok")).toBe(true);
 
       const file = await readDocMetaAt(await tableAt(dir), nodePatchDeps);
-      const tags = file.docs[FILE]?.tags ?? [];
+      const tags = file.docs.get(FILE)?.tags ?? [];
       expect(tags).toHaveLength(32);
       expect(new Set(tags).size).toBe(32);
       for (let worker = 0; worker < 8; worker += 1) {
