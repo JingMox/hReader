@@ -1,7 +1,8 @@
 // This layer owns the document-metadata HTTP handlers — `GET`/`POST /api/doc/<docId>/meta`
 // over the shared `.hreader/meta.json` table. They produce `Reply`/`Written` only, never a
 // socket. The HTML file is never touched: `changed:false` keeps doc.changed silent, and a
-// successful write broadcasts the dedicated `doc.meta` event (dispatched in runtime).
+// record-changing write broadcasts the dedicated `doc.meta` event (dispatched in runtime,
+// gated on `metaChanged`).
 
 import { z } from "zod";
 
@@ -86,5 +87,6 @@ export const docMetaSetReply = async (
     revision,
     changed: false,
     changedNodes: [],
+    metaChanged: result.changed,
   };
 };

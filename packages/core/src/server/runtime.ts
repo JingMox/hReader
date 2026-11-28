@@ -313,9 +313,10 @@ const dispatchOf =
     if (SIDECAR_WRITE_KINDS.has(route.kind)) {
       runtime.hub.publish("doc.annotations", { docId: written.target.relative });
     }
-    // Same contract as doc.annotations: doc.meta fires exactly once per successful write —
-    // a thrown dispatchWrite (validation, lock, IO) never reaches this line.
-    if (route.kind === "docMetaSet") {
+    // Same contract as doc.annotations, plus one more gate: doc.meta fires only when the
+    // record actually changed — a no-op write (changed:false) must stay silent. A thrown
+    // dispatchWrite (validation, lock, IO) never reaches this line either way.
+    if (route.kind === "docMetaSet" && written.metaChanged === true) {
       runtime.hub.publish("doc.meta", { docId: written.target.relative });
     }
     return written.reply;

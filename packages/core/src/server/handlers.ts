@@ -82,6 +82,12 @@ export interface Written {
   readonly revision: string;
   readonly changed: boolean;
   readonly changedNodes: readonly string[];
+  /**
+   * Only `docMetaSetReply` fills this: whether the meta record actually moved. `changed`
+   * stays false there (doc bytes are untouched) so the runtime needs this flag to gate
+   * `doc.meta` — a no-op write broadcasts nothing.
+   */
+  readonly metaChanged?: boolean;
 }
 
 /** 写锁等不到就回 409：HTTP 请求不能跟着别的请求无限期排队。 */
