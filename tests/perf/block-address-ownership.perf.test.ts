@@ -15,7 +15,9 @@ import { describe, expect, it } from "vitest";
 import {
   applyBlockPatch,
   listBlocks,
+  parseHtml,
   resolveAddress,
+  serializeHtml,
   type BlockPatchOutcome,
   type BlockPatchRequest,
 } from "@hreader/core";
@@ -36,7 +38,10 @@ const patchOrSkip = (html: string, request: BlockPatchRequest): BlockPatchOutcom
     if (
       code === "content_model_conflict" ||
       code === "invalid_fragment" ||
-      code === "invalid_input"
+      code === "invalid_input" ||
+      // The D60 oracle refuses a listed block whose byte-splice is not reparse-exact —
+      // a legal outcome, never a corrupting write.
+      code === "target_moved"
     ) {
       return undefined;
     }
@@ -324,6 +329,32 @@ const badDocArb: fc.Arbitrary<string> = fc
 
 const MALFORMED_RUNS = { numRuns: 2000 };
 
+type DocNode = ReturnType<typeof parseHtml>["root"];
+
+/**
+ * The D60 oracle's `expected` side, rebuilt independently: the repo parse tree with the
+ * element whose span is exactly `[start, end)` cut out of its parent, serialized. The
+ * oracle accepts a splice only when re-parsing it produces this same tree.
+ */
+const cutBlock = (root: DocNode, start: number, end: number): DocNode => {
+  if (root.kind !== "element" && root.kind !== "document") return root;
+  return {
+    ...root,
+    children: root.children
+      .filter(
+        (child) =>
+          !(child.kind === "element" && child.span?.start === start && child.span.end === end),
+      )
+      .map((child) => cutBlock(child, start, end)),
+  };
+};
+
+const minusBlockSerialized = (html: string, start: number, end: number): string =>
+  serializeHtml({
+    root: cutBlock(parseHtml(html, { locations: true }).root, start, end),
+    diagnostics: [],
+  });
+
 describe("property · malformed HTML (D58 ownership)", () => {
   it("should list only blocks whose slice carries no foreign tag tokens", () => {
     fc.assert(
@@ -348,14 +379,22 @@ describe("property · malformed HTML (D58 ownership)", () => {
     );
   });
 
-  it("should leave every outside byte and outside source tag intact on delete", () => {
+  it("should refuse or exactly-own every listed block on delete (D60 oracle)", () => {
     fc.assert(
       fc.property(badDocArb, (html) => {
         const index = tagIndexOf(html);
         for (const block of listBlocks(html)) {
-          const outcome = applyBlockPatch(html, { address: block.address, action: "delete" });
+          const stripped = `${html.slice(0, block.start)}${html.slice(block.end)}`;
+          const outcome = patchOrSkip(html, { address: block.address, action: "delete" });
+          // The oracle refused: no write happened, which is always a legal outcome.
+          if (outcome === undefined) continue;
+          // Accepted: only the block's own bytes went, and the splice re-parses to
+          // exactly the original tree minus the block's subtree.
           const removed = html.length - outcome.html.length;
-          expect(outcome.html).toBe(`${html.slice(0, block.start)}${html.slice(block.end)}`);
+          expect(outcome.html).toBe(stripped);
+          expect(serializeHtml(parseHtml(outcome.html))).toBe(
+            minusBlockSerialized(html, block.start, block.end),
+          );
           // Every element start tag outside the deleted range keeps its bytes (shifted).
           for (const [tag, offset] of outsideTagBytes(index, block.start, block.end)) {
             const shifted = offset < block.start ? offset : offset - removed;

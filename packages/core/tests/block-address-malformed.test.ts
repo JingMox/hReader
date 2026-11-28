@@ -136,6 +136,27 @@ describe("source ownership (D58)", () => {
     ["<div>x<!-- c </p> -->y</div>", ["div"]],
     ["<div><script>a</b>x</script></div>", ["div"]],
     ["<div><textarea>a</b>x</textarea></div>", ["div"]],
+    // A foreign leaf that STARTS before the range can straddle into it: parse5 folds
+    // fostered text into the preceding sibling's text node, so the "c x" leaf of dd
+    // begins before <table> and covers the "x" inside the table's range. The leaf
+    // index must check the leaf immediately preceding the range start, not only
+    // leaves whose start lands inside.
+    ["<dl><dd>c <table>x<td>cell", []],
+    ["<div>c <table>x<td>cell", []],
+    ["<ul><li>c <table>x<td>cell", []],
+    ["<dl><dd>c <table>x<td>cell</table></dd></dl>", []],
+    // An ignored `<!…` (doctype/CDATA-in-body) produces no node at all — its bytes are
+    // unowned markup inside the range even though they fold into a member leaf's span.
+    ["<p>x<!DOCTYPE y>z</p>", []],
+    // A foreign `<a`/`<z`/`<A`/`<Z` inside <select> drops without a node: the byte scan
+    // must keep the full ASCII letter boundaries or the ignored start tag passes.
+    ["<div><select><a>x</select></div>", []],
+    ["<div><select><z>x</select></div>", []],
+    ["<div><select><A>x</select></div>", []],
+    ["<div><select><Z>x</select></div>", []],
+    // An unclosed element with empty content ends where its start tag ends:
+    // innerStart === end is still a real own-bytes range.
+    ["<div><p>", ["p"]],
   ])("should list only owned blocks in %s", (html, tags) => {
     const blocks = listBlocks(html);
     expect(blocks.map((b) => b.tag)).toEqual(tags);
