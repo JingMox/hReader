@@ -8,9 +8,12 @@ import { searchLibrary, type SearchInput } from "../search";
 import type { Reply } from "./contracts";
 import { jsonReply, type HandlerContext } from "./handlers";
 
-/** `?limit=` arrives as a string; NaN and non-integers are core's `invalid_request`. */
+/** `?limit=` is decimal digits only — the CLI contract; `1e2`, `0x10`, `" 5 "`, `5.0` die here. */
 const limitOf = (raw: string | null): number | undefined => {
   if (raw === null) return undefined;
+  if (!/^[0-9]+$/u.test(raw)) {
+    throw new HrError("invalid_request", "limit 必须是整数");
+  }
   const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed)) {
     throw new HrError("invalid_request", "limit 必须是整数");

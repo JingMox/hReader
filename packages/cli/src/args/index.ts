@@ -76,7 +76,12 @@ const searchIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArg
         ? "search 缺少 <query>"
         : unusedFlag(raw, SEARCH_FLAGS);
   if (message !== undefined) return failure(message, "search");
-  const limit = intInRange(raw, "--limit", 1, 100);
+  // Decimal digits only, same contract as GET /api/search — Number() spellings die here.
+  const rawLimit = raw.values.get("--limit");
+  const limit =
+    rawLimit !== undefined && !/^[0-9]+$/u.test(rawLimit)
+      ? "invalid"
+      : intInRange(raw, "--limit", 1, 100);
   if (limit === "invalid") return failure("--limit 必须是 1..100 的整数", "search");
   return {
     ok: true,
