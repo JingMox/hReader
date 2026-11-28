@@ -18,6 +18,16 @@ export { buildOutline, locateTarget, patchTargetIdOf, readNode } from "./ops";
 export type { LocatedTarget, Outline, OutlineNode, PendingAnnotation, ReadNodeResult } from "./ops";
 export { applyPatch, parseFragment } from "./ops";
 export type { PatchAction, PatchOutcome, PatchRequest } from "./ops";
+export { applyBlockPatch, listBlocks, patchBlock, resolveAddress } from "./ops";
+export type {
+  BlockAction,
+  BlockInfo,
+  BlockPatchOutcome,
+  BlockPatchRequest,
+  PatchBlockInput,
+  PatchBlockResult,
+  ResolveResult,
+} from "./ops";
 export {
   DENIED,
   effectiveOf,

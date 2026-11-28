@@ -54,6 +54,7 @@ const EXIT_CODES = {
   duplicate_id: EXIT_USAGE,
   unknown_template: EXIT_FAILURE,
   invalid_template: EXIT_FAILURE,
+  target_moved: EXIT_FAILURE,
 } satisfies Record<HrErrorCode, number>;
 
 /** `satisfies` already guarantees exhaustiveness: CLI and core ship from the same repo and version — there is no "new core with old CLI" runtime branch. */

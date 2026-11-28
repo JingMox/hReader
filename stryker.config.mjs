@@ -12,8 +12,10 @@ const config = {
     // model: classify, load
     "packages/core/src/model/classify.ts",
     "packages/core/src/model/load.ts",
-    // ops: patch-node, undo/history, import, normalize
+    // ops: patch-node, block-address, undo/history, import, normalize
     "packages/core/src/ops/patch-node/**/*.ts",
+    "packages/core/src/ops/block-address/**/*.ts",
+    "packages/core/src/ops/patch-block.ts",
     "packages/core/src/ops/import.ts",
     "packages/core/src/ops/normalize-file.ts",
     "packages/core/src/ops/revert-op.ts",

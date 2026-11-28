@@ -446,6 +446,7 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   duplicate_id: "两个元素共用一个 data-hr-id（只命中第一个）：先跑 hr normalize <file> --write",
   unknown_template: "没有这个模板",
   invalid_template: "模板损坏或不合法",
+  target_moved: "块地址已失效（目标块被移动/编辑/删除），重新 list 取新地址",
 };
 
 export const errorTextOf = (code: string, detail?: string): string => {

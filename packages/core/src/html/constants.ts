@@ -189,14 +189,24 @@ export interface HtmlElementNode {
   readonly span?: SourceSpan;
 }
 
+/** Source range of a leaf node (text/comment); leaves have only outer bounds, no inner bounds. */
+export interface LeafSpan {
+  readonly start: number;
+  readonly end: number;
+}
+
 interface HtmlTextNode {
   readonly kind: "text";
   readonly value: string;
+  /** Set when `locations: true`; block-address ownership checks use it to spot foreign text lodged inside a block's range. */
+  readonly span?: LeafSpan;
 }
 
 interface HtmlCommentNode {
   readonly kind: "comment";
   readonly data: string;
+  /** Like `HtmlTextNode.span`: comment ranges let the in-block `</` scan skip comments and identify foreign comments. */
+  readonly span?: LeafSpan;
 }
 
 export type HtmlNode =

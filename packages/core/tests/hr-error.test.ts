@@ -52,6 +52,8 @@ const CODE_MATRIX: Record<HrErrorCode, true> = {
   duplicate_id: true,
   unknown_template: true,
   invalid_template: true,
+  // A stale block address (no unique target by path or fingerprint) recovers by re-listing — exit 1.
+  target_moved: true,
 };
 
 function isHrErrorCode(value: string): value is HrErrorCode {

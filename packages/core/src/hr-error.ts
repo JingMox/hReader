@@ -53,7 +53,12 @@ export type HrErrorCode =
   | "duplicate_id"
   // Templates: `unknown_template` means no tier has this id, while `invalid_template` means it was found but is broken or out of bounds
   | "unknown_template"
-  | "invalid_template";
+  | "invalid_template"
+  // Stale block address: the path landed on a block whose fingerprint now differs (edited
+  // in place — no search, a same-fingerprint twin elsewhere is a different block), or the
+  // path landed on no block and no unique same-fingerprint match exists (moved, deleted or
+  // duplicated). Re-listing mints a fresh address, so it stays in the business-refusal tier
+  | "target_moved";
 
 /**
  * `invalid_selector` 有两种成因（文法不合法 / 选择器命中多个可寻址元素），
