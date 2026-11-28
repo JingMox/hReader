@@ -6,6 +6,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { applyStyleCall, applyStyleShape } from "./apply-style";
 import { createDocCall, createDocShape } from "./create-doc";
 import { createFromTemplateCall, createFromTemplateShape } from "./create-from-template";
+import { getMetaCall, getMetaShape, setMetaCall, setMetaShape } from "./doc-meta";
 import { getTemplateCall, getTemplateShape } from "./get-template";
 import { importDocCall, importDocShape } from "./import-doc";
 import { listAnnotationsCall, listAnnotationsShape } from "./list-annotations";
@@ -118,6 +119,26 @@ const registerEditingTools = (server: McpServer): void => {
       inputSchema: resolveAnnotationShape,
     },
     resolveAnnotationCall,
+  );
+  server.registerTool(
+    "hr_get_meta",
+    {
+      title: "读文档元数据",
+      description:
+        "读一篇文档的元数据：标签列表、来源 URL 与首次写入者/时间（存 <workspace>/.hreader/meta.json，按相对路径记档——改名会丢）。要找某篇文档的标签或来源时用它",
+      inputSchema: getMetaShape,
+    },
+    getMetaCall,
+  );
+  server.registerTool(
+    "hr_set_meta",
+    {
+      title: "写文档元数据",
+      description:
+        "合并写一篇文档的元数据：tags 整表替换 / addTags 追加 / removeTags 移除（均大小写不敏感去重，≤32 个 × 64 码点），sourceUrl 设置或传 null 清除（http/https ≤2048 码点）。只给定的字段才变；记录归 agent 名下",
+      inputSchema: setMetaShape,
+    },
+    setMetaCall,
   );
 };
 

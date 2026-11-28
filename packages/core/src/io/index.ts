@@ -41,3 +41,13 @@ export {
   writeSidecarFile,
 } from "./annotation-store";
 export type { SidecarFile } from "./annotation-store";
+export {
+  META_REL,
+  META_STORE_FILE,
+  metaLockOf,
+  metaPathOf,
+  readDocMetaAt,
+  readDocMetaFile,
+  writeDocMetaFile,
+} from "./doc-meta-store";
+export type { DocMetaFile } from "./doc-meta-store";

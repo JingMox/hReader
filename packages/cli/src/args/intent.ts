@@ -193,6 +193,17 @@ export type Intent =
       readonly path: string;
     } & Common)
   | ({
+      readonly kind: "meta";
+      readonly path: string;
+      /** Repeated `--tag` values — add semantics (an already-present tag is a no-op). */
+      readonly tags: readonly string[];
+      /** Repeated `--untag` values — case-insensitive removal. */
+      readonly untags: readonly string[];
+      /** `--source-url` verbatim; core owns the http/https/2048 validation. */
+      readonly sourceUrl: string | undefined;
+      readonly clearSourceUrl: boolean;
+    } & Common)
+  | ({
       readonly kind: "search";
       /** The raw query string; its 1..200 code-point bound is core's `invalid_request`. */
       readonly query: string;

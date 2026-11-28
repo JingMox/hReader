@@ -22,7 +22,8 @@ Build from the repo root with `pnpm -C @hreader/cli build`; the entry point is `
 | `hr template save <file> --id <id> [--global]`           | save a page plus its `<stem>_files/` as a template — the `<style id="hr-theme">` content becomes `style.css`, the entry keeps an empty placeholder; no `--force`       |
 | `hr annotations list <file>`                             | merged hr-meta + sidecar annotations for one doc (`--status pending\|resolved\|all`)                                                                                   |
 | `hr annotations migrate <file>`                          | move a doc's legacy `<script id="hr-meta">` annotations into the `.hreader/annotations/` sidecar store (idempotent — a second run migrates 0)                          |
-| `hr search <query> [--limit <n>]`                        | full-text search across every doc (title/headings/body) and its annotations; incremental index under `.hreader/index/`                                                 |
+| `hr meta <file>`                                         | read or merge-write a doc's metadata (tags + source URL) in `.hreader/meta.json` — `--tag`/`--untag` repeat, `--source-url` sets, `--clear-source-url` clears          |
+| `hr search <query> [--limit <n>]`                        | full-text search across every doc (title/headings/body/tags) and its annotations; incremental index under `.hreader/index/`                                            |
 
 ## Environment variables
 

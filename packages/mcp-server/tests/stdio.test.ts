@@ -64,6 +64,7 @@ describe("dist/main.js · tool surface", () => {
       "hr_apply_style",
       "hr_create_doc",
       "hr_create_from_template",
+      "hr_get_meta",
       "hr_get_template",
       "hr_import_doc",
       "hr_list_annotations",
@@ -74,6 +75,7 @@ describe("dist/main.js · tool surface", () => {
       "hr_resolve_annotation",
       "hr_save_template",
       "hr_search",
+      "hr_set_meta",
       "hr_undo",
     ]);
   }, 30_000);

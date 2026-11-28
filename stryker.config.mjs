@@ -24,6 +24,11 @@ const config = {
     "packages/core/src/annotations/relocate.ts",
     "packages/core/src/io/annotation-store.ts",
     "packages/core/src/ops/sidecar-ops.ts",
+    // doc metadata: meta table store (corruption/backup/limits), merge ops, HTTP replies
+    "packages/core/src/docmeta/model.ts",
+    "packages/core/src/io/doc-meta-store.ts",
+    "packages/core/src/ops/doc-meta-ops.ts",
+    "packages/core/src/server/meta-replies.ts",
     // style: apply, css safety checks, replaceTheme-related
     "packages/core/src/style/apply.ts",
     "packages/core/src/style/apply-file.ts",

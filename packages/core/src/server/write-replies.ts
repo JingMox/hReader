@@ -25,6 +25,7 @@ import {
   type Written,
 } from "./handlers";
 import { bodyRecordOf } from "./http-io";
+import { docMetaSetReply } from "./meta-replies";
 import { docQueueKey, withDocQueue } from "./queue";
 import { paramOf, type Route } from "./routes";
 import {
@@ -73,6 +74,9 @@ const writeReplyOf = (
     return docPermissionsReply(context, ids.docId, body, LOCK_WAIT_MS);
   }
   if (route.kind === "docNormalize") return normalizeReply(context, ids.docId, LOCK_WAIT_MS);
+  if (route.kind === "docMetaSet") {
+    return docMetaSetReply(context, ids.docId, body, LOCK_WAIT_MS);
+  }
   if (route.kind === "sidecarAdd") {
     return sidecarAddReply(context, ids.docId, body, LOCK_WAIT_MS);
   }

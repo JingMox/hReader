@@ -13,6 +13,7 @@ import { annotationsListCommand, annotationsMigrateCommand } from "./commands/an
 import { checkCommand } from "./commands/check";
 import { exportPrintCommand } from "./commands/export-print";
 import { importDocCommand } from "./commands/import";
+import { metaCommand } from "./commands/meta";
 import { newDocCommand } from "./commands/new";
 import { normalizeCommand } from "./commands/normalize";
 import { outlineCommand } from "./commands/outline";
@@ -419,6 +420,19 @@ const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
           warn: io.stderr,
           displayPath,
         });
+  }
+  if (intent.kind === "meta") {
+    const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+    return metaCommand({
+      path: paths.file,
+      workspace: paths.workspace,
+      tags: intent.tags,
+      untags: intent.untags,
+      sourceUrl: intent.sourceUrl,
+      clearSourceUrl: intent.clearSourceUrl,
+      json: intent.json,
+      warn: io.stderr,
+    });
   }
   if (intent.kind === "search") {
     return searchCommand({
