@@ -75,7 +75,7 @@ describe("search · doc tags", () => {
 
   it("ranks a tag hit above a body-only match — boost 2 over 1", async () => {
     await withWorkspace(async (dir) => {
-      // `罕见词` sits in b's body but only in a's tags; boost decides the order.
+      // The rare term sits in b's body but only in a's tags; boost decides the order.
       await writeTextAt(join(dir, "a.html"), DOC("a", "苹果 种植"));
       await writeTextAt(join(dir, "b.html"), DOC("b", "罕见词 出现一次"));
       await tag(dir, "a.html", ["罕见词"]);

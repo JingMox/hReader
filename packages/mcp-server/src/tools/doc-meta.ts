@@ -2,7 +2,7 @@
 // table (tags + sourceUrl + provenance). Reads go through core's `resolveTarget` gate (the
 // doc must exist and live inside the workspace); writes merge under the table lock and are
 // recorded `by: "agent"`. Output follows the bounded-wire rule: tags are already capped by
-// core's limits (32 × 64 码点）, every free-text field still gets the standard cut.
+// core's limits (32 × 64 code points), every free-text field still gets the standard cut.
 
 import { sep } from "node:path";
 
