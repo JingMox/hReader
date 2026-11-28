@@ -18,6 +18,16 @@ import {
   type TestServer,
 } from "./harness";
 import { withPost } from "./wire";
+import { HrError } from "../../src/hr-error";
+import { metaLockOf } from "../../src/io/doc-meta-store";
+import { acquireLock } from "../../src/io/lock";
+import { resolveTarget } from "../../src/io/paths";
+import { createAnnotateTokenBook } from "../../src/server/annotate";
+import { createCapabilityBook } from "../../src/server/capability";
+import type { HandlerContext } from "../../src/server/handlers";
+import { docMetaSetReply } from "../../src/server/meta-replies";
+import { nodeStyleDeps } from "../../src/style";
+import { depsOf, fakeFs, fixedClock, recordingSleep } from "../io/harness";
 
 interface WireMeta {
   readonly tags: readonly string[];
@@ -347,5 +357,42 @@ describe("meta routes · concurrency", () => {
       expect(body.tags).toHaveLength(n);
       expect(new Set(body.tags).size).toBe(n);
     }, defaultSeed);
+  });
+});
+
+describe("meta routes · lock passthrough", () => {
+  it("should hand the caller's lockMs to the table lock — the wait names the ms", async () => {
+    // The epoch clock sits below the fake fs's real-time mtimes, so the pre-held lock never
+    // reads as stale: the second acquirer must retry until its own deadline.
+    const fs = fakeFs({ "/ws/doc.html": "<html><body><p>x</p></body></html>" });
+    const local = fixedClock(0);
+    const deps = depsOf(fs.port, local.clock, recordingSleep(local).sleep);
+    const target = await resolveTarget({ workspace: "/ws", file: "doc.html" }, fs.port);
+    const held = await acquireLock({ path: metaLockOf(target.storeDir), timeoutMs: 0 }, deps);
+
+    const ctx: HandlerContext = {
+      workspace: "/ws",
+      appDir: "",
+      home: "/home",
+      deps,
+      styleDeps: nodeStyleDeps("/ws"),
+      caps: createCapabilityBook(),
+      annotateTokens: createAnnotateTokenBook(deps.clock),
+    };
+    try {
+      const error = await docMetaSetReply(ctx, "doc.html", { tags: ["x"] }, 137).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(HrError);
+      expect((error as HrError).code).toBe("busy");
+      const cause = (error as HrError).cause;
+      expect(cause).toBeInstanceOf(HrError);
+      expect((cause as HrError).code).toBe("locked");
+      // The lock error embeds the caller's ms — a dropped { lockTimeoutMs } would name the
+      // 2000ms default instead.
+      expect((cause as HrError).message).toContain("137ms");
+    } finally {
+      await held.release();
+    }
   });
 });
