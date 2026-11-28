@@ -9,12 +9,14 @@ import type { ConnState, OutlineNode, ReaderIntent, ReaderState } from "./state.
 import type { Store } from "./store.ts";
 import type { StyleSwitch } from "./style-switch.ts";
 import { changedNodesOf, flashChanged, type Schedule } from "./flash.ts";
+import type { SearchHit, SearchReply } from "./guard.ts";
 import { mountCanvas } from "./widgets/canvas.ts";
 import type { Widget } from "./widgets/library.ts";
 import { mountLibrary } from "./widgets/library.ts";
+import { mountSearch } from "./widgets/search.ts";
 import { mountSidenotes } from "./widgets/sidenotes.ts";
 import { mountStatusbar } from "./widgets/statusbar.ts";
-import { renderNotes, wireNotes, type NotesDeps } from "./notes-wire.ts";
+import { focusAnnotationCard, renderNotes, wireNotes, type NotesDeps } from "./notes-wire.ts";
 import { missingAnchorsOf, reportMissingAnchors } from "./anchors.ts";
 import type { RawSelection } from "./widgets/selection.ts";
 import { COPY } from "./widgets/copy.ts";
@@ -69,6 +71,17 @@ export interface BootDeps {
   readonly keySource: (handler: (event: KeyLike) => void) => () => void;
   /** 批注与 diff 的接线；缺省时批注相关意图全部无副作用。 */
   readonly notes?: NotesDeps;
+  /** Library search (the D61 panel opened by `/`); when absent, `/` only writes a statusbar hint. */
+  readonly search?:
+    | {
+        /** `GET /api/search?q=…&limit=…` wrapper. */
+        readonly fetch: (query: string) => Promise<SearchReply>;
+        /** Hit navigation: the browser goes to `/?doc=`, the desktop shell goes through the `/open` bridge (the caller stashes `annotationId` across the page load). */
+        readonly navigate: (path: string, annotationId?: string) => void;
+      }
+    | undefined;
+  /** Annotation id to focus right after boot (read from sessionStorage by `main.ts` after a cross-doc annotation-hit navigation). */
+  readonly focusAnnotation?: string | undefined;
   /** 演示模式的浏览器环境（全屏 / hash）；缺省 = 这两项副作用退化为 no-op。 */
   readonly present?: PresentShell;
   /** 诊断出口（缺锚点等"必须可见地失败"的消息）；`main.ts` 接 `console.error`。 */
@@ -164,7 +177,11 @@ interface Mounted {
   readonly present: PresentWidget;
 }
 
-const mountAll = (deps: BootDeps, forward: (intent: ReaderIntent) => void): Mounted => {
+const mountAll = (
+  deps: BootDeps,
+  forward: (intent: ReaderIntent) => void,
+  extras: readonly Widget[] = [],
+): Mounted => {
   const state = deps.store.get();
   const present = mountPresent({
     host: deps.host,
@@ -185,6 +202,7 @@ const mountAll = (deps: BootDeps, forward: (intent: ReaderIntent) => void): Moun
       mountSidenotes(deps.host, ROOT),
       mountStatusbar(deps.host, ROOT, forward),
       present,
+      ...extras,
     ],
     present,
   };
@@ -387,24 +405,58 @@ export const boot = (deps: BootDeps): Booted => {
     if (presentRef.current !== undefined && !presentRef.current.before(intent)) return;
     store.dispatch(intent);
     if (intent.kind === "themeSelected") selectTheme(intent);
-    // `/` 只给可见提示：搜索框模板里是 `disabled`（不聚焦死控件）；同一句文案也写在它的 `title` 上。
-    if (intent.kind === "searchOpened") host.text(`${ROOT} #hr-hint`, COPY.searchDeferred);
+    // No search dep (test shells / older shells): `/` must not be a dead key — write a visible "unavailable" hint.
+    if (intent.kind === "searchOpened" && deps.search === undefined) {
+      host.text(`${ROOT} #hr-hint`, COPY.searchUnavailable);
+    }
     wiredRef.current?.after(intent);
   }
   const reload = reloadOf(deps, store, async () => {
     await wiredRef.current?.load();
   });
   const scope: FlowScope = { deps, store, pump, dispatch: dispatchIntent, reload };
-  const mounted = mountAll(deps, dispatchIntent);
+  const search = deps.search;
+  const searchW =
+    search === undefined
+      ? undefined
+      : mountSearch({
+          host,
+          parent: ROOT,
+          fetch: search.fetch,
+          openHit: (hit: SearchHit): void => {
+            const ann = hit.kind === "annotation" ? hit.annotationId : undefined;
+            // Same-doc annotation → scroll the anchored block into view and flag it
+            // (`focusAnnotationCard` renders synchronously — no pump needed); cross-doc →
+            // navigate (annotationId rides along in the stash); a same-doc doc hit has no new page to open.
+            if (ann !== undefined && hit.path === store.get().docId) {
+              focusAnnotationCard({ host, store, dispatch: dispatchIntent }, ann);
+              return;
+            }
+            if (ann !== undefined || hit.path !== store.get().docId) {
+              search.navigate(hit.path, ann);
+            }
+          },
+          onIntent: dispatchIntent,
+          schedule: deps.schedule ?? defaultSchedule,
+        });
+  const mounted = mountAll(deps, dispatchIntent, searchW === undefined ? [] : [searchW]);
   presentRef.current = mounted.present;
   const wired = wiredOf(scope);
   wiredRef.current = wired;
-  host.attr(`${ROOT} #hr-search`, "title", COPY.searchDeferred);
+  host.attr(`${ROOT} #hr-search`, "title", COPY.searchBox);
   if (host.has !== undefined) {
     reportMissingAnchors(host, deps.logger ?? (() => undefined), missingAnchorsOf(host));
   }
   const unsubscribe = subscribeOf(deps, mounted.widgets);
-  if (wired !== undefined) pump(wired.load);
+  if (wired !== undefined) {
+    pump(async () => {
+      await wired.load();
+      // Arrived via a cross-doc annotation hit: once notes render, scroll the anchored block into view (`focusAnnotationCard` has its own card-lookup guard).
+      if (deps.focusAnnotation !== undefined) {
+        focusAnnotationCard({ host, store, dispatch: dispatchIntent }, deps.focusAnnotation);
+      }
+    });
+  }
   const stopFlows = startFlows(scope);
   return bootedOf(wired, () => {
     unsubscribe();
@@ -498,11 +550,41 @@ const bootForeign = (
   // 外来壳也接键盘与沉浸开关：j/k 等块导航意图对空 blocks 自然空转，只有沉浸与连接态有出口。
   const dispatchIntent = (intent: ReaderIntent): void => {
     store.dispatch(intent);
+    // Same fallback as managed: without a search dep, `/` writes a visible hint rather than being a dead key.
+    if (intent.kind === "searchOpened" && deps.search === undefined) {
+      host.text(`${ROOT} #hr-hint`, COPY.searchUnavailable);
+    }
   };
   const statusbar = mountStatusbar(host, ROOT, dispatchIntent);
   host.text(`${ROOT} #hr-shortcuts`, COPY.foreignShortcuts);
+  // D61: the foreign shell mounts the same search panel — a hit on this doc's annotation enters
+  // annotate mode and selects the card; everything else goes through `navigate`.
+  const search = deps.search;
+  const searchW =
+    search === undefined
+      ? undefined
+      : mountSearch({
+          host,
+          parent: ROOT,
+          fetch: search.fetch,
+          openHit: (hit: SearchHit): void => {
+            const ann = hit.kind === "annotation" ? hit.annotationId : undefined;
+            if (ann !== undefined && hit.path === store.get().docId) {
+              foreign.focusAnnotation(ann);
+              return;
+            }
+            if (ann !== undefined || hit.path !== store.get().docId) {
+              search.navigate(hit.path, ann);
+            }
+          },
+          onIntent: dispatchIntent,
+          schedule: deps.schedule ?? defaultSchedule,
+        });
+  const widgets: readonly Widget[] = searchW === undefined ? [statusbar] : [statusbar, searchW];
   const unbindKeys = deps.keySource(keyHandlerOf(store, dispatchIntent));
-  const unsubscribe = deps.store.subscribe(syncView({ host, widgets: [statusbar] }));
+  const unsubscribe = deps.store.subscribe(syncView({ host, widgets }));
+  // Arrived via a cross-doc annotation hit: enter annotate mode and select the card on the next list render (the `pendingSelect` queue lives in annotate).
+  if (deps.focusAnnotation !== undefined) foreign.focusAnnotation(deps.focusAnnotation);
   const sse = deps.openSse(
     foreignSseOf(store, foreign, () => {
       pump(async () => {

@@ -755,3 +755,78 @@ describe("annotate widget · refresh and destroy", () => {
     expect(rig2.errors).toHaveLength(0);
   });
 });
+
+describe("annotate widget · focusAnnotation (D61 search hits)", () => {
+  it("should enter annotate mode and select the card once the list renders", async () => {
+    const rig = rigOf({ panel: true });
+    const handle = mountAnnotate(rig.deps);
+    handle.repaint("foreign");
+
+    handle.focusAnnotation("a1");
+    expect(rig.mintCalls()).toBe(1);
+    await tick(); // mint resolves → active + panel open
+
+    rig.send({ type: "hr-annotator/hello", version: 1 });
+    await tick(); // list renders → pendingSelect consumed → select
+
+    expect(attrsOf(rig, `${ANN_PANEL} [data-hr-annotation="a1"]`, "data-hr-selected").at(-1)).toBe(
+      "true",
+    );
+    expect(rig.fake.calls.filter((c) => c.op === "scrollTo").at(-1)?.args[0]).toBe(
+      `${ANN_PANEL} [data-hr-annotation="a1"]`,
+    );
+  });
+
+  it("should re-list and select immediately when already active", async () => {
+    const rig = rigOf({ panel: true });
+    const handle = mountAnnotate(rig.deps);
+    await enterActive(rig);
+    rig.send({ type: "hr-annotator/hello", version: 1 });
+    await tick();
+    const lists = rig.listCalls();
+
+    handle.focusAnnotation("a1");
+    await tick();
+
+    expect(rig.listCalls()).toBe(lists + 1);
+    expect(attrsOf(rig, `${ANN_PANEL} [data-hr-annotation="a1"]`, "data-hr-selected").at(-1)).toBe(
+      "true",
+    );
+  });
+
+  it("should merge with a mint already in flight without re-minting", async () => {
+    const gate = deferred<string>();
+    const rig = rigOf({ mint: () => gate.promise, panel: true });
+    const handle = mountAnnotate(rig.deps);
+    handle.repaint("foreign");
+    rig.fake.fire(BTN, "click", {}); // enter: mint in flight
+
+    handle.focusAnnotation("a1");
+    // The in-flight mint merges with pendingSelect: no re-mint, no list render.
+    expect(rig.mintCalls()).toBe(1);
+    expect(rig.listCalls()).toBe(0);
+
+    gate.resolve("/f/cap/frame?at=t1");
+    await tick();
+    rig.send({ type: "hr-annotator/hello", version: 1 });
+    await tick();
+    expect(attrsOf(rig, `${ANN_PANEL} [data-hr-annotation="a1"]`, "data-hr-selected").at(-1)).toBe(
+      "true",
+    );
+  });
+
+  it("should no-op after destroy", async () => {
+    const rig = rigOf({ panel: true });
+    const handle = mountAnnotate(rig.deps);
+    handle.repaint("foreign");
+    handle.destroy();
+
+    const before = rig.fake.calls.length;
+    handle.focusAnnotation("a1");
+    await tick();
+
+    expect(rig.mintCalls()).toBe(0);
+    expect(rig.listCalls()).toBe(0);
+    expect(rig.fake.calls.length).toBe(before);
+  });
+});

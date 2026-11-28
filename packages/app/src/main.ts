@@ -12,7 +12,7 @@ import {
 import type { AppIo } from "./io.ts";
 export type { AppIo, RevisionResponse } from "./io.ts";
 import { createDomHost, type DocumentLike, type Host } from "./dom.ts";
-import { isAnnotationList, isDiffResponse } from "./guard.ts";
+import { isAnnotationList, isDiffResponse, isSearchReply } from "./guard.ts";
 import { rawSelectionOf, type BlockElementLike } from "./widgets/selection.ts";
 import { textOfBlocks } from "./widgets/blocks-text.ts";
 import { createSse, type SseHandlers, type SourceLike } from "./sse.ts";
@@ -42,6 +42,16 @@ declare const window: {
     readonly hash?: string;
     readonly pathname?: string;
     readonly search?: string;
+    /** Doc navigation for a search hit (`/?doc=` or the desktop `/open` bridge); test shells may omit it. */
+    readonly assign?: (url: string) => void;
+  };
+  /** Bridge context injected by the desktop shell: a `bridgeToken` proves we run inside it. */
+  readonly __HR_DESKTOP_CTX__?: { readonly bridgeToken?: string };
+  /** Stash for a cross-doc annotation hit (same-origin sessionStorage survives the page load); may be absent in private mode. */
+  readonly sessionStorage?: {
+    readonly getItem: (key: string) => string | null;
+    readonly setItem: (key: string, value: string) => void;
+    readonly removeItem: (key: string) => void;
   };
   /** `replaceState` 写 hash 不堆历史记录；缺省表示环境不支持（hash 退化为只读）。 */
   readonly history?: {
@@ -313,6 +323,52 @@ const bindOf =
   async () =>
     await io.json(path, guard);
 
+/** Cross-page stash key for an annotation hit: `{doc, ann}` is written before navigation, read and cleared at the next boot. */
+const SEARCH_FOCUS_KEY = "hr-search-focus";
+
+const stashSearchFocus = (doc: string, ann: string): void => {
+  try {
+    window.sessionStorage?.setItem(SEARCH_FOCUS_KEY, JSON.stringify({ doc, ann }));
+  } catch {
+    // When storage is unavailable, degrade to "open the doc only" (the focus is lost, navigation is not).
+  }
+};
+
+/** Take and consume the stash: always removed first (a stale stash must not survive into a later navigation); `ann` is returned only when `doc` matches. */
+const takeSearchFocus = (docId: string): string | undefined => {
+  try {
+    const raw = window.sessionStorage?.getItem(SEARCH_FOCUS_KEY);
+    if (raw === undefined || raw === null) return undefined;
+    window.sessionStorage?.removeItem(SEARCH_FOCUS_KEY);
+    const parsed: unknown = JSON.parse(raw);
+    return isRecord(parsed) && parsed["doc"] === docId && typeof parsed["ann"] === "string"
+      ? parsed["ann"]
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Doc navigation for a search hit: inside the desktop shell we go through the
+ * `hr-desktop.local/open` bridge (the shell turns it into a controlled open in
+ * on_navigation); in a plain browser it's `/?doc=`. `annotationId` only goes into
+ * sessionStorage — never the URL: the `/open` bridge forwards just `doc`, extra
+ * params/hashes would be lost.
+ */
+const navigateToDoc = (path: string, annotationId?: string): void => {
+  if (annotationId !== undefined) stashSearchFocus(path, annotationId);
+  const token = window.__HR_DESKTOP_CTX__?.bridgeToken;
+  const doc = encodeURIComponent(path);
+  if (typeof token === "string" && token !== "") {
+    window.location.assign?.(
+      `http://hr-desktop.local/open?doc=${doc}&t=${encodeURIComponent(token)}`,
+    );
+    return;
+  }
+  window.location.assign?.(`/?doc=${doc}`);
+};
+
 /** 两条 boot 路径共用的依赖装配（store 由调用方给：managed 与 iframe 的初始主题不同）。 */
 const depsCoreOf = (core: {
   readonly docId: string;
@@ -325,6 +381,13 @@ const depsCoreOf = (core: {
   const encoded = encodeURIComponent(docId);
   const bind = bindOf(io);
   return {
+    /** D61 search panel: `q` is passed through verbatim (the server bounds by code points); limit is fixed at the default 20. */
+    search: {
+      fetch: async (query: string) =>
+        await io.json(`/api/search?q=${encodeURIComponent(query)}&limit=20`, isSearchReply),
+      navigate: navigateToDoc,
+    },
+    focusAnnotation: takeSearchFocus(docId),
     host,
     store,
     openSse,

@@ -16,7 +16,10 @@
       <aside id="hr-library" class="library">
         <h2 id="hr-lib-title"></h2>
         <label id="hr-search-label" for="hr-search">搜索</label>
-        <input id="hr-search" type="search" disabled title="搜索将在后续卡片启用" />
+        <!-- The sidebar search box stays a placeholder: the real input lives in
+             `#hr-search-panel` (opened by `/`). `disabled` declares it unusable; the
+             desktop workbench strips `disabled` and reuses it as a file filter. -->
+        <input id="hr-search" type="search" disabled title="按 / 打开书库搜索" />
         <h3 id="hr-toc-title"></h3>
         <ul id="hr-toc"></ul>
       </aside>
@@ -120,6 +123,39 @@
         </section>
         <p id="hr-ann-empty" class="ann-empty"></p>
       </aside>
+      <!-- Library-search panel (opened by `/`, or ⌘K on the desktop shell): `hidden`
+           is the fallback while the search widget adds/removes it per `searchOpen`;
+           title/path/snippet only ever land via textContent (`mark` highlights are
+           text nodes too) — never innerHTML. -->
+      <div id="hr-search-panel" class="search-panel" role="dialog" hidden>
+        <input
+          id="hr-search-input"
+          type="search"
+          autocomplete="off"
+          spellcheck="false"
+          role="combobox"
+          aria-expanded="true"
+        />
+        <p id="hr-search-hint" class="search-hint" role="status"></p>
+        <section
+          id="hr-search-docs"
+          class="search-group"
+          aria-labelledby="hr-search-docs-title"
+          hidden
+        >
+          <h4 id="hr-search-docs-title"></h4>
+          <ul id="hr-search-docs-list" class="search-list" role="listbox"></ul>
+        </section>
+        <section
+          id="hr-search-anns"
+          class="search-group"
+          aria-labelledby="hr-search-anns-title"
+          hidden
+        >
+          <h4 id="hr-search-anns-title"></h4>
+          <ul id="hr-search-anns-list" class="search-list" role="listbox"></ul>
+        </section>
+      </div>
       <footer id="hr-statusbar" class="statusbar">
         <span id="hr-conn"></span>
         <span id="hr-version"></span>

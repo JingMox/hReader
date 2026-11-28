@@ -9,6 +9,7 @@ import {
   stringOf,
   isAnnotationList,
   isDiffResponse,
+  isSearchReply,
 } from "../src/guard.ts";
 
 describe("guard · 形状守卫的负例", () => {
@@ -65,6 +66,73 @@ describe("guard · 批注列表的非法形状", () => {
     expect(isAnnotationList({ annotations: "x" })).toBe(false);
     expect(isAnnotationList([])).toBe(false);
     expect(isAnnotationList(null)).toBe(false);
+  });
+});
+
+describe("guard · search reply shape", () => {
+  const hit = {
+    path: "a.html",
+    title: "甲",
+    kind: "doc" as const,
+    score: 1,
+    snippet: "一段正文",
+    highlights: [[0, 2] as const],
+  };
+  const reply = { results: [hit], total: 1, combine: "and" as const, truncated: false };
+
+  it("should accept a search envelope (doc + annotation hits, optional diagnostics)", () => {
+    expect(isSearchReply(reply)).toBe(true);
+    expect(
+      isSearchReply({
+        ...reply,
+        combine: "or",
+        truncated: true,
+        diagnostics: ["部分命中"],
+        results: [
+          { ...hit, kind: "annotation", annotationId: "an-1", highlights: [] },
+          {
+            ...hit,
+            title: "",
+            highlights: [
+              [0, 1],
+              [3, 4],
+            ],
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("should reject hits whose fields carry the wrong type", () => {
+    // `kind` accepts only the two enum values; a present annotationId must be a string; every highlights pair must hold exactly two numbers.
+    expect(isSearchReply({ ...reply, results: [{ ...hit, kind: "note" }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, annotationId: 7 }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, score: "1" }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, snippet: 3 }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, title: 1 }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, path: 0 }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, highlights: "x" }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, highlights: [[0]] }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, highlights: [[0, 1, 2]] }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, highlights: [["0", 1]] }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, highlights: [[0, "1"]] }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, highlights: ["x"] }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [{ ...hit, highlights: [null] }] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: ["x"] })).toBe(false);
+    expect(isSearchReply({ ...reply, results: [null] })).toBe(false);
+  });
+
+  it("should reject envelopes whose own fields are missing or mistyped", () => {
+    expect(isSearchReply({ ...reply, results: null })).toBe(false);
+    expect(isSearchReply({ ...reply, results: "x" })).toBe(false);
+    expect(isSearchReply({ ...reply, total: "1" })).toBe(false);
+    expect(isSearchReply({ ...reply, combine: "any" })).toBe(false);
+    expect(isSearchReply({ ...reply, truncated: "no" })).toBe(false);
+    expect(isSearchReply({ ...reply, diagnostics: [1] })).toBe(false);
+    expect(isSearchReply({})).toBe(false);
+    expect(isSearchReply(null)).toBe(false);
+    expect(isSearchReply("x")).toBe(false);
+    expect(isSearchReply([])).toBe(false);
   });
 });
 

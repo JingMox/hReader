@@ -25,6 +25,9 @@ export interface Harness {
   readonly keyHandlers: ((event: KeyLike) => void)[];
   readonly selectCalls: { theme: string; current: string }[];
   readonly fetched: Counters;
+  /** Queries and navigations seen by the search fake (`deps.search` is injected — sequence assertions go through it). */
+  readonly searchAsked: string[];
+  readonly navigated: { path: string; annotationId?: string }[];
   readonly closed: () => boolean;
   readonly keysBound: () => number;
   readonly emit: (event: SseEvent) => void;
@@ -40,6 +43,8 @@ interface Sink {
   readonly flags: { sseClosed: boolean; keys: number };
   readonly keys: ((event: KeyLike) => void)[];
   readonly selectCalls: { theme: string; current: string }[];
+  readonly searchAsked: string[];
+  readonly navigated: { path: string; annotationId?: string }[];
 }
 
 /** 三个读接口各记一次调用，写在一起比在 `transportOf` 里堆三段长。 */
@@ -102,9 +107,25 @@ const composeDeps = (
     "openSse" | "style" | "keySource" | "fetchDocument" | "fetchModel" | "fetchOutline"
   >,
   handlersRef: { current?: SseHandlers },
+  sink: Sink,
 ): BootDeps => ({
   host: fake.host,
   store,
+  search: {
+    fetch: (query) => {
+      sink.searchAsked.push(query);
+      return Promise.resolve({
+        results: [],
+        total: 0,
+        combine: "and" as const,
+        truncated: false,
+        diagnostics: [],
+      });
+    },
+    navigate: (path, annotationId) => {
+      sink.navigated.push(annotationId === undefined ? { path } : { path, annotationId });
+    },
+  },
   openSse: (next) => {
     handlersRef.current = next;
     return transport.openSse(next);
@@ -126,9 +147,11 @@ export const harnessOf = (styleOk: boolean): Harness => {
     flags: { sseClosed: false, keys: 0 },
     keys: [],
     selectCalls: [],
+    searchAsked: [],
+    navigated: [],
   };
   const handlersRef: { current?: SseHandlers } = {};
-  const deps = composeDeps(fake, store, transportOf(sink, styleOk), handlersRef);
+  const deps = composeDeps(fake, store, transportOf(sink, styleOk), handlersRef, sink);
   return {
     deps,
     store,
@@ -136,6 +159,8 @@ export const harnessOf = (styleOk: boolean): Harness => {
     keyHandlers: sink.keys,
     selectCalls: sink.selectCalls,
     fetched: sink.counters,
+    searchAsked: sink.searchAsked,
+    navigated: sink.navigated,
     closed: () => sink.flags.sseClosed,
     keysBound: () => sink.flags.keys,
     emit: (event) => {

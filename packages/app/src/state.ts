@@ -208,7 +208,9 @@ const reducePanel = (state: ReaderState, intent: PanelIntent): ReaderState => {
   if (intent.kind === "searchOpened")
     return state.searchOpen ? state : { ...state, searchOpen: true };
   if (intent.kind === "panelClosed")
-    return state.panel === "closed" ? state : { ...state, panel: "closed" };
+    return state.panel === "closed" && !state.searchOpen
+      ? state
+      : { ...state, panel: "closed", searchOpen: false };
   return state.panel === "sidenote" && state.sidenoteId === intent.id
     ? state
     : withPanel(state, intent.id);

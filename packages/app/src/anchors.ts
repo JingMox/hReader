@@ -47,6 +47,16 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-ann-resolved-title",
   "#hr-ann-lost-title",
   "#hr-ann-empty",
+  // Library-search panel: input / hint line / the doc and annotation groups (titles are copy-driven too)
+  "#hr-search-panel",
+  "#hr-search-input",
+  "#hr-search-hint",
+  "#hr-search-docs",
+  "#hr-search-docs-title",
+  "#hr-search-docs-list",
+  "#hr-search-anns",
+  "#hr-search-anns-title",
+  "#hr-search-anns-list",
   // 演示模式：入口按钮 / 覆盖层容器 / 页码 / 退出
   "#hr-present-btn",
   "#hr-present",

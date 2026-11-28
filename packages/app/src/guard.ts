@@ -57,6 +57,54 @@ export const isAnnotationList = (
   (value["lost"] === undefined || isStringArray(value["lost"])) &&
   (value["diagnostics"] === undefined || isStringArray(value["diagnostics"]));
 
+/** One hit of `GET /api/search` (isomorphic to `@hreader/core`'s `SearchHit`; the app does not depend on core). */
+export interface SearchHit {
+  readonly path: string;
+  readonly title: string;
+  readonly kind: "doc" | "annotation";
+  readonly annotationId?: string;
+  readonly score: number;
+  readonly snippet: string;
+  readonly highlights: readonly (readonly [number, number])[];
+}
+
+/** `GET /api/search` reply (structural mirror of `LibrarySearchResult`). */
+export interface SearchReply {
+  readonly results: readonly SearchHit[];
+  readonly total: number;
+  readonly combine: "and" | "or";
+  readonly truncated: boolean;
+  readonly diagnostics?: readonly string[];
+}
+
+/** A highlight pair must be `[start, end)` numbers; out-of-range/reversed pairs are the renderer's problem — the guard only checks shape. */
+const isHighlightPair = (value: unknown): value is readonly [number, number] =>
+  Array.isArray(value) &&
+  value.length === 2 &&
+  typeof value[0] === "number" &&
+  typeof value[1] === "number";
+
+const isSearchHit = (value: unknown): value is SearchHit =>
+  isRecord(value) &&
+  typeof value["path"] === "string" &&
+  typeof value["title"] === "string" &&
+  (value["kind"] === "doc" || value["kind"] === "annotation") &&
+  isOptionalString(value["annotationId"]) &&
+  typeof value["score"] === "number" &&
+  typeof value["snippet"] === "string" &&
+  Array.isArray(value["highlights"]) &&
+  (value["highlights"] as readonly unknown[]).every(isHighlightPair);
+
+/** `GET /api/search`: every hit present in `results` must check out (path/title/snippet are prerequisites for rendering and navigation). */
+export const isSearchReply = (value: unknown): value is SearchReply =>
+  isRecord(value) &&
+  Array.isArray(value["results"]) &&
+  (value["results"] as readonly unknown[]).every(isSearchHit) &&
+  typeof value["total"] === "number" &&
+  (value["combine"] === "and" || value["combine"] === "or") &&
+  typeof value["truncated"] === "boolean" &&
+  (value["diagnostics"] === undefined || isStringArray(value["diagnostics"]));
+
 /** `GET /api/doc/<id>/notes/<anId>/diff` → 服务端算好的 chunk。 */
 export const isDiffResponse = (
   value: unknown,

@@ -80,6 +80,11 @@ interface AnnotateHandle {
   readonly refresh: () => void;
   /** `doc.annotations` (SSE, this doc): re-fetch the list and repaint highlights. */
   readonly annotationsChanged: () => void;
+  /**
+   * Focus one sidecar annotation (D61 search hit): enters annotate mode when needed,
+   * then selects the card once the next list render lands.
+   */
+  readonly focusAnnotation: (id: string) => void;
   readonly destroy: () => void;
 }
 
@@ -103,6 +108,8 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
   let draftFocused = false;
   let lastCls: "foreign" | "normalizable" = "foreign";
   let pendingSelection: { readonly anchor: WireAnchor; readonly selector?: string } | undefined;
+  /** A `focusAnnotation` request waiting for the next list render (mint in flight / just entered). */
+  let pendingSelect: string | undefined;
 
   const postHighlights = (items: readonly SidecarEntry[]): void => {
     const out: { id: string; start: number; end: number; status: string }[] = [];
@@ -124,6 +131,10 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
         if (dead || !active) return;
         postHighlights(items);
         panel?.render(items);
+        // A focusAnnotation call parked here until this render: select now, one-shot.
+        const wanted = pendingSelect;
+        pendingSelect = undefined;
+        if (wanted !== undefined) panel?.select(wanted);
       },
       (cause: unknown) => {
         if (dead) return;
@@ -347,6 +358,17 @@ export const mountAnnotate = (deps: AnnotateDeps): AnnotateHandle => {
     annotationsChanged: () => {
       if (dead || !active) return;
       refreshHighlights();
+    },
+    focusAnnotation: (id) => {
+      if (dead) return;
+      pendingSelect = id;
+      // Already live: the re-list lands the select; inactive: enter() mints first
+      // (hello → refreshHighlights → render → select); a mint in flight merges both waits.
+      if (active) {
+        refreshHighlights();
+      } else if (!pending) {
+        enter();
+      }
     },
     destroy: () => {
       dead = true;
