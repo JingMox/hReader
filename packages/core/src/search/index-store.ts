@@ -620,8 +620,7 @@ export const updateIndex = async (
       rel,
       fields,
       annotations: listed?.annotations ?? [],
-      tags:
-        metaTable === undefined ? indexedTagListOf(state.mini, rel) : (metaRecord?.tags ?? []),
+      tags: metaTable === undefined ? indexedTagListOf(state.mini, rel) : (metaRecord?.tags ?? []),
     });
     records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar, meta });
     changed = true;

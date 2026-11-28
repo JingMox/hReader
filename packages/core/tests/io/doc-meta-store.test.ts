@@ -206,10 +206,15 @@ describe("writeDocMetaFile · landing", () => {
     const target = await targetOf(fs.port);
     const prior = await readDocMetaFile(target, deps(fs.port));
 
-    await writeDocMetaFile(target, deps(fs.port), prior, tableOf({
-      "b.html": { tags: ["b"] },
-      "doc.html": RECORD,
-    }));
+    await writeDocMetaFile(
+      target,
+      deps(fs.port),
+      prior,
+      tableOf({
+        "b.html": { tags: ["b"] },
+        "doc.html": RECORD,
+      }),
+    );
 
     expect(fs.textAt(storePath)).toBe(
       serializeDocMetaFile(tableOf({ "b.html": { tags: ["b"] }, "doc.html": RECORD })),
@@ -230,9 +235,14 @@ describe("writeDocMetaFile · landing", () => {
     const prior = await readDocMetaFile(target, deps(fs.port));
 
     const code = await codeOfAsync(() =>
-      writeDocMetaFile(target, deps(fs.port), prior, tableOf({
-        "doc.html": { tags: ["x".repeat(DOC_META_LIMITS.fileBytes)] },
-      })),
+      writeDocMetaFile(
+        target,
+        deps(fs.port),
+        prior,
+        tableOf({
+          "doc.html": { tags: ["x".repeat(DOC_META_LIMITS.fileBytes)] },
+        }),
+      ),
     );
 
     expect(code).toBe("invalid_payload");
@@ -279,9 +289,14 @@ describe("writeDocMetaFile · landing", () => {
     it("should name the backup with a filename-safe stamp", async () => {
       const fs = fakeFs({ ...seed, [storePath]: "{broken" });
       const prior = await corruptReadAt(fs, "{broken");
-      await writeDocMetaFile(await targetOf(fs.port), deps(fs.port), prior, tableOf({
-        "doc.html": RECORD,
-      }));
+      await writeDocMetaFile(
+        await targetOf(fs.port),
+        deps(fs.port),
+        prior,
+        tableOf({
+          "doc.html": RECORD,
+        }),
+      );
 
       expect(corruptBackups(fs).map(([name]) => name)).toEqual([`${stem}.json`]);
     });
