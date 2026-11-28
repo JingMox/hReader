@@ -28,6 +28,7 @@ import {
   type Written,
 } from "./handlers";
 import { dispatchWrite } from "./write-replies";
+import { searchReply } from "./search-reply";
 import { sidecarListReply } from "./sidecar-replies";
 import { bodyRecordOf, jsonOf } from "./http-io";
 import type { Hub } from "./hub";
@@ -283,6 +284,13 @@ const dispatchOf =
       const url = new URL(req.url, "http://local");
       const input = { context, route, params, docId: options.docId };
       return staticOf({ ...input, hasDocQuery: url.searchParams.has("doc") });
+    }
+    if (route.kind === "search") {
+      // Same hand-made-request guard as the static routes: real HTTP always carries `req.url`.
+      if (req.url === undefined) {
+        return jsonOf(400, { code: "invalid_request", message: "请求行缺少 URL" });
+      }
+      return searchReply(context, new URL(req.url, "http://local"));
     }
     if (route.kind === "annotationDiff") {
       return annotationDiffReply(context, {

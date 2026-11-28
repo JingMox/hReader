@@ -51,6 +51,13 @@ const config = {
     "packages/core/src/server/runtime.ts",
     "packages/core/src/annotations/anchor.ts",
     "packages/core/src/annotations/body-text.ts",
+    // search: tokenizer/CJK fuzzy gate, incremental index, snippet offsets, query bounds, HTTP reply
+    "packages/core/src/search/tokenize.ts",
+    "packages/core/src/search/extract.ts",
+    "packages/core/src/search/index-store.ts",
+    "packages/core/src/search/snippet.ts",
+    "packages/core/src/search/query.ts",
+    "packages/core/src/server/search-reply.ts",
     // cli: term(), argument parsing, and the export-side permission gate
     "packages/cli/src/output.ts",
     "packages/cli/src/args/**/*.ts",

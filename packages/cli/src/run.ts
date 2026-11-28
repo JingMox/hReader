@@ -20,6 +20,7 @@ import { patchCommand } from "./commands/patch";
 import { pdfCommand } from "./commands/pdf";
 import { pngCommand } from "./commands/png";
 import { readCommand } from "./commands/read";
+import { searchCommand } from "./commands/search";
 import { styleCommand } from "./commands/style";
 import { styleExtractCommand } from "./commands/style-extract";
 import {
@@ -418,6 +419,15 @@ const runIntent = async (intent: Runnable, io: ResolvedIo): Promise<string> => {
           warn: io.stderr,
           displayPath,
         });
+  }
+  if (intent.kind === "search") {
+    return searchCommand({
+      query: intent.query,
+      limit: intent.limit,
+      workspace: workspaceRealpathOf(intent.workspace),
+      json: intent.json,
+      warn: io.stderr,
+    });
   }
   if (intent.kind === "new") return runNew(intent, io.cwd);
   if (

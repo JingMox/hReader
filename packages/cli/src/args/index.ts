@@ -64,6 +64,31 @@ const serveIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs
   };
 };
 
+const SEARCH_FLAGS = ["--json", "--limit", "--workspace"];
+
+/** `SEARCH_LIMITS.limitMax` pinned in the flag's range message: core owns the real bound. */
+const searchIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
+  const [query = "", ...extra] = rest;
+  const message =
+    extra.length > 0
+      ? `search 只接受 1 个位置参数，多出 ${String(extra.length)} 个`
+      : query === ""
+        ? "search 缺少 <query>"
+        : unusedFlag(raw, SEARCH_FLAGS);
+  if (message !== undefined) return failure(message, "search");
+  // Decimal digits only, same contract as GET /api/search — Number() spellings die here.
+  const rawLimit = raw.values.get("--limit");
+  const limit =
+    rawLimit !== undefined && !/^[0-9]+$/u.test(rawLimit)
+      ? "invalid"
+      : intInRange(raw, "--limit", 1, 100);
+  if (limit === "invalid") return failure("--limit 必须是 1..100 的整数", "search");
+  return {
+    ok: true,
+    intent: { kind: "search", query, limit, ...commonOf(raw, cwd) },
+  };
+};
+
 type IntentBuilder = (raw: Raw, rest: readonly string[], cwd: string) => ParsedArgs;
 
 /** One table instead of an if chain: each new command adds one row, and `build`'s cyclomatic complexity stays flat. */
@@ -83,6 +108,7 @@ const BUILDERS: Readonly<Record<CommandName, IntentBuilder>> = {
   serve: serveIntent,
   template: templateIntent,
   annotations: annotationsIntent,
+  search: searchIntent,
 };
 
 const build = (raw: Raw, cwd: string): ParsedArgs => {

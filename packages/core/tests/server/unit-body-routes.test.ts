@@ -172,8 +172,8 @@ describe("matchRoute · 批注与撤销", () => {
     });
   });
 
-  it("should freeze the table at 31 entries (25 + the six sidecar routes)", () => {
-    expect(ROUTES).toHaveLength(31);
+  it("should freeze the table at 32 entries (26 + the six sidecar routes)", () => {
+    expect(ROUTES).toHaveLength(32);
     expect(matchRoute("GET", "/api/doc/a.html/sidecar")).toMatchObject({
       kind: "route",
       params: { docId: "a.html" },

@@ -191,6 +191,13 @@ export type Intent =
   | ({
       readonly kind: "annotationsMigrate";
       readonly path: string;
+    } & Common)
+  | ({
+      readonly kind: "search";
+      /** The raw query string; its 1..200 code-point bound is core's `invalid_request`. */
+      readonly query: string;
+      /** Absent `--limit` stays `undefined` — core's default applies; this layer invents none. */
+      readonly limit: number | undefined;
     } & Common);
 
 export type ParsedArgs =
