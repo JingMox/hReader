@@ -6,6 +6,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["tests/integration/**/*.test.ts"],
+    // Same HOME isolation as the unit suite (issue #58): spawned daemons/CLIs inherit the
+    // worker's env, so a home-resolution fallback lands in a per-worker temp dir.
+    setupFiles: ["tests/setup/isolate-home.ts"],
     // Every suite starts its own daemon/Chrome/temp workspace: running serially makes port and
     // tmpdir reclamation timing predictable (the Vitest equivalent of the old run.ts's
     // serial-per-suite subprocess).

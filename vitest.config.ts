@@ -14,6 +14,10 @@ export default defineConfig({
       "tests/leak-guard/**/*.test.ts",
       "tests/adversarial/**/*.test.ts",
     ],
+    // Every worker gets an isolated HOME/HREADER_HOME before any test module evaluates
+    // (issue #58): a fallback to os.homedir() — a mutant or a bug ignoring --home — then
+    // lands in a per-worker temp dir, never the real ~/.hreader.
+    setupFiles: ["tests/setup/isolate-home.ts"],
     coverage: {
       provider: "v8",
       // `pi-hreader.ts` is a single-file extension (at package root, not under `src/`), so it must be listed explicitly in coverage.
