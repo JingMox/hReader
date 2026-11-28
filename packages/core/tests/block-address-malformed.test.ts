@@ -116,6 +116,19 @@ describe("source ownership (D58)", () => {
     // carrying a LATER byte offset — the index is unsorted by DFS alone and relies on the
     // sort to find foreign leaves.
     ["<body><table><tr><td>x</td></tr>tail</table>", []],
+    // A tag name outside the selector grammar (`[`, `"`, `<`, `:`) can be an ancestor
+    // but never a step — the block's minted address could never resolve, so it is not
+    // listed (D64). parse5 keeps such names verbatim on the element.
+    ["<body><d[i><p>x</p></d[i></body>", []],
+    ['<body><d"i><p>x</p></d"i></body>', []],
+    ["<body><d<i><p>x</p></d<i></body>", []],
+    ["<body><x:y><p>x</p></x:y></body>", []],
+    // A hyphenated name is inside the grammar — the block stays listed.
+    ["<body><d-i><p>x</p></d-i></body>", ["p"]],
+    // SVG camelCase stays listed: `foreignObject` is a legal selector name — the path
+    // parses (folded to `foreignobject`), misses the element, and the fingerprint half
+    // resolves the address anyway.
+    ["<svg><foreignObject><p>x</p></foreignObject></svg>", ["p"]],
     // Comments/PIs do not foster: they stay inside the element's subtree, so these bytes
     // are owned and the table keeps them.
     ["<body><table><!-- c --><tr><td>x</td></tr></table>", ["table"]],

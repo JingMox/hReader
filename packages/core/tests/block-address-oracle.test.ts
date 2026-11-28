@@ -126,21 +126,106 @@ describe("patch-time oracle (D60)", () => {
     }
   });
 
-  it("should refuse every action on a listed block whose splice is not reparse-exact", () => {
-    // `<p>x<` is listed — the trailing `<` is an owned literal-text byte — but removing
-    // its range leaves "" while the tree minus the block is the scaffold: not exact.
-    const html = "<p>x<";
-    const [block] = listBlocks(html);
-    expect(block?.tag).toBe("p");
-    for (const request of [
-      { address: block?.address ?? "", action: "delete" },
-      { address: block?.address ?? "", action: "replace", html: "<p>r</p>" },
-      { address: block?.address ?? "", action: "insertBefore", html: "<p>b</p>" },
-      { address: block?.address ?? "", action: "insertAfter", html: "<p>a</p>" },
-    ] as const) {
-      const { outcome, refused } = patchOrRefused(html, request);
-      expect(refused).toBe(true);
-      expect(outcome).toBeUndefined();
+  it("should accept every action on a single-block document — an empty splice is an empty body", () => {
+    // Removing the only block leaves "" — the scaffold the tree-minus-side carries is
+    // implicit, so an empty re-parse and an empty scaffold must compare equal (D64).
+    for (const html of ["<div>hello</div>", "<p></p>"]) {
+      const [block] = listBlocks(html);
+      expect(block).toBeDefined();
+      const deleted = applyBlockPatch(html, { address: block?.address ?? "", action: "delete" });
+      expect(deleted.html).toBe("");
+      for (const [action, fragment, expected] of [
+        ["replace", "<p>r</p>", "<p>r</p>"],
+        ["insertBefore", "<p>b</p>", `<p>b</p>${html}`],
+        ["insertAfter", "<p>a</p>", `${html}<p>a</p>`],
+      ] as const) {
+        const outcome = applyBlockPatch(html, {
+          address: block?.address ?? "",
+          action,
+          html: fragment,
+        });
+        expect(outcome.html).toBe(expected);
+      }
+    }
+  });
+
+  it("should refuse writes whose result does not re-parse into the block's context", () => {
+    // The D64 post-write oracle: the splice check only covers the bytes a write
+    // REMOVES. The writing actions must also land: the fragment's top-level nodes
+    // parse as children of the block's original parent at the block's position, and
+    // every element outside the block keeps its tag, attributes, own direct text and
+    // ancestor chain. Each case below writes bytes that re-parse to a different tree.
+    const cases: readonly (readonly [
+      string,
+      string,
+      readonly ("replace" | "insertBefore" | "insertAfter")[],
+    ])[] = [
+      // Scope-close: an li/dd/dt/button start tag inside the open li/dt/dd/button
+      // scope closes the context and reparents the fragment — and the original
+      // block's bytes end up owned by a different parent.
+      [
+        "<ul><li><div><p>x</p></div></li></ul>",
+        "<li>f</li>",
+        ["insertBefore", "insertAfter", "replace"],
+      ],
+      [
+        "<dl><dt><div><p>x</p></div></dt></dl>",
+        "<dd>f</dd>",
+        ["insertBefore", "insertAfter", "replace"],
+      ],
+      [
+        "<dl><dd><div><p>x</p></div></dd></dl>",
+        "<dt>f</dt>",
+        ["insertBefore", "insertAfter", "replace"],
+      ],
+      [
+        "<button><div><p>x</p></div></button>",
+        "<button>f</button>",
+        ["insertBefore", "insertAfter", "replace"],
+      ],
+      // Adoption agency: a formatting element inside its own scope is removed and
+      // reparented — replace goes through the same split as the inserts.
+      ["<a><div><p>x</p></div></a>", "<a>f</a>", ["insertBefore", "insertAfter", "replace"]],
+      [
+        "<nobr><div><p>x</p></div></nobr>",
+        "<nobr>f</nobr>",
+        ["insertBefore", "insertAfter", "replace"],
+      ],
+      // A `<form>` inside a form is dropped by the parser; its children leak.
+      [
+        "<form><div><p>x</p></div></form>",
+        "<form><p>f</p></form>",
+        ["insertBefore", "insertAfter", "replace"],
+      ],
+      // Foreign content: HTML block tags inside svg/math break out to body.
+      ["<svg><p>x</p></svg>", "<p>f</p>", ["insertBefore", "insertAfter", "replace"]],
+      [
+        "<svg><div><p>x</p></div></svg>",
+        "<blockquote><p>f</p></blockquote>",
+        ["insertBefore", "insertAfter", "replace"],
+      ],
+      [
+        "<math><p>x</p></math>",
+        "<table><tr><td>f</td></tr></table>",
+        ["insertBefore", "insertAfter", "replace"],
+      ],
+      // Unclosed raw text swallows a fragment written at the range's end offset —
+      // insertAfter lands inside the element, not after it.
+      ["<div>x<xmp>", "<p>f</p>", ["insertAfter"]],
+      ["<div>x<textarea>", "<p>f</p>", ["insertAfter"]],
+    ];
+    for (const [html, fragment, actions] of cases) {
+      const [block] = listBlocks(html);
+      expect(block, `no listed block in ${html}`).toBeDefined();
+      for (const action of actions) {
+        const { outcome, refused } = patchOrRefused(html, {
+          address: block?.address ?? "",
+          action,
+          html: fragment,
+        });
+        expect(refused, `${action} ${fragment} on ${html}`).toBe(true);
+        expect(outcome).toBeUndefined();
+      }
     }
   });
 
@@ -176,6 +261,37 @@ describe("patch-time oracle (D60)", () => {
         });
         expect(refused).toBe(false);
         expect(outcome?.html).toBe(`${html.slice(0, block.start)}${html.slice(block.end)}`);
+      }
+    }
+  });
+
+  it("should never refuse a safe write on a well-formed document — zero false refusals", () => {
+    // Safe fragments: a same-shape block (`<p>` where a block child is legal) and an
+    // inline-only fragment (`<span>` lands anywhere the parser keeps it). A refusal
+    // here would be the write-side oracle over-firing on a correct write.
+    const corpus: readonly string[] = [
+      "<!DOCTYPE html><html><body><article><h1>Title</h1><p>one</p><ul><li>a</li></ul><p>two</p></article></body></html>",
+      "<div><p>a</p><p>b</p></div><section><ul><li>x</li><li>y</li></ul></section>",
+      "<!DOCTYPE html><html><head><title>t</title></head><body><article><h1>T</h1><p>a<b>b</b>c</p><pre>code</pre></article></body></html>",
+      "<figure><img src=x><figcaption>cap</figcaption></figure><blockquote><p>q</p></blockquote>",
+      "<p>para<div>indiv</div>",
+      "<article><p>one<p>two<div>three",
+    ];
+    for (const html of corpus) {
+      for (const block of listBlocks(html)) {
+        for (const [action, fragment] of [
+          ["replace", "<p>r</p>"],
+          ["insertBefore", "<span>f</span>"],
+          ["insertAfter", "<span>f</span>"],
+        ] as const) {
+          const { outcome, refused } = patchOrRefused(html, {
+            address: block.address,
+            action,
+            html: fragment,
+          });
+          expect(refused, `${action} ${fragment} on ${html}`).toBe(false);
+          expect(outcome).toBeDefined();
+        }
       }
     }
   });

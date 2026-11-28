@@ -15,11 +15,12 @@ import { describe, expect, it } from "vitest";
 import {
   applyBlockPatch,
   listBlocks,
+  parseFragment,
   parseHtml,
   resolveAddress,
-  serializeHtml,
   type BlockPatchOutcome,
   type BlockPatchRequest,
+  type HtmlNode,
 } from "@hreader/core";
 
 /**
@@ -329,31 +330,118 @@ const badDocArb: fc.Arbitrary<string> = fc
 
 const MALFORMED_RUNS = { numRuns: 2000 };
 
-type DocNode = ReturnType<typeof parseHtml>["root"];
+type DocNode = HtmlNode;
 
 /**
- * The D60 oracle's `expected` side, rebuilt independently: the repo parse tree with the
- * element whose span is exactly `[start, end)` cut out of its parent, serialized. The
- * oracle accepts a splice only when re-parsing it produces this same tree.
+ * The independent checkers below re-derive what the oracles guarantee, test-side:
+ * `spliceTree` builds the expected tree (block cut, or fragment spliced in at the
+ * block's position), and `sameDoc` compares two trees node-by-node — kind, tag,
+ * ordered attributes, text/comment/doctype payloads, children — after normalizing
+ * the implicit `html/head/body` scaffold both parses produce (or don't, for "").
  */
-const cutBlock = (root: DocNode, start: number, end: number): DocNode => {
+const spliceTree = (
+  root: DocNode,
+  start: number,
+  end: number,
+  insert: readonly DocNode[],
+  mode: "cut" | "replace" | "insertBefore" | "insertAfter",
+): DocNode => {
   if (root.kind !== "element" && root.kind !== "document") return root;
-  return {
-    ...root,
-    children: root.children
-      .filter(
-        (child) =>
-          !(child.kind === "element" && child.span?.start === start && child.span.end === end),
-      )
-      .map((child) => cutBlock(child, start, end)),
-  };
+  const children: DocNode[] = [];
+  for (const child of root.children) {
+    if (child.kind === "element" && child.span?.start === start && child.span.end === end) {
+      if (mode === "cut") continue;
+      if (mode === "insertBefore") children.push(...insert, child);
+      else if (mode === "insertAfter") children.push(child, ...insert);
+      else children.push(...insert);
+    } else children.push(spliceTree(child, start, end, insert, mode));
+  }
+  return { ...root, children };
 };
 
-const minusBlockSerialized = (html: string, start: number, end: number): string =>
-  serializeHtml({
-    root: cutBlock(parseHtml(html, { locations: true }).root, start, end),
-    diagnostics: [],
+const attrsEq = (
+  left: readonly (readonly [string, string])[],
+  right: readonly (readonly [string, string])[],
+): boolean =>
+  left.length === right.length &&
+  left.every((attr, index) => attr[0] === right[index][0] && attr[1] === right[index][1]);
+
+const nodesEq = (left: readonly DocNode[], right: readonly DocNode[]): boolean =>
+  left.length === right.length &&
+  left.every((node, index) => {
+    const other = right[index];
+    return other !== undefined && shapeEq(node, other);
   });
+
+const shapeEq = (left: DocNode, right: DocNode): boolean =>
+  left.kind === right.kind &&
+  ((left.kind === "element" &&
+    right.kind === "element" &&
+    left.tag === right.tag &&
+    attrsEq(left.attrs, right.attrs) &&
+    nodesEq(left.children, right.children)) ||
+    (left.kind === "text" && right.kind === "text" && left.value === right.value) ||
+    (left.kind === "comment" && right.kind === "comment" && left.data === right.data) ||
+    (left.kind === "doctype" &&
+      right.kind === "doctype" &&
+      left.name === right.name &&
+      left.publicId === right.publicId &&
+      left.systemId === right.systemId) ||
+    (left.kind === "document" &&
+      right.kind === "document" &&
+      nodesEq(left.children, right.children)));
+
+/** The implicit html/head/body scaffold — merged so a bare `document` equals one. */
+const scaffoldParts = (root: DocNode): { head: DocNode[]; body: DocNode[]; rest: DocNode[] } => {
+  const kids = root.kind === "document" ? root.children : [root];
+  const head: DocNode[] = [];
+  const body: DocNode[] = [];
+  const rest: DocNode[] = [];
+  for (const child of kids) {
+    if (child.kind === "element" && child.tag === "html") {
+      for (const inner of child.children) {
+        if (inner.kind === "element" && inner.tag === "head") head.push(...inner.children);
+        else if (inner.kind === "element" && inner.tag === "body") body.push(...inner.children);
+        else rest.push(inner);
+      }
+    } else rest.push(child);
+  }
+  return { head, body, rest };
+};
+
+const sameDoc = (left: DocNode, right: DocNode): boolean => {
+  const a = scaffoldParts(left);
+  const b = scaffoldParts(right);
+  return nodesEq(a.head, b.head) && nodesEq(a.body, b.body) && nodesEq(a.rest, b.rest);
+};
+
+/** A fragment source the parser accepts — `parseFragment` is input parsing, not the oracle. */
+const fragmentOrSkip = (source: string): DocNode | undefined => {
+  try {
+    return parseFragment(source);
+  } catch {
+    return undefined;
+  }
+};
+
+/** Fragments that exercise scope-close, AAA, nested-form and foreign-content breakouts. */
+const FRAGMENTS = [
+  "<p>f</p>",
+  "<li>f</li>",
+  "<dd>f</dd>",
+  "<dt>f</dt>",
+  "<a>f</a>",
+  "<nobr>f</nobr>",
+  "<form><p>f</p></form>",
+  "<table><tr><td>f</td></tr></table>",
+  "<blockquote><p>f</p></blockquote>",
+  "<div>f</div>",
+  "<span>f</span>",
+  "<svg><p>f</p></svg>",
+  "<button>f</button>",
+] as const;
+
+const fragArb = fc.constantFrom(...FRAGMENTS);
 
 describe("property · malformed HTML (D58 ownership)", () => {
   it("should list only blocks whose slice carries no foreign tag tokens", () => {
@@ -383,18 +471,23 @@ describe("property · malformed HTML (D58 ownership)", () => {
     fc.assert(
       fc.property(badDocArb, (html) => {
         const index = tagIndexOf(html);
+        const parsed = parseHtml(html, { locations: true }).root;
         for (const block of listBlocks(html)) {
           const stripped = `${html.slice(0, block.start)}${html.slice(block.end)}`;
           const outcome = patchOrSkip(html, { address: block.address, action: "delete" });
           // The oracle refused: no write happened, which is always a legal outcome.
           if (outcome === undefined) continue;
           // Accepted: only the block's own bytes went, and the splice re-parses to
-          // exactly the original tree minus the block's subtree.
+          // exactly the original tree minus the block's subtree — the independent
+          // check, modulo the implicit scaffold (`""` re-parses to a bare document).
           const removed = html.length - outcome.html.length;
           expect(outcome.html).toBe(stripped);
-          expect(serializeHtml(parseHtml(outcome.html))).toBe(
-            minusBlockSerialized(html, block.start, block.end),
-          );
+          expect(
+            sameDoc(
+              parseHtml(outcome.html).root,
+              spliceTree(parsed, block.start, block.end, [], "cut"),
+            ),
+          ).toBe(true);
           // Every element start tag outside the deleted range keeps its bytes (shifted).
           for (const [tag, offset] of outsideTagBytes(index, block.start, block.end)) {
             const shifted = offset < block.start ? offset : offset - removed;
@@ -402,6 +495,38 @@ describe("property · malformed HTML (D58 ownership)", () => {
             const head = outcome.html.slice(shifted, shifted + tag.length + 1).toLowerCase();
             expect(head).toBe(`<${tag.toLowerCase()}`);
             expect(isTagBoundary(outcome.html[shifted + tag.length + 1])).toBe(true);
+          }
+        }
+      }),
+      MALFORMED_RUNS,
+    );
+  });
+
+  it("should refuse or land in-context every listed block on write (D64 oracle)", () => {
+    fc.assert(
+      fc.property(badDocArb, fragArb, (html, fragmentSource) => {
+        const fragment = fragmentOrSkip(fragmentSource);
+        if (fragment === undefined) return;
+        const parsed = parseHtml(html, { locations: true }).root;
+        for (const block of listBlocks(html)) {
+          for (const action of ["replace", "insertBefore", "insertAfter"] as const) {
+            const outcome = patchOrSkip(html, {
+              address: block.address,
+              action,
+              html: fragmentSource,
+            });
+            // Refused (oracle, content model, fragment gates): nothing was written.
+            if (outcome === undefined) continue;
+            // Accepted: the result re-parses to the original tree with the fragment
+            // spliced at the block's position — spec (a): every element outside the
+            // block keeps tag/attrs/own direct text/ancestor chain; spec (b): the
+            // fragment's top-level nodes are children of the block's original parent,
+            // replacing it or adjacent to it. Verified by an independent tree splice.
+            const expected = spliceTree(parsed, block.start, block.end, [fragment], action);
+            expect(
+              sameDoc(parseHtml(outcome.html).root, expected),
+              `${action} ${fragmentSource} at ${block.address} in ${html}`,
+            ).toBe(true);
           }
         }
       }),

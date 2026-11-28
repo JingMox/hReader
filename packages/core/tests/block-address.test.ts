@@ -573,4 +573,22 @@ describe("resolveAddress · relocation", () => {
     const resolved = resolveAddress("<div><em>x</em></div>", "css:body > div > em@deadbeef");
     expect(resolved).toEqual({ ok: false, code: "target_moved" });
   });
+
+  it("should distance-rank three same-fingerprint candidates and keep the unique winner", () => {
+    // The address path `body > ul > li:nth-of-type(1) > p` lands on a `li` with no
+    // `p`, so the fingerprint search ranks three `dup` blocks: li:nth-of-type(2)'s p
+    // (distance 1), div's p and section's p (distance 2 each). A distance table whose
+    // cell indexing drifts off the row*cols grid collapses the ranking into a tie —
+    // the winner must stay li:nth-of-type(2)'s p.
+    const [minted] = blocksOf("<ul><li><p>dup</p></li><li>b</li></ul>");
+    const doc =
+      "<div><p>dup</p></div><section><p>dup</p></section>" +
+      "<ul><li>zzz</li><li><p>dup</p></li></ul>";
+    const resolved = resolveAddress(doc, minted?.address ?? "");
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) {
+      expect(resolved.block.address).toContain("css:body > ul > li:nth-of-type(2) > p");
+      expect(doc.slice(resolved.block.start, resolved.block.end)).toBe("<p>dup</p>");
+    }
+  });
 });
