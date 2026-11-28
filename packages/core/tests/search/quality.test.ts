@@ -6,9 +6,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { bodyTextOf } from "../../src/annotations/body-text";
+import { parseHtml } from "../../src/html/parse";
 import { nodePatchDeps } from "../../src/io/node-fs";
 import { addSidecarAnnotation } from "../../src/ops/sidecar-ops";
 import { searchLibrary, type SearchHit } from "../../src/search";
+import { extractDocFields } from "../../src/search/extract";
 import { searchTokensOf } from "../../src/search/tokenize";
 import { withWorkspace, writeTextAt } from "../io/harness";
 
@@ -273,5 +276,78 @@ describe("searchLibrary quality", () => {
       const joined = await find(dir, "复合批注");
       expect(joined.results[0]?.snippet).toBe("复合批注\n机油");
     });
+  });
+});
+
+describe("search text separates element boundaries", () => {
+  const PAGE = (title: string, inner: string): string =>
+    `<!doctype html><html><head><title>${title}</title></head><body>${inner}</body></html>`;
+
+  it("finds table-cell terms the glued join hid: SSD1306 and M3", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(
+        join(dir, "parts.html"),
+        PAGE("零件表", "<table><tr><td>module</td><td>1</td><td>SSD1306</td></tr></table>"),
+      );
+      await writeTextAt(
+        join(dir, "screws.html"),
+        PAGE("螺丝表", "<table><tr><td>screw</td><td>M3</td><td>steel</td></tr></table>"),
+      );
+      const ssd = await find(dir, "SSD1306");
+      expect(pathsOf(ssd.results)).toEqual(["parts.html"]);
+      expectHighlightsIn(ssd.results, "SSD1306");
+      expect(pathsOf((await find(dir, "M3")).results)).toEqual(["screws.html"]);
+    });
+  });
+
+  it("keeps inline boundaries unglued: <b>foo</b>bar indexes foo and bar, never foobar", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), PAGE("内联", "<p><b>foo</b>bar</p>"));
+      const bar = await find(dir, "bar");
+      expect(pathsOf(bar.results)).toEqual(["a.html"]);
+      expectHighlightsIn(bar.results, "bar");
+      // The glued token must not exist either way: querying it finds nothing.
+      expect((await find(dir, "foobar")).results).toEqual([]);
+    });
+  });
+
+  it("splits at <br> and across list items", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "br.html"), PAGE("换行", "<p>alpha<br>beta</p>"));
+      await writeTextAt(
+        join(dir, "list.html"),
+        PAGE("列表", "<ul><li>alpha</li><li>beta</li></ul>"),
+      );
+      expect(pathsOf((await find(dir, "beta")).results)).toEqual(
+        expect.arrayContaining(["br.html", "list.html"]),
+      );
+      const hits = await find(dir, "beta");
+      expect(hits.results).toHaveLength(2);
+    });
+  });
+
+  it("drops nothing the anchor domain had: every anchor token survives whole or by leading chunk", async () => {
+    // The anchor model (bodyTextOf) can glue tokens the search model splits apart. Recall
+    // safety only needs the token's leading chunk to survive — the segmented half of a
+    // glued pair is the search term itself.
+    for (const inner of [
+      "<table><tr><td>module</td><td>1</td><td>SSD1306</td></tr></table>",
+      "<p><b>foo</b>bar</p>",
+      "<p>alpha<br>beta</p>",
+      "<ul><li>先把它</li><li>module</li><li>2</li></ul>",
+      "<p>摩托车<span>维修</span>手册</p><h2>title<b>bold</b></h2>",
+    ]) {
+      const html = PAGE("t", inner);
+      const anchor = searchTokensOf(bodyTextOf(parseHtml(html))).map((token) => token.text);
+      const search = new Set(
+        searchTokensOf(extractDocFields(html).body).map((token) => token.text),
+      );
+      for (const term of anchor) {
+        expect(
+          search.has(term) || [...search].some((token) => term.startsWith(token)),
+          `anchor token ${JSON.stringify(term)} vanished from the search text of ${JSON.stringify(inner)}`,
+        ).toBe(true);
+      }
+    }
   });
 });
