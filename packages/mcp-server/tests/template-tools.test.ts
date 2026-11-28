@@ -239,6 +239,13 @@ describe("hr_save_template", () => {
 
   it("should fall back to os.homedir() for the user tier when HREADER_HOME is unset or empty", async () => {
     seedPage();
+    // The worker home is shared across files: writing into it would leak into other tests'
+    // user-tier listings in the same worker. HOME/USERPROFILE get a per-test dir instead.
+    const osHome = join(workspace, "os-home");
+    mkdirSync(osHome);
+    vi.stubEnv("HOME", osHome);
+    vi.stubEnv("USERPROFILE", osHome);
+    expect(homedir()).toBe(osHome);
     for (const [stub, id] of [
       [undefined, "unset-home"],
       ["", "empty-home"],
@@ -248,7 +255,6 @@ describe("hr_save_template", () => {
       const result = await call("hr_save_template", { file: "p.html", id, global: true });
 
       expect(isErrorResultOf(result)).toBe(false);
-      // Under the worker's isolated HOME this lands in the temp home, never the real one.
       expect(existsSync(join(homedir(), ".hreader", "templates", id, "index.html"))).toBe(true);
     }
   });

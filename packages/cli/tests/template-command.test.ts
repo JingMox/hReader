@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { templateNewCommand } from "../src/commands/template";
 import { fieldOf, keysOf, parseJsonLine, runCli, withTempDir } from "./harness";
@@ -44,6 +44,11 @@ const realHreaderSnapshot = (): readonly string[] | null => {
 let realHreaderBefore: readonly string[] | null = null;
 beforeAll(() => {
   realHreaderBefore = realHreaderSnapshot();
+});
+afterEach(() => {
+  // The worker home is shared across files: env stubs that redirect writes must be
+  // undone per test, or a shuffled sibling sees the leftovers (issue #58's CI failure).
+  vi.unstubAllEnvs();
 });
 afterAll(() => {
   expect(realHreaderSnapshot()).toEqual(realHreaderBefore);
@@ -488,9 +493,15 @@ describe("hr template save", () => {
     });
   });
 
-  it("should land in the isolated worker HOME when --global is given without --home", async () => {
+  it("should land under os.homedir(), never the real home, when --global is given without --home", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(join(dir, "page.html"), managedPage("P"));
+      // A per-test home: the worker home is shared across files, so landing there would leak
+      // into other tests' user-tier listings in the same worker (a real CI failure, issue #58).
+      const osHome = join(dir, "os-home");
+      mkdirSync(osHome);
+      vi.stubEnv("HOME", osHome);
+      vi.stubEnv("USERPROFILE", osHome);
 
       const result = await runIn(dir, [
         "template",
@@ -502,8 +513,7 @@ describe("hr template save", () => {
       ]);
 
       expect(result.code).toBe(0);
-      // No --home and no io injection: the worker's isolated HOME (tests/setup/isolate-home.ts)
-      // is the only net — the template must land there and never in the passwd home.
+      // No --home and no io injection: homedir() — reading the stubbed HOME — is the only net.
       const userTier = join(homedir(), ".hreader", "templates", "isolated-home");
       expect(existsSync(join(userTier, "index.html"))).toBe(true);
       expect(existsSync(join(userInfo().homedir, ".hreader", "templates", "isolated-home"))).toBe(
@@ -512,20 +522,22 @@ describe("hr template save", () => {
     });
   });
 
-  it("should land in the isolated worker HOME for a real subprocess too (env inheritance)", async () => {
+  it("should land under the injected home for a real subprocess too (env inheritance)", async () => {
     await withTempDir(async (dir) => {
       writeFileSync(join(dir, "page.html"), managedPage("P"));
+      const subHome = join(dir, "sub-home");
+      mkdirSync(subHome);
 
       const result = await runCli(
         ["template", "save", "page.html", "--id", "isolated-sub", "--global", "--json"],
-        { cwd: dir },
+        { cwd: dir, env: { HOME: subHome, USERPROFILE: subHome, HREADER_HOME: subHome } },
       );
 
       expect(result.code).toBe(0);
-      // The child inherits the worker's HOME/HREADER_HOME, so its user tier is the temp home.
-      expect(
-        existsSync(join(homedir(), ".hreader", "templates", "isolated-sub", "index.html")),
-      ).toBe(true);
+      // The child inherits these env values: its config root and homedir() both land under them.
+      expect(existsSync(join(subHome, ".hreader", "templates", "isolated-sub", "index.html"))).toBe(
+        true,
+      );
       expect(existsSync(join(userInfo().homedir, ".hreader", "templates", "isolated-sub"))).toBe(
         false,
       );
