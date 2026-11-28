@@ -1,6 +1,6 @@
-// 这层管：D61 搜索在**注入式入口**的接线——`io.json` 的 `/api/search` 路径与守卫、
-// `navigateToDoc` 的浏览器/桌面两臂、`sessionStorage` 的批注暂存往返。
-// 与 main-inject 共用 main-stubs 的全局桩；window 形状在桩上现场补 assign/sessionStorage。
+// This layer covers D61 search wiring in the **injected entry point**: `io.json`'s `/api/search`
+// path + guard, `navigateToDoc`'s browser/desktop arms, and the `sessionStorage` annotation stash
+// round-trip. Shares main-stubs' globals with main-inject; window shape gets assign/sessionStorage patched in per case.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -21,7 +21,7 @@ const ROOT = "#hr-root";
 const INPUT = `${ROOT} #hr-search-input`;
 const FOCUS_KEY = "hr-search-focus";
 
-/** 装完桩之后的 `window`（installGlobals 只给 href；assign/sessionStorage/桥由各用例补）。 */
+/** `window` after stub install (installGlobals only sets href; assign/sessionStorage/bridge are patched per case). */
 interface SearchWindow {
   location: { href: string; assign?: (url: string) => void };
   sessionStorage?: {
@@ -41,7 +41,7 @@ interface RecHost {
   readonly fire: (selector: string, type: string, event: unknown) => void;
 }
 
-/** 记录型 Host：`on` 句柄按 `${selector}|${type}` 存，fire 原样回放（与 main-inject 同约定）。 */
+/** Recording Host: `on` handlers keyed by `${selector}|${type}`, `fire` replays verbatim (same convention as main-inject). */
 const recordingHostOf = (has: (selector: string) => boolean): RecHost => {
   const scrolls: string[] = [];
   const classes: [string, string, string][] = [];
@@ -90,7 +90,7 @@ const SEARCH_HIT = {
 };
 const ANN_HIT = { ...SEARCH_HIT, kind: "annotation" as const, annotationId: "an-9" };
 
-/** 注入式 IO：`/api/search` 回 `searchReply`，其余路径按主端流程回放。 */
+/** Injected IO: `/api/search` returns `searchReply`; other paths replay per the main-entry flow. */
 const ioOf = (searchReply: unknown, asked: string[] = []): AppIo => ({
   text: (path) => {
     asked.push(path);
@@ -122,7 +122,7 @@ const ioOf = (searchReply: unknown, asked: string[] = []): AppIo => ({
 
 const THEMES = { themes: ["atelier-editorial"], default: "atelier-editorial" };
 
-/** 真 `/` → input → 150ms 真防抖 → Enter：落在扁平序 `index` 那条命中上。 */
+/** Real `/` → input → real 150ms debounce → Enter: lands on the hit at flat-order `index`. */
 const openAndEnter = async (fire: RecHost["fire"], index: number): Promise<void> => {
   stubs.keyHandlers[0]?.({ key: "/" });
   fire(INPUT, "input", { value: "词" });
@@ -149,7 +149,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("main-search · navigateToDoc（命中跳转两臂）", () => {
+describe("main-search · navigateToDoc (hit-navigation arms)", () => {
   it("should fetch /api/search on the debounce and assign /?doc= for a doc hit", async () => {
     installGlobals("doc.html", "http://x/?doc=doc.html");
     const assign = vi.fn();
@@ -241,7 +241,7 @@ describe("main-search · navigateToDoc（命中跳转两臂）", () => {
   });
 });
 
-describe("main-search · takeSearchFocus（暂存的消费）", () => {
+describe("main-search · takeSearchFocus (consuming the stash)", () => {
   it("should focus the stashed annotation's anchor block after boot", async () => {
     installGlobals("doc.html", "http://x/?doc=doc.html");
     const map = new Map([[FOCUS_KEY, JSON.stringify({ doc: "doc.html", ann: "an-9" })]]);

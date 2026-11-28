@@ -67,8 +67,9 @@ body {
   margin: 4px 0 12px;
 }
 
-/* 书库搜索面板：居中浮层。条目文本全部由 search widget 走 textContent；
-   `mark` 只是高亮文本节点（snippet 的命中区间）。 */
+/* Library-search panel: centered overlay. All item text is written by the search
+   widget via textContent; `mark` is just a highlighted text node (the snippet's
+   hit range). */
 #hr-search-panel {
   position: fixed;
   top: 12vh;

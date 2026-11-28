@@ -1,6 +1,7 @@
-// 这层管：`widgets/search.ts`（D61 搜索面板）——开合、防抖、过期响应、分组、
-// 键盘导航、Enter 打开、combine:"or" 提示与空/错/超长三态。
-// 计时器走注入的 `Schedule`（手动钟），断言只看 fake host 的调用序列。
+// This layer covers `widgets/search.ts` (the D61 search panel): open/close, debounce, stale
+// responses, grouping, keyboard navigation, Enter-to-open, the combine:"or" hint, and the
+// empty/error/over-limit states. Timers run on the injected `Schedule` (manual clock);
+// assertions read only the fake host's call log.
 
 import { describe, expect, it } from "vitest";
 
@@ -118,7 +119,7 @@ const query = (rig: Rig, value: string): void => {
   rig.timers.at(-1)?.run();
 };
 
-describe("search widget · 开合", () => {
+describe("search widget · open and close", () => {
   it("should write mount-time markers: capability attr, placeholder, group titles", () => {
     const rig = mount();
     expect(attrsOf(rig.fake, ROOT, "data-hr-search")).toEqual([""]);
@@ -159,7 +160,7 @@ describe("search widget · 开合", () => {
   });
 });
 
-describe("search widget · 防抖与过期响应", () => {
+describe("search widget · debounce and stale responses", () => {
   it("should issue one request per pause (150ms debounce via injected timers)", () => {
     const rig = mount();
     openPanel(rig);
@@ -186,13 +187,13 @@ describe("search widget · 防抖与过期响应", () => {
     query(rig, "新词");
     expect(rig.fetches.map((fetch) => fetch.query)).toEqual(["旧词", "新词"]);
 
-    // 新响应先到：渲染它；旧响应后到：seq 对不上直接丢。
+    // New response lands first: render it; old response lands second: seq mismatch, dropped.
     rig.fetches[1]?.resolve(replyOf([hitOf({ title: "新结果" })]));
     await Promise.resolve();
     rig.fetches[0]?.resolve(replyOf([hitOf({ title: "旧结果" })]));
     await Promise.resolve();
 
-    // clearLists 留下的那次空写在前，最后一笔才是新结果；旧结果一笔都没写。
+    // clearLists' empty write comes first; the last write is the new result — the stale one wrote nothing.
     const specs = childrenSpecs(rig.fake, DOCS_LIST);
     const last = specs.at(-1) as readonly unknown[];
     expect(last).toHaveLength(1);
@@ -209,7 +210,7 @@ describe("search widget · 防抖与过期响应", () => {
     rig.fetches[0]?.resolve(replyOf([hitOf()]));
     await Promise.resolve();
 
-    // 列表上只留下 show/hide 两次清空，迟到的响应一笔结果都没写。
+    // The list shows only the two show/hide clearings; the late response wrote no items.
     for (const specs of childrenSpecs(rig.fake, DOCS_LIST)) {
       expect(specs).toEqual([]);
     }
@@ -224,7 +225,7 @@ describe("search widget · 防抖与过期响应", () => {
 
     rig.fetches[0]?.reject(new Error("旧失败"));
     await Promise.resolve();
-    // 旧 reject 不碰提示行：提示仍是新查询的"搜索中"。
+    // The stale reject doesn't touch the hint: still "searching" for the new query.
     expect(lastText(rig.fake, HINT)).toBe(COPY.searchLoading);
 
     rig.fetches[1]?.reject("非 Error 失败");
@@ -233,7 +234,7 @@ describe("search widget · 防抖与过期响应", () => {
   });
 });
 
-describe("search widget · 分组与导航", () => {
+describe("search widget · grouping and navigation", () => {
   it("should group doc and annotation hits with a shared flat index", async () => {
     const rig = mount();
     openPanel(rig);
@@ -253,12 +254,12 @@ describe("search widget · 分组与导航", () => {
     const anns = childrenSpecs(rig.fake, ANNS_LIST).at(-1) as {
       attrs?: { "data-hr-index"?: string };
     }[];
-    // 文档组 2 条（index 0、1），批注组 1 条（index 2）——扁平序号跨组连续。
+    // Docs group has 2 items (index 0, 1), annotations group 1 (index 2) — the flat index runs across groups.
     expect(docs.map((item) => item.attrs?.["data-hr-index"])).toEqual(["0", "1"]);
     expect(anns.map((item) => item.attrs?.["data-hr-index"])).toEqual(["2"]);
     expect(attrsOf(rig.fake, DOCS, "hidden").at(-1)).toBe("<removed>");
     expect(attrsOf(rig.fake, ANNS, "hidden").at(-1)).toBe("<removed>");
-    // 空标题回退成 path（仍是纯文本）。
+    // An empty title falls back to path (still plain text).
     expect(JSON.stringify(anns)).toContain("b.html");
   });
 
@@ -286,7 +287,7 @@ describe("search widget · 分组与导航", () => {
 
     rig.fake.fire(INPUT, "keydown", { key: "ArrowDown" });
     rig.fake.fire(INPUT, "keydown", { key: "ArrowDown" });
-    // 第三条按下回绕到底部 index 1（0→1→0→1）。
+    // Third ArrowDown wraps to index 1 again (0→1→0→1).
     rig.fake.fire(INPUT, "keydown", { key: "ArrowDown" });
     expect(clsCalls().at(-1)?.args).toEqual([
       `${PANEL} [data-hr-index="1"]`,
@@ -306,7 +307,7 @@ describe("search widget · 分组与导航", () => {
     rig.fetches[0]?.resolve(replyOf([hitOf({ path: "a.html" }), hitOf({ path: "b.html" })]));
     await Promise.resolve();
 
-    // 0 起按 ArrowUp：模回绕到末位（index 1）；再一次回到 0。
+    // ArrowUp from 0 wraps modulo to the last item (index 1); once more returns to 0.
     rig.fake.fire(INPUT, "keydown", { key: "ArrowUp" });
     let clsCalls = rig.fake.calls.filter(
       (call) => call.op === "cls" && call.args[1] === "search__item--on" && call.args[2] === "1",
@@ -346,7 +347,7 @@ describe("search widget · 分组与导航", () => {
       closest: () => ({ getAttribute: () => "9" }),
     });
     expect(rig.opened).toEqual([]);
-    // 以上键鼠动作都不产生意图 —— Escape 是键位出口，不是"任意键"。
+    // None of these key/mouse actions emits an intent — Escape is a key exit, not "any key".
     expect(rig.intents).toEqual([]);
 
     rig.fake.fire(INPUT, "keydown", { key: "Escape" });
@@ -354,7 +355,7 @@ describe("search widget · 分组与导航", () => {
   });
 });
 
-describe("search widget · 防抖计时器的开合清理", () => {
+describe("search widget · debounce timer cleanup on open/close", () => {
   it("should cancel a queued debounce when the panel closes", () => {
     const rig = mount();
     openPanel(rig);
@@ -369,8 +370,9 @@ describe("search widget · 防抖计时器的开合清理", () => {
 
   it("should cancel a debounce queued while closed when the panel opens", () => {
     const rig = mount();
-    // 事件注册与面板开否无关：假 host 可直接派发，真 DOM 里隐藏输入框摸不到——
-    // show() 必须收掉这条路径排下的计时器，否则开面板瞬间发起一次过期查询。
+    // Event registration doesn't depend on the panel being open: the fake host can fire it
+    // directly (in the real DOM a hidden input can't be reached) — show() must reap the timer
+    // queued on this path, or opening the panel fires a stale query.
     type(rig, "词");
     expect(rig.timers).toHaveLength(1);
 
@@ -382,7 +384,7 @@ describe("search widget · 防抖计时器的开合清理", () => {
   });
 });
 
-describe("search widget · 高亮 run 的钳制与排序", () => {
+describe("search widget · highlight-run clamping and sorting", () => {
   const snippetRuns = async (
     rig: Rig,
     highlights: readonly (readonly [number, number])[],
@@ -424,7 +426,7 @@ describe("search widget · 高亮 run 的钳制与排序", () => {
   });
 });
 
-describe("search widget · 状态文案", () => {
+describe("search widget · state copy", () => {
   it("should show the partial-match hint only when combine is or", async () => {
     const rig = mount();
     openPanel(rig);
@@ -447,7 +449,7 @@ describe("search widget · 状态文案", () => {
     await Promise.resolve();
     expect(lastText(rig.fake, HINT)).toBe(COPY.searchEmpty);
 
-    // 正常输入不清提示（防闪烁）：停笔防抖一到才转"搜索中"。
+    // Real input doesn't clear the hint (prevents flicker): "searching" lands only at debounce fire.
     type(rig, "下");
     expect(lastText(rig.fake, HINT)).toBe(COPY.searchEmpty);
     rig.timers.at(-1)?.run();
@@ -462,7 +464,7 @@ describe("search widget · 状态文案", () => {
     expect(rig.fetches).toHaveLength(0);
     expect(lastText(rig.fake, HINT)).toBe(COPY.searchIdle);
 
-    // 不带 value 的 input 事件（非输入框元素触达这条 handler）：与空白同路，回到 idle 提示。
+    // An input event without `value` (a non-input element reached this handler): same path as blank → back to the idle hint.
     rig.fake.fire(INPUT, "input", {});
     expect(rig.fetches).toHaveLength(0);
     expect(lastText(rig.fake, HINT)).toBe(COPY.searchIdle);
@@ -497,7 +499,7 @@ interface LiSpec {
 const lastItems = (rig: Rig, list: string): readonly LiSpec[] =>
   childrenSpecs(rig.fake, list).at(-1) as readonly LiSpec[];
 
-describe("search widget · 列表项的内部结构", () => {
+describe("search widget · item internals", () => {
   it("should render kind badge / title / snippet classes and keep a flat cross-group index", async () => {
     const rig = mount();
     openPanel(rig);
@@ -513,11 +515,11 @@ describe("search widget · 列表项的内部结构", () => {
 
     const docs = lastItems(rig, DOCS_LIST);
     const anns = lastItems(rig, ANNS_LIST);
-    // 扁平序号必须跨组连续：docs.length + index，错一位（减/不加）这里就偏。
+    // The flat index must run across groups: docs.length + index — off by one (subtract/omit) shows here.
     expect(anns.map((item) => item.attrs?.["data-hr-index"])).toEqual(["1", "2"]);
 
     const doc = docs[0];
-    // 渲染即带活跃项（首条），active 类名挂在第一项、不挂第二项。
+    // First render carries the active item (first one): the `active` class lands on item 1, not item 2.
     expect(doc?.attrs?.["class"]).toBe("search__item search__item--on");
     expect(doc?.attrs?.["role"]).toBe("option");
     expect(anns[0]?.attrs?.["class"]).toBe("search__item");
@@ -528,7 +530,7 @@ describe("search widget · 列表项的内部结构", () => {
     expect(titleP?.tag).toBe("p");
     expect(kindSpan?.attrs?.["class"]).toBe("search__kind");
     expect(kindSpan?.tag).toBe("span");
-    // kind 徽标文案按 hit.kind 分流：文档题标"文档"，批注题标"批注"。
+    // The kind badge copy splits on hit.kind: "文档" for docs, "批注" for annotations.
     expect(kindSpan?.text).toBe(COPY.searchDocs);
     expect(anns[0]?.children?.[0]?.children?.[0]?.text).toBe(COPY.searchAnns);
     expect(titleP?.children?.[1]?.text).toBe("文档题");
@@ -550,7 +552,7 @@ describe("search widget · 列表项的内部结构", () => {
   });
 });
 
-describe("search widget · snippet 的空/反向/贴边高亮", () => {
+describe("search widget · empty/reversed/edge highlights in the snippet", () => {
   const runsOf = async (
     rig: Rig,
     snippet: string,
@@ -601,7 +603,7 @@ describe("search widget · snippet 的空/反向/贴边高亮", () => {
   });
 });
 
-describe("search widget · 键盘位移的每一步都可观测", () => {
+describe("search widget · every keyboard-move step observable", () => {
   it("should not write cls/scrollTo when there is nothing to move", () => {
     const rig = mount();
     openPanel(rig);
@@ -638,13 +640,13 @@ describe("search widget · 键盘位移的每一步都可观测", () => {
 
     rig.fake.fire(INPUT, "keydown", { key: "ArrowDown" });
     rig.fake.fire(INPUT, "keydown", { key: "ArrowUp" });
-    // 从 index 1 向上只能到 0：+1 方向会落在 2。
+    // From index 1 upward can only reach 0: a +1 move would land on 2.
     const onCalls = rig.fake.calls.filter((call) => call.op === "cls" && call.args[2] === "1");
     expect(onCalls.at(-1)?.args[0]).toBe(`${PANEL} [data-hr-index="0"]`);
   });
 });
 
-describe("search widget · 点击目标的属性解析", () => {
+describe("search widget · click-target attribute resolution", () => {
   it("should resolve the index through the [data-hr-index] selector and attribute name", async () => {
     const rig = mount();
     openPanel(rig);
@@ -652,7 +654,7 @@ describe("search widget · 点击目标的属性解析", () => {
     rig.fetches[0]?.resolve(replyOf([hitOf(), hitOf({ path: "b.html" })]));
     await Promise.resolve();
 
-    // 假 closest 只认自己的选择器、假 getAttribute 只认自己的名字——换错任一参数即落空。
+    // The fake closest honors only its own selector, the fake getAttribute only its own name — the wrong parameter for either misses.
     rig.fake.fire(PANEL, "click", {
       closest: (selector: string) =>
         selector === "[data-hr-index]"
@@ -673,7 +675,7 @@ describe("search widget · 点击目标的属性解析", () => {
   });
 });
 
-describe("search widget · 开合/过期时列表与计时器的清理", () => {
+describe("search widget · list and timer cleanup on close/stale", () => {
   it("should empty both lists and re-hide both groups on hide", async () => {
     const rig = mount();
     openPanel(rig);
@@ -707,7 +709,7 @@ describe("search widget · 开合/过期时列表与计时器的清理", () => {
     rig.fetches[0]?.resolve(replyOf([hitOf({ title: "迟到" })]));
     await Promise.resolve();
 
-    // 重开后只有一次清空写：迟到响应若混进来，最后一笔会是它的列表。
+    // After reopen there's exactly one clearing write: if the late response leaked in, the last write would be its list.
     expect(childrenSpecs(rig.fake, DOCS_LIST).at(-1)).toEqual([]);
     expect(lastText(rig.fake, HINT)).toBe(COPY.searchIdle);
   });

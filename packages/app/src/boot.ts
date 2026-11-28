@@ -71,16 +71,16 @@ export interface BootDeps {
   readonly keySource: (handler: (event: KeyLike) => void) => () => void;
   /** 批注与 diff 的接线；缺省时批注相关意图全部无副作用。 */
   readonly notes?: NotesDeps;
-  /** 书库搜索（`/` 打开的 D61 面板）：缺省时 `/` 只写一条状态栏提示。 */
+  /** Library search (the D61 panel opened by `/`); when absent, `/` only writes a statusbar hint. */
   readonly search?:
     | {
-        /** `GET /api/search?q=…&limit=…` 的封装。 */
+        /** `GET /api/search?q=…&limit=…` wrapper. */
         readonly fetch: (query: string) => Promise<SearchReply>;
-        /** 命中跳转：浏览器走 `/?doc=`，桌面壳走 `/open` 桥（`annotationId` 由调用侧跨页暂存）。 */
+        /** Hit navigation: the browser goes to `/?doc=`, the desktop shell goes through the `/open` bridge (the caller stashes `annotationId` across the page load). */
         readonly navigate: (path: string, annotationId?: string) => void;
       }
     | undefined;
-  /** 启动后待聚焦的批注 id（跨文档批注命中跳转后由 `main.ts` 从 sessionStorage 取出）。 */
+  /** Annotation id to focus right after boot (read from sessionStorage by `main.ts` after a cross-doc annotation-hit navigation). */
   readonly focusAnnotation?: string | undefined;
   /** 演示模式的浏览器环境（全屏 / hash）；缺省 = 这两项副作用退化为 no-op。 */
   readonly present?: PresentShell;
@@ -405,7 +405,7 @@ export const boot = (deps: BootDeps): Booted => {
     if (presentRef.current !== undefined && !presentRef.current.before(intent)) return;
     store.dispatch(intent);
     if (intent.kind === "themeSelected") selectTheme(intent);
-    // 搜索依赖缺席（测试壳/旧壳）：`/` 不是死键——写一条可见的"不可用"提示。
+    // No search dep (test shells / older shells): `/` must not be a dead key — write a visible "unavailable" hint.
     if (intent.kind === "searchOpened" && deps.search === undefined) {
       host.text(`${ROOT} #hr-hint`, COPY.searchUnavailable);
     }
@@ -425,8 +425,9 @@ export const boot = (deps: BootDeps): Booted => {
           fetch: search.fetch,
           openHit: (hit: SearchHit): void => {
             const ann = hit.kind === "annotation" ? hit.annotationId : undefined;
-            // 同文档批注 → 滚到锚点块并标记（`focusAnnotationCard` 是同步渲染，不必上泵）；
-            // 跨文档 → navigate（annotationId 随行暂存）；同文档的 doc 命中没有新页面可跳。
+            // Same-doc annotation → scroll the anchored block into view and flag it
+            // (`focusAnnotationCard` renders synchronously — no pump needed); cross-doc →
+            // navigate (annotationId rides along in the stash); a same-doc doc hit has no new page to open.
             if (ann !== undefined && hit.path === store.get().docId) {
               focusAnnotationCard({ host, store, dispatch: dispatchIntent }, ann);
               return;
@@ -450,7 +451,7 @@ export const boot = (deps: BootDeps): Booted => {
   if (wired !== undefined) {
     pump(async () => {
       await wired.load();
-      // 跨文档批注命中跳进来的：批注加载完就把锚点块滚进视野（`focusAnnotationCard` 自带查卡守卫）。
+      // Arrived via a cross-doc annotation hit: once notes render, scroll the anchored block into view (`focusAnnotationCard` has its own card-lookup guard).
       if (deps.focusAnnotation !== undefined) {
         focusAnnotationCard({ host, store, dispatch: dispatchIntent }, deps.focusAnnotation);
       }
@@ -549,14 +550,15 @@ const bootForeign = (
   // 外来壳也接键盘与沉浸开关：j/k 等块导航意图对空 blocks 自然空转，只有沉浸与连接态有出口。
   const dispatchIntent = (intent: ReaderIntent): void => {
     store.dispatch(intent);
-    // 与 managed 同一兜底：没有搜索依赖时 `/` 给一条可见提示而不是死键。
+    // Same fallback as managed: without a search dep, `/` writes a visible hint rather than being a dead key.
     if (intent.kind === "searchOpened" && deps.search === undefined) {
       host.text(`${ROOT} #hr-hint`, COPY.searchUnavailable);
     }
   };
   const statusbar = mountStatusbar(host, ROOT, dispatchIntent);
   host.text(`${ROOT} #hr-shortcuts`, COPY.foreignShortcuts);
-  // D61：外来壳也挂同一搜索面板——命中"本文档批注"进批注模式选中该卡，其余跳 `navigate`。
+  // D61: the foreign shell mounts the same search panel — a hit on this doc's annotation enters
+  // annotate mode and selects the card; everything else goes through `navigate`.
   const search = deps.search;
   const searchW =
     search === undefined
@@ -581,7 +583,7 @@ const bootForeign = (
   const widgets: readonly Widget[] = searchW === undefined ? [statusbar] : [statusbar, searchW];
   const unbindKeys = deps.keySource(keyHandlerOf(store, dispatchIntent));
   const unsubscribe = deps.store.subscribe(syncView({ host, widgets }));
-  // 跨文档批注命中跳进来的：进批注模式并在下一次清单渲染选中该卡（`pendingSelect` 队列在 annotate 里）。
+  // Arrived via a cross-doc annotation hit: enter annotate mode and select the card on the next list render (the `pendingSelect` queue lives in annotate).
   if (deps.focusAnnotation !== undefined) foreign.focusAnnotation(deps.focusAnnotation);
   const sse = deps.openSse(
     foreignSseOf(store, foreign, () => {

@@ -42,12 +42,12 @@ declare const window: {
     readonly hash?: string;
     readonly pathname?: string;
     readonly search?: string;
-    /** 搜索命中的文档跳转（`/?doc=` 或桌面 `/open` 桥）；测试壳可省。 */
+    /** Doc navigation for a search hit (`/?doc=` or the desktop `/open` bridge); test shells may omit it. */
     readonly assign?: (url: string) => void;
   };
-  /** 桌面壳注入的桥上下文：有 `bridgeToken` 就证明身在桌面端。 */
+  /** Bridge context injected by the desktop shell: a `bridgeToken` proves we run inside it. */
   readonly __HR_DESKTOP_CTX__?: { readonly bridgeToken?: string };
-  /** 跨文档批注命中的暂存（同源 sessionStorage 在页面跳转后仍可读）；隐私模式下可能缺席。 */
+  /** Stash for a cross-doc annotation hit (same-origin sessionStorage survives the page load); may be absent in private mode. */
   readonly sessionStorage?: {
     readonly getItem: (key: string) => string | null;
     readonly setItem: (key: string, value: string) => void;
@@ -323,18 +323,18 @@ const bindOf =
   async () =>
     await io.json(path, guard);
 
-/** 批注命中的跨页暂存键：跳转前 `{doc, ann}` 写入，新页 boot 时取出并立刻清掉。 */
+/** Cross-page stash key for an annotation hit: `{doc, ann}` is written before navigation, read and cleared at the next boot. */
 const SEARCH_FOCUS_KEY = "hr-search-focus";
 
 const stashSearchFocus = (doc: string, ann: string): void => {
   try {
     window.sessionStorage?.setItem(SEARCH_FOCUS_KEY, JSON.stringify({ doc, ann }));
   } catch {
-    // 存储不可用时降级为"只开文档"（聚焦丢，导航不丢）。
+    // When storage is unavailable, degrade to "open the doc only" (the focus is lost, navigation is not).
   }
 };
 
-/** 取出并消费跨页暂存：总是先删（陈旧暂存不许留到下一次跳转），doc 匹配才返回 ann。 */
+/** Take and consume the stash: always removed first (a stale stash must not survive into a later navigation); `ann` is returned only when `doc` matches. */
 const takeSearchFocus = (docId: string): string | undefined => {
   try {
     const raw = window.sessionStorage?.getItem(SEARCH_FOCUS_KEY);
@@ -350,9 +350,11 @@ const takeSearchFocus = (docId: string): string | undefined => {
 };
 
 /**
- * 搜索命中的文档跳转：桌面壳走 `hr-desktop.local/open` 桥（壳在 on_navigation 里
- * 换成受控 open），浏览器直接 `/?doc=`。`annotationId` 只进 sessionStorage——
- * 不入 URL：`/open` 桥只转发 `doc` 参数，哈希/参数会丢。
+ * Doc navigation for a search hit: inside the desktop shell we go through the
+ * `hr-desktop.local/open` bridge (the shell turns it into a controlled open in
+ * on_navigation); in a plain browser it's `/?doc=`. `annotationId` only goes into
+ * sessionStorage — never the URL: the `/open` bridge forwards just `doc`, extra
+ * params/hashes would be lost.
  */
 const navigateToDoc = (path: string, annotationId?: string): void => {
   if (annotationId !== undefined) stashSearchFocus(path, annotationId);
@@ -379,7 +381,7 @@ const depsCoreOf = (core: {
   const encoded = encodeURIComponent(docId);
   const bind = bindOf(io);
   return {
-    /** D61 搜索面板：`q` 原文透传（服务端按码点限长），limit 固定走默认 20。 */
+    /** D61 search panel: `q` is passed through verbatim (the server bounds by code points); limit is fixed at the default 20. */
     search: {
       fetch: async (query: string) =>
         await io.json(`/api/search?q=${encodeURIComponent(query)}&limit=20`, isSearchReply),

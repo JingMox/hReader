@@ -69,7 +69,7 @@ describe("guard · 批注列表的非法形状", () => {
   });
 });
 
-describe("guard · 搜索应答的形状守卫", () => {
+describe("guard · search reply shape", () => {
   const hit = {
     path: "a.html",
     title: "甲",
@@ -104,7 +104,7 @@ describe("guard · 搜索应答的形状守卫", () => {
   });
 
   it("should reject hits whose fields carry the wrong type", () => {
-    // `kind` 只认两枚枚举；annotationId 给了就要是字符串；highlights 每条必须恰好两个数。
+    // `kind` accepts only the two enum values; a present annotationId must be a string; every highlights pair must hold exactly two numbers.
     expect(isSearchReply({ ...reply, results: [{ ...hit, kind: "note" }] })).toBe(false);
     expect(isSearchReply({ ...reply, results: [{ ...hit, annotationId: 7 }] })).toBe(false);
     expect(isSearchReply({ ...reply, results: [{ ...hit, score: "1" }] })).toBe(false);

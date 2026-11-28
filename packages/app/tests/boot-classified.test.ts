@@ -813,7 +813,7 @@ describe("bootDocument · 外来主题（补充分支）", () => {
 
 const SEARCH_INPUT = `${ROOT} #hr-search-input`;
 
-/** 外来壳的 annotate 夹具：`mint` 记数用来断言 `focusAnnotation` 真走到了 enter()。 */
+/** The foreign shell's annotate fixture: `mint` counting proves `focusAnnotation` actually reached enter(). */
 const annotateOf = (mints: string[]): ClassifiedBootDeps["annotate"] => ({
   io: {
     mint: () => {
@@ -865,7 +865,7 @@ interface SearchRig {
   readonly mints: string[];
 }
 
-/** 外来壳里走一次真 `/` → input → 手动钟 → Enter：命中后面板关，每次重开。 */
+/** One real `/` → input → manual clock → Enter round-trip in the foreign shell (the panel closes on open, so each case reopens it). */
 const enterHitAt = async (h: Harness, rig: SearchRig, index: number): Promise<void> => {
   h.type("/");
   h.fake.fire(SEARCH_INPUT, "input", { value: "词" });
@@ -892,7 +892,7 @@ const foreignSearchDeps = (h: Harness, rig: SearchRig): Partial<ClassifiedBootDe
   },
 });
 
-describe("bootDocument · 搜索面板 (D61)", () => {
+describe("bootDocument · search panel (D61)", () => {
   it("should write the unavailable hint on / when deps.search is absent", async () => {
     const h = harnessOf(true);
     const { deps } = classifiedOf(h, () => foreignInfo, { search: undefined });
@@ -909,7 +909,7 @@ describe("bootDocument · 搜索面板 (D61)", () => {
     const { deps } = classifiedOf(h, () => foreignInfo, foreignSearchDeps(h, rig));
     await bootDocument(deps);
 
-    // 扁平序 = 文档组在前：0 跨文档、1 同文档（no-op）、2 同文档批注。
+    // Flat order = docs group first: 0 cross-doc, 1 same-doc (no-op), 2 same-doc annotation.
     await enterHitAt(h, rig, 0);
     await enterHitAt(h, rig, 1);
 
@@ -928,7 +928,7 @@ describe("bootDocument · 搜索面板 (D61)", () => {
 
     await enterHitAt(h, rig, 2);
 
-    // annotate.focusAnnotation → enter() → mint 一次（面板后续选中走 pendingSelect）。
+    // annotate.focusAnnotation → enter() → exactly one mint (the panel selects the card later via pendingSelect).
     expect(rig.mints).toHaveLength(1);
   });
 
@@ -949,7 +949,7 @@ describe("bootDocument · 搜索面板 (D61)", () => {
     const { deps } = classifiedOf(h, () => foreignInfo, { focusAnnotation: "a1" });
     const booted = await bootDocument(deps);
 
-    // 没有 annotate 能力时 focusAnnotation 是空转：壳照常工作。
+    // Without annotate capability, focusAnnotation is a no-op: the shell keeps working.
     expect(attrsOf(h, FRAME, "src")).toEqual(["/s/doc.html"]);
     booted.destroy();
     expect(h.closed()).toBe(true);

@@ -89,7 +89,7 @@ describe("cls/scrollTo · 可选元素不炸", () => {
     host.focus?.("#f");
     host.focus?.("#b");
     host.focus?.("#missing");
-    // 有 `focus` → 记一次；没有/找不到 → 静默不炸。
+    // With `focus` → one recorded call; absent/not found → silently no-op.
     expect(focus.mock.calls).toHaveLength(1);
   });
 });

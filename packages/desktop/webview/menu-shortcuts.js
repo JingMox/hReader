@@ -101,8 +101,9 @@ function handlePlainKeydown(e, editable) {
 
 function handleModShortcut(e, editable) {
   const k = e.key.toLowerCase();
-  // Shift 专属表优先：⌘K 与 ⌘⇧K 都是有效绑定，谁按下谁赢（⌘⇧O 这类
-  // shift 表里没有的键照旧落回 MOD_SHORTCUTS）。
+  // The shift table wins first: ⌘K and ⌘⇧K are both valid bindings — whichever
+  // was pressed takes it (keys absent from the shift table, like ⌘⇧O, still fall
+  // through to MOD_SHORTCUTS).
   const handler = (e.shiftKey ? SHIFT_MOD_SHORTCUTS[k] : undefined) || MOD_SHORTCUTS[k];
   if (handler) {
     e.preventDefault();

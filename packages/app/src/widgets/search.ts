@@ -1,7 +1,8 @@
-// 这层管：书库搜索面板（`/` 或桌面端 ⌘K 打开）。
-// 安全不变量：标题/路径/snippet 一律经 `NodeSpec.text` 落到 textContent——绝不进 innerHTML；
-// `highlights` 偏移先按 snippet 长度钳制、丢弃无效对，再按序切成 `mark` 文本run；
-// `path` 只用于导航，不拼进 HTML、不拼进选择器。
+// This layer owns: the library-search panel (opened by `/`, or ⌘K on the desktop shell).
+// Safety invariants: title/path/snippet only ever land via `NodeSpec.text` → textContent,
+// never innerHTML; `highlights` offsets are clamped to the snippet bounds and invalid pairs
+// dropped before runs are cut into `mark` text; `path` is used for navigation only, never
+// interpolated into HTML or a selector.
 
 import type { Host, NodeSpec, TargetLike } from "../dom.ts";
 import type { Schedule } from "../flash.ts";
@@ -10,24 +11,24 @@ import type { ReaderIntent, ReaderState } from "../state.ts";
 import { COPY } from "./copy.ts";
 import type { Widget } from "./library.ts";
 
-/** 与 core `SEARCH_LIMITS.queryChars` 同值：客户端先拦下超长查询，不发请求。 */
+/** Same bound as core's `SEARCH_LIMITS.queryChars`: the client rejects overlong queries without a request. */
 const QUERY_MAX = 200;
 const DEBOUNCE_MS = 150;
 
 interface SearchDeps {
   readonly host: Host;
   readonly parent: string;
-  /** `GET /api/search?q=…&limit=…` 的封装；由 `main.ts`/`boot.ts` 注入，测试塞假件。 */
+  /** `GET /api/search?q=…&limit=…` wrapper; injected by `main.ts`/`boot.ts`, faked in tests. */
   readonly fetch: (query: string) => Promise<SearchReply>;
-  /** 打开一条命中：导航/批注聚焦的归属在 `boot.ts`（widget 不读 path 语义）。 */
+  /** Open one hit: navigation/annotation-focus semantics live in `boot.ts` (the widget never reads `path`). */
   readonly openHit: (hit: SearchHit) => void;
-  /** 面板开合走 store 意图（`searchOpened`/`panelClosed`），状态唯一出口。 */
+  /** Panel open/close goes through store intents (`searchOpened`/`panelClosed`) — the single state exit. */
   readonly onIntent: (intent: ReaderIntent) => void;
-  /** 防抖计时器：与 `flash` 同一个 `Schedule` 注入点（测试塞手动钟）。 */
+  /** Debounce timer: the same `Schedule` injection point as `flash` (tests pass a manual clock). */
   readonly schedule: Schedule;
 }
 
-/** 高亮对钳制到 snippet 范围：负数抬到 0、越界压到末尾、反向/空调弃。 */
+/** Clamp highlight pairs to the snippet bounds: negatives lift to 0, overflows cap at the end, reversed/empty pairs are dropped. */
 const normalizePairs = (
   snippet: string,
   highlights: readonly (readonly [number, number])[],
@@ -44,7 +45,7 @@ const normalizePairs = (
   return pairs;
 };
 
-/** snippet → 纯文本 run：普通段 `span`，命中段 `mark`；重叠的后续区段截去已覆盖部分。 */
+/** snippet → plain-text runs: plain ranges become `span`, hit ranges become `mark`; later pairs that overlap drop their covered part. */
 const snippetSpecs = (
   snippet: string,
   highlights: readonly (readonly [number, number])[],
@@ -64,7 +65,8 @@ const snippetSpecs = (
 
 export const mountSearch = (deps: SearchDeps): Widget => {
   const { host, parent } = deps;
-  // SP_* 前缀避免与别的 widget 的同名选择器常量相撞（静态接线检查按名字成表）。
+  // SP_* prefixes keep these selector consts from colliding with same-named ones in other
+  // widgets (the static wiring check keys its table by const name).
   const SP_PANEL = `${parent} #hr-search-panel`;
   const SP_INPUT = `${parent} #hr-search-input`;
   const SP_HINT = `${parent} #hr-search-hint`;
@@ -79,10 +81,10 @@ export const mountSearch = (deps: SearchDeps): Widget => {
   let open = false;
   let hits: readonly SearchHit[] = [];
   let active = 0;
-  /** 单调递增的请求号：迟到的旧响应一看号对不上就丢（stale 永不覆盖新结果）。 */
+  /** Monotonic request id: a late response whose id no longer matches is dropped (stale never overwrites fresh). */
   let seq = 0;
   let cancelPending: (() => void) | undefined;
-  /** 输入框里的当前词（input 事件把它更新进来；查询发起时读取）。 */
+  /** The current input text (input events update it; query() reads it when firing). */
   let pendingQuery = "";
 
   const hint = (text: string): void => {
@@ -239,8 +241,8 @@ export const mountSearch = (deps: SearchDeps): Widget => {
     hint("");
   };
 
-  // `data-hr-search` 是能力标记：桌面端 ⌘K 先探它再派 `hr-search-open`，
-  // 没有这个标记的页面（空工作台等）由壳降级成一条提示。
+  // `data-hr-search` is the capability marker: the desktop ⌘K handler probes it before
+  // dispatching `hr-search-open`; pages without it (empty workbench etc.) degrade to a hint.
   host.attr(parent, "data-hr-search", "");
   host.attr(SP_INPUT, "placeholder", COPY.searchPlaceholder);
   host.attr(SP_INPUT, "aria-label", COPY.searchTitle);

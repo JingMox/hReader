@@ -57,7 +57,7 @@ export const isAnnotationList = (
   (value["lost"] === undefined || isStringArray(value["lost"])) &&
   (value["diagnostics"] === undefined || isStringArray(value["diagnostics"]));
 
-/** `GET /api/search` 的单条命中（与 `@hreader/core` 的 `SearchHit` 同构；app 不依赖 core）。 */
+/** One hit of `GET /api/search` (isomorphic to `@hreader/core`'s `SearchHit`; the app does not depend on core). */
 export interface SearchHit {
   readonly path: string;
   readonly title: string;
@@ -68,7 +68,7 @@ export interface SearchHit {
   readonly highlights: readonly (readonly [number, number])[];
 }
 
-/** `GET /api/search` 应答（`LibrarySearchResult` 的结构镜像）。 */
+/** `GET /api/search` reply (structural mirror of `LibrarySearchResult`). */
 export interface SearchReply {
   readonly results: readonly SearchHit[];
   readonly total: number;
@@ -77,7 +77,7 @@ export interface SearchReply {
   readonly diagnostics?: readonly string[];
 }
 
-/** 高亮对必须是 `[start, end)` 两个数；越界/反向是否成立由渲染层钳制，守卫只管形状。 */
+/** A highlight pair must be `[start, end)` numbers; out-of-range/reversed pairs are the renderer's problem — the guard only checks shape. */
 const isHighlightPair = (value: unknown): value is readonly [number, number] =>
   Array.isArray(value) &&
   value.length === 2 &&
@@ -95,7 +95,7 @@ const isSearchHit = (value: unknown): value is SearchHit =>
   Array.isArray(value["highlights"]) &&
   (value["highlights"] as readonly unknown[]).every(isHighlightPair);
 
-/** `GET /api/search`：结果集的每条命中都给了就要对（path/title/snippet 是渲染与导航的前提）。 */
+/** `GET /api/search`: every hit present in `results` must check out (path/title/snippet are prerequisites for rendering and navigation). */
 export const isSearchReply = (value: unknown): value is SearchReply =>
   isRecord(value) &&
   Array.isArray(value["results"]) &&

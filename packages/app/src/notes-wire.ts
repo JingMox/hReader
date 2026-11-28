@@ -109,8 +109,9 @@ const submitFlow =
     });
   };
 
-/** 聚焦一张批注卡：先派 `annotationOpened`（意图出口唯一），再把锚点块滚进视野并标记。
- *  卡片点击与「搜索命中 → 同文档批注」共用这一条路径（D61 搜索面板也调它）。 */
+/** Focus an annotation card: dispatch `annotationOpened` (the single intent exit), then scroll
+ *  the anchored block into view and flag it. Card clicks and "search hit → same-doc annotation"
+ *  share this path (the D61 search panel calls it too). */
 export const focusAnnotationCard = (
   scope: {
     readonly host: Host;

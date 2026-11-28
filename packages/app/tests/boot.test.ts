@@ -98,9 +98,9 @@ describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）",
 
     h.keyHandlers[0]?.({ key: "/" });
 
-    // `/` → `searchOpened` 意图 → `searchOpen` 状态 → widget.update 展开面板。
+    // `/` → `searchOpened` intent → `searchOpen` state → widget.update expands the panel.
     expect(h.store.get().searchOpen).toBe(true);
-    // 面板摘除 hidden、输入框聚焦、提示行落位——三步都是真写点，缺一不可。
+    // Panel unhidden, input focused, hint placed — three real writes, all required.
     expect(
       h.fake.calls.filter(
         (call) =>
@@ -118,13 +118,13 @@ describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）",
         .map((call) => call.args[1])
         .at(-1),
     ).toBe(COPY.searchIdle);
-    // 聚焦的是面板里的真输入框，不是侧栏那个仍 disabled 的占位框（`/` 键不碰它）。
+    // Focus lands on the panel's real input, not the still-disabled sidebar placeholder (`/` never touches it).
     expect(
       h.fake.calls.filter(
         (call) => call.op === "focus" && call.args[0] !== `${ROOT} #hr-search-input`,
       ),
     ).toEqual([]);
-    // 侧栏占位框的悬停文案换成指路文案（`boot.ts` 挂载时写）。
+    // The sidebar placeholder's hover copy is rewritten to point at `/` (written by `boot.ts` at mount).
     expect(
       h.fake.calls.filter(
         (call) =>
@@ -144,7 +144,7 @@ describe("boot · 键盘 intent 的出口（经 keyHandlerOf，不绕过它）",
       .map((call) => call.args[1]);
     expect(hints.at(-1)).toBe(COPY.searchUnavailable);
     expect(COPY.searchUnavailable.length).toBeGreaterThan(0);
-    // 没有 widget 就没有面板摘除：hidden 从不被写。
+    // No widget → no panel reveal: `hidden` is never written.
     expect(
       h.fake.calls.filter(
         (call) =>
@@ -364,7 +364,7 @@ describe("boot · 沉浸模式", () => {
 
 const SEARCH_INPUT = `${ROOT} #hr-search-input`;
 
-describe("boot · 搜索命中出口（openHit 的四种组合）", () => {
+describe("boot · search hit exits (openHit's four combinations)", () => {
   const hits = [
     {
       path: "other.html",
@@ -407,7 +407,7 @@ describe("boot · 搜索命中出口（openHit 的四种组合）", () => {
     readonly intents: ReaderIntent[];
   }
 
-  /** `/` → input → 手动钟走 150ms 防抖 → fetch resolve → Enter 落在 `index` 那条命中上（命中后面板关，每次重开）。 */
+  /** `/` → input → manual-clock 150ms debounce → fetch resolve → Enter lands on the hit at `index` (the panel closes on open, so each case reopens it). */
   const enterAt = async (h: Harness, rig: Rig, index: number): Promise<void> => {
     h.keyHandlers[0]?.({ key: "/" });
     h.fake.fire(SEARCH_INPUT, "input", { value: "词" });
@@ -448,7 +448,7 @@ describe("boot · 搜索命中出口（openHit 的四种组合）", () => {
     const h = harnessOf(true);
     const rig = bootSearch(h);
 
-    // 扁平序 = 文档组在前：0 other-doc、1 same-doc、2 same-ann、3 other-ann。
+    // Flat order = docs group first: 0 other-doc, 1 same-doc, 2 same-ann, 3 other-ann.
     await enterAt(h, rig, 0);
     await enterAt(h, rig, 1);
     await enterAt(h, rig, 2);
@@ -458,14 +458,14 @@ describe("boot · 搜索命中出口（openHit 的四种组合）", () => {
       { path: "other.html" },
       { path: "else.html", annotationId: "an-2" },
     ]);
-    // 同文档批注走 focusAnnotationCard：annotationOpened 意图是唯一断言面（卡查找 + 滚块在 notes-wire 已覆盖）。
+    // Same-doc annotation goes through focusAnnotationCard: the annotationOpened intent is the only assertion surface (card lookup + scrolling live in notes-wire).
     expect(rig.intents.filter((i) => i.kind === "annotationOpened")).toEqual([
       { kind: "annotationOpened", id: "an-1" },
     ]);
   });
 });
 
-describe("boot · 启动即聚焦的批注（focusAnnotation dep）", () => {
+describe("boot · annotation focused right at boot (focusAnnotation dep)", () => {
   it("should dispatch annotationOpened after the notes list loads", async () => {
     const h = harnessOf(true);
     const intents: ReaderIntent[] = [];

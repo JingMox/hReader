@@ -118,11 +118,11 @@ describe("普通 ⌘ 快捷键", () => {
     s.hrd.openLibrarySearch = vi.fn();
     keydown(s.window, { key: "k", metaKey: true });
     expect(s.hrd.openLibrarySearch).toHaveBeenCalledTimes(1);
-    // Shift 表先解析：⌘⇧K 仍是组件插入，不能落到书库搜索。
+    // The shift table resolves first: ⌘⇧K stays component-insert and must not reach library search.
     keydown(s.window, { key: "k", metaKey: true, shiftKey: true });
     expect(s.hrd.openLibrarySearch).toHaveBeenCalledTimes(1);
     expect(s.hrd.openComponentModal).toHaveBeenCalledTimes(1);
-    // 可编辑焦点不拦 mod 快捷键（与 ⌘O 同一约定）。
+    // Editable focus does not block mod shortcuts (same convention as ⌘O).
     const input = s.document.createElement("input");
     s.document.body.appendChild(input);
     input.focus();
@@ -144,7 +144,7 @@ describe("普通 ⌘ 快捷键", () => {
     expect(s.hrd.showToast).not.toHaveBeenCalled();
     s.dispose();
 
-    // 能力标记缺席（空工作台/旧页面）：降级成一条可见提示，事件不发。
+    // Capability marker absent (empty workbench / older page): degrade to a visible toast, dispatch nothing.
     const s2 = make();
     const root2 = mustGet(s2.document, "#hr-root");
     let seen2 = 0;

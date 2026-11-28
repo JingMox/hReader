@@ -59,7 +59,7 @@ export interface Host {
     handler: (target: TargetLike) => void,
   ) => () => void;
   readonly scrollTo: (selector: string) => void;
-  /** 聚焦控件（搜索面板打开时焦点进输入框）；可选：假 host 可省。 */
+  /** Focus a control (the search input when the panel opens); optional — fake hosts may omit it. */
   readonly focus?: (selector: string) => void;
   /** 文档序取全部命中元素（演示模式的步进元素枚举）；**必选**，缺实现就是步进永远不出现。 */
   readonly all: (selector: string) => readonly ElementLike[];

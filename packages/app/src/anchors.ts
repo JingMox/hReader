@@ -47,7 +47,7 @@ export const REQUIRED_ANCHORS: readonly string[] = [
   "#hr-ann-resolved-title",
   "#hr-ann-lost-title",
   "#hr-ann-empty",
-  // 书库搜索面板：输入框 / 状态提示 / 文档与批注两组（组标题也由 copy 驱动）
+  // Library-search panel: input / hint line / the doc and annotation groups (titles are copy-driven too)
   "#hr-search-panel",
   "#hr-search-input",
   "#hr-search-hint",

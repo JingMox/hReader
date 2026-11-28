@@ -25,7 +25,7 @@ export interface Harness {
   readonly keyHandlers: ((event: KeyLike) => void)[];
   readonly selectCalls: { theme: string; current: string }[];
   readonly fetched: Counters;
-  /** 搜索假件见到过的查询词与跳转（`deps.search` 是注入的，序列断言走它）。 */
+  /** Queries and navigations seen by the search fake (`deps.search` is injected — sequence assertions go through it). */
   readonly searchAsked: string[];
   readonly navigated: { path: string; annotationId?: string }[];
   readonly closed: () => boolean;

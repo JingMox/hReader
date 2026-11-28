@@ -1,7 +1,8 @@
-// 这层管：搜索渲染的对抗面——snippet/title/path 里混 `<img onerror>`、`</mark><script>`、
-// `{{x}}`、RTL 控制符，以及越界/负/重叠/反向的高亮偏移。
-// 不变量：数据只可能作为文本节点落地（`NodeSpec.text`），绝不会长成元素；
-// 偏移先钳制再切 run，不合法的对直接丢弃，整个过程不抛。
+// This layer covers the search renderer's adversarial surface: `<img onerror>`,
+// `</mark><script>`, `{{x}}`, and RTL control chars inside snippet/title/path, plus
+// out-of-range/negative/overlapping/reversed highlight offsets.
+// Invariant: data can only land as text nodes (`NodeSpec.text`), never grow elements;
+// offsets are clamped before runs are cut, invalid pairs are dropped, and nothing throws.
 
 import { describe, expect, it } from "vitest";
 
@@ -48,7 +49,7 @@ const specsOn = (fake: FakeHost, selector: string): readonly SpecNode[] => {
   return call === undefined ? [] : (JSON.parse(call.args[1] ?? "[]") as SpecNode[]);
 };
 
-/** 树里的全部文本节点串起来：等于"渲染层真会写进 DOM 的文本"。 */
+/** All text nodes in the tree joined: equals the text the renderer would actually write into the DOM. */
 const textOfTree = (nodes: readonly SpecNode[]): string =>
   nodes.map((node) => `${node.text ?? ""}${textOfTree(node.children ?? [])}`).join("");
 
@@ -73,7 +74,7 @@ const replyOf = (results: readonly SearchHit[]): SearchReply => ({
   diagnostics: [],
 });
 
-describe("search widget · XSS 对抗", () => {
+describe("search widget · XSS adversarial cases", () => {
   it("should render hostile title/snippet/path as plain text, never as elements", async () => {
     const fake = mountWith(
       replyOf([
@@ -99,15 +100,15 @@ describe("search widget · XSS 对抗", () => {
     const anns = specsOn(fake, ANNS_LIST);
     expect(docs).toHaveLength(1);
     expect(anns).toHaveLength(1);
-    // 只允许这几个标签：li/p/span/mark——数据里绝不可能长出 img/script。
+    // Only these tags are allowed: li/p/span/mark — data can never grow img/script.
     for (const tag of [...tagsOfTree(docs), ...tagsOfTree(anns)]) {
       expect(["li", "p", "span", "mark"]).toContain(tag);
     }
-    // 原文一字不差地作为文本落地（含标签符号本身）——它是 `text`，不是 `innerHTML`。
+    // The source lands verbatim as text (tag characters included) — it is `text`, not `innerHTML`.
     expect(textOfTree(docs)).toContain(`题${EVIL}目`);
     expect(textOfTree(docs)).toContain(`前文${EVIL}后文`);
     expect(textOfTree(anns)).toContain("批注内容</mark><script>alert(2)</script>尾巴");
-    // 属性值只允许是渲染层自己生成的常量——数据绝不进 attrs（path/annotationId 同理，只去导航）。
+    // Attribute values may only be renderer-generated constants — data never enters attrs (path/annotationId likewise; they only feed navigation).
     const attrValues = (nodes: readonly SpecNode[]): string[] =>
       nodes.flatMap((node) => [
         ...Object.values(node.attrs ?? {}),
@@ -124,12 +125,12 @@ describe("search widget · XSS 对抗", () => {
         hitOf({
           snippet: "abcdef",
           highlights: [
-            [-5, 2], // 负起点 → 钳到 0
-            [3, 99], // 越界终点 → 钳到长度
-            [4, 2], // 反向 → 丢
-            [1, 1], // 空段 → 丢
-            [Number.NaN, 5], // 非数 → 丢
-            [1.5, 4.9], // 小数 → 截断后再钳
+            [-5, 2], // negative start → clamp to 0
+            [3, 99], // out-of-range end → clamp to length
+            [4, 2], // reversed → drop
+            [1, 1], // empty span → drop
+            [Number.NaN, 5], // NaN → drop
+            [1.5, 4.9], // fractional → truncate, then clamp
           ] as readonly [number, number][],
         }),
       ]),
@@ -143,9 +144,9 @@ describe("search widget · XSS 对抗", () => {
       .flatMap((node) => node.children ?? [])
       .filter((node) => node.tag === "mark")
       .map((node) => node.text);
-    // [-5,2]→"ab"；[1.5,4.9]→[1,4] 与上一段重叠，截出 "cd"；[3,99]→[3,6] 截出 "ef"。
+    // [-5,2]→"ab"; [1.5,4.9]→[1,4] overlaps the previous run, cutting "cd"; [3,99]→[3,6] cuts "ef".
     expect(marks).toEqual(["ab", "cd", "ef"]);
-    // 全量文本拼接 = 原 snippet（不多不少）。
+    // The full text concatenation = the original snippet (no more, no less).
     expect(textOfTree(specsOn(fake, DOCS_LIST))).toContain("abcdef");
   });
 
@@ -167,7 +168,7 @@ describe("search widget · XSS 对抗", () => {
     const text = textOfTree(specsOn(fake, DOCS_LIST));
     expect(text).toContain("rtl⁦abc⁩");
     expect(text).toContain("⁦反向⁩文本");
-    // 空 snippet + 越界对 → 钳完是空调弃，snippet 段渲染为一个空 span（不抛、不拼错）。
+    // Empty snippet + out-of-range pair → clamps to empty and drops; the snippet run renders as one empty span (no throw, no misassembly).
     expect(specsOn(fake, DOCS_LIST)).toHaveLength(2);
   });
 });

@@ -802,7 +802,7 @@ describe("annotate widget · focusAnnotation (D61 search hits)", () => {
     rig.fake.fire(BTN, "click", {}); // enter: mint in flight
 
     handle.focusAnnotation("a1");
-    // 在途 mint 与 pendingSelect 合并等待：不重铸、不列清单。
+    // The in-flight mint merges with pendingSelect: no re-mint, no list render.
     expect(rig.mintCalls()).toBe(1);
     expect(rig.listCalls()).toBe(0);
 
