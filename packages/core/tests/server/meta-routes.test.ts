@@ -57,6 +57,11 @@ const fileStateOf = (path: string): { readonly bytes: Buffer; readonly mtimeMs: 
   mtimeMs: statSync(path).mtimeMs,
 });
 
+const settle = async (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 describe("meta routes · auth", () => {
   it("should answer 401 without a cookie on the read", async () => {
     await withServer(async (ctx) => {
@@ -297,6 +302,12 @@ describe("meta routes · SSE", () => {
         const first = await sse.waitForEvent("doc.meta");
         expect(first.data).toContain('"docId":"doc.html"');
 
+        // A no-op write answers 200 changed:false but must not broadcast — only real
+        // changes fire doc.meta.
+        const noop = await postMeta(ctx, "doc.html", { tags: ["x"] });
+        expect(noop.status).toBe(200);
+        expect((jsonBodyOf(noop) as WireMetaWrite).changed).toBe(false);
+
         const failures = await Promise.all([
           postMeta(ctx, "doc.html", { bogus: 1 }),
           postMeta(ctx, "doc.html", { sourceUrl: "javascript:x" }),
@@ -307,7 +318,9 @@ describe("meta routes · SSE", () => {
         const second = await postMeta(ctx, "doc.html", { addTags: ["y"] });
         expect(second.status).toBe(200);
 
+        // ready + two doc.meta — then a beat so a wrongly-published no-op frame lands too.
         await sse.waitFor(3);
+        await settle(300);
         const events = sse.frames.filter((frame) => frame.event === "doc.meta");
         expect(events).toHaveLength(2);
         // A meta write never fires doc.changed — the document bytes are untouched.
