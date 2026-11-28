@@ -35,16 +35,22 @@ const viewTextOf = async (relativePath: string): Promise<string> => {
 };
 
 let workspace = "";
+let previousHome: string | undefined;
 
 beforeEach(async () => {
   workspace = await mkdtemp(join(tmpdir(), "hreader-mcp-ui-xss-"));
   process.chdir(workspace);
   // The view reads ~/.hreader/daemon.json for the port: point HOME at a temp dir so tests do not hit the dev machine's real config.
   await mkdir(join(workspace, "home"), { recursive: true });
+  previousHome = process.env["HOME"];
   process.env["HOME"] = join(workspace, "home");
 });
 
 afterEach(async () => {
+  // Restore HOME before deleting the workspace: unrestored, the rest of this worker's run
+  // would see homedir() pointing at a removed directory.
+  if (previousHome === undefined) delete process.env["HOME"];
+  else process.env["HOME"] = previousHome;
   process.chdir(tmpdir());
   await rm(workspace, { recursive: true, force: true });
 });
