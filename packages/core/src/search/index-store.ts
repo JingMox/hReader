@@ -436,6 +436,17 @@ const liveMetaTable = async (
 const metaFingerprintOf = (record: DocMetaRecord | undefined): string | null =>
   record === undefined ? null : sha256Hex(encodeUtf8(JSON.stringify(docMetaRecordJson(record))));
 
+/**
+ * The doc entry's stored tag list. When the meta table cannot be read its fingerprint is
+ * held — a re-index inside that window must carry the prior tags the same way
+ * `sidecarIndexStateOf` carries `docTitle`, or they would be lost permanently (the held
+ * fingerprint would keep matching, so no later re-index could restore them).
+ */
+const indexedTagListOf = (mini: SearchIndex, rel: string): readonly string[] => {
+  const stored: unknown = mini.getStoredFields(docEntryIdOf(rel))?.["tagList"];
+  return Array.isArray(stored) && stored.every((tag) => typeof tag === "string") ? stored : [];
+};
+
 /** Ids of `rel`'s sidecar-derived annotation entries plus the stored doc title, in one scan. */
 const sidecarIndexStateOf = (
   mini: SearchIndex,
@@ -609,7 +620,8 @@ export const updateIndex = async (
       rel,
       fields,
       annotations: listed?.annotations ?? [],
-      tags: metaRecord?.tags ?? [],
+      tags:
+        metaTable === undefined ? indexedTagListOf(state.mini, rel) : (metaRecord?.tags ?? []),
     });
     records.set(rel, { mtimeMs: doc.mtimeMs, size: doc.size, sha, sidecar, meta });
     changed = true;
