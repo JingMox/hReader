@@ -121,3 +121,35 @@ describe("run · thumb stdout binary", () => {
     expect(err.join("")).toBe("");
   });
 });
+
+describe("run · thumb io_failure output", () => {
+  it("should keep host paths out of stderr and the --json body when the cache dir is not a directory", async () => {
+    // `.hreader/thumbs` as a plain file: the PNG read answers ENOTDIR →
+    // io_failure — deterministic without chmod (root-runners ignore mode bits).
+    const ws = join(dir, "io-leak");
+    mkdirSync(join(ws, ".hreader"), { recursive: true });
+    writeFileSync(join(ws, ".hreader", "thumbs"), "not a dir");
+    const doc = join(ws, "img.html");
+    writeFileSync(doc, '<article data-hr-id="hr-i"><p data-hr-id="hr-j">x</p></article>');
+    const fragments = ["/Users", "/private", "/tmp", "/var", "/home"];
+
+    const { io, out, err } = capture({ ...noChrome });
+    expect(await run(["thumb", doc, "--workspace", ws], io)).toBe(3);
+    // The user-facing message names the workspace-relative path only.
+    expect(err.join("")).toContain("读取缩略图缓存失败：.hreader/thumbs/");
+    for (const fragment of fragments) {
+      expect(err.join("")).not.toContain(fragment);
+      expect(out.join("")).not.toContain(fragment);
+    }
+
+    const { io: jsonIo, out: jsonOut } = capture({ ...noChrome });
+    expect(await run(["thumb", doc, "--workspace", ws, "--json"], jsonIo)).toBe(3);
+    const body = jsonOut.join("");
+    const parsed = JSON.parse(body) as { code?: string; message?: string };
+    expect(parsed.code).toBe("io_failure");
+    expect(parsed.message).toContain(".hreader/thumbs/");
+    for (const fragment of fragments) {
+      expect(body).not.toContain(fragment);
+    }
+  });
+});

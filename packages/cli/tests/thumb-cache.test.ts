@@ -131,12 +131,13 @@ describe("thumbs/cache · LRU eviction", () => {
     // HASH_A is oldest-hit; the fourth put must evict it, not the fresh entries.
     await cache.put(HASH_D, pngOf(4, 4));
 
+    // The evicted row leaves the index in the same write — assert before any
+    // get(): a hit's saveIndexQuiet rewrite would heal a stale row back out.
+    expect([...indexEntriesOf(cacheDir)].sort()).toEqual([HASH_B, HASH_C, HASH_D]);
     expect(await cache.get(HASH_A)).toBeUndefined();
     expect(await cache.get(HASH_B)).toEqual(Buffer.from(pngOf(2, 2)));
     expect(await cache.get(HASH_C)).toEqual(Buffer.from(pngOf(3, 3)));
     expect(await cache.get(HASH_D)).toEqual(Buffer.from(pngOf(4, 4)));
-    // The evicted row leaves the index too — a stale row would poison later reads.
-    expect([...indexEntriesOf(cacheDir)].sort()).toEqual([HASH_B, HASH_C, HASH_D]);
   });
 
   it("should stop evicting as soon as the total fits — an exact-fit tail keeps its entries", async () => {
@@ -157,6 +158,7 @@ describe("thumbs/cache · LRU eviction", () => {
 
   it("should let a hit rescue an entry from eviction (at order, not insertion order)", async () => {
     const cache = cacheOf("rescue", 100);
+    const cacheDir = join(dir, "rescue", ".hreader", "thumbs");
     await cache.put(HASH_A, pngOf(1, 1));
     await cache.put(HASH_B, pngOf(2, 2));
     await cache.put(HASH_C, pngOf(3, 3));
@@ -164,9 +166,42 @@ describe("thumbs/cache · LRU eviction", () => {
     expect(await cache.get(HASH_A)).toBeDefined();
     await cache.put(HASH_D, pngOf(4, 4));
 
+    // Index first — before the follow-up get() can reconcile a stale B row away.
+    expect([...indexEntriesOf(cacheDir)].sort()).toEqual([HASH_A, HASH_C, HASH_D]);
     expect(await cache.get(HASH_A)).toBeDefined();
     expect(await cache.get(HASH_B)).toBeUndefined();
   });
+
+  it.each([
+    { name: "a negative", size: "-1" },
+    { name: "an infinite", size: "1e999" },
+  ])(
+    "should not let $name size defeat eviction — the bogus row is rebuilt from lstat first",
+    async ({ size }) => {
+      // A `-1` size shrinks the running total (nothing ever evicts); `1e999`
+      // parses as Infinity (everything evicts). Either poisons LRU order, so the
+      // row must be dropped at load and re-adopted with the file's real size.
+      const entry = pngOf(1, 1);
+      const sub = `evil-size-${size.length.toString()}`;
+      const cacheDir = join(dir, sub, ".hreader", "thumbs");
+      const cache = cacheOf(sub, entry.length * 2);
+      storeFile(cacheDir, HASH_A, entry);
+      storeFile(cacheDir, HASH_B, entry);
+      writeFileSync(
+        join(cacheDir, "index.json"),
+        `{"version":1,"entries":{"${HASH_A}":{"at":1,"size":${size}},"${HASH_B}":{"at":2,"size":${String(entry.length)}}}}`,
+      );
+
+      await cache.put(HASH_C, entry);
+
+      // Real total = 3 entries over a 2-entry limit: B (at:2) is oldest — A's
+      // lstat mtime is newest, C just landed. Exactly one eviction. The index
+      // row leaves with the put — before the get() below can rewrite it.
+      expect([...indexEntriesOf(cacheDir)].sort()).toEqual([HASH_A, HASH_C]);
+      expect(await cache.get(HASH_B)).toBeUndefined();
+      expect(await cache.get(HASH_A)).toEqual(Buffer.from(entry));
+    },
+  );
 
   it("should never evict the entry it just wrote, even when it alone exceeds the limit", async () => {
     const cache = cacheOf("oversized", 10);
@@ -246,6 +281,108 @@ describe("thumbs/cache · index rebuild", () => {
     },
   );
 
+  it.each([
+    { name: "at-string", row: `{"at":"x","size":1}` },
+    { name: "at-null", row: `{"at":null,"size":1}` },
+    { name: "size-string", row: `{"at":1,"size":"1"}` },
+    { name: "size-missing", row: `{"at":1}` },
+    { name: "at-missing", row: `{"size":1}` },
+    { name: "size-negative", row: `{"at":1,"size":-1}` },
+    { name: "size-infinite", row: `{"at":1,"size":1e999}` },
+    { name: "at-infinite", row: `{"at":1e999,"size":1}` },
+  ])(
+    "should drop an index row with a malformed $name and re-adopt the PNG from lstat",
+    async ({ name, row }) => {
+      // Every field the guard checks is exercised: wrong-typed, null, absent,
+      // negative, and non-finite (`1e999` parses as Infinity) values must all
+      // land the row in the rebuild bucket, never in the trusted index.
+      const sub = `badrow-${name}`;
+      const cacheDir = join(dir, sub, ".hreader", "thumbs");
+      const cache = cacheOf(sub);
+      const png = pngOf(3, 3);
+      storeFile(cacheDir, HASH_A, png);
+      storeFile(cacheDir, HASH_B, png);
+      writeFileSync(
+        join(cacheDir, "index.json"),
+        `{"version":1,"entries":{"${HASH_A}":${row},"${HASH_B}":{"at":42,"size":${String(png.length)}}}}`,
+      );
+
+      await cache.put(HASH_C, png);
+
+      const entries = indexEntryMapOf(cacheDir);
+      expect(Object.keys(entries).sort()).toEqual([HASH_A, HASH_B, HASH_C]);
+      // Re-adopted, not kept: real file size and a finite mtime — the bogus
+      // fields (string, null, absent, negative, infinite) must not survive.
+      expect(entries[HASH_A]?.size).toBe(png.length);
+      expect(Number.isFinite(entries[HASH_A]?.at)).toBe(true);
+      // The honest sibling row was untouched: only the malformed row is rebuilt.
+      expect(entries[HASH_B]?.at).toBe(42);
+    },
+  );
+
+  it("should keep rows that carry extra fields or a zero size — only the two typed fields matter", async () => {
+    const sub = "kept-rows";
+    const cacheDir = join(dir, sub, ".hreader", "thumbs");
+    const cache = cacheOf(sub);
+    const png = pngOf(3, 3);
+    storeFile(cacheDir, HASH_A, png);
+    storeFile(cacheDir, HASH_B, png);
+    writeFileSync(
+      join(cacheDir, "index.json"),
+      `{"version":1,"entries":{"${HASH_A}":{"at":42,"size":${String(png.length)},"x":9,"y":{"z":1}},"${HASH_B}":{"at":7,"size":0}}}`,
+    );
+
+    await cache.put(HASH_C, png);
+
+    const entries = indexEntryMapOf(cacheDir);
+    // Extra keys do not corrupt a good row — its timestamp is honored verbatim.
+    expect(entries[HASH_A]?.at).toBe(42);
+    // A zero size is legal bookkeeping: the row stays trusted, not re-adopted.
+    expect(entries[HASH_B]).toEqual({ at: 7, size: 0 });
+  });
+
+  it("should distrust the whole file when the payload itself is unparseable (a literal NaN)", async () => {
+    const sub = "nan-file";
+    const cacheDir = join(dir, sub, ".hreader", "thumbs");
+    const cache = cacheOf(sub);
+    const png = pngOf(3, 3);
+    storeFile(cacheDir, HASH_A, png);
+    storeFile(cacheDir, HASH_B, png);
+    // `NaN` is not JSON: the file fails to parse and EVERY row — even the
+    // well-formed B — is rebuilt from lstat.
+    writeFileSync(
+      join(cacheDir, "index.json"),
+      `{"version":1,"entries":{"${HASH_A}":{"at":1,"size":NaN},"${HASH_B}":{"at":42,"size":${String(png.length)}}}}`,
+    );
+
+    await cache.put(HASH_C, png);
+
+    const entries = indexEntryMapOf(cacheDir);
+    expect(Object.keys(entries).sort()).toEqual([HASH_A, HASH_B, HASH_C]);
+    expect(entries[HASH_B]?.at).not.toBe(42);
+  });
+
+  it("should distrust a foreign-version index even when every row is well-formed", async () => {
+    const sub = "badversion-rows";
+    const cacheDir = join(dir, sub, ".hreader", "thumbs");
+    const cache = cacheOf(sub);
+    const png = pngOf(3, 3);
+    storeFile(cacheDir, HASH_A, png);
+    // Version marks the whole payload, not row-by-row trust: a well-formed row
+    // under a foreign version is rebuilt from lstat like any other stranger.
+    writeFileSync(
+      join(cacheDir, "index.json"),
+      `{"version":2,"entries":{"${HASH_A}":{"at":42,"size":${String(png.length)}}}}`,
+    );
+
+    await cache.put(HASH_B, png);
+
+    const entries = indexEntryMapOf(cacheDir);
+    expect(Object.keys(entries).sort()).toEqual([HASH_A, HASH_B]);
+    expect(entries[HASH_A]?.at).not.toBe(42);
+    expect(Number.isFinite(entries[HASH_A]?.at)).toBe(true);
+  });
+
   it("should trust a well-formed index row instead of re-deriving it from lstat", async () => {
     const cacheDir = join(dir, "trusted-index", ".hreader", "thumbs");
     const cache = cacheOf("trusted-index");
@@ -296,6 +433,27 @@ const failingDeps = (fs: Partial<PatchDeps["fs"]>): PatchDeps => ({
 const failingCacheOf = (sub: string, fs: Partial<PatchDeps["fs"]>): ThumbCache =>
   createThumbCache({ dir: join(dir, sub, ".hreader", "thumbs"), deps: failingDeps(fs) });
 
+/** io_failure messages may name only the workspace-relative path — an absolute host path must never reach stderr, --json, or an HTTP body. */
+const HOST_PATH_FRAGMENTS = ["/Users", "/private", "/tmp", "/var", "/home"] as const;
+
+const ioErrorOf = async (work: () => Promise<unknown>): Promise<Error> => {
+  try {
+    await work();
+  } catch (error: unknown) {
+    expect(error).toMatchObject({ code: "io_failure" });
+    return error as Error;
+  }
+  throw new Error("expected io_failure but the call succeeded");
+};
+
+const expectCleanPath = (error: Error, what: string, shown: string): void => {
+  // The full `<what>失败：<shown>` form pins both the message and the display path.
+  expect(error.message).toContain(`${what}失败：${shown}`);
+  for (const fragment of HOST_PATH_FRAGMENTS) {
+    expect(error.message).not.toContain(fragment);
+  }
+};
+
 const indexEntryMapOf = (cacheDir: string): Record<string, { at: number; size: number }> =>
   (
     JSON.parse(readFileSync(join(cacheDir, "index.json"), "utf8")) as {
@@ -307,38 +465,32 @@ const indexEntriesOf = (cacheDir: string): readonly string[] =>
   Object.keys(indexEntryMapOf(cacheDir));
 
 describe("thumbs/cache · io failures", () => {
-  it("should surface a cache-dir mkdir failure as io_failure", async () => {
+  it("should surface a cache-dir mkdir failure as io_failure with the workspace-relative path", async () => {
     const cache = failingCacheOf("io-mkdir", { mkdir: () => Promise.reject(eacces()) });
-    await expect(cache.put(HASH_A, pngOf(1, 1))).rejects.toMatchObject({
-      code: "io_failure",
-      message: expect.stringContaining("建缩略图目录") as string,
-    });
+    const error = await ioErrorOf(() => cache.put(HASH_A, pngOf(1, 1)));
+    expectCleanPath(error, "建缩略图目录", ".hreader/thumbs");
   });
 
-  it("should surface a cached-PNG write failure as io_failure", async () => {
+  it("should surface a cached-PNG write failure as io_failure with the workspace-relative path", async () => {
     const cache = failingCacheOf("io-write", {
       writeFileAtomic: (path, data) =>
         path.endsWith(".png")
           ? Promise.reject(eacces())
           : nodePatchDeps.fs.writeFileAtomic(path, data),
     });
-    await expect(cache.put(HASH_A, pngOf(1, 1))).rejects.toMatchObject({
-      code: "io_failure",
-      message: expect.stringContaining("写缩略图缓存") as string,
-    });
+    const error = await ioErrorOf(() => cache.put(HASH_A, pngOf(1, 1)));
+    expectCleanPath(error, "写缩略图缓存", `.hreader/thumbs/${HASH_A}.png`);
   });
 
-  it("should surface an index write failure as io_failure", async () => {
+  it("should surface an index write failure as io_failure with the workspace-relative path", async () => {
     const cache = failingCacheOf("io-index-write", {
       writeFileAtomic: (path, data) =>
         path.endsWith("index.json")
           ? Promise.reject(eacces())
           : nodePatchDeps.fs.writeFileAtomic(path, data),
     });
-    await expect(cache.put(HASH_A, pngOf(1, 1))).rejects.toMatchObject({
-      code: "io_failure",
-      message: expect.stringContaining("写缩略图索引") as string,
-    });
+    const error = await ioErrorOf(() => cache.put(HASH_A, pngOf(1, 1)));
+    expectCleanPath(error, "写缩略图索引", ".hreader/thumbs/index.json");
   });
 
   it("should still serve a hit when the index save fails — the timestamp is only an LRU hint", async () => {
@@ -355,18 +507,16 @@ describe("thumbs/cache · io failures", () => {
     expect(await cache.get(HASH_A)).toEqual(Buffer.from(png));
   });
 
-  it("should surface a cached-PNG read failure as io_failure", async () => {
+  it("should surface a cached-PNG read failure as io_failure with the workspace-relative path", async () => {
     const cacheDir = join(dir, "io-read", ".hreader", "thumbs");
     storeFile(cacheDir, HASH_A, pngOf(1, 1));
     const cache = failingCacheOf("io-read", { readFile: () => Promise.reject(eacces()) });
 
-    await expect(cache.get(HASH_A)).rejects.toMatchObject({
-      code: "io_failure",
-      message: expect.stringContaining("读取缩略图缓存") as string,
-    });
+    const error = await ioErrorOf(() => cache.get(HASH_A));
+    expectCleanPath(error, "读取缩略图缓存", `.hreader/thumbs/${HASH_A}.png`);
   });
 
-  it("should surface an index read failure as io_failure", async () => {
+  it("should surface an index read failure as io_failure with the workspace-relative path", async () => {
     const cacheDir = join(dir, "io-index-read", ".hreader", "thumbs");
     storeFile(cacheDir, HASH_A, pngOf(1, 1));
     const cache = failingCacheOf("io-index-read", {
@@ -374,21 +524,17 @@ describe("thumbs/cache · io failures", () => {
         path.endsWith("index.json") ? Promise.reject(eacces()) : nodePatchDeps.fs.readFile(path),
     });
 
-    await expect(cache.get(HASH_A)).rejects.toMatchObject({
-      code: "io_failure",
-      message: expect.stringContaining("读取缩略图索引") as string,
-    });
+    const error = await ioErrorOf(() => cache.get(HASH_A));
+    expectCleanPath(error, "读取缩略图索引", ".hreader/thumbs/index.json");
   });
 
-  it("should surface a directory listing failure as io_failure", async () => {
+  it("should surface a directory listing failure as io_failure with the workspace-relative path", async () => {
     const cacheDir = join(dir, "io-readdir", ".hreader", "thumbs");
     storeFile(cacheDir, HASH_A, pngOf(1, 1));
     const cache = failingCacheOf("io-readdir", { readdir: () => Promise.reject(eacces()) });
 
-    await expect(cache.get(HASH_A)).rejects.toMatchObject({
-      code: "io_failure",
-      message: expect.stringContaining("读取缩略图目录") as string,
-    });
+    const error = await ioErrorOf(() => cache.get(HASH_A));
+    expectCleanPath(error, "读取缩略图目录", ".hreader/thumbs");
   });
 
   it("should treat a vanished cache directory during index load as empty", async () => {

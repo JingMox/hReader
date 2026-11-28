@@ -4,13 +4,13 @@
 // capability plan), and render failures propagate without poisoning the cache.
 // All seams are fakes — no Chrome, no queue timing, no disk beyond fixture docs.
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import { HrError } from "@hreader/core";
+import { HrError, nodePatchDeps, type PatchDeps } from "@hreader/core";
 
 import type { RenderSource } from "../src/chrome/types";
 import type { ThumbCache } from "../src/thumbs/cache";
@@ -244,6 +244,47 @@ describe("thumbs/service · failure propagation", () => {
     });
     fail = false;
     await expect(thumb({ path: doc, hash: HASH })).resolves.toEqual(pngOf(600, 400));
+  });
+});
+
+describe("thumbs/service · io_failure propagation", () => {
+  it("should surface a cache io failure carrying only the workspace-relative path", async () => {
+    // The real cache, an fs fault on mkdir, a fake render — the thrown message is
+    // what both hosts echo (CLI stderr/--json verbatim; the serve route maps
+    // io_failure to a fixed body, so it can never leak a host path).
+    const eacces = Object.assign(new Error("denied"), { code: "EACCES" });
+    const deps: PatchDeps = {
+      ...nodePatchDeps,
+      fs: { ...nodePatchDeps.fs, mkdir: () => Promise.reject(eacces) },
+    };
+    // Own workspace: sibling tests run the REAL default cache under `dir` and
+    // leave entries behind — a private root keeps this a deterministic miss.
+    const ws = join(dir, "iofail-ws");
+    mkdirSync(ws, { recursive: true });
+    const thumb = createThumbRender({
+      workspace: ws,
+      home: join(dir, "home"),
+      env: {},
+      stop: NEVER,
+      timeoutMs: 1000,
+      warn: () => undefined,
+      deps,
+      render: () => Promise.resolve(pngOf(600, 400)),
+    });
+    const doc = join(ws, "iofail.html");
+    writeFileSync(doc, MANAGED);
+
+    try {
+      await thumb({ path: doc, hash: HASH });
+      expect.unreachable("the cache mkdir must fail");
+    } catch (error: unknown) {
+      expect(error).toMatchObject({ code: "io_failure" });
+      const message = (error as Error).message;
+      expect(message).toContain("建缩略图目录失败：.hreader/thumbs");
+      for (const fragment of ["/Users", "/private", "/tmp", "/var", "/home"]) {
+        expect(message).not.toContain(fragment);
+      }
+    }
   });
 });
 

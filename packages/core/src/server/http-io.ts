@@ -36,7 +36,7 @@ const FIXED_MESSAGES: Partial<Record<HrErrorCode, string>> = {
 };
 
 /** 响应体只放"人不该看到内部路径"的文案：绝对路径与 JSON 源片段一律抹掉，细节只进 `--debug` 的 stderr。
- * @internal thumb 路由翻译渲染层错误时复用同一出口，不走公共导出面。 */
+ * @internal the thumb route's render-error translation reuses this same exit; not part of the public export surface. */
 export const publicMessageOf = (text: string): string => {
   const withoutPaths = text.replace(/\/(?:[\w.@%+-]+\/+)+[\w.@%+-]*/gu, "[路径已隐藏]");
   const withoutSource = withoutPaths.replace(/["'`][^"'"'`]{40,}["'`]/gu, "[内容已隐藏]");

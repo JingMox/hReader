@@ -18,6 +18,10 @@ const THUMB_CACHE_LIMIT_BYTES = 524_288_000;
 const INDEX_FILE = "index.json";
 const INDEX_VERSION = 1;
 
+/** io_failure messages name the path the user recognizes — workspace-relative — never the host's absolute one (stderr, --json and the HTTP boundary all echo it). */
+const DISPLAY_DIR = join(".hreader", "thumbs");
+const displayPathOf = (name: string): string => join(DISPLAY_DIR, name);
+
 /** A cache entry's only legal filename: lowercase sha256 hex. Anything else would let a caller name paths inside the directory. */
 const HASH_RE = /^[0-9a-f]{64}$/u;
 
@@ -48,12 +52,15 @@ const unlinkQuiet = async (fsApi: PatchDeps["fs"], path: string): Promise<void> 
 };
 
 /** Index entry shape guard: a corrupt index file is rebuilt from the directory rather than trusted.
- * `typeof` alone suffices for the numbers — JSON.parse never yields NaN/Infinity. */
-const isCacheEntry = (value: unknown): value is CacheEntry =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof Reflect.get(value, "at") === "number" &&
-  typeof Reflect.get(value, "size") === "number";
+ * `isFinite` earns its keep — `1e999` parses as Infinity — and a non-finite or
+ * negative `size` would corrupt the eviction total, so those rows are dropped
+ * and the file re-adopted from lstat like any other stray. */
+const isCacheEntry = (value: unknown): value is CacheEntry => {
+  if (typeof value !== "object" || value === null) return false;
+  const at: unknown = Reflect.get(value, "at");
+  const size: unknown = Reflect.get(value, "size");
+  return Number.isFinite(at) && typeof size === "number" && Number.isFinite(size) && size >= 0;
+};
 
 const parseIndex = (text: string): CacheIndex | undefined => {
   try {
@@ -103,14 +110,14 @@ export const createThumbCache = (input: {
     try {
       index = parseIndex(new TextDecoder().decode(await deps.fs.readFile(indexPath))) ?? {};
     } catch (error: unknown) {
-      if (!isMissing(error)) throw ioFailureOf(error, "读取缩略图索引", indexPath);
+      if (!isMissing(error)) throw ioFailureOf(error, "读取缩略图索引", displayPathOf(INDEX_FILE));
     }
     let names: readonly string[];
     try {
       names = await deps.fs.readdir(dir);
     } catch (error: unknown) {
       if (isMissing(error)) return index;
-      throw ioFailureOf(error, "读取缩略图目录", dir);
+      throw ioFailureOf(error, "读取缩略图目录", DISPLAY_DIR);
     }
     const present = new Set(names);
     index = Object.fromEntries(
@@ -136,7 +143,7 @@ export const createThumbCache = (input: {
     try {
       await deps.fs.writeFileAtomic(indexPath, data);
     } catch (error: unknown) {
-      throw ioFailureOf(error, "写缩略图索引", indexPath);
+      throw ioFailureOf(error, "写缩略图索引", displayPathOf(INDEX_FILE));
     }
   };
 
@@ -174,7 +181,7 @@ export const createThumbCache = (input: {
         bytes = await deps.fs.readFile(path);
       } catch (error: unknown) {
         if (isMissing(error)) return undefined;
-        throw ioFailureOf(error, "读取缩略图缓存", path);
+        throw ioFailureOf(error, "读取缩略图缓存", displayPathOf(pngNameOf(hash)));
       }
       try {
         assertPngOf(bytes);
@@ -194,13 +201,13 @@ export const createThumbCache = (input: {
       try {
         await deps.fs.mkdir(dir);
       } catch (error: unknown) {
-        throw ioFailureOf(error, "建缩略图目录", dir);
+        throw ioFailureOf(error, "建缩略图目录", DISPLAY_DIR);
       }
       const path = join(dir, pngNameOf(hash));
       try {
         await deps.fs.writeFileAtomic(path, bytes);
       } catch (error: unknown) {
-        throw ioFailureOf(error, "写缩略图缓存", path);
+        throw ioFailureOf(error, "写缩略图缓存", displayPathOf(pngNameOf(hash)));
       }
       const index = await loadIndex();
       index[hash] = { at: deps.clock.now().getTime(), size: bytes.length };

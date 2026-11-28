@@ -196,6 +196,31 @@ describe("GET /api/doc/<docId>/thumb · renderer errors", () => {
     );
   });
 
+  it("should never let a renderer's host path reach the body — io_failure maps to the fixed copy", async () => {
+    await withThumb(
+      // A path-laden inner message on purpose: the HTTP boundary must stay clean
+      // even if the code producing the message regresses.
+      () =>
+        Promise.reject(
+          new HrError(
+            "io_failure",
+            "读取缩略图缓存失败：/private/tmp/hr-x/.hreader/thumbs/aaaa.png",
+          ),
+        ),
+      async (ctx) => {
+        const response = await get(ctx.port, ctx.token, "/api/doc/doc.html/thumb");
+        expect(response.status).toBe(500);
+        expect(JSON.parse(response.body)).toMatchObject({
+          code: "io_failure",
+          message: "服务端暂时不可用",
+        });
+        for (const fragment of ["/Users", "/private", "/tmp", "/var", "/home"]) {
+          expect(response.body).not.toContain(fragment);
+        }
+      },
+    );
+  });
+
   it("should rethrow a non-HrError even when it carries a render-looking code field", async () => {
     await withThumb(
       () => Promise.reject(Object.assign(new Error("plain"), { code: "chrome_failed" })),
