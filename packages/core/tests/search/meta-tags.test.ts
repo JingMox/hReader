@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { nodePatchDeps } from "../../src/io/node-fs";
 import type { PatchDeps } from "../../src/io/ports";
-import { setDocMeta } from "../../src/ops/doc-meta-ops";
+import { getDocMeta, setDocMeta } from "../../src/ops/doc-meta-ops";
 import { searchLibrary } from "../../src/search";
 import { writeTextAt, withWorkspace } from "../io/harness";
 
@@ -189,6 +189,46 @@ describe("search · meta freshness", () => {
       expect(result.results[0]?.path).toBe("a.html");
       // The stale meta entry stayed; the healthy retry picks the tag up.
       expect((await find(dir, "园艺")).results[0]?.path).toBe("a.html");
+    });
+  });
+
+  it("indexes tags on docs named __proto__.html, constructor.html and prototype.html", async () => {
+    await withWorkspace(async (dir) => {
+      const files = ["__proto__.html", "constructor.html", "prototype.html"];
+      for (const [index, file] of files.entries()) {
+        await writeTextAt(join(dir, file), DOC(`d${String(index)}`, "苹果 种植"));
+        await tag(dir, file, [`tag-${String(index)}`]);
+      }
+
+      for (const [index, file] of files.entries()) {
+        const result = await find(dir, `tag-${String(index)}`);
+        expect(result.results[0]?.path).toBe(file);
+        expect(result.results[0]?.tags).toEqual([`tag-${String(index)}`]);
+      }
+    });
+  });
+
+  it("keeps every doc's tags searchable after a doc named constructor carries meta", async () => {
+    await withWorkspace(async (dir) => {
+      await writeTextAt(join(dir, "a.html"), DOC("a", "苹果 种植"));
+      await writeTextAt(join(dir, "constructor"), "x");
+      await tag(dir, "a.html", ["园艺"]);
+      expect((await find(dir, "园艺")).results[0]?.path).toBe("a.html");
+
+      // The write itself reports success; the regression was the READ side rejecting the
+      // stored "constructor" key as dangerous and emptying the whole table.
+      const written = await setDocMeta(
+        { workspace: dir, file: "constructor", patch: { tags: ["构"] }, by: "user" },
+        nodePatchDeps,
+      );
+      expect(written.changed).toBe(true);
+
+      const result = await find(dir, "园艺");
+      expect(result.results[0]?.path).toBe("a.html");
+      expect(result.results[0]?.tags).toEqual(["园艺"]);
+      expect(
+        (await getDocMeta({ workspace: dir, file: "constructor" }, nodePatchDeps)).meta.tags,
+      ).toEqual(["构"]);
     });
   });
 

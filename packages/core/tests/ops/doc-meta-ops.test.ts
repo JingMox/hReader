@@ -475,6 +475,93 @@ describe("setDocMeta · corruption and IO failures", () => {
   });
 });
 
+describe("setDocMeta · prototype-shaped doc names", () => {
+  // Filenames that collide with Object.prototype members are legal on disk and must behave
+  // like any other doc: stored as data, never routed through the prototype chain.
+  const WEIRD = ["__proto__", "constructor", "prototype", "hasOwnProperty", "toString"];
+
+  /** The pollution invariant: no read or write may ever reach into Object.prototype. */
+  const expectNoPrototypeDrift = (): void => {
+    expect(Object.getPrototypeOf({})).toBe(Object.prototype);
+    expect(Reflect.get(Object.prototype, "tags")).toBeUndefined();
+  };
+
+  const writeAndReadBack = async (dir: string, file: string): Promise<void> => {
+    const written = await setDocMeta(
+      { workspace: dir, file, patch: { addTags: [`t-${file}`] }, by: "user" },
+      depsAt(),
+    );
+    expect(written.changed).toBe(true);
+    expect(written.meta.tags).toEqual([`t-${file}`]);
+    const got = await getDocMeta({ workspace: dir, file }, depsAt());
+    expect(got.meta.tags).toEqual([`t-${file}`]);
+    expectNoPrototypeDrift();
+  };
+
+  it.each(WEIRD)("should set and get meta for a doc named %s", async (name) => {
+    await withWorkspace(async (dir) => {
+      await seed(dir, name);
+      await writeAndReadBack(dir, name);
+    });
+  });
+
+  it.each(WEIRD)("should set and get meta for a doc named sub/%s", async (name) => {
+    await withWorkspace(async (dir) => {
+      await mkdir(join(dir, "sub"));
+      await seed(dir, `sub/${name}`);
+      await writeAndReadBack(dir, `sub/${name}`);
+    });
+  });
+
+  it("should keep every weird-named record plus a normal doc's meta across later writes", async () => {
+    await withWorkspace(async (dir) => {
+      await seed(dir);
+      await setTags(dir, { tags: ["正"] });
+      for (const name of WEIRD) {
+        await seed(dir, name);
+        await setDocMeta(
+          { workspace: dir, file: name, patch: { addTags: [`t-${name}`] }, by: "user" },
+          depsAt(),
+        );
+      }
+      // A later write to the normal doc must not disturb or shadow the weird keys.
+      await setTags(dir, { addTags: ["再"] });
+      for (const name of WEIRD) {
+        const got = await getDocMeta({ workspace: dir, file: name }, depsAt());
+        expect(got.meta.tags).toEqual([`t-${name}`]);
+      }
+      expect((await getDocMeta({ workspace: dir, file: FILE }, depsAt())).meta.tags).toEqual([
+        "正",
+        "再",
+      ]);
+      expectNoPrototypeDrift();
+    });
+  });
+
+  it("should read a hand-written table with a __proto__ doc key as a normal entry", async () => {
+    await withWorkspace(async (dir) => {
+      await seed(dir, "__proto__");
+      await mkdir(join(dir, ".hreader"), { recursive: true });
+      // A literal string: JSON.stringify can never emit a __proto__ own key; only
+      // hand-written text produces one after JSON.parse.
+      await writeTextAt(
+        join(dir, ".hreader", "meta.json"),
+        '{"version":1,"docs":{"__proto__":{"tags":["手写"],"createdBy":"agent","savedAt":"2026-01-01T00:00:00.000Z"}}}',
+      );
+
+      const got = await getDocMeta({ workspace: dir, file: "__proto__" }, depsAt());
+
+      expect(got.meta).toEqual({
+        tags: ["手写"],
+        createdBy: "agent",
+        savedAt: "2026-01-01T00:00:00.000Z",
+      });
+      expect(got.diagnostics).toEqual([]);
+      expectNoPrototypeDrift();
+    });
+  });
+});
+
 describe("doc-meta concurrency: eight child processes tag the same document", () => {
   it("should land every tag exactly once with none lost", { timeout: 60_000 }, async () => {
     await withWorkspace(async (dir) => {
