@@ -67,11 +67,6 @@ const fileStateOf = (path: string): { readonly bytes: Buffer; readonly mtimeMs: 
   mtimeMs: statSync(path).mtimeMs,
 });
 
-const settle = async (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
 describe("meta routes · auth", () => {
   it("should answer 401 without a cookie on the read", async () => {
     await withServer(async (ctx) => {
@@ -325,14 +320,24 @@ describe("meta routes · SSE", () => {
         ]);
         for (const failure of failures) expect(failure.status).toBeGreaterThanOrEqual(400);
 
-        const second = await postMeta(ctx, "doc.html", { addTags: ["y"] });
+        const second = await postMeta(ctx, "other.html", { tags: ["y"] });
         expect(second.status).toBe(200);
 
-        // ready + two doc.meta — then a beat so a wrongly-published no-op frame lands too.
-        await sse.waitFor(3);
-        await settle(300);
+        // Ordering marker: frames arrive in publish order on one connection, so once the
+        // other.html doc.meta lands, every earlier publish — including a wrongly-emitted
+        // no-op frame — is already in `frames`.
+        while (
+          !sse.frames.some(
+            (frame) => frame.event === "doc.meta" && frame.data.includes('"docId":"other.html"'),
+          )
+        ) {
+          await sse.waitFor(sse.frames.length + 1);
+        }
         const events = sse.frames.filter((frame) => frame.event === "doc.meta");
-        expect(events).toHaveLength(2);
+        expect(events.map((frame) => frame.data)).toEqual([
+          expect.stringContaining('"docId":"doc.html"'),
+          expect.stringContaining('"docId":"other.html"'),
+        ]);
         // A meta write never fires doc.changed — the document bytes are untouched.
         expect(sse.frames.some((frame) => frame.event === "doc.changed")).toBe(false);
       } finally {
