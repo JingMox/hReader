@@ -13,6 +13,7 @@ import {
   printParamsOf,
   renderPdfOnBrowserOf,
   renderPngOnBrowserOf,
+  renderThumbOnBrowserOf,
 } from "../src/chrome/render";
 import { PAGE_SIZES, isPdfPageSize, type PdfPageSize } from "../src/chrome/types";
 import { fakeBrowserOf, fakePageOf, type FakePageOptions } from "./chrome-helpers";
@@ -500,6 +501,89 @@ describe("renderPngOnBrowserOf · hard pixel gate", () => {
       const error = await failureOf(renderPngOf({ contentHeight: 40_000 }, dir, 40_000));
       expect(error.code).toBe("invalid_input");
       expect(error.message).toContain("超过单边");
+    });
+  });
+});
+
+const renderThumbOf = (options: FakePageOptions, dir: string) =>
+  renderThumbOnBrowserOf({
+    browser: fakeBrowserOf(fakePageOf(options)),
+    source: { kind: "sheet", html: "<p>x</p>" },
+    dir,
+  });
+
+describe("renderThumbOnBrowserOf · first-screen geometry", () => {
+  it("should lay out at 1200x800 dsf 0.5 and take one viewport clip for a 600x400 output", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({});
+      const image = await renderThumbOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        source: { kind: "sheet", html: "<p>x</p>" },
+        dir,
+      });
+
+      // Exactly one viewport and one screenshot: the first screen, never the full page.
+      // Downscale rides deviceScaleFactor like the tall image; clip.scale stays pinned to 1.
+      expect(page.viewports).toEqual([{ width: 1200, height: 800, deviceScaleFactor: 0.5 }]);
+      expect(page.shotCalls).toHaveLength(1);
+      expect(page.shotCalls[0]).toEqual({
+        captureBeyondViewport: false,
+        clip: { x: 0, y: 0, width: 1200, height: 800, scale: 1 },
+      });
+      expect([image.width, image.height, image.clipped]).toEqual([600, 400, false]);
+    });
+  });
+
+  it("should gate the foreign source exactly like pdf/png: JS off, requests routed, one initial navigation", async () => {
+    await withDir(async (dir) => {
+      const page = fakePageOf({});
+      await renderThumbOnBrowserOf({
+        browser: fakeBrowserOf(page),
+        source: {
+          kind: "foreign",
+          page: {
+            url: "http://hreader-export.invalid/f/cap/index.html",
+            docName: "index.html",
+            gate: () => Promise.resolve({ kind: "deny" }),
+          },
+        },
+        dir,
+      });
+      expect(page.jsEnabled).toEqual([false]);
+      expect(page.goneTo).toEqual(["http://hreader-export.invalid/f/cap/index.html"]);
+      if (page.routed === undefined) throw new Error("interception was never armed");
+    });
+  });
+});
+
+describe("renderThumbOnBrowserOf · failure routing", () => {
+  it("should report render_empty when the artifact is not a PNG", async () => {
+    await withDir(async (dir) => {
+      const error = await failureOf(renderThumbOf({ png: "not-png" }, dir));
+      expect(error.code).toBe("render_empty");
+    });
+  });
+
+  it("should report render_empty when the IHDR readback is not 600x400", async () => {
+    await withDir(async (dir) => {
+      const wide = await failureOf(renderThumbOf({ png: "half-width" }, dir));
+      expect(wide.code).toBe("render_empty");
+      const tall = await failureOf(renderThumbOf({ png: "half-height" }, dir));
+      expect(tall.code).toBe("render_empty");
+    });
+  });
+
+  it("should map a screenshot failure to chrome_failed", async () => {
+    await withDir(async (dir) => {
+      const error = await failureOf(renderThumbOf({ png: "error" }, dir));
+      expect(error.code).toBe("chrome_failed");
+    });
+  });
+
+  it("should map a navigate failure to chrome_failed", async () => {
+    await withDir(async (dir) => {
+      const error = await failureOf(renderThumbOf({ goto: "error" }, dir));
+      expect(error.code).toBe("chrome_failed");
     });
   });
 });

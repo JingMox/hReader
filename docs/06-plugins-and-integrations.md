@@ -134,3 +134,13 @@ hReader cleanly separates **Desktop Chrome Appearance** from **Document Visual P
    Controls sidebar, background, accent, borders, and canvas surfaces inside the Tauri workbench without altering `.html` document bytes.
 2. **Document Visual Style (`styles/<id>/theme.css` or `.hreader/style.yaml`)**:
    Controls embedded typographic layout, component styling, and editorial tone prompts stored with or compiled into the `.html` document itself (`hr style --visual` / `hr style --tone`).
+
+---
+
+## 6. Document Thumbnails (`hr serve` + `hr thumb`)
+
+Both surfaces render the **first screen** of a document through the same export pipeline (scripts never run, the network follows the effective permission, out-of-workspace docs get no grant): the page lays out at a 1200×800 viewport and the PNG is downscaled to 600×400. Requires Chrome/Edge/Chromium.
+
+- **HTTP**: `GET /api/doc/<docId>/thumb` on `hr serve` (cookie auth — `Origin: null` gets 403). Replies `image/png` with `cache-control: private, max-age=0, must-revalidate` and an `etag` equal to the document's sha256; `If-None-Match` gets a 304. A render failure answers the export pipeline's JSON error shape (`chrome_missing` / `chrome_failed` / `render_timeout` / `render_empty`).
+- **CLI**: `hr thumb <file> [--out <png>]` — without `--out` the PNG goes to stdout, but only when stdout is not a TTY (on a terminal, `--out` is required); `--json` reports `{png,bytes,width,height,out}`.
+- **Cache**: generations are cached at `<workspace>/.hreader/thumbs/<sha256 of doc bytes>.png` (LRU-evicted at 500 MB); at most one generation runs at a time per process, queued FIFO, and concurrent requests for the same document share one generation. `.hreader/**` is never indexed, listed, or served.

@@ -24,6 +24,7 @@ import { readCommand } from "./commands/read";
 import { searchCommand } from "./commands/search";
 import { styleCommand } from "./commands/style";
 import { styleExtractCommand } from "./commands/style-extract";
+import { thumbCommand } from "./commands/thumb";
 import {
   templateListCommand,
   templateNewCommand,
@@ -39,6 +40,7 @@ import { apiKeyOf, baseUrlOf, modelOf, normalizeBaseUrl, sessionIdOf } from "./l
 import { bounded, displayedPathOf, jsonError, term } from "./output";
 import { serveCommandOf } from "./run-serve";
 import { isDiscoveredStylePath, undiscoveredHint } from "./style-out";
+import { createThumbRender } from "./thumbs/service";
 import { usageText, type CommandName } from "./usage";
 
 export interface CliIo {
@@ -53,6 +55,10 @@ export interface CliIo {
   readonly fetch?: typeof globalThis.fetch;
   /** serve uses it to observe SIGTERM/SIGINT; other commands do not need it (omittable when building io in tests). */
   readonly stop?: Promise<void>;
+  /** Binary stdout channel for `hr thumb` without `--out` (`process.stdout.write` at the boundary); text receipts keep going through `stdout`. */
+  readonly stdoutBytes?: (bytes: Uint8Array) => void;
+  /** `process.stdout.isTTY` read once at the boundary: the TTY rule lives in the command layer, which must not touch the tty itself. */
+  readonly isStdoutTty?: boolean;
   /** The parent pid at startup: **required**, only `main.ts` can capture it before the first `await` (a `?? process.ppid` fallback would write the "read late" bug back in). */
   readonly launchParentPid: number;
   readonly home?: string;
@@ -219,13 +225,16 @@ const configHomeOf = (io: CliIo): string => {
   return envHome === undefined || envHome === "" ? homedir() : envHome;
 };
 
-/** `env`/`stop`/`home` are optional on `CliIo`; normalizing into `ResolvedIo` spares downstream commands the null checks (`stop` never resolving is deliberate). */
-type ResolvedIo = CliIo & Required<Pick<CliIo, "env" | "stop" | "home">>;
+/** `env`/`stop`/`home`/the stdout extras are optional on `CliIo`; normalizing into `ResolvedIo` spares downstream commands the null checks (`stop` never resolving is deliberate). */
+type ResolvedIo = CliIo &
+  Required<Pick<CliIo, "env" | "stop" | "home" | "stdoutBytes" | "isStdoutTty">>;
 const resolvedIoOf = (io: CliIo): ResolvedIo => ({
   ...io,
   env: io.env ?? {},
   stop: io.stop ?? new Promise<void>(() => undefined),
   home: configHomeOf(io),
+  stdoutBytes: io.stdoutBytes ?? (() => undefined),
+  isStdoutTty: io.isStdoutTty ?? false,
 });
 
 /** Only serve uses `--home`; the default location is already normalized by `resolvedIoOf`. */
@@ -235,6 +244,7 @@ const runServe = async (
 ): Promise<string> =>
   serveCommandOf(intent, withinWorkspace({ workspace: intent.workspace, absolute: intent.path }), {
     home: intent.home === undefined ? io.home : homeRealpathOf(intent.home),
+    env: io.env,
     cwd: io.cwd,
     stop: io.stop,
     launchParentPid: io.launchParentPid,
@@ -295,6 +305,32 @@ const productIoOf = (io: ResolvedIo): ProductIo => ({
   home: io.home,
   warn: io.stderr,
 });
+
+/** `hr thumb` needs everything pdf/png do plus the stdout boundary (binary write + TTY check) — same surface, two more fields. */
+const thumbOf = (
+  intent: Extract<Intent, { kind: "thumb" }>,
+  paths: { readonly workspace: string; readonly file: string },
+  io: ProductIo & Pick<ResolvedIo, "stdoutBytes" | "isStdoutTty">,
+): Promise<string> =>
+  thumbCommand({
+    ...intent,
+    path: join(paths.workspace, paths.file),
+    out: intent.out === undefined ? undefined : realpathThroughAncestors(intent.out),
+    workspace: paths.workspace,
+    displayOut: intent.out === undefined ? undefined : displayedPathOf(intent.out, io.cwd),
+    isStdoutTty: io.isStdoutTty,
+    stdoutBytes: io.stdoutBytes,
+    // The whole pipeline (queue + cache + Chrome) is the injected `render`: one service per invocation.
+    render: createThumbRender({
+      workspace: paths.workspace,
+      home: io.home,
+      env: io.env,
+      stop: io.stop,
+      timeoutMs: intent.timeoutMs,
+      warn: io.warn,
+      visual: intent.visual,
+    }),
+  });
 
 /** The source resolves like a read command (reads outside workspace are allowed); `--out`'s bounds check is the command layer's, same set as `hr export`. */
 const runImport = async (
@@ -363,7 +399,16 @@ const runTemplate = async (
 };
 
 type RemainingKind =
-  "patch" | "pdf" | "png" | "serve" | "undo" | "styleExtract" | "normalize" | "style" | "import";
+  | "patch"
+  | "pdf"
+  | "png"
+  | "thumb"
+  | "serve"
+  | "undo"
+  | "styleExtract"
+  | "normalize"
+  | "style"
+  | "import";
 
 /** The other half all need io (or take the write path): two segments each holding half — cyclomatic complexity stays flat as commands are added. */
 const runRemaining = async (
@@ -377,8 +422,9 @@ const runRemaining = async (
       ? normalizeCommand({ ...intent, path: paths.file, workspace: paths.workspace, displayPath })
       : styleCommand({ ...intent, path: paths.file, workspace: paths.workspace, displayPath });
   }
-  if (intent.kind === "pdf" || intent.kind === "png") {
+  if (intent.kind === "pdf" || intent.kind === "png" || intent.kind === "thumb") {
     const paths = withinWorkspace({ workspace: intent.workspace, absolute: intent.path });
+    if (intent.kind === "thumb") return thumbOf(intent, paths, { ...productIoOf(io), ...io });
     return intent.kind === "pdf"
       ? pdfOf(intent, paths, productIoOf(io))
       : pngOf(intent, paths, productIoOf(io));

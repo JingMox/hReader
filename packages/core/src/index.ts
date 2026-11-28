@@ -50,6 +50,8 @@ export type {
   RunningServer,
   ServerDeps,
   ServerOptions,
+  ThumbRender,
+  ThumbRequest,
 } from "./server";
 export {
   applyStyle,

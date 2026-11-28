@@ -2,7 +2,7 @@
 
 export { startServer } from "./server";
 export type { RunningServer, ServerDeps } from "./server";
-export type { Reply, ServerOptions } from "./contracts";
+export type { Reply, ServerOptions, ThumbRender, ThumbRequest } from "./contracts";
 export type { DaemonInfo } from "./daemon";
 export { decodeParams, matchRoute, paramOf } from "./routes";
 export { statusOf } from "./status";

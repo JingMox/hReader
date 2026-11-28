@@ -1325,8 +1325,8 @@ describe("门面 · 可单测部件仍可用", () => {
     const wrong = matchRoute("POST", "/api/events");
     expect(wrong.kind).toBe("method");
 
-    // The route table grew from 9 to 34 entries (static entries + annotations/undo + doc info + trust/annotate/normalize + the three permission routes + /f/ + the six sidecar routes of feat/sidecar-annotation-routes + /api/search + the two meta routes of feat/doc-metadata).
-    expect(ROUTES).toHaveLength(34);
+    // The route table grew from 9 to 35 entries (static entries + annotations/undo + doc info + trust/annotate/normalize + the three permission routes + /f/ + the six sidecar routes of feat/sidecar-annotation-routes + /api/search + /api/doc/<id>/thumb + the two meta routes of feat/doc-metadata).
+    expect(ROUTES).toHaveLength(35);
     expect(statusOf("locked")).toBe(409);
     expect(statusOf("too_many_clients")).toBe(429);
     expect(statusOf("path_outside_workspace")).toBe(403);

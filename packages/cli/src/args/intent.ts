@@ -118,6 +118,16 @@ export type Intent =
       readonly out: string;
       readonly force: boolean;
     } & Common)
+  | ({
+      readonly kind: "thumb";
+      readonly path: string;
+      /** `--out` optional: `undefined` = PNG bytes to stdout (a pipe only — the TTY refusal is the command layer's, it owns `isStdoutTty`). */
+      readonly out: string | undefined;
+      readonly timeoutMs: number;
+      /** `undefined` = use the document's embedded `#hr-theme`; the command layer falls back to the default theme when the document has none. */
+      readonly visual: string | undefined;
+      readonly force: boolean;
+    } & Common)
   | ({ readonly kind: "undo"; readonly path: string } & Common)
   | ({
       readonly kind: "check";

@@ -297,9 +297,9 @@ describe("annotations output · merged entries and migrate receipts", () => {
 });
 
 describe("usage · single source of truth", () => {
-  it("should name all seventeen commands", () => {
+  it("should name all eighteen commands", () => {
     expect(COMMAND_NAMES.join(" ")).toBe(
-      "new import normalize outline read patch check style undo export pdf png serve template annotations meta search",
+      "new import normalize outline read patch check style undo export pdf png thumb serve template annotations meta search",
     );
     expect(isCommandName("patch")).toBe(true);
     expect(isCommandName("nope")).toBe(false);

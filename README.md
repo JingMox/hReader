@@ -99,7 +99,7 @@ Built with **Tauri v2** + TypeScript/Rust, bundling the standalone CLI (`cli.mjs
 ### Runtime Prerequisites & First-Launch Notes
 
 - **Node.js `>= 22`** is required on `PATH` (or standard nvm / fnm / Volta / Homebrew / Program Files locations) to run the bundled daemon/CLI (`cli.mjs`).
-- **Google Chrome / Microsoft Edge / Chromium** _(optional)_ is required only for **Export PDF** (`hr pdf`) and **Export PNG** (`hr png`).
+- **Google Chrome / Microsoft Edge / Chromium** _(optional)_ is required only for **Export PDF** (`hr pdf`), **Export PNG** (`hr png`), and **Thumbnails** (`hr thumb`, `GET /api/doc/<docId>/thumb` on `hr serve`).
 - **Unsigned Binaries**: `v1.1.0` installers are not Apple-notarized or EV-signed yet:
   - **macOS**: Right-click `hReader.app` -> **Open**, or run `xattr -dr com.apple.quarantine /Applications/hReader.app`.
   - **Windows**: Click **More info -> Run anyway** on the SmartScreen prompt.
@@ -207,6 +207,7 @@ hr undo report.html [--json]
 hr export report.html --visual atelier-editorial --out print.html [--force]
 hr pdf report.html --out report.pdf [--page-size a4|letter|a5] [--visual <id>] [--force]
 hr png report.html --out report.png [--width 256..4096] [--scale 1..3] [--visual <id>]
+hr thumb report.html [--out thumb.png] [--visual <id>]   # 600×400 first-screen thumbnail; PNG to stdout when piped
 
 # Launch local reader server with live SSE reload
 hr serve report.html [--workspace <dir>] [--port <n>]

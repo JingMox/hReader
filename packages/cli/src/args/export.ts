@@ -33,6 +33,8 @@ const PNG_FLAGS = [
   "--workspace",
 ];
 
+const THUMB_FLAGS = ["--force", "--json", "--out", "--timeout", "--visual", "--workspace"];
+
 const DEFAULT_PAGE_SIZE = "a4";
 const DEFAULT_TIMEOUT_S = 60;
 const MAX_TIMEOUT_S = 600;
@@ -142,6 +144,39 @@ export const pngIntent = (raw: Raw, rest: readonly string[], cwd: string): Parse
       outlineFlag: OUTLINE_FLAGS.find((flag) => raw.switches.has(flag)),
       timeoutMs: timeoutSec * 1000,
       // The default likewise leaves theme selection to the command layer (embedded document theme -> default theme).
+      visual: raw.values.get("--visual"),
+      force: raw.switches.has("--force"),
+      ...commonOf(raw, cwd),
+    },
+  };
+};
+
+const thumbProblemOf = (raw: Raw, rest: readonly string[]): string | undefined => {
+  const [file = "", ...extra] = rest;
+  if (extra.length > 0) return `thumb 只接受 1 个位置参数，多出 ${String(extra.length)} 个`;
+  if (file === "") return "thumb 缺少 <file>";
+  if (raw.values.get("--visual") === "") return "--visual 不能为空";
+  return unusedFlag(raw, THUMB_FLAGS);
+};
+
+export const thumbIntent = (raw: Raw, rest: readonly string[], cwd: string): ParsedArgs => {
+  const [file = ""] = rest;
+  const message = thumbProblemOf(raw, rest);
+  if (message !== undefined) return failure(message, "thumb");
+  const out = raw.values.get("--out");
+  const timeoutSec = timeoutOf(raw);
+  if (timeoutSec === "invalid") {
+    return failure(`--timeout 必须是 1..${String(MAX_TIMEOUT_S)} 的整数`, "thumb");
+  }
+  return {
+    ok: true,
+    intent: {
+      kind: "thumb",
+      path: absoluteOf(file, cwd),
+      // `--out` stays optional: unset means "PNG to stdout" — `hr export` uses the same empty-string-as-unset rule.
+      out: out === undefined || out === "" ? undefined : absoluteOf(out, cwd),
+      timeoutMs: timeoutSec * 1000,
+      // The default leaves theme selection to the command layer (embedded document theme -> default theme), same as `hr png`.
       visual: raw.values.get("--visual"),
       force: raw.switches.has("--force"),
       ...commonOf(raw, cwd),

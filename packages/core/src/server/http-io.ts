@@ -35,8 +35,9 @@ const FIXED_MESSAGES: Partial<Record<HrErrorCode, string>> = {
   invalid_utf8: "文件不是合法的 UTF-8",
 };
 
-/** 响应体只放"人不该看到内部路径"的文案：绝对路径与 JSON 源片段一律抹掉，细节只进 `--debug` 的 stderr。 */
-const publicMessageOf = (text: string): string => {
+/** 响应体只放"人不该看到内部路径"的文案：绝对路径与 JSON 源片段一律抹掉，细节只进 `--debug` 的 stderr。
+ * @internal thumb 路由翻译渲染层错误时复用同一出口，不走公共导出面。 */
+export const publicMessageOf = (text: string): string => {
   const withoutPaths = text.replace(/\/(?:[\w.@%+-]+\/+)+[\w.@%+-]*/gu, "[路径已隐藏]");
   const withoutSource = withoutPaths.replace(/["'`][^"'"'`]{40,}["'`]/gu, "[内容已隐藏]");
   return withoutSource.length > 200 ? `${cutAtCodePoint(withoutSource, 200)}…` : withoutSource;

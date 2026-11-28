@@ -1,10 +1,13 @@
 // This layer covers `main.ts`'s process shell (argv/env/stdin → run → process.exitCode), run in-process once;
 // real subprocess behavior lives in cli-process.test.ts (this only patches the shell code coverage cannot reach).
 
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+
+import { pngOf } from "./chrome-png";
 
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "hr-main-")));
 const DOC = '<article data-hr-id="hr-a"><p data-hr-id="hr-b">x</p></article>';
@@ -131,6 +134,26 @@ describe("main.ts · non-byte stdin", () => {
     expect(process.exitCode).toBe(70);
     expect(io.err()).toContain("stdin 片段不是字节");
     expect(io.out()).toBe("");
+  });
+});
+
+describe("main.ts · binary stdout", () => {
+  it("should send `hr thumb`'s cached PNG through the byte channel, not the re-encoding string one", async () => {
+    // A seeded cache hit is the only way to keep this in-process: a miss would spawn real Chrome.
+    const doc = join(dir, "t1.html");
+    writeFileSync(doc, DOC);
+    const hash = createHash("sha256").update(readFileSync(doc)).digest("hex");
+    mkdirSync(join(dir, ".hreader", "thumbs"), { recursive: true });
+    writeFileSync(join(dir, ".hreader", "thumbs", `${hash}.png`), pngOf(600, 400));
+    const io = enterShell([]);
+    process.argv = [process.execPath, "main.ts", "thumb", doc, "--workspace", dir];
+    process.exitCode = undefined;
+
+    await loadMain("thumb-stdout");
+
+    expect(process.exitCode).toBe(0);
+    expect(io.out().length).toBeGreaterThan(0);
+    expect(io.err()).toBe("");
   });
 });
 

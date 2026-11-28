@@ -237,3 +237,54 @@ export const renderPngOnBrowserOf = async (input: PngRenderInput): Promise<LongI
   const page = await openPageOf(input.browser, input.source, input.dir, input.audit);
   return capturePngOf(page, input);
 };
+
+/** Thumbnail geometry: the page lays out at one desktop screen, and the viewport's `deviceScaleFactor` downscales the capture — no image dependency. */
+const THUMB_VIEWPORT = Object.freeze({ width: 1200, height: 800 });
+const THUMB_SCALE = 0.5;
+const THUMB_OUT = Object.freeze({
+  width: THUMB_VIEWPORT.width * THUMB_SCALE,
+  height: THUMB_VIEWPORT.height * THUMB_SCALE,
+});
+
+interface ThumbRenderInput {
+  readonly browser: BrowserLike;
+  readonly source: RenderSource;
+  readonly dir: string;
+  readonly audit?: RequestAudit | undefined;
+}
+
+/**
+ * First-screen thumbnail: same `openPageOf` opening as pdf/png (foreign docs get
+ * scripts-off + the request gate; sheets come via `file://`), then ONE capture of
+ * the viewport — never the full page. The downscale lives in `deviceScaleFactor`
+ * like the tall image's upscale (`clip.scale` stays pinned to 1 — see
+ * `PngShotOptions`): 1200×800 CSS at dsf 0.5 → 600×400 device px.
+ * Reported width/height are read back from IHDR like the tall image — an
+ * unexpected size is `render_empty`, not a guess.
+ */
+export const renderThumbOnBrowserOf = async (input: ThumbRenderInput): Promise<LongImage> => {
+  const page = await openPageOf(input.browser, input.source, input.dir, input.audit);
+  await page.setViewport({
+    width: THUMB_VIEWPORT.width,
+    height: THUMB_VIEWPORT.height,
+    deviceScaleFactor: THUMB_SCALE,
+  });
+  const bytes = await page.screenshot({
+    captureBeyondViewport: false,
+    clip: {
+      x: 0,
+      y: 0,
+      width: THUMB_VIEWPORT.width,
+      height: THUMB_VIEWPORT.height,
+      scale: 1,
+    },
+  });
+  const size = pngSizeOf(bytes);
+  if (size.width !== THUMB_OUT.width || size.height !== THUMB_OUT.height) {
+    throw new HrError(
+      "render_empty",
+      `缩略图尺寸异常：${String(size.width)}×${String(size.height)}（应为 ${String(THUMB_OUT.width)}×${String(THUMB_OUT.height)}）`,
+    );
+  }
+  return { bytes, width: size.width, height: size.height, clipped: false };
+};

@@ -54,6 +54,8 @@ const config = {
     "packages/core/src/server/sidecar-replies.ts",
     "packages/core/src/server/write-replies.ts",
     "packages/core/src/server/runtime.ts",
+    // thumb route: etag/304 + renderer-error translation on an authenticated surface
+    "packages/core/src/server/thumb.ts",
     "packages/core/src/annotations/anchor.ts",
     "packages/core/src/annotations/body-text.ts",
     // search: tokenizer/CJK fuzzy gate, incremental index, snippet offsets, query bounds, HTTP reply
@@ -69,6 +71,9 @@ const config = {
     "packages/cli/src/commands/export-foreign.ts",
     // cli: the fail-closed link-annotation sanitizer every hr pdf artifact passes through
     "packages/cli/src/pdf/links.ts",
+    // cli: thumbnail single-flight queue + content-hash LRU cache (PNG validation, path-keyed-by-hash)
+    "packages/cli/src/thumbs/queue.ts",
+    "packages/cli/src/thumbs/cache.ts",
     // app widgets
     "packages/app/src/widgets/present.ts",
     "packages/app/src/widgets/foreign.ts",
