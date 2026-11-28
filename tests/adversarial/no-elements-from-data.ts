@@ -2,10 +2,21 @@
 //
 // Given a rendered container — a happy-dom Element/Document, a real browser node, or any
 // structure-compatible DOM — this asserts that
-//   1. the subtree holds no dangerous element (img, script, svg, iframe, object, embed,
-//      form, style, link, meta, base) and no <a> whose href resolves to a script scheme;
+//   1. the subtree holds no dangerous element (the DANGEROUS_TAGS set below), no element
+//      carrying an `on*` handler attribute or a `srcdoc` attribute, and no URL-bearing
+//      attribute (href, src, action, formaction, xlink:href) whose scheme — after HTML
+//      character-reference decoding and ASCII whitespace/control stripping, as browsers
+//      do — is javascript:, vbscript: or data:;
 //   2. the text nodes equal exactly the given data, in order.
 // It answers "did the payload stay text" end to end, not "was some pattern filtered".
+
+/** One attribute as the checker needs it — DOM Attr, NamedNodeMap entries and parse5 attrs fit. */
+export interface DomAttrLike {
+  readonly name: string;
+  readonly value: string;
+  /** parse5 puts `xlink` here for namespaced attributes in foreign content. */
+  readonly prefix?: string;
+}
 
 /** The members of a DOM node this checker reads — satisfied by happy-dom and real DOM nodes. */
 export interface DomNodeLike {
@@ -13,6 +24,10 @@ export interface DomNodeLike {
   readonly nodeValue?: string | null;
   readonly tagName?: string;
   readonly getAttribute?: (name: string) => string | null;
+  /** DOM-style enumerable attributes (a NamedNodeMap is Iterable). */
+  readonly attributes?: Iterable<DomAttrLike> | undefined;
+  /** parse5-style attribute list. */
+  readonly attrs?: readonly DomAttrLike[] | undefined;
   readonly childNodes?: Iterable<DomNodeLike> | undefined;
 }
 
@@ -37,10 +52,71 @@ const DANGEROUS_TAGS: ReadonlySet<string> = new Set([
   "link",
   "meta",
   "base",
+  // MathML can re-enter HTML parsing through <annotation-xml encoding="text/html">.
+  "math",
+  "annotation-xml",
+  // Media elements add attack surface (handlers on sources, tracks, posters).
+  "video",
+  "audio",
+  "source",
+  // Interactive or legacy-active elements.
+  "details",
+  "marquee",
+  // With scripting on in a renderer, <noscript> contents are markup — never let data carry them.
+  "noscript",
 ]);
 
-/** <a> is allowed as an element — but never with a script scheme in href. */
-const DANGEROUS_SCHEMES = ["javascript:", "vbscript:"] as const;
+/** Attributes that load or navigate a URL — their scheme is checked on every element. */
+const URL_ATTRS: ReadonlySet<string> = new Set([
+  "href",
+  "src",
+  "action",
+  "formaction",
+  "xlink:href",
+]);
+
+/** Schemes that must never appear in a URL-bearing attribute. */
+const DANGEROUS_SCHEMES = ["javascript:", "vbscript:", "data:"] as const;
+
+/**
+ * The named character references a scheme check must honor — entities are decoded
+ * before checking, exactly like the HTML parser does inside attributes. Numeric
+ * references below cover everything else.
+ */
+const NAMED_REFS: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  colon: ":",
+  Tab: "\t",
+  NewLine: "\n",
+  sol: "/",
+  bsol: "\\",
+  lpar: "(",
+  rpar: ")",
+  equals: "=",
+};
+
+/** Decodes HTML character references — numeric (with optional `;`) plus the named table. */
+const decodeCharRefs = (value: string): string =>
+  value.replace(
+    /&(#(?:[0-9]+|[xX][0-9a-fA-F]+);?|[A-Za-z][A-Za-z0-9]+;)/gu,
+    (match, body: string) => {
+      if (body.startsWith("#")) {
+        const hex = body[1] === "x" || body[1] === "X";
+        const digits = body.slice(hex ? 2 : 1).replace(/;$/u, "");
+        const code = Number.parseInt(digits, hex ? 16 : 10);
+        if (!Number.isFinite(code) || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
+          return "�";
+        }
+        return String.fromCodePoint(code);
+      }
+      const name = body.slice(0, -1);
+      return NAMED_REFS[name] ?? match;
+    },
+  );
 
 /** URL-scheme normalization per the URL parser: drop ASCII whitespace/controls, then lowercase. */
 const normalizeScheme = (value: string): string => {
@@ -53,38 +129,82 @@ const normalizeScheme = (value: string): string => {
 };
 
 /**
+ * Every attribute of the node as lowercase `prefix:name` pairs. Sources, in order:
+ * DOM `attributes` (iterable), parse5 `attrs`, then `getAttribute` for the fixed
+ * URL/srcdoc names — so a container exposing only `getAttribute` is still covered.
+ */
+const attributesOf = (node: DomNodeLike): { name: string; value: string }[] => {
+  const out: { name: string; value: string }[] = [];
+  const seen = new Set<string>();
+  const add = (name: string, value: string, prefix?: string): void => {
+    const qualified =
+      `${prefix === undefined || prefix === "" ? "" : `${prefix}:`}${name}`.toLowerCase();
+    if (seen.has(qualified)) return;
+    seen.add(qualified);
+    out.push({ name: qualified, value });
+  };
+  if (node.attributes !== undefined) {
+    for (const attr of node.attributes) add(attr.name, attr.value, attr.prefix);
+  }
+  if (node.attrs !== undefined) {
+    for (const attr of node.attrs) add(attr.name, attr.value, attr.prefix);
+  }
+  if (node.getAttribute !== undefined) {
+    for (const name of [...URL_ATTRS, "srcdoc"]) {
+      const value = node.getAttribute(name);
+      if (value !== null) add(name, value);
+    }
+  }
+  return out;
+};
+
+/**
  * Asserts a rendered container holds no dangerous element and that its text nodes equal
  * `expectedTexts` (document order, exact match — whitespace nodes count too).
- * Throws `Error` with the offending tag or the first text mismatch.
+ * Throws `Error` with the offending tag/attribute or the first text mismatch.
  */
 export const assertNoElementsFromData = (
   container: DomContainerLike,
   expectedTexts: readonly string[],
 ): void => {
   const texts: string[] = [];
-  const walk = (node: DomNodeLike): void => {
+  // An explicit stack, not recursion — corpus payloads nest thousands deep.
+  const stack = [...container.childNodes].reverse();
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === undefined) break;
     if (node.nodeType === ELEMENT_NODE) {
       const tag = (node.tagName ?? "").toLowerCase();
       if (DANGEROUS_TAGS.has(tag)) {
         throw new Error(`data rendered as a dangerous <${tag}> element`);
       }
-      if (tag === "a" && node.getAttribute !== undefined) {
-        const href = node.getAttribute("href");
-        if (
-          href !== null &&
-          DANGEROUS_SCHEMES.some((scheme) => normalizeScheme(href).startsWith(scheme))
-        ) {
+      for (const attr of attributesOf(node)) {
+        if (attr.name.startsWith("on")) {
           throw new Error(
-            `data rendered as <a> with a script-scheme href: ${JSON.stringify(href)}`,
+            `data rendered as <${tag}> with a handler attribute ${JSON.stringify(attr.name)}`,
           );
+        }
+        if (attr.name === "srcdoc") {
+          throw new Error(`data rendered as <${tag}> with a srcdoc attribute`);
+        }
+        if (URL_ATTRS.has(attr.name)) {
+          const scheme = normalizeScheme(decodeCharRefs(attr.value));
+          for (const bad of DANGEROUS_SCHEMES) {
+            if (scheme.startsWith(bad)) {
+              throw new Error(
+                `data rendered as <${tag}> with a dangerous-scheme ${attr.name}: ${JSON.stringify(attr.value)}`,
+              );
+            }
+          }
         }
       }
     } else if (node.nodeType === TEXT_NODE) {
       texts.push(node.nodeValue ?? "");
     }
-    for (const child of node.childNodes ?? []) walk(child);
-  };
-  for (const child of container.childNodes) walk(child);
+    if (node.childNodes !== undefined) {
+      stack.push(...[...node.childNodes].reverse());
+    }
+  }
   if (texts.length !== expectedTexts.length) {
     throw new Error(
       `rendered text node count ${String(texts.length)} != expected ${String(expectedTexts.length)} (got ${JSON.stringify(texts)})`,

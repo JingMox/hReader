@@ -135,6 +135,14 @@ describe("XSS_PAYLOADS", () => {
     expect(payloads.some((payload) => payload.includes("\u200B"))).toBe(true);
     expect(payloads.some((payload) => payload.length >= 100_000)).toBe(true);
   });
+
+  it("should carry a non-empty reason on every entry marked inert", () => {
+    for (const entry of XSS_PAYLOADS) {
+      if (entry.inertReason !== undefined) {
+        expect(entry.inertReason.length).toBeGreaterThan(0);
+      }
+    }
+  });
 });
 
 describe("URL_CASES", () => {
